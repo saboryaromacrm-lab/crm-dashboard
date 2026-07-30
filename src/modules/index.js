@@ -15,14 +15,18 @@
  */
 import { moduleRegistry } from '@core/modules/registry.js';
 import { dashboardModule } from './dashboard';
+import { comprasModule } from './compras';
+import { ventaModule } from './venta';
+import { almacenModule } from './almacen';
+import { gerenciaModule } from './gerencia';
 
 /** The ordered list of every module the application ships with. */
 export const appModules = [
   dashboardModule,
-  // customersModule,
-  // salesModule,
-  // inventoryModule,
-  // reportsModule,
+  comprasModule,
+  ventaModule,
+  almacenModule,
+  gerenciaModule,
 ];
 
 /** Registers all application modules. Call once at startup (see main.jsx). */
