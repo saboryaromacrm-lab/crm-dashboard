@@ -1,0 +1,66 @@
+/* ==========================================================================
+   MAIN LAYOUT — mobile-first
+   --------------------------------------------------------------------------
+   Base (mobile): single column, sidebar lives in an off-canvas drawer.
+   >= desktop: two-column grid with a fixed sidebar.
+   All dimensions come from design tokens so theming/tenanting stays central.
+   ========================================================================== */
+
+.layout {
+  min-height: 100vh;
+  background-color: var(--crm-color-bg);
+}
+
+/* ---- Mobile & tablet (< desktop): single column ---- */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-width: 0; /* prevents content overflow in grid/flex children */
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--crm-z-topbar);
+  height: var(--crm-topbar-height);
+  background-color: var(--crm-color-surface);
+  border-bottom: 1px solid var(--crm-color-border);
+}
+
+.content {
+  flex: 1;
+  overflow-x: hidden;
+}
+
+.contentInner {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: var(--crm-space-4);
+}
+
+/* ---- Desktop (>= 1024px): fixed sidebar + content column ---- */
+@media (min-width: 1024px) {
+  .layout {
+    display: grid;
+    grid-template-columns: var(--crm-sidebar-width) 1fr;
+    transition: grid-template-columns var(--crm-transition-base);
+  }
+
+  .layout.collapsed {
+    grid-template-columns: var(--crm-sidebar-width-collapsed) 1fr;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow: hidden;
+    background-color: var(--crm-color-sidebar-bg);
+    border-right: 1px solid var(--crm-color-border);
+  }
+
+  .contentInner {
+    padding: var(--crm-space-6);
+  }
+}

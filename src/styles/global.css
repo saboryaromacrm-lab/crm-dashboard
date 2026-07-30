@@ -1,0 +1,43 @@
+/* ==========================================================================
+   GLOBAL BASE STYLES
+   Applies design tokens to the document baseline. Component-specific styles
+   live in each module's *.module.css files — never here.
+   ========================================================================== */
+
+body {
+  font-family: var(--crm-font-sans);
+  font-size: var(--crm-font-size-md);
+  line-height: 1.5;
+  color: var(--crm-color-text);
+  background-color: var(--crm-color-bg);
+  transition:
+    background-color var(--crm-transition-base),
+    color var(--crm-transition-base);
+}
+
+#root {
+  isolation: isolate;
+}
+
+/* Consistent, theme-aware scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--crm-color-border) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--crm-color-border);
+  border-radius: var(--crm-radius-pill);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+:focus-visible {
+  outline: 2px solid var(--crm-color-primary);
+  outline-offset: 2px;
+}

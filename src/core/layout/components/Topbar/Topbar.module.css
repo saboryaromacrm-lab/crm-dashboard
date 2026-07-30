@@ -1,0 +1,45 @@
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--crm-space-3);
+  height: 100%;
+  padding: 0 var(--crm-space-3);
+}
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: var(--crm-space-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.search {
+  flex: 1;
+  min-width: 0;
+  /* Hide the free-text search on very small screens to save room. */
+  display: none;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: var(--crm-space-1);
+  flex-shrink: 0;
+}
+
+.menuHeader {
+  padding: var(--crm-space-3) var(--crm-space-4);
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  .topbar {
+    padding: 0 var(--crm-space-4);
+  }
+  .search {
+    display: block;
+  }
+}

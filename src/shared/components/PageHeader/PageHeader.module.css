@@ -1,0 +1,22 @@
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--crm-space-4);
+  margin-bottom: var(--crm-space-6);
+}
+
+.titles {
+  min-width: 0;
+}
+
+.subtitle {
+  margin-top: var(--crm-space-1);
+}
+
+.actions {
+  display: flex;
+  gap: var(--crm-space-2);
+  flex-shrink: 0;
+}

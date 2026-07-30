@@ -1,0 +1,115 @@
+/* ==========================================================================
+   SIDEBAR — dark navigation rail. Uses sidebar-specific tokens so it can be
+   themed independently of the content area.
+   ========================================================================== */
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  color: var(--crm-color-sidebar-text);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--crm-space-3);
+  height: var(--crm-topbar-height);
+  padding: 0 var(--crm-space-4);
+  flex-shrink: 0;
+}
+
+.brandMark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--crm-radius-md);
+  background: linear-gradient(135deg, var(--crm-color-primary), var(--crm-color-accent));
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.brandName {
+  font-weight: 700;
+  font-size: var(--crm-font-size-md);
+  color: var(--crm-color-sidebar-text-active);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navScroll {
+  flex: 1;
+  padding: var(--crm-space-2) var(--crm-space-3) var(--crm-space-4);
+}
+
+.group {
+  margin-bottom: var(--crm-space-4);
+}
+
+.groupLabel {
+  padding: var(--crm-space-2) var(--crm-space-3);
+  font-size: var(--crm-font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--crm-color-text-muted);
+}
+
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--crm-space-3);
+  padding: var(--crm-space-3);
+  border-radius: var(--crm-radius-md);
+  color: var(--crm-color-sidebar-text);
+  transition: background-color var(--crm-transition-fast), color var(--crm-transition-fast);
+  cursor: pointer;
+}
+
+.navItem:hover {
+  background-color: var(--crm-color-sidebar-active);
+  color: var(--crm-color-sidebar-text-active);
+}
+
+.navItemActive {
+  background-color: var(--crm-color-primary);
+  color: var(--crm-color-primary-contrast);
+}
+
+.navItemActive:hover {
+  background-color: var(--crm-color-primary);
+  color: var(--crm-color-primary-contrast);
+}
+
+.navIcon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.navLabel {
+  font-size: var(--crm-font-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footer {
+  padding: var(--crm-space-4);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.version {
+  font-size: var(--crm-font-size-xs);
+  color: var(--crm-color-text-muted);
+}

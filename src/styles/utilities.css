@@ -1,0 +1,28 @@
+/* ==========================================================================
+   Small, framework-agnostic utility classes. Kept intentionally tiny — MUI's
+   sx prop covers most needs; these exist for layout primitives used by custom
+   CSS modules.
+   ========================================================================== */
+
+.crm-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.crm-scroll-area {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.crm-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
