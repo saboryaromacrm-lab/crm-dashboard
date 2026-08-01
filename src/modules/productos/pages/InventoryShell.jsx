@@ -1,12 +1,14 @@
+import { useState } from 'react';
 import { Button, Snackbar, Alert } from '@mui/material';
-import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
+import { FullScreenLoader } from '@shared/components/FullScreenLoader/FullScreenLoader.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { ROLES } from '../domain/constants.js';
 import { sucursalOptions, usuarioOptions } from '../components/selectOptions.jsx';
 import { ModalHost } from '../components/ModalHost.jsx';
-import { s } from '../components/ui.jsx';
+import { Btn, s } from '../components/ui.jsx';
 
 import { DashboardPanel } from '../panels/DashboardPanel.jsx';
 import { ProductosPanel } from '../panels/ProductosPanel.jsx';
@@ -40,7 +42,8 @@ const PANEL_COMPONENTS = {
  * y su `title`/`subtitle`.
  */
 export function InventoryShell({ title, subtitle }) {
-  const { store, panels, panel, goPanel, ctx, openModal, toast, toastState, closeToast } = useProductos();
+  const { store, panels, panel, goPanel, ctx, toast, toastState, closeToast } = useProductos();
+  const [refreshing, setRefreshing] = useState(false);
 
   const counts = {
     incidencias: store.incidenciasAbiertas().length,
@@ -50,17 +53,33 @@ export function InventoryShell({ title, subtitle }) {
   const first = panels[0]?.id || 'dashboard';
   const ActivePanel = PANEL_COMPONENTS[panel] || PANEL_COMPONENTS[first] || DashboardPanel;
 
-  const onReset = () =>
-    openModal('confirm', {
-      title: 'Restablecer datos',
-      texto: 'Se borrarán los datos actuales y se cargarán los de ejemplo. ¿Confirmás?',
-      claseOk: 'btn-delete',
-      onOk: () => {
-        store.reset();
-        goPanel(first);
-        toast('Datos de ejemplo cargados.', 'ok');
-      },
-    });
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try { await store.refetch(); toast('Datos actualizados.', 'ok'); }
+    catch (e) { toast('No se pudo actualizar.', 'err'); }
+    finally { setRefreshing(false); }
+  };
+
+  // Estado de carga inicial contra la API.
+  if (!store.loaded) {
+    if (store.loadError) {
+      return (
+        <div>
+          <PageHeader title={title} subtitle={subtitle} />
+          <div className={cx(s.callout, s.warn)} style={{ maxWidth: 640 }}>
+            No se pudo cargar la información desde la API: <strong>{store.loadError}</strong>
+            <div style={{ marginTop: 10 }}>
+              <Btn variant="btn-primary" small onClick={onRefresh}>Reintentar</Btn>
+            </div>
+            <div className={s.hint} style={{ marginTop: 8 }}>
+              Verificá que el backend esté corriendo (crm-api: <code>npm run start:dev</code>) en http://localhost:3001/api.
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return <FullScreenLoader label="Cargando datos…" />;
+  }
 
   return (
     <div>
@@ -68,8 +87,8 @@ export function InventoryShell({ title, subtitle }) {
         title={title}
         subtitle={subtitle}
         actions={
-          <Button variant="outlined" startIcon={<RestartAltIcon />} onClick={onReset}>
-            Datos de ejemplo
+          <Button variant="outlined" startIcon={<RefreshIcon />} onClick={onRefresh} disabled={refreshing}>
+            Actualizar
           </Button>
         }
       />

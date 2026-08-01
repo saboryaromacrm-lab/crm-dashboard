@@ -37,9 +37,13 @@ export function ProductosProvider({ children, panels = [], defaultPanel }) {
   }, []);
   const closeToast = useCallback(() => setToastState((t) => ({ ...t, open: false })), []);
 
-  /** Aplica un resultado {ok,error} del store: avisa y cierra el modal si fue ok. */
+  /**
+   * Aplica un resultado del store: avisa y cierra el modal si fue ok. Acepta tanto
+   * un resultado sincrónico como una Promise (las mutaciones contra la API son async).
+   */
   const act = useCallback(
-    (res, okMsg) => {
+    async (resOrPromise, okMsg) => {
+      const res = await resOrPromise;
       if (!res || !res.ok) { toast(res?.error || 'Ocurrió un error.', 'err'); return false; }
       toast(okMsg || 'Listo.', 'ok');
       closeModal();

@@ -1,9 +1,11 @@
 import { useProductos } from '../context/ProductosContext.jsx';
+import { useSeccion } from '../hooks/useSeccion.js';
 import { num, fmtFechaHora } from '../domain/format.js';
 import { Table, PanelHead, Btn, s } from '../components/ui.jsx';
 
 export function FraccionamientoPanel() {
   const { store, can, openModal } = useProductos();
+  useSeccion('movimientos');
   const puede = can('fraccionar');
 
   const filas = store.state.stock

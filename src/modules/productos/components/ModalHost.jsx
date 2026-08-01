@@ -7,7 +7,9 @@ import { CompraModal, VenderModal, FraccionarModal, MovimientoModal } from './mo
 import { TransferenciaModal, DetalleTransferModal } from './modals/TransferModals.jsx';
 import { IncidenciaModal, ResolverIncidenciaModal, DetalleIncidenciaModal } from './modals/IncidenciaModals.jsx';
 import { SucursalModal } from './modals/CatalogoModals.jsx';
-import { ProveedorFormModal } from './modals/ProveedorModals.jsx';
+import { ProveedorFormModal, DetalleProveedorModal } from './modals/ProveedorModals.jsx';
+import { ComprobanteFormModal, ComprobanteDetalleModal } from './modals/ComprobanteModals.jsx';
+import { HistorialPreciosModal, MargenesMasivosModal } from './modals/PreciosModals.jsx';
 
 /* Confirmación genérica reutilizable. */
 function ConfirmModal({ title, texto, onOk, claseOk = 'btn-primary' }) {
@@ -74,7 +76,12 @@ const REGISTRY = {
   confirm: ConfirmModal,
   eliminarProducto: EliminarProductoModal,
   proveedorForm: ProveedorFormModal,
+  detalleProveedor: DetalleProveedorModal,
   eliminarProveedor: EliminarProveedorModal,
+  comprobanteForm: ComprobanteFormModal,
+  comprobanteDetalle: ComprobanteDetalleModal,
+  historialPrecios: HistorialPreciosModal,
+  margenesMasivos: MargenesMasivosModal,
   producto: ProductoFormModal,
   detalleProducto: DetalleProductoModal,
   compra: CompraModal,

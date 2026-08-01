@@ -20,14 +20,18 @@ import StorefrontIcon from '@mui/icons-material/Storefront';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 
-/** Menú interno del módulo COMPRAS. */
+/**
+ * Menú interno del módulo COMPRAS.
+ *
+ * Existencias y Fraccionamiento viven solo en Almacén: son operación de
+ * depósito, no de compra, y tenerlas en los dos lados obligaba a mantener la
+ * misma pantalla en dos menús.
+ */
 export const COMPRAS_PANELS = [
   { id: 'dashboard',      label: 'Dashboard',      icon: SpaceDashboardIcon },
   { id: 'productos',      label: 'Productos',      icon: Inventory2Icon },
   { id: 'proveedores',    label: 'Proveedores',    icon: LocalShippingIcon },
   { id: 'facturacion',    label: 'Facturación',    icon: ReceiptLongIcon },
-  { id: 'existencias',    label: 'Existencias',    icon: WarehouseIcon },
-  { id: 'fraccionamiento', label: 'Fraccionamiento', icon: CallSplitIcon },
   { id: 'historial',      label: 'Historial',      icon: HistoryIcon },
 ];
 
@@ -35,6 +39,7 @@ export const COMPRAS_PANELS = [
 export const ALMACEN_PANELS = [
   { id: 'sucursales',     label: 'Sucursales',     icon: StorefrontIcon },
   { id: 'existencias',    label: 'Existencias',    icon: WarehouseIcon },
+  { id: 'fraccionamiento', label: 'Fraccionamiento', icon: CallSplitIcon },
   { id: 'transferencias', label: 'Transferencias', icon: SwapHorizIcon, badge: 'transferencias' },
   { id: 'incidencias',    label: 'Incidencias',    icon: ReportProblemIcon, badge: 'incidencias' },
 ];

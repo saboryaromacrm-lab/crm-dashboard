@@ -25,7 +25,8 @@ export function CompraModal({ prodId }) {
         productoId: parseInt(pid, 10),
         sucursalId: parseInt(sucId, 10),
         cantidad: cant,
-        fechaVencimiento: venc || null,
+        // Mediodía local: `yyyy-mm-dd` suelto se lee como UTC y retrocede un día.
+        fechaVencimiento: venc ? `${venc}T12:00:00` : null,
         proveedorId: provId ? parseInt(provId, 10) : null,
       }),
       'Compra registrada.',
@@ -86,8 +87,8 @@ export function VenderModal({ prodId, sucId: sucInit, pre = {} }) {
   const precio = presNum ? store.precioPresentacion(prod, presNum) : store.precioBaseVenta(prod);
   const importe = (parseFloat(cant) || 0) * precio;
 
-  const registrar = () => {
-    const res = store.opVenta({ productoId: prod.id, sucursalId: parseInt(sucId, 10), presId: presNum, cantidad: cant });
+  const registrar = async () => {
+    const res = await store.opVenta({ productoId: prod.id, sucursalId: parseInt(sucId, 10), presId: presNum, cantidad: cant });
     if (res.ok) { toast('Venta registrada · ' + money(res.importe), 'ok'); closeModal(); }
     else toast(res.error, 'err');
   };

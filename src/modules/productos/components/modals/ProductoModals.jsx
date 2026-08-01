@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
+import { useSeccion } from '../../hooks/useSeccion.js';
 import { money, num, fmtFechaHora } from '../../domain/format.js';
 import { CATEGORIAS, IVA_OPCIONES } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
@@ -85,6 +86,7 @@ function Di({ label, children }) {
 
 export function DetalleProductoModal({ prodId }) {
   const { store, isAdmin, closeModal, openModal } = useProductos();
+  useSeccion('movimientos');
   const p = store.getProducto(prodId);
   const [tab, setTab] = useState(0);
   if (!p) return null;
@@ -183,9 +185,9 @@ function PresentacionesTab({ prod: p }) {
 
   const tamKgDe = (r) => { const t = parseFloat(r.tamStr); if (isNaN(t) || t <= 0) return 0; return r.unidad === 'kg' ? t : t / 1000; };
 
-  const guardar = () => {
+  const guardar = async () => {
     const presentaciones = rows.map((r) => ({ id: r.id || null, tamKg: tamKgDe(r), ganancia: Number(r.ganancia) || 0 })).filter((x) => x.tamKg > 0);
-    const res = store.guardarPresentaciones(p.id, presentaciones);
+    const res = await store.guardarPresentaciones(p.id, presentaciones);
     toast(res.ok ? 'Presentaciones guardadas.' : res.error, res.ok ? 'ok' : 'err');
   };
 
@@ -252,8 +254,8 @@ function ProveedorTab({ prod: p }) {
     setRows((r) => [...r, { proveedorId: libre.id, costo: '', descuento: '', flete: '' }]);
   };
 
-  const guardar = () => {
-    const res = store.guardarProveedoresProducto(p.id, { proveedores: rows, proveedorActivoId: activo });
+  const guardar = async () => {
+    const res = await store.guardarProveedoresProducto(p.id, { proveedores: rows, proveedorActivoId: activo });
     toast(res.ok ? 'Proveedores del producto guardados.' : res.error, res.ok ? 'ok' : 'err');
   };
 
@@ -262,21 +264,24 @@ function ProveedorTab({ prod: p }) {
       <div className={cx(s.callout, s.info)}>
         Cargá el costo del producto con cada proveedor (descuento y flete en %). Tildá con cuál
         <strong> vino esta última vez</strong>: ese es el proveedor activo que define el costo y los precios.
+        Los costos se guardan <strong>netos, sin IVA</strong>; al lado se muestra cuánto es con IVA
+        ({num(p.iva, 1)}%) para poder contrastar contra la lista del proveedor sin sacar la cuenta.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '48px 1.6fr 1fr .9fr .9fr 1fr auto', gap: 8, alignItems: 'end' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '48px 1.5fr .9fr .8fr .8fr .9fr .9fr auto', gap: 8, alignItems: 'end' }}>
           <div className={s['mini-label']} style={{ textAlign: 'center' }}>Activo</div>
           <div className={s['mini-label']}>Proveedor</div>
-          <div className={s['mini-label']}>Costo</div>
+          <div className={s['mini-label']}>Costo neto</div>
           <div className={s['mini-label']}>Desc. %</div>
           <div className={s['mini-label']}>Flete %</div>
-          <div className={s['mini-label']}>Costo neto</div>
+          <div className={s['mini-label']}>Neto final</div>
+          <div className={s['mini-label']}>c/IVA</div>
           <div />
         </div>
         {rows.map((r, i) => {
           const neto = store.costoNetoEntry({ costo: r.costo, descuento: r.descuento, flete: r.flete });
           return (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '48px 1.6fr 1fr .9fr .9fr 1fr auto', gap: 8, alignItems: 'center' }}>
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '48px 1.5fr .9fr .8fr .8fr .9fr .9fr auto', gap: 8, alignItems: 'center' }}>
               <input type="radio" name="prov-activo" style={{ width: 18, height: 18, justifySelf: 'center' }}
                 checked={Number(activo) === Number(r.proveedorId)} onChange={() => setActivo(Number(r.proveedorId))} />
               <select value={r.proveedorId} onChange={(e) => setRow(i, { proveedorId: Number(e.target.value) })}>
@@ -286,6 +291,11 @@ function ProveedorTab({ prod: p }) {
               <input type="number" min="0" step="0.1" value={r.descuento} placeholder="0" onChange={(e) => setRow(i, { descuento: e.target.value })} />
               <input type="number" min="0" step="0.1" value={r.flete} placeholder="0" onChange={(e) => setRow(i, { flete: e.target.value })} />
               <div className={s.mono} style={{ fontWeight: 700 }}>{money(neto)}</div>
+              {/* El mismo costo visto con IVA: el error de cargarlo con IVA
+                  incluido se vuelve visible sin necesidad de validar nada. */}
+              <div className={cx(s.mono, s.muted)} title={`Costo neto + ${num(p.iva, 1)}% de IVA`}>
+                {money(neto * (1 + (Number(p.iva) || 0) / 100))}
+              </div>
               <button type="button" className={s['pres-remove']} onClick={() => delRow(i)}>×</button>
             </div>
           );
@@ -363,8 +373,8 @@ function VentaTab({ prod: p }) {
   const delRow = (i) => setRows((r) => r.filter((_, j) => j !== i));
   const addRow = () => setRows((r) => [...r, { id: null, nombre: '', ganancia: '' }]);
 
-  const guardar = () => {
-    const res = store.guardarListasProducto(p.id, { listasPrecio: rows });
+  const guardar = async () => {
+    const res = await store.guardarListasProducto(p.id, { listasPrecio: rows });
     toast(res.ok ? 'Listas de precio guardadas.' : res.error, res.ok ? 'ok' : 'err');
   };
 

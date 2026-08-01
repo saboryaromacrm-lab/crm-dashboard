@@ -75,3 +75,30 @@ export const CATEGORIAS = ['General', 'Alimentos', 'Bebidas', 'Almacén', 'Limpi
 
 // ---- Alícuotas de IVA (por ahora fijas; luego se configuran en otra sección) ----
 export const IVA_OPCIONES = [21, 10.5];
+
+// ---- Comprobantes de compra (Facturación) ----
+export const TIPOS_COMPROBANTE = {
+  factura:      { label: 'Factura',          tag: 'tag-venta' },
+  remito:       { label: 'Remito',           tag: 'tag-transf' },
+  nota_credito: { label: 'Nota de crédito',  tag: 'tag-baja' },
+  nota_debito:  { label: 'Nota de débito',   tag: 'tag-ingreso' },
+  orden_compra: { label: 'Orden de compra',  tag: 'tag-ajuste' },
+};
+export const ESTADOS_COMPROBANTE = {
+  borrador:   { label: 'Borrador',   pill: 'est-pendiente' },
+  confirmado: { label: 'Confirmado', pill: 'est-recibida' },
+  anulado:    { label: 'Anulado',    pill: 'est-cancelada' },
+};
+export const LETRAS_COMPROBANTE = ['A', 'B', 'C', 'X'];
+export const CONDICIONES_PAGO = { contado: 'Contado', cuenta_corriente: 'Cuenta corriente' };
+
+/**
+ * Condición del PROVEEDOR frente al IVA. Define si su comprobante discrimina
+ * IVA: un monotributista o exento factura sin IVA, y asumir 21% infla el total.
+ */
+export const CONDICIONES_IVA_PROV = {
+  responsable_inscripto: 'Responsable inscripto',
+  monotributo: 'Monotributo',
+  exento: 'Exento',
+  no_categorizado: 'No categorizado',
+};

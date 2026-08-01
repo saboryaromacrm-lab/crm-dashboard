@@ -1,5 +1,6 @@
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
+import { useSeccion } from '../hooks/useSeccion.js';
 import { money, num, fmtFechaHora } from '../domain/format.js';
 import { Table, Stat, MovTag, s } from '../components/ui.jsx';
 
@@ -19,6 +20,7 @@ function DashCard({ title, panelId, cols, rows, empty }) {
 
 export function DashboardPanel() {
   const { store } = useProductos();
+  useSeccion('movimientos');
 
   let valor = 0; let comprometidoVal = 0;
   store.state.stock.forEach((st) => {

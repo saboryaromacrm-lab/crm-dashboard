@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
+import { useSeccion } from '../hooks/useSeccion.js';
 import { num, fmtFechaHora } from '../domain/format.js';
 import { TIPOS_MOV } from '../domain/constants.js';
 import { sucursalOptions, productoOptions } from '../components/selectOptions.jsx';
@@ -7,6 +8,7 @@ import { Table, PanelHead, MovTag, s } from '../components/ui.jsx';
 
 export function HistorialPanel() {
   const { store } = useProductos();
+  useSeccion('movimientos');
   const [tipoF, setTipoF] = useState('');
   const [prodF, setProdF] = useState('');
   const [sucF, setSucF] = useState('');

@@ -16,7 +16,7 @@
 import { moduleRegistry } from '@core/modules/registry.js';
 import { dashboardModule } from './dashboard';
 import { comprasModule } from './compras';
-import { ventaModule } from './venta';
+import { ventasModule } from './ventas';
 import { almacenModule } from './almacen';
 import { gerenciaModule } from './gerencia';
 
@@ -24,7 +24,7 @@ import { gerenciaModule } from './gerencia';
 export const appModules = [
   dashboardModule,
   comprasModule,
-  ventaModule,
+  ventasModule,
   almacenModule,
   gerenciaModule,
 ];

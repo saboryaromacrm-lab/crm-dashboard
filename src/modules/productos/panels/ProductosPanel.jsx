@@ -1,18 +1,45 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { num } from '../domain/format.js';
 import { Table, PanelHead, TipoBadge, Btn, s } from '../components/ui.jsx';
+
+/** Texto comparable: sin mayúsculas ni acentos. */
+const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
 export function ProductosPanel() {
   const { store, isAdmin, openModal } = useProductos();
   const [q, setQ] = useState('');
   const [tipo, setTipo] = useState('');
+  const [marca, setMarca] = useState('');
+  const [categoria, setCategoria] = useState('');
+  const [proveedorId, setProveedorId] = useState('');
 
-  const ql = q.toLowerCase();
-  const productos = store.state.productos.filter(
-    (p) => (!ql || p.nombre.toLowerCase().includes(ql) || p.categoria.toLowerCase().includes(ql)) && (!tipo || p.tipo === tipo),
-  );
+  /** Opciones de los filtros, derivadas del catálogo ya cargado (sin red). */
+  const opciones = useMemo(() => {
+    const marcas = new Set();
+    const categorias = new Set();
+    for (const p of store.state.productos) {
+      if (p.marca) marcas.add(p.marca);
+      if (p.categoria) categorias.add(p.categoria);
+    }
+    return { marcas: [...marcas].sort(), categorias: [...categorias].sort() };
+  }, [store.state.productos]);
 
+  const productos = useMemo(() => {
+    const ql = norm(q);
+    const provId = proveedorId ? Number(proveedorId) : null;
+    return store.state.productos.filter((p) => {
+      if (tipo && p.tipo !== tipo) return false;
+      if (marca && p.marca !== marca) return false;
+      if (categoria && p.categoria !== categoria) return false;
+      if (provId && !(p.proveedores || []).some((e) => e.proveedorId === provId)) return false;
+      if (!ql) return true;
+      return norm(p.nombre).includes(ql) || norm(p.marca).includes(ql)
+        || norm(p.categoria).includes(ql) || (p.codigoBarras || '').includes(q.trim());
+    });
+  }, [store.state.productos, q, tipo, marca, categoria, proveedorId]);
+
+  const hayFiltro = !!(q || tipo || marca || categoria || proveedorId);
   const stop = (e) => e.stopPropagation();
 
   const filas = productos.map((p) => {
@@ -49,16 +76,44 @@ export function ProductosPanel() {
       <PanelHead
         title="Productos"
         desc="Catálogo. Clic en una fila para ver el detalle, stock por sucursal y trazabilidad."
-        actions={isAdmin && <Btn variant="btn-primary" onClick={() => openModal('producto', {})}>+ Nuevo producto</Btn>}
+        actions={isAdmin && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn onClick={() => openModal('margenesMasivos', { productos })}>Actualizar márgenes</Btn>
+            <Btn variant="btn-primary" onClick={() => openModal('producto', {})}>+ Nuevo producto</Btn>
+          </div>
+        )}
       />
       <div className={s.toolbar}>
-        <input type="search" placeholder="Buscar producto o categoría..." value={q} onChange={(e) => setQ(e.target.value)} />
+        <input type="search" placeholder="Buscar por nombre, marca o código..." value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className={s['select-inline']} value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+          <option value="">Todas las categorías</option>
+          {opciones.categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select className={s['select-inline']} value={marca} onChange={(e) => setMarca(e.target.value)}>
+          <option value="">Todas las marcas</option>
+          {opciones.marcas.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <select className={s['select-inline']} value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
+          <option value="">Todos los proveedores</option>
+          {store.state.proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+        </select>
         <select className={s['select-inline']} value={tipo} onChange={(e) => setTipo(e.target.value)}>
           <option value="">Todos los tipos</option>
           <option value="granel">A granel</option>
           <option value="entero">Enteros</option>
         </select>
+        {hayFiltro && (
+          <Btn small onClick={() => { setQ(''); setTipo(''); setMarca(''); setCategoria(''); setProveedorId(''); }}>
+            Limpiar
+          </Btn>
+        )}
       </div>
+      {hayFiltro && (
+        <div className={s.hint} style={{ margin: 0 }}>
+          {productos.length} de {store.state.productos.length} productos.
+          {isAdmin && ' «Actualizar márgenes» alcanza solo a los filtrados.'}
+        </div>
+      )}
       <Table
         cols={[
           { h: 'ID' }, { h: 'Producto' }, { h: 'Marca' }, { h: 'Tipo' }, { h: 'Categoría' },
