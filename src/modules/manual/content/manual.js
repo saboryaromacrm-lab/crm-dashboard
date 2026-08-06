@@ -1464,19 +1464,25 @@ export const MANUAL = [
             cols: ['Regla', 'Por qué'],
             filas: [
               ['**El CRM nunca muestra existencias de Cafetería**', 'Coffit es el dueño del stock. Dos sistemas contando la misma leche siempre terminan descuadrando, y el que mira el número equivocado decide mal'],
-              ['**El envío va a COSTO, congelado en el documento**', 'La ganancia aparece donde se genera (cuando el café vende), no en un traspaso interno. Congelado: el remito dice lo mismo dentro de seis meses aunque cambien los proveedores'],
+              ['**El envío va a COSTO, congelado al despachar**', 'La ganancia aparece donde se genera (cuando el café vende), no en un traspaso interno. Congelado con el costo del día que salió: el remito dice lo mismo dentro de seis meses aunque cambien los proveedores (mientras es solo un pedido, el total es estimado)'],
               ['**Cada renglón lleva destino: Para vender / Para usar**', 'Para vender = coffit lo revende tal cual (gaseosa, alfajor). Para usar = insumo de sus recetas (leche, café en grano). Es el dato que le dice a coffit cómo importarlo — al CRM no le cambia nada'],
               ['**El precio del café lo pone coffit, siempre**', 'Una Coca en el mostrador del café no vale lo de la góndola de la distribuidora. La lista 1 puede viajar como referencia, jamás como mandato'],
               ['**La devolución existe desde el día uno**', 'Se mandó de más o venció: "Devolución" reingresa a costo con su propio documento (CAFD). Sin ese camino, alguien lo resuelve con un ajuste a mano y se pierde la traza'],
             ],
           },
           {
+            t: 'p',
+            texto: 'El envío tiene **ciclo de vida** — pedido → en tránsito → recibido, con las bandejas arriba del listado como en Transferencias — y **el stock acompaña cada estado**: los estados dicen dónde está la mercadería de verdad, no son etiquetas.',
+          },
+          {
             t: 'pasos',
             items: [
-              '**Enviar.** Almacén › Cafetería › "+ Nuevo envío": se buscan los productos de a uno (por nombre, código o barras — granel, unidad o presentación fraccionada) o **en lote** con "Buscar en lote (marca / categoría)", tildando varios y entrando todos juntos. Se marca el destino de cada renglón y la cantidad; al registrar, el stock egresa de la sucursal elegida y el costo queda congelado. El movimiento queda como "Envío a Cafetería" en el historial.',
+              '**Pedir.** "+ Nuevo envío": se buscan los productos de a uno (por nombre, código o barras) o **en lote** con "Buscar en lote (marca / categoría)", con destino y cantidad por renglón. El pedido **no toca stock** y su total es el costo *estimado* de hoy. Si el flete ya salió, el tilde "El flete ya salió" lo registra y despacha en un solo acto.',
+              '**Despachar.** El pedido pasa a **En tránsito**: el stock se mueve de disponible a *en tránsito* (sigue siendo de la distribuidora y así figura en Existencias — si el flete se pierde, la pérdida es de quien despachó) y **acá se congela el costo**, con el valor del día que salió.',
+              '**Recibir.** "Marcar recibido": lo que viajaba **egresa del sistema** — recién acá la mercadería es del café. El movimiento queda como "Envío a Cafetería" en el historial.',
               '**Imprimir / cargar en coffit.** El detalle imprime el remito valorizado (producto, código de barras, destino, cantidad, costo). Con ese papel (o archivo, fase 2) se carga el ingreso en coffit.',
-              '**Devolver.** El botón "Devolución" registra el camino inverso: la mercadería vuelve al stock a costo.',
-              '**Anular.** Revierte el stock con la operación contraria (el envío reingresa; la devolución vuelve a salir — si ese stock ya no está, se rechaza). Pide motivo y queda en el libro.',
+              '**Devolver.** El botón "Devolución" registra el camino inverso en un solo paso: la mercadería vuelve al stock a costo (no tiene etapas — cuando se registra, ya está acá).',
+              '**Anular.** Deshace exactamente lo de su etapa: un pedido no tocó stock; lo en tránsito vuelve a disponible; lo recibido reingresa (y la devolución anulada vuelve a salir). Pide motivo y queda en el libro.',
               '**Imputar los gastos del café.** La cafetería también gasta cosas que no pasan por la distribuidora (el panadero, la luz del local). Se cargan en Gastos con **Negocio: Cafetería** — mismo CUIT, mismo libro de IVA, imputación separada.',
             ],
           },
@@ -1604,6 +1610,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**6/8/2026**', '**Estados del envío a Cafetería**: el envío ganó ciclo de vida — **pedido → en tránsito → recibido** — con bandejas como Transferencias y el stock acompañando (el pedido no toca stock; despachar lo pone *en tránsito* con el costo congelado ese día; recibir lo egresa). "El flete ya salió" registra y despacha en un acto; anular deshace exactamente lo de su etapa'],
               ['**6/8/2026**', '**Cafetería (coffit), fase 1**: nueva sección **Almacén › Cafetería** — envíos y devoluciones a **costo congelado** hacia el café (documentos CAF/CAFD con remito imprimible, destino "para vender / para usar" por renglón, anulación que revierte el stock), gastos imputables al **negocio Cafetería** y resumen del período (mercadería neta + gastos = cuánto costó el café). El CRM no lleva el stock del café: lo maneja coffit. La guía "Cafetería (coffit)" documenta el circuito y el contrato para conectar coffit'],
               ['**6/8/2026**', '**Gastos espejo de Compras, completo**: "Pagos en sucursal" pasó a ser la **segunda pestaña de Gastos › Gastos** con el filtro de proveedor compartido; la bandeja quedó de **solo lectura** (se eliminó el "Aplicar" desde el pago); el **alta del gasto** ofrece tomar los pagos con **tilde** — solo los de la sucursal del gasto ("toda la empresa" ve todos) — y "¿Ya está pagado?" cubre el resto; el selector de proveedores del gasto lista **solo los que proveen gastos**; las dos bandejas (Compras y Gastos) arrancan mostrando todo el período con columna **"Aplicado a"**, así el pago tomado no se esfuma de la vista'],
               ['**6/8/2026**', '**Sesión por pestaña**: dos ventanas del mismo navegador pueden trabajar con usuarios y sucursales distintos sin pisarse (antes el login de una sobreescribía al de la otra y una cajera terminaba viendo la caja ajena). Una pestaña nueva hereda el último login'],

@@ -43,6 +43,14 @@ export const ESTADOS_TRANSFER = {
   cancelada: { label: 'Cancelada',   pill: 'est-cancelada', orden: 9 },
 };
 
+// ---- Estados del envío a Cafetería (el stock acompaña cada uno) ----
+export const ESTADOS_ENVIO_CAFE = {
+  pedido:   { label: 'Pedido',      pill: 'est-pendiente' },
+  transito: { label: 'En tránsito', pill: 'est-transito' },
+  recibido: { label: 'Recibido',    pill: 'est-recibida' },
+  anulado:  { label: 'Anulado',     pill: 'est-cancelada' },
+};
+
 // ---- Estados e insumos de incidencias ----
 export const ESTADOS_INCIDENCIA = {
   pendiente: { label: 'Pendiente',   pill: 'est-pendiente' },

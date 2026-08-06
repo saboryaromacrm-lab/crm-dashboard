@@ -616,6 +616,8 @@ const enviosCafeteria = (filtros) => httpClient.get('/cafeteria/envios' + _qsPag
 const envioCafeteria = (id) => httpClient.get('/cafeteria/envios/' + id);
 const resumenCafeteria = (filtros) => httpClient.get('/cafeteria/resumen' + _qsPagos(filtros || {}));
 const crearEnvioCafeteria = (o) => _mutate(() => httpClient.post('/cafeteria/envios', { usuarioId: state.ctx.usuarioId ?? undefined, ...o }));
+/** pedido → transito → recibido. `desde` evita que un doble clic salte dos pasos. */
+const avanzarEnvioCafeteria = (id, desde) => _mutate(() => httpClient.post(`/cafeteria/envios/${id}/avanzar`, { desde, usuarioId: state.ctx.usuarioId ?? undefined }));
 const anularEnvioCafeteria = (id, motivo) => _mutate(() => httpClient.post(`/cafeteria/envios/${id}/anular`, { motivo, usuarioId: state.ctx.usuarioId ?? undefined }));
 
 /* ---- Costos y márgenes ----
@@ -649,7 +651,7 @@ export const inventoryStore = {
   precioFinal, redondearPrecio,
   crearComprobante, getComprobante, comprobantesDe, cuentaProveedor,
   pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
-  enviosCafeteria, envioCafeteria, resumenCafeteria, crearEnvioCafeteria, anularEnvioCafeteria,
+  enviosCafeteria, envioCafeteria, resumenCafeteria, crearEnvioCafeteria, avanzarEnvioCafeteria, anularEnvioCafeteria,
   imputarPago, quitarImputacionPago, anularPago, moverDestinoPago,
   actualizarCostos, actualizarMargenes, historialPrecios, evolucionPrecios, revertirLotePrecios,
   stockBajo, incidenciasAbiertas, transferenciasPendientes,

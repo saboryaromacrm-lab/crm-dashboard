@@ -13,6 +13,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { imprimirDocumento } from '@core/services/imprimir.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFechaHora, isoDate } from '../../domain/format.js';
+import { ESTADOS_ENVIO_CAFE } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
@@ -239,6 +240,8 @@ export function EnvioCafeteriaFormModal({ tipo = 'envio' }) {
   const [sucId, setSucId] = useState(() => String(sucOperativa() ?? store.distribuidora()?.id ?? ''));
   const [fecha, setFecha] = useState(isoDate(new Date()));
   const [obs, setObs] = useState('');
+  /** true = el flete ya salió: nace despachado (en tránsito), no como pedido. */
+  const [yaSalio, setYaSalio] = useState(false);
   /** { prodId, presId, destino, cantidad } — el costo lo congela la API. */
   const [items, setItems] = useState([]);
   const [busquedaLote, setBusquedaLote] = useState(false);
@@ -281,9 +284,17 @@ export function EnvioCafeteriaFormModal({ tipo = 'envio' }) {
     const res = await store.crearEnvioCafeteria({
       tipo, sucursalId: parseInt(sucId, 10) || undefined, fecha,
       observaciones: obs.trim(), items: parsed,
+      despachar: !esDevolucion && yaSalio ? true : undefined,
     });
     if (!res.ok) { toast(res.error || 'No se pudo registrar.', 'err'); return; }
-    toast(`${res.codigo} registrado · ${money(res.totalCosto)} a costo.`, 'ok');
+    toast(
+      esDevolucion
+        ? `${res.codigo} registrado · ${money(res.totalCosto)} reingresados a costo.`
+        : res.estado === 'transito'
+          ? `${res.codigo} despachado · ${money(res.totalCosto)} en tránsito hacia el café.`
+          : `${res.codigo} registrado como pedido · ${money(res.totalCosto)} estimados. Despachalo cuando salga el flete.`,
+      'ok',
+    );
     closeModal();
   };
 
@@ -293,12 +304,16 @@ export function EnvioCafeteriaFormModal({ tipo = 'envio' }) {
       title={esDevolucion ? 'Devolución desde Cafetería' : 'Nuevo envío a Cafetería'}
       subtitle={esDevolucion
         ? 'La mercadería vuelve al stock, valorizada a costo'
-        : 'Sale del stock a costo — el stock del café lo maneja coffit'}
+        : 'Nace como PEDIDO (sin tocar stock); al despachar viaja "en tránsito" y al recibirse egresa'}
       wide
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: esDevolucion ? 'Registrar devolución' : 'Registrar envío', clase: 'btn-primary', onClick: guardar },
+        {
+          texto: esDevolucion ? 'Registrar devolución' : (yaSalio ? 'Registrar y despachar' : 'Registrar pedido'),
+          clase: 'btn-primary',
+          onClick: guardar,
+        },
       ]}
     >
       <div className={s['form-grid']}>
@@ -381,6 +396,19 @@ export function EnvioCafeteriaFormModal({ tipo = 'envio' }) {
         <label>Observaciones</label>
         <input value={obs} placeholder="Opcional — viaja en el remito" onChange={(e) => setObs(e.target.value)} />
       </div>
+
+      {!esDevolucion && (
+        <label className={s['granel-toggle']}>
+          <input type="checkbox" checked={yaSalio} onChange={(e) => setYaSalio(e.target.checked)} />
+          <span>
+            <span className={s['t-title']}>El flete ya salió — despachar ahora</span><br />
+            <span className={s['t-sub']}>
+              Sin tildar queda como pedido (armándose, sin tocar stock). Tildado sale ya:
+              la mercadería pasa a "en tránsito" y el costo se congela.
+            </span>
+          </span>
+        </label>
+      )}
     </ModalShell>
 
     {/* Montado ENCIMA del formulario, que sigue vivo con lo ya cargado. */}
@@ -438,6 +466,12 @@ export function EnvioCafeteriaDetalleModal({ id }) {
     if (!motivoAnular.trim()) { toast('Escribí por qué se anula.', 'err'); return; }
     await act(store.anularEnvioCafeteria(id, motivoAnular.trim()), 'Anulado — el stock volvió a su lugar.');
   };
+  const avanzar = (desde) => act(
+    store.avanzarEnvioCafeteria(id, desde),
+    desde === 'pedido'
+      ? 'Despachado — la mercadería viaja como "en tránsito", con el costo congelado.'
+      : 'Recibido — la mercadería egresó del sistema: ya es del café.',
+  );
 
   const footerBase = [{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }];
   if (!envio) {
@@ -446,7 +480,9 @@ export function EnvioCafeteriaDetalleModal({ id }) {
     </ModalShell>;
   }
 
-  const vivo = envio.estado === 'confirmado';
+  const est = ESTADOS_ENVIO_CAFE[envio.estado] || {};
+  const esPedido = envio.estado === 'pedido';
+  const vivo = envio.estado !== 'anulado';
   return (
     <ModalShell
       title={`${envio.codigo} · ${envio.tipo === 'devolucion' ? 'Devolución desde Cafetería' : 'Envío a Cafetería'}`}
@@ -454,18 +490,22 @@ export function EnvioCafeteriaDetalleModal({ id }) {
       wide
       onClose={closeModal}
       footer={[
+        ...(envio.tipo === 'envio' && envio.estado === 'pedido'
+          ? [{ texto: 'Despachar', clase: 'btn-primary', onClick: () => avanzar('pedido') }]
+          : []),
+        ...(envio.tipo === 'envio' && envio.estado === 'transito'
+          ? [{ texto: 'Marcar recibido', clase: 'btn-primary', onClick: () => avanzar('transito') }]
+          : []),
         { texto: 'Imprimir remito', clase: 'btn-ghost', onClick: () => imprimirRemito(envio) },
         ...footerBase,
       ]}
     >
       <div className={s['detalle-grid']}>
-        <Di label="Estado">
-          {vivo ? <Pill pill="est-recibida" label="Confirmado" /> : <Pill pill="est-cancelada" label="Anulado" />}
-        </Di>
+        <Di label="Estado"><Pill pill={est.pill} label={est.label || envio.estado} /></Di>
         <Di label="Fecha">{fmtFechaHora(envio.fecha)}</Di>
         <Di label={envio.tipo === 'devolucion' ? 'Volvió a' : 'Salió de'}>{envio.sucursalNombre || '—'}</Di>
         <Di label="Quién">{envio.usuarioNombre || '—'}</Di>
-        <Di label="Total a costo"><strong>{money(envio.totalCosto)}</strong></Di>
+        <Di label={esPedido ? 'Total estimado' : 'Total a costo'}><strong>{money(envio.totalCosto)}</strong></Di>
       </div>
       {!vivo && envio.motivoAnulacion && (
         <div className={cx(s.callout, s.warn)}>Anulado: {envio.motivoAnulacion}</div>
@@ -490,8 +530,9 @@ export function EnvioCafeteriaDetalleModal({ id }) {
       </Table>
 
       <div className={s.hint}>
-        Los costos quedaron <strong>congelados</strong> al confirmar: este remito dice lo mismo
-        aunque después cambien los proveedores. El código es la clave para cargarlo en coffit.
+        {esPedido
+          ? <>Es un <strong>pedido</strong>: todavía no tocó stock y los costos son los estimados de hoy — se congelan al despachar.</>
+          : <>Los costos quedaron <strong>congelados al despachar</strong>: este remito dice lo mismo aunque después cambien los proveedores. El código es la clave para cargarlo en coffit.</>}
       </div>
 
       {vivo && (
@@ -506,8 +547,8 @@ export function EnvioCafeteriaDetalleModal({ id }) {
             <Btn variant="btn-delete" small onClick={anular}>Anular</Btn>
           </div>
           <div className={s.hint} style={{ margin: '8px 0 0' }}>
-            Anular revierte el stock con la operación contraria: el envío reingresa; la
-            devolución vuelve a salir (si ese stock ya no está, se rechaza).
+            Anular deshace lo de su etapa: un pedido no tocó stock; lo en tránsito vuelve a
+            disponible; lo recibido reingresa (y la devolución vuelve a salir).
           </div>
         </div>
       )}
