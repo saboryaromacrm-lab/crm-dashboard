@@ -24,6 +24,7 @@ import { useAuth } from '@core/auth/AuthContext.jsx';
 import { useThemeMode } from '@core/theme/ThemeModeContext.jsx';
 import { useBreakpoint } from '@core/hooks/useBreakpoint.js';
 import { GlobalSearch } from './GlobalSearch.jsx';
+import { ChatDock } from '../ChatDock.jsx';
 import styles from './Topbar.module.css';
 
 /**
@@ -88,6 +89,10 @@ export function Topbar() {
             {mode === 'light' ? <DarkModeIcon /> : <LightModeIcon />}
           </IconButton>
         </Tooltip>
+
+        {/* El chat del local: solo aparece si la API habilitó el canal para
+            la sucursal de ESTA sesión (hoy, la distribuidora). */}
+        <ChatDock />
 
         <Tooltip title="Notificaciones">
           <IconButton aria-label="Notificaciones">

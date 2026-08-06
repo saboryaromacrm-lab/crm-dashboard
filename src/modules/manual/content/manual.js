@@ -1401,6 +1401,42 @@ export const MANUAL = [
 
   /* ================================================================== */
   {
+    id: 'chat-interno',
+    titulo: 'Chat interno',
+    resumen: 'El mostrador le pregunta a administración sin dejar el puesto. Hoy, solo en la Distribuidora.',
+    temas: [
+      {
+        id: 'chat-como-funciona',
+        titulo: 'Cómo funciona',
+        bloques: [
+          {
+            t: 'p',
+            texto: 'El caso de todos los días: la cajera necesita saber si hay cuenta para transferencia, o qué pasó con un pedido web, y no puede dejar el mostrador. El **botón de chat del Topbar** (al lado de las notificaciones) abre un **panel lateral que flota sobre cualquier pantalla — incluido el POS**: pregunta, sigue cobrando, y el badge naranja le avisa cuando le respondieron.',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**Un solo canal grupal del local.** Todos los usuarios de la Distribuidora ven todo: si Marta ya preguntó y Ana ya respondió, Carla no vuelve a preguntar. Es la voz del mostrador, no mensajería privada.',
+              '**Solo en la Distribuidora, y lo decide la API.** El gate es por TIPO de sucursal en el servidor — una sesión parada en un Express ni ve el botón ni gasta un request. Si mañana otra sucursal necesita su canal, es cambiar esa regla, no rediseñar.',
+              '**Sin WebSockets, a propósito.** El cliente pregunta por lo nuevo cada 4 segundos, como los avisos de órdenes web y de precios: para esta dinámica es indistinguible de instantáneo, no agrega infraestructura nueva y la BASE es la verdad — historial consultable, sobrevive recargas, el que llega tarde ve todo.',
+              '**El "no leídos" es por usuario y vive en la base** (no en el navegador): sobrevive al F5 y a cambiar de máquina. Lo propio nace leído — el badge cuenta lo que escriben los demás. Con el panel abierto, lo que llega queda leído solo.',
+              '**Enter envía, Shift+Enter hace salto de línea.** Cada mensaje muestra quién y a qué hora (con fecha si no es de hoy). Al llegar un mensaje con el panel cerrado suena UNA nota corta — distinta de la campanita de dos notas de los pedidos web, para que el oído las distinga.',
+              '**Como la sesión es por pestaña**, cada ventana chatea como su usuario: dos ventanas en la misma máquina son dos personas distintas en el canal.',
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: 'Mientras la API no tenga autenticación (bloqueante del deploy), el chat hereda el mismo agujero que todo el resto: cualquiera en la red podría escribir a nombre de otro. Se cierra con el mismo trabajo de auth, no necesita nada propio.',
+          },
+          { t: 'ruta', texto: 'Botón de chat en el Topbar (visible solo con sesión en la Distribuidora) · API: /chat/bootstrap · /chat/mensajes · /chat/leido' },
+        ],
+      },
+    ],
+  },
+
+  /* ================================================================== */
+  {
     id: 'usuarios-roles',
     titulo: 'Usuarios y roles',
     resumen: 'Quién es quién: roles dinámicos con permisos, contraseñas y el superadmin.',
@@ -1610,6 +1646,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**6/8/2026**', '**Chat interno de la Distribuidora**: canal grupal del local para que el mostrador le pregunte a administración sin dejar el puesto — botón en el Topbar con badge de no leídos, panel lateral que flota sobre cualquier pantalla (incluido el POS), sonido propio y lectura por usuario guardada en la base. Solo lo ven las sesiones paradas en la Distribuidora (el gate lo decide la API por tipo de sucursal); sin WebSockets — pollea como los demás avisos. Guía nueva: "Chat interno"'],
               ['**6/8/2026**', '**Estados del envío a Cafetería**: el envío ganó ciclo de vida — **pedido → en tránsito → recibido** — con bandejas como Transferencias y el stock acompañando (el pedido no toca stock; despachar lo pone *en tránsito* con el costo congelado ese día; recibir lo egresa). "El flete ya salió" registra y despacha en un acto; anular deshace exactamente lo de su etapa'],
               ['**6/8/2026**', '**Cafetería (coffit), fase 1**: nueva sección **Almacén › Cafetería** — envíos y devoluciones a **costo congelado** hacia el café (documentos CAF/CAFD con remito imprimible, destino "para vender / para usar" por renglón, anulación que revierte el stock), gastos imputables al **negocio Cafetería** y resumen del período (mercadería neta + gastos = cuánto costó el café). El CRM no lleva el stock del café: lo maneja coffit. La guía "Cafetería (coffit)" documenta el circuito y el contrato para conectar coffit'],
               ['**6/8/2026**', '**Gastos espejo de Compras, completo**: "Pagos en sucursal" pasó a ser la **segunda pestaña de Gastos › Gastos** con el filtro de proveedor compartido; la bandeja quedó de **solo lectura** (se eliminó el "Aplicar" desde el pago); el **alta del gasto** ofrece tomar los pagos con **tilde** — solo los de la sucursal del gasto ("toda la empresa" ve todos) — y "¿Ya está pagado?" cubre el resto; el selector de proveedores del gasto lista **solo los que proveen gastos**; las dos bandejas (Compras y Gastos) arrancan mostrando todo el período con columna **"Aplicado a"**, así el pago tomado no se esfuma de la vista'],
