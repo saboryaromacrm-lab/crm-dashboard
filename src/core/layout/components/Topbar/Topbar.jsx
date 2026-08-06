@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Avatar,
   Divider,
@@ -16,6 +16,9 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
+import StorefrontIcon from '@mui/icons-material/Storefront';
+import { httpClient } from '@core/services/httpClient.js';
+import { leerSesion, actualizarSesion, actualizarCtx } from '@core/auth/sesion.js';
 import { useUI } from '@core/context/UIContext.jsx';
 import { useAuth } from '@core/auth/AuthContext.jsx';
 import { useThemeMode } from '@core/theme/ThemeModeContext.jsx';
@@ -36,8 +39,33 @@ export function Topbar() {
   const { user, logout } = useAuth();
 
   const [anchorEl, setAnchorEl] = useState(null);
+  const [sucursales, setSucursales] = useState([]);
   const openMenu = (e) => setAnchorEl(e.currentTarget);
   const closeMenu = () => setAnchorEl(null);
+
+  /**
+   * Admin y superadmin pueden pararse en otra sucursal para supervisarla. Vive
+   * acá, junto al dato de la sesión, en vez de repetir una barra en cada
+   * pantalla. Las sucursales se piden al abrir el menú, no al cargar la app.
+   */
+  const esJefe = (user?.roles ?? []).some((r) => r === 'admin' || r === 'superadmin');
+  useEffect(() => {
+    if (!anchorEl || !esJefe || sucursales.length) return;
+    httpClient.get('/sucursales').then(setSucursales).catch(() => setSucursales([]));
+  }, [anchorEl, esJefe, sucursales.length]);
+
+  const cambiarSucursal = (suc) => {
+    // Se reescribe la sesión y el contexto de los módulos DE ESTA PESTAÑA y se
+    // recarga: los motores leen su contexto al arrancar, así todo queda parado
+    // en la nueva. Otras ventanas logueadas no se enteran — cada una tiene su
+    // propia sesión (ver core/auth/sesion.js).
+    const sesion = leerSesion();
+    if (!sesion) return;
+    sesion.sucursal = { id: suc.id, nombre: suc.nombre };
+    actualizarSesion(sesion);
+    actualizarCtx({ sucursalId: suc.id, usuarioId: sesion.usuario.id }, sesion.usuario.id);
+    window.location.reload();
+  };
 
   return (
     <div className={styles.topbar}>
@@ -67,6 +95,15 @@ export function Topbar() {
           </IconButton>
         </Tooltip>
 
+        {/* Quién sos y DÓNDE estás parado: la sucursal se eligió en el login
+            y es el contexto de toda la sesión — tiene que estar a la vista. */}
+        <div className={styles.userInfo}>
+          <Typography variant="subtitle2" sx={{ lineHeight: 1.2 }}>{user?.name ?? ''}</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
+            {user?.sucursalNombre ?? ''}
+          </Typography>
+        </div>
+
         <Tooltip title="Cuenta">
           <IconButton onClick={openMenu} aria-label="Menú de usuario" sx={{ ml: 0.5 }}>
             <Avatar sx={{ width: 34, height: 34, bgcolor: 'primary.main', fontSize: 14 }}>
@@ -79,10 +116,30 @@ export function Topbar() {
           <div className={styles.menuHeader}>
             <Typography variant="subtitle2">{user?.name ?? 'Invitado'}</Typography>
             <Typography variant="caption" color="text.secondary">
-              {user?.email ?? ''}
+              {user?.rolNombre ?? ''}{user?.sucursalNombre ? ` · ${user.sucursalNombre}` : ''}
             </Typography>
           </div>
           <Divider />
+          {esJefe && sucursales.length > 1 && (
+            <>
+              <Typography variant="caption" color="text.secondary" sx={{ px: 2, py: 0.5, display: 'block' }}>
+                Cambiar de sucursal
+              </Typography>
+              {sucursales.map((suc) => (
+                <MenuItem
+                  key={suc.id}
+                  selected={suc.id === user?.sucursalId}
+                  onClick={() => { closeMenu(); if (suc.id !== user?.sucursalId) cambiarSucursal(suc); }}
+                >
+                  <ListItemIcon>
+                    <StorefrontIcon fontSize="small" />
+                  </ListItemIcon>
+                  {suc.nombre}
+                </MenuItem>
+              ))}
+              <Divider />
+            </>
+          )}
           <MenuItem onClick={closeMenu}>
             <ListItemIcon>
               <PersonIcon fontSize="small" />

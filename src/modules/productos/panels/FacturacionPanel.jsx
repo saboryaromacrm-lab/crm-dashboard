@@ -1,34 +1,107 @@
 import { useState } from 'react';
+import { Tabs, Tab } from '@mui/material';
+import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { useSeccion } from '../hooks/useSeccion.js';
 import { money, fmtFecha } from '../domain/format.js';
 import { TIPOS_COMPROBANTE, ESTADOS_COMPROBANTE, CONDICIONES_PAGO } from '../domain/constants.js';
-import { Table, PanelHead, Stat, Btn, s } from '../components/ui.jsx';
+import { Table, PanelHead, Stat, Btn, usePaginado, s } from '../components/ui.jsx';
 import { ComprobanteTag, ComprobanteEstadoPill, comprobanteNro } from '../components/modals/ComprobanteModals.jsx';
+import { PagosSucursalTab } from './PagosSucursalPanel.jsx';
 
 /**
- * Facturación — hub document-centric de comprobantes de compra.
- * Concentra facturas, remitos, notas de crédito/débito y órdenes de compra de
- * todos los proveedores. El detalle de cada proveedor consume estos mismos datos.
+ * De dónde salió la plata de un comprobante. Es la columna que responde "¿esta
+ * factura se pagó con plata de una sucursal?" sin tener que abrir el detalle.
+ *
+ * Tres estados posibles y los tres importan: pagada desde la caja de una
+ * sucursal (con cuál y qué turno), pagada por administración, o debiéndose.
+ */
+function TrazaPago({ c }) {
+  const saldo = c.saldo ?? Math.round((c.total - (c.pagado ?? 0)) * 100) / 100;
+  const pagos = c.pagos ?? [];
+
+  if (!pagos.length) {
+    if (c.tipo === 'nota_credito' || c.tipo === 'remito' || c.tipo === 'orden_compra') {
+      return <span className={s.muted}>—</span>;
+    }
+    return (
+      <>
+        <span>{CONDICIONES_PAGO[c.condicionPago] || c.condicionPago}</span>
+        {saldo > 0.009 && (
+          <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-danger)' }}>
+            debe {money(saldo)}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  const deSucursal = pagos.filter((p) => p.cajaSesionId);
+  return (
+    <>
+      {deSucursal.length > 0 ? (
+        <>
+          <span className={cx(s.badge, s['badge-granel'])}>Pago en sucursal</span>
+          {deSucursal.map((p) => (
+            <div key={p.pagoId} className={s.hint} style={{ margin: 0 }}>
+              {p.sucursalNombre || 'sucursal'} · turno #{p.cajaSesionId}
+              {p.usuarioNombre ? ` · ${p.usuarioNombre}` : ''} · {money(p.importe)}
+            </div>
+          ))}
+        </>
+      ) : (
+        <>
+          <span>Administración</span>
+          <div className={s.hint} style={{ margin: 0 }}>{money(pagos.reduce((a, p) => a + p.importe, 0))}</div>
+        </>
+      )}
+      {saldo > 0.009 && (
+        <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-danger)' }}>
+          debe {money(saldo)}
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * Facturación — hub document-centric de comprobantes de compra, con la bandeja
+ * de PAGOS EN SUCURSAL como segunda pestaña.
+ *
+ * Las dos viven juntas porque son las dos caras de la misma pregunta: qué me
+ * facturó este proveedor y qué plata le salió a las sucursales. Por eso el
+ * filtro de PROVEEDOR está afuera de las pestañas y manda sobre las dos: elegir
+ * "Bebidas SA" muestra sus facturas de un lado y sus pagos del otro, sin volver
+ * a filtrar. Los filtros que solo aplican a una (tipo y estado del comprobante;
+ * sucursal y "sin aplicar" del pago) viven adentro de la suya.
  */
 export function FacturacionPanel() {
-  const { store, isAdmin, openModal } = useProductos();
+  const { store, isAdmin, can, openModal } = useProductos();
   useSeccion('comprobantes');
-  const [tipoF, setTipoF] = useState('');
+
+  /** Filtro COMPARTIDO por las dos pestañas. */
   const [provF, setProvF] = useState('');
+  const [tab, setTab] = useState('facturas');
+  const [tipoF, setTipoF] = useState('');
   const [estadoF, setEstadoF] = useState('');
+
+  const verPagos = can('compras.pagos');
 
   const comps = store.state.comprobantes
     .slice()
     .sort((a, b) => b.id - a.id)
     .filter((c) => (!tipoF || c.tipo === tipoF) && (!provF || c.proveedorId === parseInt(provF, 10)) && (!estadoF || c.estado === estadoF));
 
-  const totalFacturado = store.state.comprobantes
+  const totalFacturado = comps
     .filter((c) => c.tipo === 'factura' && c.estado === 'confirmado')
     .reduce((a, c) => a + c.total, 0);
-  const saldoCtaCte = store.state.proveedores.reduce((a, p) => a + store.cuentaProveedor(p.id), 0);
+  const saldoCtaCte = provF
+    ? store.cuentaProveedor(parseInt(provF, 10))
+    : store.state.proveedores.reduce((a, p) => a + store.cuentaProveedor(p.id), 0);
 
-  const filas = comps.map((c) => {
+  const pag = usePaginado(comps, 'comprobantes', `${tipoF}|${provF}|${estadoF}`);
+
+  const filas = pag.visibles.map((c) => {
     const prov = store.getProveedor(c.proveedorId);
     return (
       <tr key={c.id} className={s.clickable} onClick={() => openModal('comprobanteDetalle', { id: c.id })}>
@@ -36,7 +109,7 @@ export function FacturacionPanel() {
         <td><ComprobanteTag tipo={c.tipo} /></td>
         <td className={s.mono}>{comprobanteNro(c)}</td>
         <td>{prov ? prov.nombre : '—'}</td>
-        <td>{CONDICIONES_PAGO[c.condicionPago] || c.condicionPago}</td>
+        <td><TrazaPago c={c} /></td>
         <td><ComprobanteEstadoPill estado={c.estado} /></td>
         <td className={s.num}>{money(c.total)}</td>
       </tr>
@@ -47,40 +120,76 @@ export function FacturacionPanel() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Facturación"
-        desc="Comprobantes de compra: facturas, remitos, notas de crédito/débito y órdenes de compra. El stock ingresa por la recepción."
+        desc="Comprobantes de compra y la plata que las sucursales ya pagaron. El stock ingresa por la recepción."
         actions={isAdmin && <Btn variant="btn-primary" onClick={() => openModal('comprobanteForm', {})}>+ Nuevo comprobante</Btn>}
       />
 
-      <div className={s.stats}>
-        <Stat label="Comprobantes" value={store.state.comprobantes.length} />
-        <Stat label="Total facturado" value={money(totalFacturado)} accent="accent-green" />
-        <Stat label="Saldo cta. corriente" value={money(saldoCtaCte)} accent={saldoCtaCte > 0 ? 'accent-amber' : undefined} />
-      </div>
-
+      {/* El proveedor manda sobre las dos pestañas: va afuera, arriba de todo. */}
       <div className={s.toolbar}>
-        <select className={s['select-inline']} value={tipoF} onChange={(e) => setTipoF(e.target.value)}>
-          <option value="">Todos los tipos</option>
-          {Object.keys(TIPOS_COMPROBANTE).map((k) => <option key={k} value={k}>{TIPOS_COMPROBANTE[k].label}</option>)}
-        </select>
         <select className={s['select-inline']} value={provF} onChange={(e) => setProvF(e.target.value)}>
           <option value="">Todos los proveedores</option>
-          {store.state.proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          {store.state.proveedores
+            .filter((p) => p.proveeMercaderia !== false)
+            .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
         </select>
-        <select className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)}>
-          <option value="">Todos los estados</option>
-          {Object.keys(ESTADOS_COMPROBANTE).map((k) => <option key={k} value={k}>{ESTADOS_COMPROBANTE[k].label}</option>)}
-        </select>
+        <span className={s.hint} style={{ margin: 0 }}>
+          Filtra las dos pestañas: las facturas de ese proveedor y los pagos que se le hicieron.
+        </span>
       </div>
 
-      <Table
-        cols={[
-          { h: 'Fecha' }, { h: 'Tipo' }, { h: 'Comprobante' }, { h: 'Proveedor' },
-          { h: 'Cond. pago' }, { h: 'Estado' }, { h: 'Total', num: true },
-        ]}
-        empty="No hay comprobantes. Cargá el primero con “+ Nuevo comprobante”."
-      >
-        {filas}
-      </Table>
+      {verPagos ? (
+        <Tabs
+          value={tab}
+          onChange={(e, v) => setTab(v)}
+          sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}
+        >
+          <Tab value="facturas" label="Facturas" sx={{ minHeight: 40 }} />
+          <Tab value="pagos" label="Pagos en sucursal" sx={{ minHeight: 40 }} />
+        </Tabs>
+      ) : null}
+
+      {tab === 'pagos' && verPagos ? (
+        <PagosSucursalTab proveedorId={provF} />
+      ) : (
+        <>
+          <div className={s.stats}>
+            <Stat label="Comprobantes" value={comps.length} />
+            <Stat label="Total facturado" value={money(totalFacturado)} accent="accent-green" />
+            <Stat
+              label={provF ? 'Saldo del proveedor' : 'Saldo cta. corriente'}
+              value={money(saldoCtaCte)}
+              accent={saldoCtaCte > 0 ? 'accent-amber' : undefined}
+            />
+          </div>
+
+          <div className={s.toolbar}>
+            <select className={s['select-inline']} value={tipoF} onChange={(e) => setTipoF(e.target.value)}>
+              <option value="">Todos los tipos</option>
+              {Object.keys(TIPOS_COMPROBANTE).map((k) => <option key={k} value={k}>{TIPOS_COMPROBANTE[k].label}</option>)}
+            </select>
+            <select className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)}>
+              <option value="">Todos los estados</option>
+              {Object.keys(ESTADOS_COMPROBANTE).map((k) => <option key={k} value={k}>{ESTADOS_COMPROBANTE[k].label}</option>)}
+            </select>
+          </div>
+
+          <Table
+            cols={[
+              { h: 'Fecha' }, { h: 'Tipo' }, { h: 'Comprobante' }, { h: 'Proveedor' },
+              { h: 'Pago' }, { h: 'Estado' }, { h: 'Total', num: true },
+            ]}
+            empty="No hay comprobantes con esos filtros."
+            pag={pag}
+          >
+            {filas}
+          </Table>
+
+          <div className={s.hint}>
+            La columna <strong>Pago</strong> dice de dónde salió la plata: de la caja de una sucursal
+            (con el turno y el cajero), de administración, o que todavía se debe.
+          </div>
+        </>
+      )}
     </div>
   );
 }

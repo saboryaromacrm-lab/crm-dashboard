@@ -3,6 +3,9 @@ import { Sidebar } from './components/Sidebar/Sidebar.jsx';
 import { Topbar } from './components/Topbar/Topbar.jsx';
 import { Breadcrumbs } from './components/Breadcrumbs/Breadcrumbs.jsx';
 import { MobileNavDrawer } from './components/Sidebar/MobileNavDrawer.jsx';
+import { OrdenesWebAlert } from './components/OrdenesWebAlert.jsx';
+import { PreciosAlert } from './components/PreciosAlert.jsx';
+import { ConsultasRapidas } from '@modules/consultas/ConsultasRapidas.jsx';
 import { useUI } from '@core/context/UIContext.jsx';
 import { useBreakpoint } from '@core/hooks/useBreakpoint.js';
 import { cx } from '@shared/utils/classNames.js';
@@ -53,6 +56,21 @@ export function MainLayout() {
           </div>
         </main>
       </div>
+
+      {/*
+        Única dependencia del layout hacia un módulo, y es deliberada: son
+        consultas con atajo de teclado global (Alt+F5 / Alt+F3) y un atajo
+        global no tiene ninguna ruta de la cual colgarse. Montarlo en un módulo
+        lo dejaba muerto en el resto del sistema.
+      */}
+      <ConsultasRapidas />
+
+      {/* Aviso vivo de pedidos del sitio web: suena y avisa en CUALQUIER pantalla. */}
+      <OrdenesWebAlert />
+
+      {/* Idem para los cambios de precio: el cajero tiene el catálogo en memoria
+          y sin este aviso seguiría cobrando el precio viejo. */}
+      <PreciosAlert />
     </div>
   );
 }

@@ -142,6 +142,26 @@
   vertical-align: top;
 }
 .masivaTabla tr:last-child td { border-bottom: 0; }
+
+/*
+ * Cabecera de dos filas. La primera queda arriba de todo y la segunda se pega
+ * justo debajo, así los dos niveles siguen visibles al hacer scroll.
+ */
+.masivaTabla thead tr:first-child th { top: 0; }
+.masivaTabla thead tr:nth-child(2) th { top: 31px; }
+/* Grupo (Stock / Precio): centrado y con separadores para leerlo como bloque. */
+.grupoCol {
+  text-align: center !important;
+  border-left: 1px solid var(--crm-color-border);
+  border-right: 1px solid var(--crm-color-border);
+}
+.subCol {
+  font-size: 10.5px !important;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.masivaTabla .subCol.num { text-align: right; }
+
 /* Renglones secundarios: sucursales debajo del stock, listas debajo del precio. */
 .subLista {
   display: flex;
@@ -251,6 +271,19 @@
 }
 .inputAlerta { border-color: var(--crm-color-danger); }
 
+/* Selector de lista dentro del renglón del ticket: chico, sin robar espacio. */
+.selectMini {
+  padding: 4px 6px;
+  font-family: inherit;
+  font-size: 12px;
+  border: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-sm);
+  background: var(--crm-color-surface);
+  color: var(--crm-color-text);
+  max-width: 118px;
+}
+.selectMini:focus { outline: none; border-color: var(--crm-color-primary); }
+
 .quitar {
   border: 0;
   background: transparent;
@@ -296,7 +329,8 @@
   font-weight: 800;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
-  color: var(--crm-color-text);
+  /* El total en el verde de la marca: es EL número de la pantalla. */
+  color: var(--crm-color-primary);
 }
 
 .cobrar {
@@ -308,12 +342,16 @@
   font-family: inherit;
   border: 0;
   border-radius: var(--crm-radius-md);
-  background: var(--crm-color-success);
-  color: #fff;
+  /* La acción principal de la casa va en el color principal de la casa. */
+  background: var(--crm-color-primary);
+  color: var(--crm-color-primary-contrast);
   cursor: pointer;
+  box-shadow: var(--crm-shadow-md);
+  transition: background var(--crm-transition-fast), transform var(--crm-transition-fast);
 }
-.cobrar:disabled { opacity: 0.45; cursor: not-allowed; }
-.cobrar:not(:disabled):hover { filter: brightness(1.07); }
+.cobrar:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+.cobrar:not(:disabled):hover { background: var(--crm-color-primary-hover); }
+.cobrar:not(:disabled):active { transform: translateY(1px); }
 
 .atajos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .tecla {
@@ -335,6 +373,126 @@
   color: var(--crm-color-text);
 }
 
+/* ==================================================================== *
+ * REGISTRADORA — venta abierta a pantalla completa
+ * ==================================================================== *
+ * Tapa toda la app (position: fixed) como la caja de un supermercado: el
+ * cajero solo ve escaneo, ticket y total. z-index 1250: por encima del CRM,
+ * por debajo de los diálogos de MUI (1300) y los toasts (1400).
+ */
+.registradora {
+  position: fixed;
+  inset: 0;
+  z-index: 1250;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px 14px;
+  background: var(--crm-color-bg);
+}
+
+/* ----- Barra superior: pestañas + estado del puesto ----- */
+.regTop { display: flex; align-items: center; gap: 14px; }
+.tabsReg {
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+/* En la registradora las pestañas son chips (no hay borde de panel al que pegarse). */
+.tabsReg .tab {
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-md);
+}
+.tabsReg .tabActiva {
+  border-color: var(--crm-color-primary);
+  border-bottom: 1px solid var(--crm-color-primary);
+  background: color-mix(in srgb, var(--crm-color-primary) 10%, var(--crm-color-surface));
+}
+.regEstado { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.regSucursal { font-size: 12px; color: var(--crm-color-text-secondary); white-space: nowrap; }
+.cajaChip {
+  padding: 4px 12px;
+  border-radius: var(--crm-radius-pill);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--crm-color-text);
+  background: color-mix(in srgb, var(--crm-color-success) 18%, var(--crm-color-surface));
+}
+.cajaChipCerrada { background: color-mix(in srgb, var(--crm-color-warning) 22%, var(--crm-color-surface)); }
+
+/* ----- Cuerpo: trabajo a la izquierda, cobro a la derecha ----- */
+.regMain {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 27vw, 420px);
+  gap: 12px;
+}
+.regIzq { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
+.regLateral { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; }
+.regAcciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.regResumen { margin-top: auto; }
+
+/* El ticket scrollea adentro; el borde lo pone el contenedor. */
+.regTicketScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-md);
+  background: var(--crm-color-surface);
+}
+.regTicketScroll .ticket { border: 0; border-radius: 0; background: transparent; }
+.registradora .ticketTabla th { position: sticky; top: 0; z-index: 2; }
+
+/* ----- Tipografía de mostrador: se lee parado, a un metro ----- */
+.registradora .buscadorInput { font-size: 21px; padding: 16px 18px; }
+.registradora .resultados { max-height: 46vh; }
+.registradora .resultado { font-size: 15px; padding: 12px 16px; }
+.registradora .ticketTabla { font-size: 15px; }
+.registradora .ticketTabla td { padding: 10px 12px; }
+.registradora .nombreCol { font-size: 15.5px; }
+.registradora .inputMini { width: 92px; padding: 7px 8px; font-size: 15px; }
+.registradora .selectMini { font-size: 13px; padding: 6px 7px; }
+.registradora .totalValor { font-size: clamp(42px, 4.6vw, 62px); }
+.registradora .cobrar { padding: 18px; font-size: 20px; }
+
+/* ----- El "visor": último artículo cargado, con destello al entrar ----- */
+.ultimoStrip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 60px;
+  padding: 10px 16px;
+  border: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-md);
+  background: var(--crm-color-surface);
+}
+.ultimoInfo { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.ultimoNombre { font-size: 19px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ultimoMeta { font-size: 13px; color: var(--crm-color-text-secondary); }
+.ultimoImporte { font-size: 27px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ultimoFlash { animation: flash-ultimo 0.5s ease-out; }
+@keyframes flash-ultimo {
+  0% { background: color-mix(in srgb, var(--crm-color-success) 32%, var(--crm-color-surface)); }
+  100% { background: var(--crm-color-surface); }
+}
+
+/* Renglón recién tocado en el ticket, para seguirlo con la vista. */
+.filaUltima td { background: color-mix(in srgb, var(--crm-color-primary) 7%, transparent); }
+
+@media (max-width: 980px) {
+  .regMain { grid-template-columns: 1fr; overflow-y: auto; }
+  .regIzq { min-height: 55vh; }
+  .regLateral { overflow-y: visible; }
+}
+
 /* ---------------- Cobro ---------------- */
 /* ---------------- Extras del ticket ---------------- */
 .extraFila {
@@ -347,6 +505,46 @@
   border-bottom: 1px dashed color-mix(in srgb, var(--crm-color-border) 70%, transparent);
 }
 .extraFila:last-child { border-bottom: 0; }
+
+/* El total protagonista del modal de cobro: es el número que el cajero dice
+   en voz alta, así que va solo, grande y sobre tarjeta blanca (el modal es
+   gris para despegarse de la pantalla de caja). */
+.cobroTotal {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: var(--crm-space-3) var(--crm-space-4);
+  border-radius: var(--crm-radius-md);
+  background: var(--crm-color-surface);
+  border: 1px solid var(--crm-color-border);
+  margin-bottom: var(--crm-space-4);
+}
+.cobroTotalLabel {
+  font-size: var(--crm-font-size-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--crm-color-text-muted);
+}
+.cobroTotalValor {
+  font-size: 32px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* "Con cuánto paga": números grandes, se tipea mirando de lejos. */
+.pagaGrande input {
+  font-size: 22px;
+  font-weight: 700;
+  text-align: right;
+}
+/* Vacío = pagó justo: el placeholder ES ese importe, en gris claro para que se
+   lea como sugerencia y no como un valor ya tipeado. */
+.pagaGrande input::placeholder {
+  font-weight: 500;
+  color: var(--crm-color-text-muted);
+  opacity: 0.55;
+}
 
 .pagoFila {
   display: grid;
@@ -365,3 +563,20 @@
 }
 .vueltoValor { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .faltante { background: color-mix(in srgb, var(--crm-color-danger) 14%, var(--crm-color-surface)); }
+
+/* ---------------- Ofertas ---------------- */
+/* Chip bajo el nombre del artículo: nombre de la promo + lo que resta.
+   En NARANJA: la promo es el detalle que tiene que saltar a la vista, y es
+   el papel exacto del naranja en la identidad. */
+.ofertaBadge {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--crm-color-accent-2);
+  background: var(--crm-color-accent-2-soft);
+  border: 1px solid color-mix(in srgb, var(--crm-color-accent-2) 35%, transparent);
+  white-space: nowrap;
+}

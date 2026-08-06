@@ -18,8 +18,8 @@ export const dashboardModule = defineModule({
   icon: DashboardIcon,
   enabled: true,
   basePath: '/dashboard',
-  // No permissions required to view the home dashboard.
-  permissions: [],
+  // Sección 'dashboard' del catálogo de permisos: sin ella, no aparece.
+  permissions: ['dashboard'],
   navigation: {
     showInSidebar: true,
     group: 'general',

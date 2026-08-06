@@ -3,7 +3,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFechaHora } from '../../domain/format.js';
 import { ModalShell } from '../Modal.jsx';
-import { Table, Btn, s } from '../ui.jsx';
+import { Table, Btn, usePaginado, s } from '../ui.jsx';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -52,7 +52,9 @@ export function HistorialPreciosModal({ proveedorId, productoId }) {
     cargar();
   };
 
-  const cuerpo = (filas ?? []).map((h) => {
+  const pag = usePaginado(filas ?? [], 'historialCostos');
+
+  const cuerpo = pag.visibles.map((h) => {
     const subio = h.costo > h.costoAnterior;
     const esReversion = h.origen === 'reversion';
     return (
@@ -106,6 +108,7 @@ export function HistorialPreciosModal({ proveedorId, productoId }) {
           { h: '', cls: 'actions-col' },
         ]}
         empty={filas === null ? 'Cargando…' : 'Todavía no hay cambios de costo registrados.'}
+        pag={pag}
       >
         {cuerpo}
       </Table>
@@ -138,39 +141,55 @@ function aplicarRegla(actual, modo, valor) {
  */
 export function MargenesMasivosModal({ productos }) {
   const { store, closeModal, toast, act } = useProductos();
-  const [tipo, setTipo] = useState('ganancia_lista');
+  const [tipo, setTipo] = useState('markup_lista');
   const [lista, setLista] = useState('');
   const [modo, setModo] = useState('monto');
   const [valor, setValor] = useState('');
   const [guardando, setGuardando] = useState(false);
 
+  /**
+   * Filas DESTILDADAS de la vista previa: no siempre todos suben. Se guarda lo
+   * excluido para que el default sea "todos tildados". Cambiar de tipo de margen
+   * cambia de entidades, así que ahí la selección arranca de cero.
+   */
+  const [excluidos, setExcluidos] = useState(() => new Set());
+  useEffect(() => { setExcluidos(new Set()); }, [tipo]);
+
+  const claveDe = (c) => `${c.id}-${c.detalle}`;
+
+  /** Solo listas donde algún producto trabaja por markup (precio definido no se pisa con un %). */
   const listas = useMemo(() => {
     const set = new Set();
-    productos.forEach((p) => (p.listasPrecio || []).forEach((l) => set.add(l.nombre)));
+    productos.forEach((p) => (p.listas || []).forEach((l) => {
+      if (l.modoPrecio !== 'precio') set.add(l.etiqueta);
+    }));
     return [...set].sort();
   }, [productos]);
 
-  /** Filas objetivo con su precio actual y el resultante — todo en memoria. */
+  /**
+   * Filas objetivo con su precio actual y el resultante — todo en memoria.
+   * El precio mostrado es el FINAL con IVA (el de la etiqueta), derivado con el
+   * mismo helper que la ficha y el POS.
+   */
   const cambios = useMemo(() => {
     if (valor === '' || Number.isNaN(Number(valor))) return [];
     const out = [];
     for (const p of productos) {
-      const cn = store.costoNeto(p);
-      if (tipo === 'ganancia_lista') {
-        for (const l of p.listasPrecio || []) {
-          if (lista && l.nombre !== lista) continue;
-          const nuevo = Math.max(0, aplicarRegla(l.ganancia, modo, valor));
-          if (Math.abs(nuevo - l.ganancia) < 0.005) continue;
+      const conIva = 1 + (Number(p.iva) || 0) / 100;
+      if (tipo === 'markup_lista') {
+        for (const l of p.listas || []) {
+          if (!l.id || l.modoPrecio === 'precio') continue;
+          if (lista && l.etiqueta !== lista) continue;
+          const nuevo = Math.max(0, aplicarRegla(l.markup, modo, valor));
+          if (Math.abs(nuevo - l.markup) < 0.005) continue;
           out.push({
-            id: l.id, producto: p.nombre, detalle: `Lista ${l.nombre}`,
-            actual: l.ganancia, nuevo,
-            precioActual: r2(cn * (1 + l.ganancia / 100)),
-            precioNuevo: r2(cn * (1 + nuevo / 100)),
+            id: l.id, producto: p.nombre, detalle: `Lista ${l.etiqueta}`,
+            actual: l.markup, nuevo,
+            precioActual: l.precioFinalUnitario ?? r2((l.precio ?? 0) * conIva),
+            precioNuevo: store.ventaFormato(p, { ...l, markup: nuevo }).finalUnitario,
           });
         }
       } else {
-        const gRef = (p.listasPrecio || [])[0]?.ganancia ?? 0;
-        const porKg = cn * (1 + gRef / 100);
         for (const pr of p.presentaciones || []) {
           const nuevo = Math.max(0, aplicarRegla(pr.recargo, modo, valor));
           if (Math.abs(nuevo - pr.recargo) < 0.005) continue;
@@ -178,8 +197,8 @@ export function MargenesMasivosModal({ productos }) {
             id: pr.id, producto: p.nombre,
             detalle: pr.tamKg < 1 ? `${Math.round(pr.tamKg * 1000)} g` : `${pr.tamKg} kg`,
             actual: pr.recargo, nuevo,
-            precioActual: r2(porKg * pr.tamKg * (1 + pr.recargo / 100)),
-            precioNuevo: r2(porKg * pr.tamKg * (1 + nuevo / 100)),
+            precioActual: r2(store.precioPresentacion(p, pr) * conIva),
+            precioNuevo: r2(store.precioPresentacion(p, { ...pr, recargo: nuevo }) * conIva),
           });
         }
       }
@@ -187,15 +206,38 @@ export function MargenesMasivosModal({ productos }) {
     return out;
   }, [productos, store, tipo, lista, modo, valor]);
 
+  const seleccionados = useMemo(
+    () => cambios.filter((c) => !excluidos.has(claveDe(c))),
+    [cambios, excluidos],
+  );
+  const todosSeleccionados = seleccionados.length === cambios.length;
+
+  const toggleFila = (clave) => setExcluidos((prev) => {
+    const next = new Set(prev);
+    if (next.has(clave)) next.delete(clave); else next.add(clave);
+    return next;
+  });
+  const toggleTodos = () => setExcluidos(
+    todosSeleccionados ? new Set(cambios.map(claveDe)) : new Set(),
+  );
+
   const guardar = async () => {
     if (!cambios.length) { toast('Ningún producto cambia con esos parámetros.', 'err'); return; }
+    if (!seleccionados.length) { toast('No hay filas tildadas para aplicar.', 'err'); return; }
     setGuardando(true);
     await act(
-      store.actualizarMargenes({ tipo, cambios: cambios.map((c) => ({ id: c.id, valor: c.nuevo })) }),
-      `${cambios.length} margen(es) actualizado(s).`,
+      store.actualizarMargenes({
+        tipo,
+        cambios: seleccionados.map((c) => ({ id: c.id, valor: c.nuevo })),
+        motivo: 'Actualización masiva de márgenes',
+        usuarioId: store.state.ctx.usuarioId ?? undefined,
+      }),
+      `${seleccionados.length} margen(es) actualizado(s).`,
     );
     setGuardando(false);
   };
+
+  const pag = usePaginado(cambios, 'margenesMasivos', `${tipo}|${lista}|${modo}|${valor}`);
 
   return (
     <ModalShell
@@ -205,26 +247,28 @@ export function MargenesMasivosModal({ productos }) {
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
         {
-          texto: guardando ? 'Aplicando…' : `Aplicar a ${cambios.length}`,
-          clase: cambios.length ? 'btn-primary' : 'btn-ghost',
+          texto: guardando ? 'Aplicando…' : `Aplicar a ${seleccionados.length}`,
+          clase: seleccionados.length ? 'btn-primary' : 'btn-ghost',
           onClick: guardar,
         },
       ]}
     >
       <div className={cx(s.callout, s.info)}>
         Alcanza a los <strong>{productos.length}</strong> producto(s) que quedaron filtrados en el
-        panel. El margen es decisión propia: no depende del proveedor.
+        panel. En la vista previa, <strong>destildá</strong> los que no van a cambiar: se aplica solo
+        a los tildados. Las filas en <strong>precio definido</strong> no entran — ese precio lo fijó
+        una persona y un % no debe pisarlo.
       </div>
 
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Qué margen</label>
           <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
-            <option value="ganancia_lista">Ganancia de una lista</option>
-            <option value="ganancia_presentacion">Recargo de fraccionamiento</option>
+            <option value="markup_lista">Markup del formato de venta</option>
+            <option value="recargo_presentacion">Recargo de fraccionamiento</option>
           </select>
         </div>
-        {tipo === 'ganancia_lista' && (
+        {tipo === 'markup_lista' && (
           <div className={s.field}>
             <label>Lista</label>
             <select value={lista} onChange={(e) => setLista(e.target.value)}>
@@ -250,12 +294,37 @@ export function MargenesMasivosModal({ productos }) {
 
       <Table
         cols={[
-          { h: 'Producto' }, { h: 'Margen', num: true }, { h: 'Precio de venta', num: true },
+          {
+            h: (
+              <input
+                type="checkbox"
+                checked={cambios.length > 0 && todosSeleccionados}
+                onChange={toggleTodos}
+                aria-label="Tildar o destildar todos"
+                title="Tildar / destildar todos"
+                style={{ cursor: 'pointer' }}
+              />
+            ),
+          },
+          { h: 'Producto' }, { h: 'Margen', num: true }, { h: 'Precio final (IVA incl.)', num: true },
         ]}
         empty={valor === '' ? 'Ingresá un valor para ver el resultado.' : 'Ningún producto cambia con esos parámetros.'}
+        pag={pag}
       >
-        {cambios.slice(0, 200).map((c) => (
-          <tr key={`${c.id}-${c.detalle}`}>
+        {pag.visibles.map((c) => {
+          const clave = claveDe(c);
+          const sel = !excluidos.has(clave);
+          return (
+          <tr key={clave} style={sel ? undefined : { opacity: 0.55 }}>
+            <td style={{ width: 34, textAlign: 'center' }}>
+              <input
+                type="checkbox"
+                checked={sel}
+                onChange={() => toggleFila(clave)}
+                aria-label={`Incluir ${c.producto} — ${c.detalle}`}
+                style={{ cursor: 'pointer' }}
+              />
+            </td>
             <td>
               <strong>{c.producto}</strong>
               <div className={s.hint} style={{ margin: 0 }}>{c.detalle}</div>
@@ -270,12 +339,9 @@ export function MargenesMasivosModal({ productos }) {
               </strong>
             </td>
           </tr>
-        ))}
+          );
+        })}
       </Table>
-
-      {cambios.length > 200 && (
-        <div className={s.hint}>Se muestran los primeros 200 de {cambios.length}; se aplican todos.</div>
-      )}
     </ModalShell>
   );
 }

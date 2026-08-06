@@ -3,17 +3,20 @@ import { useProductos } from '../context/ProductosContext.jsx';
 import { money } from '../domain/format.js';
 import { ESTADOS_STOCK } from '../domain/constants.js';
 import { sucursalOptions, productoOptions } from '../components/selectOptions.jsx';
-import { Table, PanelHead, TipoBadge, StockPill, Btn, s } from '../components/ui.jsx';
+import { Table, PanelHead, TipoBadge, StockPill, Btn, usePaginado, s } from '../components/ui.jsx';
 
+/**
+ * Existencias es CONSULTA pura: acá se mira el stock, no se opera. Vender es
+ * del POS, mover mercadería es de Transferencias y las anomalías se cargan en
+ * Incidencias — cada acción vive en su circuito, con sus validaciones.
+ */
 export function ExistenciasPanel() {
-  const { store, isAdmin, can, openModal } = useProductos();
+  const { store, isAdmin, openModal } = useProductos();
   const [sucF, setSucF] = useState('');
   const [prodF, setProdF] = useState('');
   const [estadoF, setEstadoF] = useState('');
 
-  const puedeMover = store.tiposMovPermitidos().length > 0;
-
-  const filas = store.state.stock
+  const entradas = store.state.stock
     .filter((st) => st.cantidad > 1e-9)
     .filter((st) => {
       if (sucF && st.sucursalId !== parseInt(sucF, 10)) return false;
@@ -21,16 +24,12 @@ export function ExistenciasPanel() {
       if (estadoF && st.estado !== estadoF) return false;
       return true;
     })
-    .sort((a, b) => a.productoId - b.productoId || a.sucursalId - b.sucursalId)
-    .map((st) => {
+    .sort((a, b) => a.productoId - b.productoId || a.sucursalId - b.sucursalId);
+
+  const pag = usePaginado(entradas, 'existencias', `${sucF}|${prodF}|${estadoF}`);
+
+  const filas = pag.visibles.map((st) => {
       const p = store.getProducto(st.productoId), su = store.getSucursal(st.sucursalId);
-      const pre = { presId: st.presentacionId || null };
-      const acciones = [];
-      if (st.estado === 'disponible') {
-        if (can('ventas')) acciones.push(<Btn key="v" variant="btn-vender" small onClick={() => openModal('vender', { prodId: p.id, sucId: st.sucursalId, pre })}>Vender</Btn>);
-        if (puedeMover) acciones.push(<Btn key="m" variant="btn-mov" small onClick={() => openModal('movimiento', { prodId: p.id, sucId: st.sucursalId, pre })}>Movim.</Btn>);
-        if (can('incidencia_crear')) acciones.push(<Btn key="i" variant="btn-edit" small onClick={() => openModal('incidencia', { pre: { productoId: p.id, sucursalId: st.sucursalId, presId: st.presentacionId || null } })}>Incidencia</Btn>);
-      }
       return (
         <tr key={st.id}>
           <td>{p.nombre} <TipoBadge prod={p} /></td>
@@ -39,9 +38,6 @@ export function ExistenciasPanel() {
           <td><StockPill estado={st.estado} /></td>
           <td className={s.num}>{store.fmtCant(p, st.presentacionId, st.cantidad)}</td>
           <td className={s.num}>{money(store.valorEntry(st))}</td>
-          <td className={s['actions-col']}>
-            <div className={s['row-actions']}>{acciones.length ? acciones : <span className={s.muted}>—</span>}</div>
-          </td>
         </tr>
       );
     });
@@ -70,9 +66,10 @@ export function ExistenciasPanel() {
       <Table
         cols={[
           { h: 'Producto' }, { h: 'Sucursal' }, { h: 'Present.' },
-          { h: 'Estado' }, { h: 'Cantidad', num: true }, { h: 'Valor', num: true }, { h: 'Acciones', cls: 'actions-col' },
+          { h: 'Estado' }, { h: 'Cantidad', num: true }, { h: 'Valor', num: true },
         ]}
         empty="Sin existencias con esos filtros."
+        pag={pag}
       >
         {filas}
       </Table>

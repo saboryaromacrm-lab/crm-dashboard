@@ -60,8 +60,38 @@ export const ventasApi = {
   descartarVenta: (id) => httpClient.delete(`/ventas/${id}`),
   cuentaCliente: (clienteId) => httpClient.get(`/ventas/cuenta/${clienteId}`),
 
-  /** Todo lo vendible de una sucursal con precio y stock resueltos (POS). */
-  catalogo: (sucursalId, lista) => httpClient.get(`/ventas/catalogo${qs({ sucursalId, lista })}`),
+  /**
+   * Todo lo vendible de una sucursal:
+   * `{ listas, reglasMarca, montoMayorista, items }`.
+   *
+   * Cada artículo trae su FORMATO DE VENTA en `precios: [{listaId, precio,
+   * unidadesMinimas}]` — el precio y la condición son del producto. `listas`
+   * lleva solo la identidad, y las dos reglas globales (marca y monto) viajan
+   * aparte. El POS resuelve en memoria cuál aplica.
+   */
+  catalogo: (sucursalId) => httpClient.get(`/ventas/catalogo${qs({ sucursalId })}`),
+
+  /* ---- Evolución de precios (Alt+F5) ---- */
+  evolucionPrecios: (q = '') => httpClient.get('/precios/evolucion' + q),
+
+  /* ---- Ofertas ---- */
+  ofertas: () => httpClient.get('/ofertas'),
+  crearOferta: (o) => httpClient.post('/ofertas', o),
+  editarOferta: (id, o) => httpClient.patch('/ofertas/' + id, o),
+  borrarOferta: (id) => httpClient.delete('/ofertas/' + id),
+
+  /* ---- Formato de venta: modalidad › lista + reglas de marca ---- */
+  listas: () => httpClient.get('/listas'),
+  crearReglaMarca: (o) => httpClient.post('/listas/reglas-marca', o),
+  editarReglaMarca: (id, o) => httpClient.patch(`/listas/reglas-marca/${id}`, o),
+  borrarReglaMarca: (id) => httpClient.delete(`/listas/reglas-marca/${id}`),
+  crearModalidad: (o) => httpClient.post('/listas/modalidades', o),
+  editarModalidad: (id, o) => httpClient.patch(`/listas/modalidades/${id}`, o),
+  borrarModalidad: (id) => httpClient.delete(`/listas/modalidades/${id}`),
+  crearLista: (o) => httpClient.post('/listas', o),
+  editarLista: (id, o) => httpClient.patch(`/listas/${id}`, o),
+  borrarLista: (id) => httpClient.delete(`/listas/${id}`),
+  setListasCliente: (clienteId, listas) => httpClient.put(`/listas/cliente/${clienteId}`, { listas }),
 
   /* Caja */
   cajaActual: (sucursalId) => httpClient.get(`/caja/actual/${sucursalId}`),
@@ -69,13 +99,36 @@ export const ventasApi = {
   cajaArqueo: (id) => httpClient.get(`/caja/${id}/arqueo`),
   abrirCaja: (data) => httpClient.post('/caja/abrir', data),
   cerrarCaja: (id, data) => httpClient.post(`/caja/${id}/cerrar`, data),
+  controlCaja: (id, data) => httpClient.post(`/caja/${id}/control`, data),
   movimientoCaja: (id, data) => httpClient.post(`/caja/${id}/movimiento`, data),
+
+  /* Pagos a proveedores (la plata que sale, desde la caja o desde Gastos) */
+  proveedoresPadron: (tipo) => httpClient.get(`/proveedores${qs({ tipo })}`),
+  crearPagoProveedor: (data) => httpClient.post('/pagos-proveedor', data),
+  pagosProveedor: (filtros) => httpClient.get(`/pagos-proveedor${qs(filtros)}`),
+  documentosPendientesProveedor: (proveedorId) => httpClient.get(`/pagos-proveedor/pendientes/${proveedorId}`),
 
   /* Cobranzas */
   cobranzas: (filtros) => httpClient.get(`/cobranzas${qs(filtros)}`),
   cobranza: (id) => httpClient.get(`/cobranzas/${id}`),
   crearCobranza: (data) => httpClient.post('/cobranzas', data),
   anularCobranza: (id) => httpClient.post(`/cobranzas/${id}/anular`, {}),
+
+  /* Presupuestos (pedidos mayoristas: WhatsApp hoy, tienda web mañana) */
+  presupuestos: () => httpClient.get('/presupuestos'),
+  crearPresupuesto: (data) => httpClient.post('/presupuestos', data),
+  actualizarPresupuesto: (id, data) => httpClient.patch(`/presupuestos/${id}`, data),
+  enviarPresupuesto: (id) => httpClient.post(`/presupuestos/${id}/enviar`, {}),
+  reabrirPresupuesto: (id) => httpClient.post(`/presupuestos/${id}/reabrir`, {}),
+  confirmarPresupuesto: (id, usuarioId) => httpClient.post(`/presupuestos/${id}/confirmar`, { usuarioId }),
+  armarPresupuesto: (id, items) => httpClient.post(`/presupuestos/${id}/armar`, { items }),
+  delegarPresupuesto: (id, vendedorId) => httpClient.post(`/presupuestos/${id}/delegar`, { vendedorId }),
+  cancelarPresupuesto: (id, usuarioId, motivo) => httpClient.post(`/presupuestos/${id}/cancelar`, { usuarioId, motivo }),
+
+  /* Órdenes web (pedidos del sitio en estado pendiente) */
+  ordenesPendientes: () => httpClient.get('/presupuestos/ordenes/pendientes'),
+  orden: (id) => httpClient.get(`/presupuestos/${id}/orden`),
+  aceptarOrden: (id, data) => httpClient.post(`/presupuestos/${id}/aceptar`, data),
 
   /* Configuración */
   config: () => httpClient.get('/configuracion/ventas'),

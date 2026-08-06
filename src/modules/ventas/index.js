@@ -1,6 +1,8 @@
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import { defineModule } from '@core/modules/defineModule.js';
+import { ordenesWeb } from '@core/services/ordenesWeb.js';
 import { VentasPage } from './pages/VentasPage.jsx';
+import { VENTAS_PANELS } from './config/ventas.config.js';
 
 /**
  * VENTAS — manifiesto del módulo.
@@ -19,8 +21,16 @@ export const ventasModule = defineModule({
   icon: PointOfSaleIcon,
   enabled: true,
   basePath: '/ventas',
-  permissions: [],
-  navigation: { showInSidebar: true, group: 'catalog', order: 30 },
+  // Cualquier sección del menú interno hace visible el módulo; sin ninguna, no existe.
+  permissions: VENTAS_PANELS.map((p) => p.permiso),
+  navigation: {
+    showInSidebar: true,
+    group: 'catalog',
+    order: 30,
+    // Pendientes del sidebar: los pedidos del sitio web sin revisar.
+    badgeCount: () => ordenesWeb.count(),
+    badgeSubscribe: (listener) => ordenesWeb.subscribe(listener),
+  },
   routes: [
     { path: '', Component: VentasPage, handle: { crumb: 'Ventas' } },
   ],

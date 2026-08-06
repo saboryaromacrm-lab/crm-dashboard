@@ -65,6 +65,12 @@ export function defineModule(manifest) {
       group: manifest.navigation?.group ?? 'general',
       // A module may expose child links in the sidebar (sub-navigation).
       children: manifest.navigation?.children ?? [],
+      // Pending-count badge on the sidebar item (e.g. open transferencias/incidencias).
+      // `badgeCount`: () => number, read fresh on every navigation recompute.
+      // `badgeSubscribe`: (listener) => unsubscribe, so the sidebar re-renders when
+      // the module's own store changes — core never imports a module's store directly.
+      badgeCount: manifest.navigation?.badgeCount ?? null,
+      badgeSubscribe: manifest.navigation?.badgeSubscribe ?? null,
     }),
     routes,
   });

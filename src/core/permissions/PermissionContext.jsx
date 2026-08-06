@@ -33,9 +33,23 @@ export function PermissionProvider({ children }) {
 
   const hasRole = useCallback((role) => roles.includes(role), [roles]);
 
+  /**
+   * ¿Es un rol de ADMINISTRACIÓN? Distinto de `can()`: no pregunta si puede ver
+   * una pantalla, sino si le corresponde una responsabilidad de conducción.
+   *
+   * Existe para los AVISOS. Un cajero puede tener permiso de mirar los pedidos
+   * web y aun así no querer un cartel cada vez que entra uno — eso lo maneja el
+   * administrador. Vive acá, y no repetido en cada componente, para que "quién
+   * es administración" sea UNA definición en todo el sistema.
+   */
+  const esAdmin = useMemo(
+    () => roles.includes('admin') || roles.includes('superadmin'),
+    [roles],
+  );
+
   const value = useMemo(
-    () => ({ permissions, roles, can, canAny, hasRole }),
-    [permissions, roles, can, canAny, hasRole],
+    () => ({ permissions, roles, can, canAny, hasRole, esAdmin }),
+    [permissions, roles, can, canAny, hasRole, esAdmin],
   );
 
   return (

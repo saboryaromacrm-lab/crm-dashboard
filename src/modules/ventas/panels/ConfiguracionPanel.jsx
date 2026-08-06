@@ -89,7 +89,7 @@ function ListaEditable({ valores, onChange, placeholder }) {
 /* ------------------------------------------------------------------ */
 
 export function ConfiguracionPanel() {
-  const { config, recargar, toast } = useVentas();
+  const { config, recargar, toast, listasCatalogo } = useVentas();
   const [draft, setDraft] = useState(config);
   const [guardando, setGuardando] = useState(false);
 
@@ -123,7 +123,7 @@ export function ConfiguracionPanel() {
     }
   };
 
-  const listas = draft.listasPrecio ?? [];
+
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
@@ -170,14 +170,29 @@ export function ConfiguracionPanel() {
         </Seccion>
 
         <Seccion titulo="Precios y descuentos">
-          <Campo label="Listas de precio" hint="Se asignan al cliente y definen el % de ganancia con el que se vende.">
-            <ListaEditable valores={listas} onChange={set('listasPrecio')} placeholder="Nombre de la lista…" />
-          </Campo>
-          <Campo label="Lista por defecto" hint="La que usa un cliente sin lista propia.">
-            <select value={draft.listaPrecioDefault ?? ''} onChange={setTxt('listaPrecioDefault')}>
-              {listas.map((l) => <option key={l} value={l}>{l}</option>)}
+          <div className={cx(s.callout, s.info)}>
+            Las <strong>modalidades, listas y reglas de marca</strong> se administran en su propia
+            pantalla (menú <strong>Formato de venta</strong>). El <strong>markup</strong> no está
+            ahí ni acá: se carga por producto, en <strong>Compras › Productos › Formato de
+            Venta</strong>, porque la misma lista tiene distinto margen en cada artículo.
+          </div>
+          <Campo
+            label="Lista base (piso)"
+            hint="El precio que se cobra cuando el ticket no habilita ninguna otra lista. Conviene que sea la de PEOR orden de preferencia: es la red de contención, no una candidata."
+          >
+            <select value={draft.listaBaseId ?? 0} onChange={setNum('listaBaseId')}>
+              <option value={0}>La primera por orden de preferencia</option>
+              {listasCatalogo.listas.filter((l) => l.activa).map((l) => (
+                <option key={l.id} value={l.id}>{l.etiqueta}</option>
+              ))}
             </select>
           </Campo>
+          <Interruptor
+            label="Solo un administrador puede cambiar la lista a mano"
+            hint="El automático por condición sigue funcionando para todos: es una regla. Lo que se limita es el override manual, que esquiva el tope de descuento."
+            checked={draft.overrideListaRequiereAdmin}
+            onChange={set('overrideListaRequiereAdmin')}
+          />
           <Campo label="Descuento máximo del vendedor (%)" hint="Por encima de este tope hace falta un administrador.">
             <input type="number" min="0" max="100" step="0.5" value={draft.descuentoMaxVendedor ?? 0} onChange={setNum('descuentoMaxVendedor')} />
           </Campo>
@@ -193,6 +208,76 @@ export function ConfiguracionPanel() {
             <select value={draft.redondeoEfectivo ?? 0} onChange={setNum('redondeoEfectivo')}>
               {OPCIONES_REDONDEO.map((o) => <option key={o.valor} value={o.valor}>{o.label}</option>)}
             </select>
+          </Campo>
+        </Seccion>
+
+        {/*
+          Acceso mayorista por monto. Es la única puerta que se mide en pesos, y
+          por eso vive en la configuración y no en una lista: no es una propiedad
+          de ninguna lista puntual, es una política del negocio.
+        */}
+        <Seccion titulo="Acceso mayorista por monto de compra">
+          <div className={cx(s.callout, s.warn)}>
+            A diferencia de las condiciones por cantidad, esta <strong>no se aplica sola</strong>: se
+            mide sobre pesos, y aplicar el beneficio baja el total, así que automatizarla podría
+            dejar el ticket bajo el umbral y revertirse en un ciclo. La caja lo <strong>sugiere</strong>{' '}
+            y el vendedor lo aplica con un clic.
+          </div>
+          <Campo
+            label="Monto mínimo del ticket"
+            hint="0 = desactivado. Se mide sobre el total con IVA."
+          >
+            <input
+              type="number" min="0" step="100"
+              value={draft.montoMinimoMayorista ?? 0}
+              onChange={setNum('montoMinimoMayorista')}
+            />
+          </Campo>
+          <Campo
+            label="Mínimo p/ envío con camioneta (sitio web)"
+            hint="Piso EXTRA del pedido online si el cliente elige la camioneta de la empresa: el viaje tiene que valer la pena. 0 = sin piso."
+          >
+            <input
+              type="number" min="0" step="1000"
+              value={draft.montoMinimoCamioneta ?? 0}
+              onChange={setNum('montoMinimoCamioneta')}
+            />
+          </Campo>
+          <Campo
+            label="Modalidad que desbloquea"
+            hint="Alcanza SOLO a los artículos del ticket que tengan una lista cargada en esa modalidad. El que no tenga ninguna se queda con su precio de siempre."
+          >
+            <select value={draft.modalidadMontoId ?? 0} onChange={setNum('modalidadMontoId')}>
+              <option value={0}>— Ninguna (desactivado) —</option>
+              {listasCatalogo.modalidades.map((m) => (
+                <option key={m.id} value={m.id}>{m.nombre}</option>
+              ))}
+            </select>
+          </Campo>
+          <Campo
+            label="Medios de pago con los que vale"
+            hint="Sin ninguno tildado, vale con cualquiera. Se verifica AL CONFIRMAR la venta: el medio se elige al cobrar, cuando el precio ya se armó."
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {Object.entries(MEDIOS_PAGO).map(([k, label]) => {
+                const sel = draft.mediosPagoMonto ?? [];
+                return (
+                  <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={sel.includes(k)}
+                      onChange={(e) => setDraft((d) => ({
+                        ...d,
+                        mediosPagoMonto: e.target.checked
+                          ? [...(d.mediosPagoMonto ?? []), k]
+                          : (d.mediosPagoMonto ?? []).filter((x) => x !== k),
+                      }))}
+                    />
+                    {label}
+                  </label>
+                );
+              })}
+            </div>
           </Campo>
         </Seccion>
 
@@ -219,12 +304,12 @@ export function ConfiguracionPanel() {
         </Seccion>
 
         <Seccion titulo="Presupuestos">
-          <Campo label="Validez por defecto (días)" hint="Vencido el plazo, el presupuesto deja de poder convertirse en venta.">
-            <input type="number" min="1" step="1" value={draft.presupuestoValidezDias ?? 15} onChange={setNum('presupuestoValidezDias')} />
+          <Campo label="Validez por defecto (días)" hint="Corre desde que se ENVÍA. Un presupuesto vencido no se confirma: se reabre y se re-cotiza.">
+            <input type="number" min="1" step="1" value={draft.presupuestoValidezDias ?? 7} onChange={setNum('presupuestoValidezDias')} />
           </Campo>
           <Interruptor
-            label="Reservar stock al aceptar un presupuesto"
-            hint="Pasa la mercadería de Disponible a Comprometido para no venderla dos veces. Se libera sola si el presupuesto vence."
+            label="Reservar stock al confirmar un presupuesto"
+            hint="Pasa la mercadería de Disponible a Comprometido mientras el vendedor arma el pedido: la caja no la puede vender dos veces. Cerrar la venta o cancelar el presupuesto la libera."
             checked={draft.presupuestoReservaStock}
             onChange={set('presupuestoReservaStock')}
           />

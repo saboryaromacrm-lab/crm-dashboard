@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { ventasApi } from '../../services/ventas.api.js';
-import { CONDICIONES_IVA, MEDIOS_PAGO, TIPOS_VENTA, nroComprobante } from '../../domain/constants.js';
+import { MEDIOS_PAGO, nroComprobante } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
-import { Table, Btn, Di, ModalShell, VentaTag, money, s } from '../ui.jsx';
+import { Table, Btn, Di, ModalShell, VentaTag, money, fmtFechaHora, s } from '../ui.jsx';
+import { configImpresion, cuerpoTicket, imprimirDocumento } from '@core/services/imprimir.js';
 import p from '../../styles/Pos.module.css';
 
 const EPS = 0.005;
@@ -29,6 +30,12 @@ const EPS = 0.005;
  *    entrega en mano; no se guarda porque el cajón neto es el total.
  *  - **Cuenta corriente**: no lleva pagos. El dinero entra después con un
  *    recibo de cobranza, y ahí se imputa a este comprobante.
+ *
+ * DISEÑO DE CAJA: lo justo para cobrar rápido. El total grande, el foco entra
+ * directo en "Con cuánto paga" (Enter cobra; vacío = pagó justo) y el vuelto
+ * salta a la vista. El selector Contado/Cta.Cte. solo existe si ESTE cliente
+ * tiene cuenta corriente habilitada — si no, toda venta es al contado y no hay
+ * nada que elegir. Los medios de pago arrancan en efectivo por el total.
  */
 export function CobroModal({ ventaId, renglones, totales, clienteId, cajaSesionId, onCobrado }) {
   const { getCliente, config, ctx, closeModal, toast } = useVentas();
@@ -39,6 +46,14 @@ export function CobroModal({ ventaId, renglones, totales, clienteId, cajaSesionI
   const [entregado, setEntregado] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [enviando, setEnviando] = useState(false);
+
+  // El foco entra directo en "Con cuánto paga". Diferido porque el focus-trap
+  // del Dialog de MUI corre después del montaje y pisa un autoFocus normal.
+  const pagaRef = useRef(null);
+  useEffect(() => {
+    const t = setTimeout(() => pagaRef.current?.focus(), 80);
+    return () => clearTimeout(t);
+  }, []);
 
   const ctaCteDisponible = !!config.ctaCteHabilitada && !!cliente?.ctaCteHabilitada;
 
@@ -124,6 +139,17 @@ export function CobroModal({ ventaId, renglones, totales, clienteId, cajaSesionI
           ? pagos.filter((x) => Number(x.importe) > 0).map((x) => ({ medio: x.medio, importe: r2(x.importe) }))
           : [],
       });
+      // Ticket automático (se apaga en Sistema › Impresión). El último queda
+      // guardado para "Reimprimir" desde la registradora.
+      try { localStorage.setItem('crm_ultimo_ticket', String(venta.id)); } catch { /* privado */ }
+      const { impresion } = await configImpresion();
+      if (impresion.imprimirTicketAlCobrar) {
+        imprimirDocumento('ticketPos', {
+          titulo: `Ticket ${venta.puntoVenta}-${venta.numero ?? ''}`,
+          esTicket: true,
+          cuerpo: cuerpoTicket(venta, { moneda: money, fechaHora: fmtFechaHora, leyendaNoFiscal: impresion.leyendaNoFiscal }),
+        });
+      }
       onCobrado(venta, vuelto && vuelto > 0 ? vuelto : 0);
     } catch (e) {
       toast(e?.data?.message || 'No se pudo registrar la venta.', 'err');
@@ -138,13 +164,6 @@ export function CobroModal({ ventaId, renglones, totales, clienteId, cajaSesionI
   const puedeLiquidar = pagosOk && condicionPago === 'contado' && !enviando;
   const puedeFacturar = pagosOk && !enviando;
 
-  /** Qué comprobante sale si se factura (misma regla que aplica el backend). */
-  const letraFactura = useMemo(() => {
-    const empresa = config.condicionIvaEmpresa;
-    if (empresa === 'monotributo' || empresa === 'exento') return 'factura_c';
-    return cliente?.condicionIva === 'responsable_inscripto' ? 'factura_a' : 'factura_b';
-  }, [config.condicionIvaEmpresa, cliente]);
-
   /* ------------------------------ Atajos ------------------------------ */
   useEffect(() => {
     const onKey = (e) => {
@@ -158,8 +177,8 @@ export function CobroModal({ ventaId, renglones, totales, clienteId, cajaSesionI
 
   return (
     <ModalShell
-      title="Cerrar venta"
-      wide
+      title="Cobrar"
+      muted
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
@@ -177,42 +196,26 @@ export function CobroModal({ ventaId, renglones, totales, clienteId, cajaSesionI
         },
       ]}
     >
-      <div className={s['detalle-grid']}>
-        <Di label="Cliente">
-          {cliente?.nombre || '—'}
-          {cliente && <div className={s.hint} style={{ margin: 0 }}>{CONDICIONES_IVA[cliente.condicionIva]?.label}</div>}
-        </Di>
-        <Di label="Artículos">{totales.renglones} ({totales.unidades})</Di>
-        <Di label="Total"><strong style={{ fontSize: 20 }}>{money(totales.total)}</strong></Di>
+      <div className={p.cobroTotal}>
+        <span className={p.cobroTotalLabel}>Total</span>
+        <span className={p.cobroTotalValor}>{money(totales.total)}</span>
       </div>
 
-      <div className={s.hint}>
-        <strong>Liquidar</strong> emite {TIPOS_VENTA.ticket.label} interno ·{' '}
-        <strong>Facturar</strong> emite {TIPOS_VENTA[letraFactura]?.label}
-        {!config.arcaHabilitado && ' (sin CAE: ARCA está desactivado en Configuración)'}.
-      </div>
-
-      <div className={s['section-title']}>Condición</div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 'var(--crm-space-3)' }}>
-        <Btn
-          variant={condicionPago === 'contado' ? 'btn-primary' : 'btn-ghost'}
-          onClick={() => setCondicionPago('contado')}
-        >
-          Contado
-        </Btn>
-        <Btn
-          variant={condicionPago === 'cuenta_corriente' ? 'btn-primary' : 'btn-ghost'}
-          onClick={() => setCondicionPago('cuenta_corriente')}
-          disabled={!ctaCteDisponible}
-        >
-          Cuenta corriente
-        </Btn>
-      </div>
-      {!ctaCteDisponible && (
-        <div className={s.hint}>
-          {config.ctaCteHabilitada
-            ? `${cliente?.nombre || 'Este cliente'} no tiene cuenta corriente habilitada.`
-            : 'La venta en cuenta corriente está deshabilitada en Configuración.'}
+      {/* El selector solo existe cuando hay algo que elegir: cliente con cta. cte. */}
+      {ctaCteDisponible && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 'var(--crm-space-3)' }}>
+          <Btn
+            variant={condicionPago === 'contado' ? 'btn-primary' : 'btn-ghost'}
+            onClick={() => setCondicionPago('contado')}
+          >
+            Contado
+          </Btn>
+          <Btn
+            variant={condicionPago === 'cuenta_corriente' ? 'btn-primary' : 'btn-ghost'}
+            onClick={() => setCondicionPago('cuenta_corriente')}
+          >
+            Cuenta corriente
+          </Btn>
         </div>
       )}
 
@@ -239,6 +242,33 @@ export function CobroModal({ ventaId, renglones, totales, clienteId, cajaSesionI
         </>
       ) : (
         <>
+          {/* Lo primero que toca el cajero: qué le entregan. Vacío = pagó justo,
+              y el placeholder muestra ESE importe (el efectivo del ticket) en
+              gris: se lee el número sin tipear nada, y se puede escribir encima. */}
+          {hayEfectivo && (
+            <>
+              <div className={cx(s.field, p.pagaGrande)}>
+                <label>Con cuánto paga</label>
+                <input
+                  ref={pagaRef}
+                  type="number" min="0" step="100"
+                  placeholder={money(efectivoAsignado)}
+                  value={entregado}
+                  onChange={(e) => setEntregado(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && puedeLiquidar) { e.preventDefault(); confirmar('ticket'); }
+                  }}
+                />
+              </div>
+              {vuelto !== null && (
+                <div className={cx(p.vuelto, vuelto < 0 && p.faltante)}>
+                  <span>{vuelto < 0 ? 'Falta que entregue' : 'Vuelto'}</span>
+                  <span className={p.vueltoValor}>{money(Math.abs(vuelto))}</span>
+                </div>
+              )}
+            </>
+          )}
+
           <div className={s['section-title']}>Medios de pago</div>
           {pagos.map((x, i) => (
             <div key={i} className={p.pagoFila}>
@@ -251,7 +281,7 @@ export function CobroModal({ ventaId, renglones, totales, clienteId, cajaSesionI
               <div className={s.field} style={{ marginBottom: 0 }}>
                 {i === 0 && <label>Importe</label>}
                 <input
-                  type="number" min="0" step="0.01" autoFocus={i === 0}
+                  type="number" min="0" step="0.01"
                   value={x.importe}
                   onChange={(e) => setPago(i, 'importe', e.target.value)}
                 />
@@ -267,41 +297,13 @@ export function CobroModal({ ventaId, renglones, totales, clienteId, cajaSesionI
             {pagos.length > 1 && <Btn small onClick={dividir}>Partes iguales</Btn>}
           </div>
 
-          <div className={s['detalle-grid']} style={{ marginTop: 'var(--crm-space-4)' }}>
-            <Di label="Total">{money(totales.total)}</Di>
-            <Di label="Asignado">{money(pagado)}</Di>
-            <Di label={faltante >= 0 ? 'Falta' : 'Sobra'}>
-              <span style={{ color: Math.abs(faltante) > 0.01 ? 'var(--crm-color-danger)' : 'var(--crm-color-success)' }}>
-                {money(Math.abs(faltante))}
-              </span>
-            </Di>
-          </div>
-
-          {hayEfectivo && (
-            <>
-              <div className={s['section-title']}>Vuelto</div>
-              <div className={s['form-grid']}>
-                <div className={s.field}>
-                  <label>Efectivo del ticket</label>
-                  <input value={money(efectivoAsignado)} readOnly tabIndex={-1} />
-                </div>
-                <div className={s.field}>
-                  <label>Con cuánto paga</label>
-                  <input
-                    type="number" min="0" step="100"
-                    placeholder="0,00"
-                    value={entregado}
-                    onChange={(e) => setEntregado(e.target.value)}
-                  />
-                </div>
-              </div>
-              {vuelto !== null && (
-                <div className={cx(p.vuelto, vuelto < 0 && p.faltante)}>
-                  <span>{vuelto < 0 ? 'Falta que entregue' : 'Vuelto'}</span>
-                  <span className={p.vueltoValor}>{money(Math.abs(vuelto))}</span>
-                </div>
-              )}
-            </>
+          {/* Solo habla cuando algo está mal; si los pagos suman justo, silencio. */}
+          {Math.abs(faltante) > 0.01 && (
+            <div className={cx(s.callout, s.warn)} style={{ marginTop: 'var(--crm-space-3)' }}>
+              {faltante > 0
+                ? <>Falta asignar <strong>{money(faltante)}</strong> (asignado {money(pagado)} de {money(totales.total)}).</>
+                : <>Los medios suman <strong>{money(-faltante)}</strong> de más.</>}
+            </div>
           )}
         </>
       )}

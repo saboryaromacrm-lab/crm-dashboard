@@ -35,6 +35,23 @@
   flex-direction: column;
 }
 
+/* Nombre + sucursal de la sesión, pegados al avatar. En pantallas chicas se
+   ocultan (el menú de la cuenta muestra lo mismo). */
+.userInfo {
+  display: none;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: var(--crm-space-2);
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+  .userInfo {
+    display: flex;
+  }
+}
+
 @media (min-width: 768px) {
   .topbar {
     padding: 0 var(--crm-space-4);

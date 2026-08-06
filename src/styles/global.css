@@ -41,3 +41,13 @@ body {
   outline: 2px solid var(--crm-color-primary);
   outline-offset: 2px;
 }
+
+/* La selección de texto también es de la marca. */
+::selection {
+  background: color-mix(in srgb, var(--crm-color-primary) 22%, transparent);
+}
+
+/* Los números de tablas alinean en columna aunque la fuente sea proporcional. */
+table {
+  font-variant-numeric: tabular-nums;
+}

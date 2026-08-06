@@ -1,16 +1,17 @@
 import { Suspense } from 'react';
 import {
   createBrowserRouter,
-  Navigate,
   RouterProvider,
 } from 'react-router-dom';
 import { MainLayout } from '@core/layout/MainLayout.jsx';
 import { ProtectedRoute } from './guards/ProtectedRoute.jsx';
+import { ModuleGuard } from './guards/ModuleGuard.jsx';
 import { moduleRegistry } from '@core/modules/registry.js';
 import { appConfig } from '@core/config/app.config.js';
 import { FullScreenLoader } from '@shared/components/FullScreenLoader/FullScreenLoader.jsx';
 import { NotFoundPage } from './NotFoundPage.jsx';
 import { LoginPage } from './LoginPage.jsx';
+import { HomeRedirect } from './HomeRedirect.jsx';
 import { RouteErrorBoundary } from './RouteErrorBoundary.jsx';
 
 /**
@@ -45,12 +46,16 @@ function buildRouter() {
           element: <MainLayout />,
           children: [
             {
+              // El inicio va al PRIMER módulo que el rol puede ver — un
+              // redirect fijo a /dashboard rebotaría para un rol sin esa sección.
               index: true,
-              element: (
-                <Navigate to={appConfig.routes.defaultAuthenticatedRoute} replace />
-              ),
+              element: <HomeRedirect />,
             },
-            ...moduleRoutes,
+            {
+              // Tranca por URL directa: sin secciones del módulo, afuera.
+              element: <ModuleGuard />,
+              children: moduleRoutes,
+            },
           ],
         },
       ],

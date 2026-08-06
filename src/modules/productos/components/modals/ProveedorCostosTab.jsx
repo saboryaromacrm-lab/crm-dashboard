@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money } from '../../domain/format.js';
-import { Table, Btn, s } from '../ui.jsx';
+import { Table, Btn, usePaginado, s } from '../ui.jsx';
 
 /**
  * COSTOS DEL PROVEEDOR
@@ -48,13 +48,24 @@ export function ProveedorCostosTab({ prov }) {
   const [masiva, setMasiva] = useState({ campo: 'costo', modo: 'porcentaje', valor: '' });
   const [guardando, setGuardando] = useState(false);
 
+  /**
+   * Alcance de la masiva: no siempre TODO el proveedor sube de precio. Se guarda
+   * lo EXCLUIDO (no lo incluido) para que el default sea "todos tildados" y una
+   * recarga del listado no pise lo que el usuario destildó.
+   */
+  const [excluidos, setExcluidos] = useState(() => new Set());
+
   /** Filas: producto + su entrada de costo con este proveedor. */
   const filas = useMemo(() => store.state.productos
     .map((p) => {
-      const entry = (p.proveedores || []).find((e) => e.proveedorId === prov.id);
+      const entry = (p.formatosCompra || []).find((e) => e.proveedorId === prov.id);
       if (!entry) return null;
-      const ganancia = (p.listasPrecio || [])[0]?.ganancia ?? 0;
-      return { p, entry, ganancia, activo: p.proveedorActivoId === prov.id };
+      // Markup EQUIVALENTE del piso (vale también con precio definido): la
+      // referencia de cuánto se movería la góndola si cambia este costo.
+      const cnHoy = store.costoNeto(p);
+      const ganancia = cnHoy > 0 ? (store.precioBaseVenta(p) / cnHoy - 1) * 100 : 0;
+      // "Activo" = el formato que manda el precio hoy es de ESTE proveedor.
+      return { p, entry, ganancia, activo: store.formatoActivo(p)?.proveedorId === prov.id };
     })
     .filter(Boolean), [store.state.productos, prov.id]);
 
@@ -65,12 +76,26 @@ export function ProveedorCostosTab({ prov }) {
     ...e, [id]: { ...(e[id] || {}), [campo]: valor === '' ? 0 : Number(valor) },
   }));
 
-  /** Aplica la regla a TODAS las filas visibles, solo en pantalla. */
+  const estaSeleccionada = (f) => !excluidos.has(f.entry.id);
+  const seleccionadas = filas.filter(estaSeleccionada);
+  const todasSeleccionadas = excluidos.size === 0 || seleccionadas.length === filas.length;
+
+  const toggleFila = (id) => setExcluidos((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleTodas = () => setExcluidos(
+    todasSeleccionadas ? new Set(filas.map((f) => f.entry.id)) : new Set(),
+  );
+
+  /** Aplica la regla SOLO a las filas tildadas, solo en pantalla. */
   const aplicarMasiva = () => {
     if (masiva.valor === '' || Number.isNaN(Number(masiva.valor))) { toast('Ingresá el valor.', 'err'); return; }
+    if (!seleccionadas.length) { toast('No hay productos tildados.', 'err'); return; }
     setEdits((prev) => {
       const next = { ...prev };
-      for (const f of filas) {
+      for (const f of seleccionadas) {
         const actual = { ...f.entry, ...(prev[f.entry.id] || {}) };
         const nuevo = Math.max(0, aplicarRegla(actual[masiva.campo], masiva.modo, masiva.valor));
         next[f.entry.id] = { ...(next[f.entry.id] || {}), [masiva.campo]: nuevo };
@@ -115,9 +140,12 @@ export function ProveedorCostosTab({ prov }) {
     );
   }
 
-  const cuerpo = filas.map((f) => {
+  const pag = usePaginado(filas, 'costosProveedor');
+
+  const cuerpo = pag.visibles.map((f) => {
     const e = efectivo(f);
     const tocada = !!edits[f.entry.id];
+    const sel = estaSeleccionada(f);
     const netoAntes = costoNetoDe(f.entry);
     const netoAhora = costoNetoDe(e);
     const precioAntes = netoAntes * (1 + f.ganancia / 100);
@@ -125,7 +153,18 @@ export function ProveedorCostosTab({ prov }) {
     const subio = precioAhora > precioAntes;
 
     return (
-      <tr key={f.entry.id}>
+      <tr key={f.entry.id} style={sel ? undefined : { opacity: 0.55 }}>
+        {isAdmin && (
+          <td style={{ width: 34, textAlign: 'center' }}>
+            <input
+              type="checkbox"
+              checked={sel}
+              onChange={() => toggleFila(f.entry.id)}
+              aria-label={`Incluir ${f.p.nombre} en la masiva`}
+              style={{ cursor: 'pointer' }}
+            />
+          </td>
+        )}
         <td>
           <strong>{f.p.nombre}</strong>
           {f.activo && <span className={cx(s.pill, s['st-disponible'])} style={{ marginLeft: 6 }}>Activo</span>}
@@ -169,12 +208,15 @@ export function ProveedorCostosTab({ prov }) {
     <>
       <div className={cx(s.callout, s.info)}>
         Costo, descuento y flete de <strong>{prov.nombre}</strong>. El precio de venta se recalcula
-        solo: no se edita a mano.
+        solo: no se edita a mano. La regla masiva alcanza <strong>solo a los productos tildados</strong> —
+        destildá los que no cambian. Editar un campo a mano vale siempre, esté tildado o no.
       </div>
 
       {isAdmin && (
         <div className={s.toolbar} style={{ marginBottom: 'var(--crm-space-3)' }}>
-          <span className={s['mini-label']}>Aplicar a los {filas.length}:</span>
+          <span className={s['mini-label']}>
+            Aplicar a {seleccionadas.length === filas.length ? `los ${filas.length}` : `${seleccionadas.length} de ${filas.length} tildados`}:
+          </span>
           <select className={s['select-inline']} value={masiva.campo} onChange={(e) => setMasiva((m) => ({ ...m, campo: e.target.value }))}>
             {CAMPOS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
@@ -199,9 +241,22 @@ export function ProveedorCostosTab({ prov }) {
 
       <Table
         cols={[
+          ...(isAdmin ? [{
+            h: (
+              <input
+                type="checkbox"
+                checked={todasSeleccionadas}
+                onChange={toggleTodas}
+                aria-label="Tildar o destildar todos"
+                title="Tildar / destildar todos"
+                style={{ cursor: 'pointer' }}
+              />
+            ),
+          }] : []),
           { h: 'Producto' }, { h: 'Costo', num: true }, { h: 'Desc. %', num: true }, { h: 'Flete %', num: true },
           { h: 'Costo neto', num: true }, { h: 'Precio de venta', num: true },
         ]}
+        pag={pag}
       >
         {cuerpo}
       </Table>

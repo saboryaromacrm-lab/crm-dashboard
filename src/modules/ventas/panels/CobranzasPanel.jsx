@@ -4,7 +4,7 @@ import { useResource } from '../hooks/useResource.js';
 import { ventasApi } from '../services/ventas.api.js';
 import { MEDIOS_PAGO, nroComprobante } from '../domain/constants.js';
 import {
-  Table, PanelHead, Stat, Btn, CobranzaEstadoPill, money, fmtFecha, s,
+  Table, PanelHead, Stat, Btn, CobranzaEstadoPill, usePaginado, money, fmtFecha, s,
 } from '../components/ui.jsx';
 
 /** Resume los medios de pago de un recibo: "Efectivo + Transferencia". */
@@ -40,7 +40,9 @@ export function CobranzasPanel() {
 
   const stop = (e) => e.stopPropagation();
 
-  const filas = cobranzas.map((c) => {
+  const pag = usePaginado(cobranzas, 'cobranzas', key);
+
+  const filas = pag.visibles.map((c) => {
     const cli = getCliente(c.clienteId);
     return (
       <tr key={c.id} className={s.clickable} onClick={() => openModal('cobranzaDetalle', { cobranzaId: c.id, onChange: reload })}>
@@ -104,6 +106,7 @@ export function CobranzasPanel() {
           { h: 'Acciones', cls: 'actions-col' },
         ]}
         empty={loading ? 'Cargando…' : 'No hay cobranzas con esos filtros.'}
+        pag={pag}
       >
         {filas}
       </Table>

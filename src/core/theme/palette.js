@@ -4,30 +4,34 @@
  * The CSS custom properties drive pure-CSS modules; these JS objects drive the
  * MUI theme. Keeping both in one mental model (same names/values) is what makes
  * MUI components and custom CSS look like one product.
+ *
+ * Identidad: VERDE OSCURO como primario (siempre con blanco encima) y NARANJA
+ * como secundario de detalle — es el color del indicador de tabs, badges y
+ * resaltados, nunca de superficies grandes.
  */
 
 export const lightPalette = {
   mode: 'light',
-  primary: { main: '#2563eb', dark: '#1d4ed8', contrastText: '#ffffff' },
-  secondary: { main: '#7c3aed', contrastText: '#ffffff' },
+  primary: { main: '#166534', dark: '#14532d', light: '#2f9e5f', contrastText: '#ffffff' },
+  secondary: { main: '#ea580c', dark: '#c2410c', contrastText: '#ffffff' },
   success: { main: '#16a34a' },
-  warning: { main: '#d97706' },
+  warning: { main: '#b45309' },
   error: { main: '#dc2626' },
-  info: { main: '#0284c7' },
-  background: { default: '#f4f6fb', paper: '#ffffff' },
-  text: { primary: '#111827', secondary: '#6b7280' },
-  divider: '#e5e7eb',
+  info: { main: '#0f766e' },
+  background: { default: '#f3f6f3', paper: '#ffffff' },
+  text: { primary: '#16211a', secondary: '#56655c' },
+  divider: '#dde6de',
 };
 
 export const darkPalette = {
   mode: 'dark',
-  primary: { main: '#3b82f6', dark: '#60a5fa', contrastText: '#0b1120' },
-  secondary: { main: '#a78bfa', contrastText: '#0b1120' },
+  primary: { main: '#2f9e5f', dark: '#3cb571', light: '#4ade80', contrastText: '#06170d' },
+  secondary: { main: '#fb923c', dark: '#f97316', contrastText: '#1a1108' },
   success: { main: '#22c55e' },
-  warning: { main: '#f59e0b' },
+  warning: { main: '#d97706' },
   error: { main: '#ef4444' },
-  info: { main: '#38bdf8' },
-  background: { default: '#0b1120', paper: '#111827' },
-  text: { primary: '#f3f4f6', secondary: '#9ca3af' },
-  divider: '#1f2937',
+  info: { main: '#2dd4bf' },
+  background: { default: '#0c1310', paper: '#131c16' },
+  text: { primary: '#e9f0ea', secondary: '#a4b5aa' },
+  divider: '#233129',
 };

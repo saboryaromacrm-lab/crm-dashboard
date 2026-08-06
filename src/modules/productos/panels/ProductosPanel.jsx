@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { num } from '../domain/format.js';
-import { Table, PanelHead, TipoBadge, Btn, s } from '../components/ui.jsx';
+import { Table, PanelHead, TipoBadge, Btn, usePaginado, s } from '../components/ui.jsx';
 
 /** Texto comparable: sin mayúsculas ni acentos. */
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
@@ -32,7 +32,7 @@ export function ProductosPanel() {
       if (tipo && p.tipo !== tipo) return false;
       if (marca && p.marca !== marca) return false;
       if (categoria && p.categoria !== categoria) return false;
-      if (provId && !(p.proveedores || []).some((e) => e.proveedorId === provId)) return false;
+      if (provId && !(p.formatosCompra || []).some((e) => e.proveedorId === provId)) return false;
       if (!ql) return true;
       return norm(p.nombre).includes(ql) || norm(p.marca).includes(ql)
         || norm(p.categoria).includes(ql) || (p.codigoBarras || '').includes(q.trim());
@@ -42,7 +42,9 @@ export function ProductosPanel() {
   const hayFiltro = !!(q || tipo || marca || categoria || proveedorId);
   const stop = (e) => e.stopPropagation();
 
-  const filas = productos.map((p) => {
+  const pag = usePaginado(productos, 'productos', `${q}|${tipo}|${marca}|${categoria}|${proveedorId}`);
+
+  const filas = pag.visibles.map((p) => {
     const base = p.tipo === 'granel'
       ? store.suma({ productoId: p.id, presentacionId: null, estado: 'disponible' })
       : store.suma({ productoId: p.id, estado: 'disponible' });
@@ -95,7 +97,9 @@ export function ProductosPanel() {
         </select>
         <select className={s['select-inline']} value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
           <option value="">Todos los proveedores</option>
-          {store.state.proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          {store.state.proveedores
+            .filter((p) => p.proveeMercaderia !== false)
+            .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
         </select>
         <select className={s['select-inline']} value={tipo} onChange={(e) => setTipo(e.target.value)}>
           <option value="">Todos los tipos</option>
@@ -121,6 +125,7 @@ export function ProductosPanel() {
           { h: 'Acciones', cls: 'actions-col' },
         ]}
         empty="No hay productos."
+        pag={pag}
       >
         {filas}
       </Table>

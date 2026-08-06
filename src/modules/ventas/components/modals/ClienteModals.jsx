@@ -28,7 +28,7 @@ function estadoInicial(cliente, config) {
     localidad: cliente?.localidad ?? '',
     telefono: cliente?.telefono ?? '',
     email: cliente?.email ?? '',
-    listaPrecio: cliente?.listaPrecio ?? '',
+    listas: cliente?.listas ?? [],
     descuento: cliente?.descuento ?? 0,
     vendedorId: cliente?.vendedorId ?? '',
     sucursalId: cliente?.sucursalId ?? '',
@@ -40,7 +40,7 @@ function estadoInicial(cliente, config) {
 }
 
 export function ClienteFormModal({ clienteId }) {
-  const { getCliente, act, closeModal, toast, config, usuarios, sucursales, listasPrecio } = useVentas();
+  const { getCliente, act, closeModal, toast, config, usuarios, sucursales, listasCatalogo } = useVentas();
   const cliente = clienteId != null ? getCliente(clienteId) : null;
   const editando = !!cliente;
 
@@ -69,10 +69,12 @@ export function ClienteFormModal({ clienteId }) {
       sucursalId: f.sucursalId ? Number(f.sucursalId) : null,
       ctaCteHabilitada: ctaCteDisponible && f.ctaCteHabilitada,
     };
-    act(
-      editando ? ventasApi.editarCliente(cliente.id, datos) : ventasApi.crearCliente(datos),
-      editando ? 'Cliente actualizado.' : 'Cliente creado.',
-    );
+    // Las listas viven en su propia tabla (el cliente puede tener varias), así
+    // que se guardan en un segundo paso con el id ya resuelto.
+    const guardado = editando
+      ? ventasApi.editarCliente(cliente.id, datos).then((c) => ventasApi.setListasCliente(c.id, f.listas).then(() => c))
+      : ventasApi.crearCliente(datos).then((c) => ventasApi.setListasCliente(c.id, f.listas).then(() => c));
+    act(guardado, editando ? 'Cliente actualizado.' : 'Cliente creado.');
   };
 
   const esCF = !!cliente?.esConsumidorFinal;
@@ -158,11 +160,33 @@ export function ClienteFormModal({ clienteId }) {
       <div className={s['section-title']}>Comercial</div>
       <div className={s['form-grid']}>
         <div className={s.field}>
-          <label>Lista de precios</label>
-          <select value={f.listaPrecio} onChange={set('listaPrecio')}>
-            <option value="">Por defecto ({config.listaPrecioDefault || '—'})</option>
-            {listasPrecio.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
+          <label>Listas de precio</label>
+          {/*
+            Varias predeterminadas: al cotizar se prueban en su orden de
+            preferencia y gana la primera que el renglón califique. Sin ninguna,
+            el cliente va con la lista base del sistema.
+          */}
+          <div style={{ display: 'grid', gap: 6 }}>
+            {listasCatalogo.listas.filter((l) => l.activa).map((l) => (
+              <label key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={f.listas.includes(l.id)}
+                  onChange={(e) => setF((prev) => ({
+                    ...prev,
+                    listas: e.target.checked
+                      ? [...prev.listas, l.id]
+                      : prev.listas.filter((x) => x !== l.id),
+                  }))}
+                />
+                <span>{l.etiqueta}</span>
+                <span className={s.hint} style={{ margin: 0 }}>
+                  {l.modalidad} · orden {l.orden}
+                </span>
+              </label>
+            ))}
+            {!listasCatalogo.listas.length && <span className={s.muted}>No hay listas configuradas.</span>}
+          </div>
         </div>
         <div className={s.field}>
           <label>Descuento general (%)</label>
@@ -360,7 +384,7 @@ export function DetalleClienteModal({ clienteId }) {
             <Di label="Email">{cliente.email || '—'}</Di>
             <Di label="Localidad">{cliente.localidad || '—'}</Di>
             <Di label="Dirección">{cliente.direccion || '—'}</Di>
-            <Di label="Lista de precios">{cliente.listaPrecio || `${config.listaPrecioDefault || '—'} (default)`}</Di>
+            <Di label="Listas de precio">{cliente.listas?.length ? cliente.listas.length + ' asignada(s)' : 'Base del sistema'}</Di>
             <Di label="Descuento general">{cliente.descuento ? `${cliente.descuento}%` : '—'}</Di>
             <Di label="Vendedor">{vendedor || '—'}</Di>
             <Di label="Sucursal habitual">{sucursal || '—'}</Di>

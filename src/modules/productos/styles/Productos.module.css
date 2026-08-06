@@ -80,25 +80,7 @@
 }
 
 /* ---- Barra de contexto (sucursal + usuario/rol) ---- */
-.ctxbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--crm-space-4);
-  align-items: flex-end;
-  padding: var(--crm-space-3) var(--crm-space-4);
-  background: var(--crm-color-surface);
-  border: 1px solid var(--crm-color-border);
-  border-radius: var(--crm-radius-md);
-}
-.ctxField {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--crm-color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
+/* Empuja lo que sigue al extremo opuesto de una barra flex. */
 .ctxSpacer { flex: 1; }
 
 /* ---- Botones ---- */
@@ -210,6 +192,49 @@
 
 /* ---- Tablas ---- */
 .tableCard { padding: 0; overflow: hidden; }
+
+/* ---- Paginador ---- */
+.tablaPaginada { display: flex; flex-direction: column; gap: 6px; }
+.paginador {
+  display: flex;
+  align-items: center;
+  gap: var(--crm-space-4);
+  flex-wrap: wrap;
+  padding: 7px 12px;
+  border: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-sm);
+  background: var(--crm-color-surface);
+  font-size: 12.5px;
+  color: var(--crm-color-text-secondary);
+}
+.pagInfo { font-variant-numeric: tabular-nums; }
+.pagTam { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; }
+.pagTam select {
+  padding: 4px 8px;
+  border: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-sm);
+  background: var(--crm-color-surface);
+  color: var(--crm-color-text);
+  font-size: 12.5px;
+}
+.pagNav { display: inline-flex; align-items: center; gap: 4px; }
+.pagNav button {
+  min-width: 28px;
+  padding: 4px 7px;
+  border: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-sm);
+  background: var(--crm-color-surface);
+  color: var(--crm-color-text);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pagNav button:hover:not(:disabled) {
+  border-color: var(--crm-color-primary);
+  color: var(--crm-color-primary);
+}
+.pagNav button:disabled { opacity: 0.4; cursor: default; }
+.pagActual { padding: 0 6px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tblScroll { overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; font-size: var(--crm-font-size-sm); }
 .table thead th {
@@ -350,15 +375,71 @@
 .callout.info { background: color-mix(in srgb, var(--crm-color-info) 12%, transparent); border-color: color-mix(in srgb, var(--crm-color-info) 40%, transparent); color: var(--crm-color-info); }
 
 .section-title { font-size: 13px; font-weight: 700; margin: 16px 0 8px; color: var(--crm-color-text); }
-.detalle-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--crm-space-3); margin-bottom: 16px; }
+
+/* Cabecera de sección PLEGABLE: mismo peso visual que `.section-title` pero
+   clicable. Para bloques largos que no son lo primero que se viene a mirar. */
+.desplegable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 16px 0 8px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--crm-color-text);
+  text-align: left;
+  cursor: pointer;
+}
+.desplegable:hover { color: var(--crm-color-primary); }
+.desplegableFlecha { font-size: 11px; color: var(--crm-color-text-secondary); }
+.desplegableConteo {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--crm-color-text-secondary);
+  background: var(--crm-color-surface-2);
+  border: 1px solid var(--crm-color-border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+/* Las tarjetas se acomodan al ancho disponible en vez de forzar tres columnas:
+   con 7 u 11 datos, la grilla rígida dejaba huérfanas estiradas al final. */
+.detalle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
 .di {
   background: var(--crm-color-surface-2);
   border: 1px solid var(--crm-color-border);
   border-radius: var(--crm-radius-md);
-  padding: 10px 12px;
+  padding: 7px 10px;
 }
-.di .l { font-size: 11px; color: var(--crm-color-text-secondary); text-transform: uppercase; }
-.di .v { font-size: var(--crm-font-size-md); font-weight: 700; margin-top: 2px; color: var(--crm-color-text); }
+.di .l {
+  font-size: 10.5px; line-height: 1.3; letter-spacing: .02em;
+  color: var(--crm-color-text-secondary); text-transform: uppercase;
+}
+.di .v { font-size: 14px; font-weight: 700; margin-top: 1px; color: var(--crm-color-text); }
+
+/* Tira de metadatos: pares etiqueta/valor SIN caja. Para la identidad de un
+   documento (quién, cuándo, en qué estado), que es contexto y no dato a leer. */
+.fichaMeta {
+  display: flex; flex-wrap: wrap; gap: 2px 26px;
+  background: var(--crm-color-surface-2);
+  border: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-md);
+  padding: 8px 12px; margin-bottom: 14px;
+}
+.fichaMeta > div { display: flex; flex-direction: column; min-width: 0; }
+.fichaMeta .l {
+  font-size: 10px; letter-spacing: .03em;
+  color: var(--crm-color-text-secondary); text-transform: uppercase;
+}
+.fichaMeta .v { font-size: 13px; font-weight: 700; color: var(--crm-color-text); }
 .detalle-actions { display: flex; flex-wrap: wrap; gap: var(--crm-space-2); margin-bottom: 8px; }
 
 /* ---- Responsive ---- */
@@ -378,4 +459,114 @@
 @media (max-width: 760px) {
   .stats { grid-template-columns: 1fr 1fr; }
   .form-grid { grid-template-columns: 1fr; }
+}
+
+/* ---------- Selectores de catálogo (marca, categoría, etiquetas) ---------- */
+/* El botón imita a un <select> para que el formulario se lea parejo, pero al
+   hacer clic se convierte en un input que filtra y ofrece crear. */
+.linkBtn {
+  background: none; border: 0; padding: 0; margin-left: 8px; cursor: pointer;
+  font-size: 12px; font-weight: 600; color: var(--crm-color-accent);
+}
+.linkBtn:hover { text-decoration: underline; }
+
+.pickerBtn {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 9px 11px; text-align: left; cursor: pointer;
+  background: var(--crm-color-surface); color: var(--crm-color-text);
+  border: 1px solid var(--crm-color-border); border-radius: var(--crm-radius-sm);
+  font: inherit; font-size: 14px;
+}
+.pickerBtn:hover { border-color: var(--crm-color-accent); }
+.pickerBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+.pickerVacio { color: var(--crm-color-text-secondary); }
+.pickerCaret { font-size: 11px; opacity: 0.7; }
+
+.pickerMenu {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 30;
+  margin-top: 4px; max-height: 240px; overflow-y: auto;
+  background: var(--crm-color-surface); border: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-sm); box-shadow: var(--crm-shadow-md);
+}
+.pickerItem {
+  display: block; width: 100%; padding: 8px 11px; text-align: left;
+  background: none; border: 0; cursor: pointer; font: inherit; font-size: 14px;
+  color: var(--crm-color-text);
+}
+.pickerItem:hover { background: color-mix(in srgb, var(--crm-color-accent) 10%, transparent); }
+.pickerActivo { font-weight: 600; color: var(--crm-color-accent); }
+.pickerCrear {
+  border-top: 1px solid var(--crm-color-border);
+  color: var(--crm-color-accent); font-weight: 600;
+}
+
+.chipRow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border: 0; cursor: pointer; font: inherit;
+  font-size: 12px; font-weight: 600; border-radius: var(--crm-radius-pill);
+  background: color-mix(in srgb, var(--crm-color-accent) 14%, transparent);
+  color: var(--crm-color-accent);
+}
+.chipX { opacity: 0.65; font-size: 14px; line-height: 1; }
+.chip:hover .chipX { opacity: 1; }
+
+/* Agrupa campos dentro de un formulario largo sin gastar una pestaña. */
+.seccion {
+  margin: 18px 0 12px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--crm-color-border);
+  font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--crm-color-text-secondary);
+}
+.form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--crm-space-3); }
+@media (max-width: 760px) { .form-grid-3 { grid-template-columns: 1fr; } }
+
+/* ---------------- Formato de Compra ---------------- */
+/* Una tarjeta por formato: con cantidad, escala de descuentos, flete y la
+   cadena derivada al lado, una fila de tabla quedaba ilegible. */
+.formatoActivo { border-color: var(--crm-color-accent); box-shadow: 0 0 0 1px var(--crm-color-accent) inset; }
+
+.formatoHead {
+  display: grid; grid-template-columns: auto 1.2fr 1fr auto auto;
+  gap: var(--crm-space-3); align-items: center;
+  padding-bottom: var(--crm-space-3); margin-bottom: var(--crm-space-3);
+  border-bottom: 1px solid var(--crm-color-border);
+}
+.formatoRadio { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.formatoRadio input { width: 16px; height: 16px; }
+.formatoNeto { text-align: right; white-space: nowrap; }
+.formatoNeto strong { font-size: 16px; color: var(--crm-color-accent); }
+
+.formatoBody { display: grid; grid-template-columns: 1.15fr 1fr; gap: var(--crm-space-4); }
+
+.escalaGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.escalaGrid input { width: 100%; }
+
+.cadena {
+  background: color-mix(in srgb, var(--crm-color-text) 4%, transparent);
+  border: 1px solid var(--crm-color-border); border-radius: var(--crm-radius-sm);
+  padding: var(--crm-space-3); align-self: start;
+}
+.pasoFila { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 13px; }
+.pasoFuerte { font-weight: 700; border-top: 1px solid var(--crm-color-border); padding-top: 8px; }
+.cadenaCierre {
+  margin-top: 10px; padding-top: 10px; border-top: 2px solid var(--crm-color-accent);
+}
+.cadenaCierre strong { font-size: 18px; color: var(--crm-color-accent); }
+
+/* La misma cadena, en ancho de recibo: una cuenta se lee en columna angosta,
+   no estirada de lado a lado (los importes quedaban a un palmo de su etiqueta). */
+.cuentaBloque { max-width: 420px; margin-bottom: 14px; }
+.pasoTenue { color: var(--crm-color-text-secondary); }
+.pasoResultado {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  margin-top: 8px; padding-top: 9px;
+  border-top: 2px solid var(--crm-color-accent);
+}
+.pasoResultado span { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+.pasoResultado strong { font-size: 19px; }
+
+@media (max-width: 900px) {
+  .formatoBody { grid-template-columns: 1fr; }
+  .formatoHead { grid-template-columns: 1fr 1fr; }
 }

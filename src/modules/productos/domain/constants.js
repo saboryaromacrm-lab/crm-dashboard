@@ -22,6 +22,7 @@ export const TIPOS_MOV = {
   vencido:           { label: 'Producto vencido',    tag: 'tag-baja',    dir: -1 },
   defectuoso:        { label: 'Producto defectuoso', tag: 'tag-baja',    dir: -1 },
   transferencia:     { label: 'Transferencia',       tag: 'tag-transf',  dir: 0 },
+  envio_cafeteria:   { label: 'Envío a Cafetería',   tag: 'tag-venta',   dir: -1 },
 };
 
 // ---- Estados de stock ----
@@ -36,7 +37,7 @@ export const ESTADOS_STOCK = {
 // ---- Estados de transferencia ----
 export const ESTADOS_TRANSFER = {
   pendiente: { label: 'Pendiente',   pill: 'est-pendiente', orden: 0 },
-  preparada: { label: 'Preparada',   pill: 'est-preparada', orden: 1 },
+  preparada: { label: 'En preparación', pill: 'est-preparada', orden: 1 },
   transito:  { label: 'En tránsito', pill: 'est-transito',  orden: 2 },
   recibida:  { label: 'Recibida',    pill: 'est-recibida',  orden: 3 },
   cancelada: { label: 'Cancelada',   pill: 'est-cancelada', orden: 9 },
@@ -54,27 +55,36 @@ export const TIPOS_INCIDENCIA = [
 ];
 
 // ---- Roles y permisos ----
-// '*' = todos los permisos (Administrador)
-export const PERMISOS_ROL = {
-  admin:        ['*'],
-  fraccionador: ['fraccionar', 'etiquetas', 'merma', 'defectuoso', 'incidencia_crear', 'ver'],
-  vendedor:     ['ventas', 'devoluciones', 'diferencias', 'incidencia_crear', 'ver'],
-};
-export const ROLES = {
-  admin:        { label: 'Administrador' },
-  fraccionador: { label: 'Fraccionador' },
-  vendedor:     { label: 'Vendedor' },
-};
+// Los roles son DINÁMICOS: viven en la base (tabla roles) con su lista de
+// permisos, y viajan resueltos en cada usuario del bootstrap (rolClave,
+// rolNombre, permisos). El catálogo de claves lo sirve GET /roles/permisos y
+// se administra desde Gerencia › Usuarios y roles.
 
 // ---- Umbrales de vencimiento ----
 export const DIAS_VENC_ALERTA = 30; // "próximo a vencer"
 export const DIAS_VENC_CRITICO = 7;
 
-// ---- Categorías de producto ----
-export const CATEGORIAS = ['General', 'Alimentos', 'Bebidas', 'Almacén', 'Limpieza', 'Otros'];
+/**
+ * Alícuotas legales de IVA. Lista cerrada y espejo de `ALICUOTAS_IVA` del
+ * backend: un IVA tipeado a mano (2.1 en vez de 21) no da error y descalabra
+ * todos los precios del producto en silencio.
+ *
+ * Las categorías ya NO están acá: pasaron a ser un catálogo administrable
+ * (`store.state.catalogos.categorias`), junto con marcas y subcategorías.
+ */
+export const IVA_OPCIONES = [0, 2.5, 5, 10.5, 21, 27];
 
-// ---- Alícuotas de IVA (por ahora fijas; luego se configuran en otra sección) ----
-export const IVA_OPCIONES = [21, 10.5];
+/**
+ * Redondeo del precio de góndola por producto. Se aplica sobre el precio FINAL
+ * con IVA. Vacío en el formulario = heredar el de configuración.
+ */
+export const OPCIONES_REDONDEO_PRECIO = [
+  { valor: 0, label: 'Sin redondeo (con centavos)' },
+  { valor: 1, label: 'Entero más cercano' },
+  { valor: 10, label: 'A $10' },
+  { valor: 50, label: 'A $50' },
+  { valor: 100, label: 'A $100' },
+];
 
 // ---- Comprobantes de compra (Facturación) ----
 export const TIPOS_COMPROBANTE = {

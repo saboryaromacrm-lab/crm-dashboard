@@ -4,7 +4,7 @@ import { useSeccion } from '../hooks/useSeccion.js';
 import { num, fmtFechaHora } from '../domain/format.js';
 import { TIPOS_MOV } from '../domain/constants.js';
 import { sucursalOptions, productoOptions } from '../components/selectOptions.jsx';
-import { Table, PanelHead, MovTag, s } from '../components/ui.jsx';
+import { Table, PanelHead, MovTag, usePaginado, s } from '../components/ui.jsx';
 
 export function HistorialPanel() {
   const { store } = useProductos();
@@ -13,7 +13,7 @@ export function HistorialPanel() {
   const [prodF, setProdF] = useState('');
   const [sucF, setSucF] = useState('');
 
-  const filas = store.state.movimientos
+  const movs = store.state.movimientos
     .slice()
     .sort((a, b) => b.id - a.id)
     .filter((m) => {
@@ -21,9 +21,11 @@ export function HistorialPanel() {
       if (prodF && m.productoId !== parseInt(prodF, 10)) return false;
       if (sucF && m.sucursalId !== parseInt(sucF, 10) && m.sucursalDestinoId !== parseInt(sucF, 10)) return false;
       return true;
-    })
-    .slice(0, 400)
-    .map((m) => {
+    });
+
+  const pag = usePaginado(movs, 'movimientos', `${tipoF}|${prodF}|${sucF}`);
+
+  const filas = pag.visibles.map((m) => {
       const signo = m.signo > 0
         ? <span style={{ color: 'var(--crm-color-success)', fontWeight: 700 }}>+</span>
         : m.signo < 0
@@ -68,6 +70,7 @@ export function HistorialPanel() {
           { h: 'Present.' }, { h: 'Cant.', num: true }, { h: 'Usuario' },
         ]}
         empty="Sin movimientos."
+        pag={pag}
       >
         {filas}
       </Table>

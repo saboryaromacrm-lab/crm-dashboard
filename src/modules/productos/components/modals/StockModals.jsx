@@ -55,7 +55,9 @@ export function CompraModal({ prodId }) {
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Cantidad ({unidad}) <span className={s.req}>*</span></label>
-          <input type="number" min="0" step="0.001" value={cant} placeholder="Ej: 25" onChange={(e) => setCant(e.target.value)} />
+          {/* step="any": decimales libres pero las flechas suben de a 1 (con
+              0.001 el spinner hacía 1 → 1.001). */}
+          <input type="number" min="0" step="any" value={cant} placeholder="Ej: 25" onChange={(e) => setCant(e.target.value)} />
         </div>
         <div className={s.field}>
           <label>Proveedor</label>
@@ -126,9 +128,11 @@ export function VenderModal({ prodId, sucId: sucInit, pre = {} }) {
 
 /* ============================== FRACCIONAR ============================== */
 export function FraccionarModal({ prodId, sucId: sucInit }) {
-  const { store, act, closeModal, sucOperativa } = useProductos();
+  const { store, act, closeModal } = useProductos();
   const prod = store.getProducto(prodId);
-  const [sucId, setSucId] = useState(sucInit || sucOperativa());
+  // Todo se fracciona en la DISTRIBUIDORA (ahí llega la mercadería a granel):
+  // no se elige sucursal. Si la fila que abrió el modal trae otra, se respeta.
+  const sucId = sucInit || store.distribuidora()?.id || store.state.ctx.sucursalId;
   const [cants, setCants] = useState(() => Object.fromEntries(prod.presentaciones.map((pr) => [pr.id, '0'])));
 
   if (prod.tipo !== 'granel') return null;
@@ -154,8 +158,8 @@ export function FraccionarModal({ prodId, sucId: sucInit }) {
       ]}
     >
       <div className={s.field}>
-        <label>Sucursal</label>
-        <select value={sucId} onChange={(e) => setSucId(e.target.value)}>{sucursalOptions(store, false)}</select>
+        <label>Se fracciona en</label>
+        <strong style={{ fontSize: 14 }}>{store.getSucursal(parseInt(sucId, 10))?.nombre ?? '—'}</strong>
       </div>
       <div className={s['mini-label']}>Paquetes a armar por presentación</div>
       <div className={s['pres-list']}>

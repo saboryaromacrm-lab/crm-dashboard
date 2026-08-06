@@ -44,14 +44,23 @@ export function SidebarContent({ collapsed = false, onNavigate }) {
                       <Icon fontSize="small" />
                     </span>
                     {!collapsed && <span className={styles.navLabel}>{item.label}</span>}
+                    {!collapsed && item.badgeCount > 0 && (
+                      <span className={styles.navBadge}>{item.badgeCount}</span>
+                    )}
                   </NavLink>
                 );
+                const tooltipTitle = item.badgeCount > 0
+                  ? `${item.label} (${item.badgeCount} pendiente${item.badgeCount === 1 ? '' : 's'})`
+                  : item.label;
 
                 return (
                   <li key={item.id}>
                     {collapsed ? (
-                      <Tooltip title={item.label} placement="right">
-                        {link}
+                      <Tooltip title={tooltipTitle} placement="right">
+                        <span style={{ position: 'relative', display: 'block' }}>
+                          {link}
+                          {item.badgeCount > 0 && <span className={styles.navBadgeDot} />}
+                        </span>
                       </Tooltip>
                     ) : (
                       link

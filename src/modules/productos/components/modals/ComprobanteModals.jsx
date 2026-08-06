@@ -1,11 +1,32 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFecha, isoDate } from '../../domain/format.js';
 import { TIPOS_COMPROBANTE, ESTADOS_COMPROBANTE, LETRAS_COMPROBANTE, CONDICIONES_PAGO } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
-import { sucursalOptions, productoOptions, presentacionOptions } from '../selectOptions.jsx';
+import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, s } from '../ui.jsx';
+
+const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+/** Tres decimales: los kg de una bolsa vienen con coma (22,68 kg). */
+const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+/** Dos decimales: los importes de dinero. */
+const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+/**
+ * Con qué se le paga a un proveedor. Mismas claves que el enum `medio_pago` de
+ * la base — el que se elige acá viaja al pago que se registra.
+ */
+const MEDIOS_PAGO_COMPRA = {
+  efectivo: 'Efectivo',
+  transferencia: 'Transferencia',
+  cheque: 'Cheque',
+  tarjeta_debito: 'Débito',
+  tarjeta_credito: 'Crédito',
+  otro: 'Otro',
+};
+/** En qué habla el bulto de este producto: kilos (granel) o unidades (entero). */
+const unidadDe = (prod) => (prod?.tipo === 'granel' ? 'kg' : 'u.');
 
 export function ComprobanteTag({ tipo }) {
   const m = TIPOS_COMPROBANTE[tipo] || { label: tipo, tag: 'tag-ajuste' };
@@ -20,9 +41,171 @@ export function comprobanteNro(c) {
   return `${c.letra} ${c.puntoVenta}-${String(c.numero || c.id).padStart(8, '0')}`;
 }
 
+/* ==================================================================== *
+ * Buscador de producto del renglón
+ * ==================================================================== *
+ * Reemplaza al <select>: busca por nombre, código interno o código de barras
+ * SOLO entre los productos del proveedor de la factura. La compra siempre
+ * ingresa el producto BASE (granel en kg, entero en unidades): las
+ * presentaciones son producción propia del fraccionamiento y acá no existen.
+ */
+function BuscadorProducto({ candidatos, proveedorNombre, onElegir, autoFocus }) {
+  const [texto, setTexto] = useState('');
+  const [abierto, setAbierto] = useState(false);
+  const blurTimer = useRef(null);
+
+  const matches = useMemo(() => {
+    const ql = norm(texto);
+    const digitos = texto.replace(/\D/g, '');
+    if (!ql) return candidatos.slice(0, 12);
+    return candidatos.filter((c) =>
+      norm(c.prod.nombre).includes(ql)
+      || (c.prod.codigoPropio && norm(c.prod.codigoPropio).includes(ql))
+      || (digitos.length >= 4 && c.prod.codigoBarras && c.prod.codigoBarras.includes(digitos)),
+    ).slice(0, 12);
+  }, [candidatos, texto]);
+
+  const elegir = (c) => {
+    clearTimeout(blurTimer.current);
+    setTexto('');
+    setAbierto(false);
+    onElegir(c.prod);
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type="search"
+        autoFocus={autoFocus}
+        placeholder="Nombre, código o barras…"
+        value={texto}
+        onChange={(e) => { setTexto(e.target.value); setAbierto(true); }}
+        onFocus={() => setAbierto(true)}
+        // El blur se demora un tick: sin esto, el click en la lista muere
+        // porque el desplegable se desmonta antes de que llegue el click.
+        onBlur={() => { blurTimer.current = setTimeout(() => setAbierto(false), 150); }}
+        // 'Enter' es el nombre estándar; 'Return' aparece en algunos drivers de
+        // teclado. Aceptar los dos no cuesta nada y el escáner de barras
+        // termina cada lectura justamente con esa tecla.
+        onKeyDown={(e) => {
+          if ((e.key === 'Enter' || e.key === 'Return') && matches.length) { e.preventDefault(); elegir(matches[0]); }
+        }}
+      />
+      {abierto && (
+        <div
+          style={{
+            position: 'absolute', zIndex: 30, top: '100%', left: 0, minWidth: '130%',
+            maxHeight: 300, overflowY: 'auto',
+            background: 'var(--crm-color-surface)', border: '1px solid var(--crm-color-border)',
+            borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.18)',
+          }}
+        >
+          {matches.length === 0 ? (
+            <div className={s.hint} style={{ margin: 0, padding: '10px 12px' }}>
+              Sin coincidencias entre los productos de <strong>{proveedorNombre}</strong>. Si es la
+              primera vez que viene con él, sumale el proveedor en el Formato de Compra del
+              producto — o creá el producto con su proveedor.
+            </div>
+          ) : matches.map((c) => (
+            <button
+              key={c.prod.id}
+              type="button"
+              // mousedown gana la carrera contra el blur del input; click queda
+              // de respaldo (elegir es idempotente: dos veces no hace nada raro).
+              onMouseDown={(e) => { e.preventDefault(); elegir(c); }}
+              onClick={() => elegir(c)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                padding: '7px 12px', border: 'none', background: 'none', cursor: 'pointer',
+              }}
+            >
+              <span style={{ flex: 1, minWidth: 0 }}>
+                {c.prod.nombre}
+                <span className={s.hint} style={{ margin: 0, display: 'block' }}>
+                  {c.prod.codigoPropio ? `#${c.prod.codigoPropio}` : ''}
+                  {c.entry?.costo > 0
+                    ? ` · bulto ${num(c.entry.cantidad || 1, 3)} ${unidadDe(c.prod)} · ${money(c.entry.costo)} (${money(c.entry.costo / (c.entry.cantidad || 1))}/${unidadDe(c.prod)})`
+                    : ' · sin costo cargado'}
+                </span>
+              </span>
+              {c.esActivo
+                ? <span className={cx(s.badge, s['badge-entero'])}>activo</span>
+                : <span className={s.hint} style={{ margin: 0 }}>activo: {c.activoNombre}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ============================== NUEVO COMPROBANTE ============================== */
+
+const PASOS_WIZARD = ['Datos del comprobante', 'Ítems', 'Pago y confirmación'];
+
+/**
+ * Indicador de pasos del asistente. Solo los pasos YA RECORRIDOS son
+ * clickeables: avanzar por acá saltearía las validaciones de "Continuar".
+ */
+function PasosWizard({ paso, irA }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+      {PASOS_WIZARD.map((label, i) => {
+        const n = i + 1;
+        const activo = n === paso;
+        const hecho = n < paso;
+        return (
+          <button
+            key={n}
+            type="button"
+            disabled={!hecho}
+            onClick={hecho ? () => irA(n) : undefined}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+              border: '1px solid ' + (activo ? 'var(--crm-color-primary)' : 'var(--crm-color-border)'),
+              borderRadius: 8, background: activo ? 'var(--crm-color-primary-soft)' : 'var(--crm-color-surface)',
+              cursor: hecho ? 'pointer' : 'default', textAlign: 'left', minWidth: 0,
+            }}
+          >
+            <span
+              style={{
+                width: 22, height: 22, borderRadius: '50%', display: 'inline-flex', alignItems: 'center',
+                justifyContent: 'center', fontSize: 12, fontWeight: 700, flex: 'none',
+                background: activo || hecho ? 'var(--crm-color-primary)' : 'var(--crm-color-border)',
+                color: activo || hecho ? 'var(--crm-color-primary-contrast)' : 'var(--crm-color-text-secondary)',
+              }}
+            >
+              {hecho ? '✓' : n}
+            </span>
+            <span
+              style={{
+                fontSize: 12.5, fontWeight: activo ? 700 : 500, minWidth: 0,
+                color: activo ? 'var(--crm-color-text)' : 'var(--crm-color-text-secondary)',
+              }}
+            >
+              {label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
-  const { store, act, closeModal, toast, sucOperativa } = useProductos();
+  const { store, closeModal, toast, sucOperativa } = useProductos();
+
+  /**
+   * El alta es un asistente de TRES pasos: datos del comprobante → ítems →
+   * pago. El proveedor se elige solo en el paso 1: al pasar a los ítems ya es
+   * un hecho de la factura. Antes se podía cambiar con renglones cargados y
+   * los productos del proveedor anterior quedaban colgados en la factura del
+   * nuevo.
+   */
+  const [paso, setPaso] = useState(1);
+  // Abierto desde la ficha del proveedor (Operaciones): el comprobante ES de
+  // ese proveedor — se muestra, pero no se puede cambiar.
+  const provFijo = !!proveedorId;
 
   const [tipo, setTipo] = useState(tipoInit || 'factura');
   const [letra, setLetra] = useState('A');
@@ -32,13 +215,103 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
   const [fechaCarga, setFechaCarga] = useState(isoDate(new Date()));
   const [provId, setProvId] = useState(proveedorId || store.state.proveedores[0]?.id || '');
   const [sucId, setSucId] = useState(sucOperativa() ?? '');
-  const [condicionPago, setCondicionPago] = useState('cuenta_corriente');
   const [recepcion, setRecepcion] = useState(false);
   const [venc, setVenc] = useState('');
   const [obs, setObs] = useState('');
-  const [items, setItems] = useState(() => [nuevoItem(store, proveedorId)]);
+  // El renglón nace VACÍO: preseleccionar el primer producto del catálogo era
+  // una bomba silenciosa (un "+ ítem" distraído registraba harina en la
+  // factura de gaseosas). El ítem sin producto no viaja al guardar.
+  const [items, setItems] = useState(() => [nuevoItem()]);
+  const [busquedaLote, setBusquedaLote] = useState(false);
 
   const permiteRecepcion = tipo === 'factura' || tipo === 'remito';
+  const provElegido = store.getProveedor(parseInt(provId, 10));
+
+  /**
+   * Pagos A CUENTA del proveedor (los que la cajera hizo desde la sucursal
+   * cuando llegó el pedido). Se avisan acá, mientras se carga la factura, y al
+   * registrarla se ofrece tomarlos — sin este puente, la plata queda esperando
+   * en la bandeja hasta que alguien se acuerde.
+   */
+  const [pagosACuenta, setPagosACuenta] = useState([]);
+  useEffect(() => {
+    let vivo = true;
+    const pid = parseInt(provId, 10);
+    if (!pid) { setPagosACuenta([]); return undefined; }
+    store.pagosDisponibles(pid)
+      .then((r) => { if (vivo) setPagosACuenta(Array.isArray(r) ? r : []); })
+      .catch(() => { if (vivo) setPagosACuenta([]); });
+    return () => { vivo = false; };
+  }, [store, provId]);
+  const aCuenta = pagosACuenta.reduce((a, x) => a + x.saldo, 0);
+
+  /* ---------------- Cómo se paga ---------------- */
+
+  /** Cuánto se toma de cada pago de sucursal: { [pagoId]: '16575' } */
+  const [tomados, setTomados] = useState({});
+  /** El resto que se paga en el acto: '' = nada, queda en cuenta corriente. */
+  const [pagarAhora, setPagarAhora] = useState('');
+  const [medioPago, setMedioPago] = useState('efectivo');
+  /** '' = plata de administración (sin caja); si no, el id del turno abierto. */
+  const [origenPago, setOrigenPago] = useState('');
+  const [refPago, setRefPago] = useState('');
+
+  /** Turno abierto en la sucursal de recepción: la única caja de la que puede salir. */
+  const [turno, setTurno] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    const sid = parseInt(sucId, 10);
+    if (!sid) { setTurno(null); return undefined; }
+    store.cajaAbierta(sid)
+      .then((r) => { if (vivo) setTurno(r && r.estado === 'abierta' ? r : null); })
+      .catch(() => { if (vivo) setTurno(null); });
+    return () => { vivo = false; };
+  }, [store, sucId]);
+  // Si la caja elegida deja de existir (cambió la sucursal), no queda apuntando
+  // a un turno de otra sucursal.
+  useEffect(() => {
+    if (origenPago && (!turno || String(turno.id) !== origenPago)) setOrigenPago('');
+  }, [turno, origenPago]);
+
+  /**
+   * El universo del buscador: los productos RELACIONADOS con el proveedor de
+   * la factura (tienen formato de compra con él), sin importar quién esté
+   * activo — que el activo sea otro no significa que este no entregue más.
+   * Cada candidato lleva su entrada (para precargar el costo DE ESTE
+   * proveedor) y su activo actual (para mostrarlo y poder cambiarlo).
+   */
+  const candidatos = useMemo(() => {
+    const pid = parseInt(provId, 10);
+    if (!pid) return [];
+    return store.state.productos
+      .filter((p) => (p.formatosCompra || []).some((e) => e.proveedorId === pid))
+      .map((p) => {
+        const activo = store.formatoActivo(p);
+        return {
+          prod: p,
+          entry: (p.formatosCompra || []).find((e) => e.proveedorId === pid),
+          esActivo: activo?.proveedorId === pid,
+          activoNombre: store.getProveedor(activo?.proveedorId)?.nombre || '—',
+        };
+      })
+      .sort((a, b) => a.prod.nombre.localeCompare(b.prod.nombre));
+  }, [store, provId]);
+
+  /**
+   * Cambiar el proveedor invalida todo lo cargado PARA el anterior: renglones,
+   * costos a actualizar y pagos tomados hablaban de otro padrón. Se vuelve a
+   * empezar con ítems vacíos — por eso el campo vive en el paso 1: para cuando
+   * se cargan productos, el proveedor ya es un hecho.
+   */
+  const onProveedor = (valor) => {
+    if (valor === provId) return;
+    setProvId(valor);
+    setItems([nuevoItem()]);
+    setTomados({});
+    setPagarAhora('');
+    setCostosOmitidos(new Set());
+    setActivarIds(new Set());
+  };
 
   /** Cuánto se demoró en cargarse el comprobante. Null si alguna fecha falta. */
   const diasAtraso = fecha && fechaCarga
@@ -47,26 +320,111 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
 
   const setItem = (i, patch) => setItems((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)));
   const delItem = (i) => setItems((r) => r.filter((_, j) => j !== i));
-  const addItem = () => setItems((r) => [...r, nuevoItem(store, provId)]);
+  const addItem = () => setItems((r) => [...r, nuevoItem()]);
 
-  // Al cambiar el producto de una fila: precargar IVA y costo del proveedor elegido.
-  const onProducto = (i, prodVal) => {
-    const prod = store.getProducto(parseInt(prodVal, 10));
-    const entry = prod && (prod.proveedores || []).find((e) => e.proveedorId === parseInt(provId, 10));
+  // Al elegir el producto: precarga IVA, el costo DE ESTE proveedor (no el del
+  // activo) y el tamaño de su bulto. Se carga en BULTOS: "llegaron 2 bolsas".
+  const onProducto = (i, prod) => {
+    const entry = (prod.formatosCompra || []).find((e) => e.proveedorId === parseInt(provId, 10));
     setItem(i, {
-      productoId: prodVal, presId: '',
-      iva: prod ? String(prod.iva ?? 21) : '21',
-      costoUnitario: entry ? String(entry.costo) : '',
+      productoId: String(prod.id),
+      iva: String(prod.iva ?? 21),
+      costoBulto: entry ? String(entry.costo) : '',
+      porBulto: entry ? String(entry.cantidad || 1) : (prod.tipo === 'entero' ? String(prod.unidadesPorBulto || 1) : '1'),
+      costoAuto: true,
     });
   };
 
+  /** Ingreso en lote desde el buscador masivo: un renglón por producto tildado. */
+  const agregarLote = (elegidos) => {
+    setItems((rows) => {
+      const vivos = rows.filter((r) => r.productoId);
+      const nuevos = elegidos.map((c) => ({
+        productoId: String(c.prod.id),
+        bultos: '1',
+        porBulto: c.entry ? String(c.entry.cantidad || 1) : '1',
+        costoBulto: c.entry ? String(c.entry.costo) : '',
+        descuento: '0',
+        iva: String(c.prod.iva ?? 21),
+        costoAuto: true,
+      }));
+      return [...vivos, ...nuevos];
+    });
+    setBusquedaLote(false);
+    toast(`${elegidos.length} producto(s) agregados a la factura.`, 'ok');
+  };
+
+  /**
+   * La cuenta del renglón. Todo sale de tres números que hablan como la
+   * factura: bultos × tamaño del bulto × costo del bulto. De ahí derivan los
+   * kg (o unidades) totales que entran al stock y el costo unitario ($/kg)
+   * que alimenta el catálogo.
+   */
   const calcRow = (it) => {
-    const cantidad = Number(it.cantidad) || 0, costo = Number(it.costoUnitario) || 0, desc = Number(it.descuento) || 0;
-    const neto = cantidad * costo * (1 - desc / 100);
-    return { neto, iva: neto * (Number(it.iva) || 0) / 100 };
+    const bultos = Number(it.bultos) || 0;
+    const porBulto = Number(it.porBulto) || 0;
+    const costoBulto = Number(it.costoBulto) || 0;
+    const desc = Number(it.descuento) || 0;
+    const cantidadTotal = r3(bultos * porBulto);
+    const costoUnitario = porBulto > 0 ? costoBulto / porBulto : 0;
+    const neto = bultos * costoBulto * (1 - desc / 100);
+    return { cantidadTotal, costoUnitario, neto, iva: neto * (Number(it.iva) || 0) / 100 };
   };
   const tot = items.reduce((acc, it) => { const r = calcRow(it); acc.neto += r.neto; acc.iva += r.iva; return acc; }, { neto: 0, iva: 0 });
   const total = tot.neto + tot.iva;
+
+  /* ---------------- Cuánto queda debiéndose ---------------- */
+
+  /**
+   * Solo la factura y la nota de débito generan deuda; el remito y la orden de
+   * compra no se pagan, y la nota de crédito RESTA deuda. Pagar cualquiera de
+   * esos no significaría nada.
+   */
+  const generaDeuda = tipo === 'factura' || tipo === 'nota_debito';
+  const totalTomado = useMemo(
+    () => Object.values(tomados).reduce((a, v) => a + (Number(v) || 0), 0),
+    [tomados],
+  );
+  const ahora = Number(pagarAhora) || 0;
+  const saldoFinal = r2(total - totalTomado - ahora);
+  /**
+   * La condición de pago se DERIVA del saldo en vez de ser un selector aparte:
+   * antes se podía marcar "contado" sin registrar un solo peso y la factura
+   * figuraba como deuda igual. Un dato que puede contradecir a los otros
+   * termina mintiendo.
+   */
+  const condicionPago = generaDeuda && saldoFinal > 0.009 ? 'cuenta_corriente' : 'contado';
+
+  /**
+   * Solo se ofrecen los pagos de LA SUCURSAL DE RECEPCIÓN de esta factura: la
+   * plata que salió de la caja de Express 2 explica mercadería que entró en
+   * Express 2 — mezclar las bandejas de todas las sucursales invitaba a aplicar
+   * el pago equivocado. Los de otras sucursales se avisan aparte: se toman
+   * cargando la factura que corresponde a esa sucursal.
+   */
+  const pagosOfrecidos = useMemo(() => {
+    const sid = parseInt(sucId, 10);
+    const lista = sid ? pagosACuenta.filter((p) => p.sucursalId === sid) : pagosACuenta;
+    return [...lista].sort((a, b) => new Date(a.fecha) - new Date(b.fecha) || a.id - b.id);
+  }, [pagosACuenta, sucId]);
+  const aCuentaSuc = pagosOfrecidos.reduce((a, x) => a + x.saldo, 0);
+  const aCuentaOtras = r2(aCuenta - aCuentaSuc);
+
+  /**
+   * Tomar un pago es una DECISIÓN, no un default: a veces la factura que se
+   * está cargando se pagó por otro lado (transferencia del jueves) y el pago
+   * de caja que espera es de OTRA factura (la del martes). Al tildar se
+   * sugiere el importe que falta cubrir; se puede corregir a mano.
+   */
+  const toggleTomar = (p) => setTomados((m) => {
+    if (m[p.id] != null) {
+      const { [p.id]: _, ...resto } = m;
+      return resto;
+    }
+    const yaTomado = Object.values(m).reduce((a, v) => a + (Number(v) || 0), 0);
+    const falta = Math.max(0, r2(total - yaTomado - (Number(pagarAhora) || 0)));
+    return { ...m, [p.id]: String(r2(Math.min(falta, p.saldo))) };
+  });
 
   /**
    * DIFERENCIAS DE COSTO
@@ -75,6 +433,10 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
    * coincide con el costo cargado y nadie lo actualiza, el catálogo se queda
    * viejo en silencio y se vende con el margen equivocado. Se compara acá
    * mismo, en memoria, y se ofrece actualizar en la misma operación.
+   *
+   * La comparación es POR UNIDAD ($/kg o $/u.), no por bulto: comparar bolsas
+   * de distinto tamaño por precio de bolsa miente — $50.000 la de 25 kg contra
+   * $42.000 la de 20 kg parece una baja, pero es $2.000/kg vs $2.100/kg.
    */
   const impacto = useMemo(() => {
     const pid = parseInt(provId, 10);
@@ -83,19 +445,24 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
     const out = [];
     for (const it of items) {
       const prodId = parseInt(it.productoId, 10);
-      const costo = Number(it.costoUnitario) || 0;
+      const porBulto = Number(it.porBulto) || 0;
+      const costoBulto = Number(it.costoBulto) || 0;
+      const costo = porBulto > 0 ? costoBulto / porBulto : 0; // $/kg o $/u.
       if (!prodId || vistos.has(prodId)) continue;
       const prod = store.getProducto(prodId);
       if (!prod) continue;
       vistos.add(prodId);
 
-      const entry = (prod.proveedores || []).find((e) => e.proveedorId === pid) || null;
-      const costoCargado = entry ? entry.costo : null;
+      const entry = (prod.formatosCompra || []).find((e) => e.proveedorId === pid) || null;
+      const costoCargado = entry ? entry.costo / Math.max(entry.cantidad || 1, 1e-9) : null;
       const dif = costoCargado != null && costo > 0 ? costo - costoCargado : 0;
       // Medio punto de tolerancia: no vale molestar por un redondeo.
       const difRelevante = costoCargado != null && costo > 0
         && Math.abs(dif) >= 0.005
         && (costoCargado <= 0 || Math.abs(dif / costoCargado) >= 0.005);
+      // El bulto también cambió: viaja junto con el costo aunque el $/kg dé igual.
+      const bultoCambio = !!entry && porBulto > 0
+        && Math.abs(porBulto - (entry.cantidad || 1)) > 0.0005;
       const variacion = difRelevante && costoCargado > 0 ? (costo / costoCargado - 1) * 100 : null;
 
       // Heurística: si la diferencia es casi exactamente una alícuota de IVA, lo
@@ -109,13 +476,17 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
         prod,
         entry,
         iva: prod.iva,
+        unidad: unidadDe(prod),
         costoCargado,
         costoFacturado: costo,
-        difRelevante,
+        bultoFacturado: porBulto,
+        costoBultoFacturado: costoBulto,
+        bultoCambio,
+        difRelevante: difRelevante || bultoCambio,
         variacion,
         pareceIva,
-        esActivo: prod.proveedorActivoId === pid,
-        activoNombre: store.getProveedor(prod.proveedorActivoId)?.nombre || '—',
+        esActivo: store.formatoActivo(prod)?.proveedorId === pid,
+        activoNombre: store.getProveedor(store.formatoActivo(prod)?.proveedorId)?.nombre || '—',
       });
     }
     return out;
@@ -149,41 +520,118 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
     const seraActivo = d.esActivo || activarIds.has(d.productoId);
     if (!seraActivo) return null;
     const usaCosto = d.difRelevante && !costosOmitidos.has(d.productoId);
-    const base = d.entry || { costo: 0, descuento: 0, flete: 0 };
-    const cn = store.costoNetoEntry({ ...base, costo: usaCosto || !d.entry ? d.costoFacturado : base.costo });
-    const ganancia = (d.prod.listasPrecio || [])[0]?.ganancia || 0;
+    const base = d.entry || { costo: 0, descuento: 0, flete: 0, cantidad: 1 };
+    // Costo y tamaño del bulto van JUNTOS: proyectar el precio de la bolsa
+    // nueva con los kilos de la vieja daría un $/kg — y una góndola — falsos.
+    const cn = store.costoNetoEntry(usaCosto || !d.entry
+      ? { ...base, costo: d.costoBultoFacturado, cantidad: d.bultoFacturado || 1 }
+      : base);
+    // Markup equivalente del piso: proyecta la góndola con el costo facturado.
+    const cnHoy = store.costoNeto(d.prod);
+    const ganancia = cnHoy > 0 ? (store.precioBaseVenta(d.prod) / cnHoy - 1) * 100 : 0;
     return store.precioFinal(cn * (1 + ganancia / 100), d.iva);
   };
 
-  const guardar = () => {
+  const guardar = async () => {
     const parsed = items
-      .filter((it) => it.productoId && Number(it.cantidad) > 0)
-      .map((it) => ({
-        productoId: parseInt(it.productoId, 10), presentacionId: it.presId ? parseInt(it.presId, 10) : null,
-        cantidad: it.cantidad, costoUnitario: it.costoUnitario, descuento: it.descuento, iva: it.iva,
-      }));
-    if (!parsed.length) { toast('Agregá al menos un ítem con cantidad.', 'err'); return; }
-    act(store.crearComprobante({
+      .filter((it) => it.productoId && Number(it.bultos) > 0 && Number(it.porBulto) > 0)
+      .map((it) => {
+        const r = calcRow(it);
+        return {
+          // La compra ingresa siempre el producto BASE: las presentaciones son
+          // producción del fraccionamiento, no algo que un proveedor entregue.
+          // El stock recibe los kg (o unidades) TOTALES; el costo viaja unitario.
+          productoId: parseInt(it.productoId, 10), presentacionId: null,
+          cantidad: r.cantidadTotal, costoUnitario: r.costoUnitario, descuento: it.descuento, iva: it.iva,
+        };
+      });
+    if (!parsed.length) { toast('Agregá al menos un ítem con bultos y tamaño de bulto.', 'err'); return; }
+
+    // No se puede pagar más de lo que dice la factura: sería inventar plata.
+    if (generaDeuda && saldoFinal < -0.009) {
+      toast(`Estás pagando ${money(Math.abs(saldoFinal))} más de lo que dice el comprobante.`, 'err');
+      return;
+    }
+    const tomarPagos = generaDeuda
+      ? Object.entries(tomados)
+        .map(([pagoId, v]) => ({ pagoId: Number(pagoId), importe: r2(v) }))
+        .filter((x) => x.importe > 0.009)
+      : [];
+
+    const res = await store.crearComprobante({
       tipo, letra, puntoVenta, numero, fecha, fechaCarga, proveedorId: parseInt(provId, 10),
       sucursalId: sucId ? parseInt(sucId, 10) : null, condicionPago, recepcion: permiteRecepcion && recepcion,
       vencimientoPago: venc || null, observaciones: obs.trim(), items: parsed,
-      actualizarCostos: costosAActualizar.map((d) => ({ productoId: d.productoId, costo: d.costoFacturado })),
+      // Costo del bulto y tamaño del bulto viajan JUNTOS: son un solo hecho
+      // ("la bolsa de 20 kg sale $40.000") y por separado el $/kg mentiría.
+      actualizarCostos: costosAActualizar.map((d) => ({
+        productoId: d.productoId, costo: d.costoBultoFacturado, cantidad: d.bultoFacturado,
+      })),
       activarProveedor: aActivar.map((d) => d.productoId),
-    }), costosAActualizar.length || aActivar.length
-      ? `Comprobante registrado · ${costosAActualizar.length} costo(s) y ${aActivar.length} activo(s) actualizado(s).`
-      : 'Comprobante registrado.');
+      /*
+       * El pago viaja CON el comprobante: aplicar un pago de sucursal es parte
+       * de cargar la factura, no una acción suelta en otra pantalla.
+       */
+      tomarPagos,
+      pagoContado: generaDeuda && ahora > 0
+        ? {
+          importe: r2(ahora),
+          medio: medioPago,
+          cajaSesionId: origenPago ? Number(origenPago) : undefined,
+          referencia: refPago.trim() || undefined,
+        }
+        : undefined,
+    });
+    if (!res.ok) { toast(res.error || 'No se pudo registrar el comprobante.', 'err'); return; }
+
+    const partes = [];
+    if (costosAActualizar.length) partes.push(`${costosAActualizar.length} costo(s)`);
+    if (aActivar.length) partes.push(`${aActivar.length} activo(s)`);
+    if (tomarPagos.length) partes.push(`${tomarPagos.length} pago(s) de sucursal aplicado(s)`);
+    if (ahora > 0) partes.push(`${money(ahora)} pagados`);
+    toast(partes.length ? `Comprobante registrado · ${partes.join(' · ')}.` : 'Comprobante registrado.', 'ok');
+    closeModal();
   };
 
+  /** Renglones completos: con producto, bultos y tamaño de bulto. */
+  const itemsValidos = items.filter((it) => it.productoId && Number(it.bultos) > 0 && Number(it.porBulto) > 0).length;
+
+  const continuar = () => {
+    if (paso === 1) {
+      if (!parseInt(provId, 10)) { toast('Elegí el proveedor del comprobante.', 'err'); return; }
+      setPaso(2);
+    } else if (paso === 2) {
+      if (!itemsValidos) { toast('Agregá al menos un ítem con bultos y tamaño de bulto.', 'err'); return; }
+      setPaso(3);
+    }
+  };
+
+  const footer = paso < 3
+    ? [
+      paso === 1
+        ? { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal }
+        : { texto: 'Volver', clase: 'btn-ghost', onClick: () => setPaso(paso - 1) },
+      { texto: 'Continuar', clase: 'btn-primary', onClick: continuar },
+    ]
+    : [
+      { texto: 'Volver', clase: 'btn-ghost', onClick: () => setPaso(2) },
+      { texto: 'Registrar', clase: 'btn-primary', onClick: guardar },
+    ];
+
   return (
-    <ModalShell
-      title="Nuevo comprobante de compra"
-      wide
-      onClose={closeModal}
-      footer={[
-        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Registrar', clase: 'btn-primary', onClick: guardar },
-      ]}
-    >
+    <>
+      <ModalShell
+        title="Nuevo comprobante de compra"
+        subtitle={`Paso ${paso} de 3 · ${PASOS_WIZARD[paso - 1]}`}
+        wide
+        onClose={closeModal}
+        footer={footer}
+      >
+      <PasosWizard paso={paso} irA={setPaso} />
+
+      {/* ==================== PASO 1 · DATOS DEL COMPROBANTE ==================== */}
+      {paso === 1 && (
+      <>
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Tipo <span className={s.req}>*</span></label>
@@ -193,7 +641,16 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
         </div>
         <div className={s.field}>
           <label>Proveedor <span className={s.req}>*</span></label>
-          <select value={provId} onChange={(e) => setProvId(e.target.value)}>{productoProveedorOptions(store)}</select>
+          {provFijo ? (
+            <>
+              <input value={provElegido?.nombre || '—'} readOnly tabIndex={-1} />
+              <div className={s.hint} style={{ margin: '6px 0 0' }}>
+                Abierto desde la ficha del proveedor: el comprobante es de él.
+              </div>
+            </>
+          ) : (
+            <select value={provId} onChange={(e) => onProveedor(e.target.value)}>{productoProveedorOptions(store)}</select>
+          )}
         </div>
       </div>
 
@@ -237,24 +694,16 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
         </div>
       </div>
 
-      <div className={s['form-grid']}>
-        <div className={s.field}>
-          <label>Condición de pago</label>
-          <select value={condicionPago} onChange={(e) => setCondicionPago(e.target.value)}>
-            {Object.keys(CONDICIONES_PAGO).map((k) => <option key={k} value={k}>{CONDICIONES_PAGO[k]}</option>)}
-          </select>
-        </div>
-        <div className={s.field}>
-          <label>Vencimiento de pago</label>
-          <input type="date" value={venc} onChange={(e) => setVenc(e.target.value)} />
-        </div>
-      </div>
 
       {permiteRecepcion && (
         <div className={s['form-grid']}>
           <div className={s.field}>
             <label>Sucursal de recepción</label>
-            <select value={sucId} onChange={(e) => setSucId(e.target.value)}>{sucursalOptions(store, false)}</select>
+            {/* Cambia la sucursal → cambia la bandeja de pagos que se ofrece
+                en el paso 3: lo tildado hablaba de otra sucursal. */}
+            <select value={sucId} onChange={(e) => { setSucId(e.target.value); setTomados({}); }}>
+              {sucursalOptions(store, false)}
+            </select>
           </div>
           <label className={s['granel-toggle']} style={{ alignSelf: 'end' }}>
             <input type="checkbox" checked={recepcion} onChange={(e) => setRecepcion(e.target.checked)} />
@@ -266,31 +715,103 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
         </div>
       )}
 
+      {aCuenta > 0.009 && (
+        <div className={cx(s.callout, s.ok)}>
+          <strong>{provElegido?.nombre || 'Este proveedor'}</strong> tiene{' '}
+          <strong>{money(aCuenta)}</strong> pagados desde sucursal esperando factura
+          ({pagosACuenta.length} pago{pagosACuenta.length === 1 ? '' : 's'}).
+          {tipo === 'factura' || tipo === 'nota_debito'
+            ? ' En el paso de pago vas a poder tomarlos.'
+            : ' Al registrar una factura vas a poder tomarlos.'}
+        </div>
+      )}
+      </>
+      )}
+
+      {/* ==================== PASO 2 · ÍTEMS ==================== */}
+      {paso === 2 && (
+      <>
       <div className={s['section-title']}>Ítems</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr .8fr .9fr .7fr .7fr 1fr auto', gap: 8, marginBottom: 6 }}>
-        {['Producto', 'Present.', 'Cant.', 'Costo u.', 'Desc%', 'IVA%', 'Subtotal', ''].map((h, i) => (
+      <div className={s.hint} style={{ marginTop: 0 }}>
+        El buscador ofrece los productos de <strong>{provElegido?.nombre || 'este proveedor'}</strong> por
+        nombre, código interno o código de barras. Se carga <strong>en bultos</strong>, como habla la
+        factura: llegaron 2 bolsas de 25 kg → Bultos 2, y el sistema ingresa los 50 kg. El tamaño
+        del bulto viene precargado y se corrige solo si esta entrega vino distinta.
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr .6fr .8fr .9fr .6fr .6fr 1fr auto', gap: 8, marginBottom: 6 }}>
+        {['Producto', 'Bultos', 'Por bulto', 'Costo bulto', 'Desc%', 'IVA%', 'Subtotal', ''].map((h, i) => (
           <div key={i} className={s['mini-label']}>{h}</div>
         ))}
       </div>
       {items.map((it, i) => {
         const prod = it.productoId ? store.getProducto(parseInt(it.productoId, 10)) : null;
         const r = calcRow(it);
+        const activo = prod ? store.formatoActivo(prod) : null;
+        const pid = parseInt(provId, 10);
+        const u = unidadDe(prod);
         return (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr .8fr .9fr .7fr .7fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-            <select value={it.productoId} onChange={(e) => onProducto(i, e.target.value)}>{productoOptions(store, false)}</select>
-            <select value={it.presId} onChange={(e) => setItem(i, { presId: e.target.value })} disabled={!prod || prod.tipo !== 'granel'}>
-              {prod ? presentacionOptions(prod, true) : <option value="">—</option>}
-            </select>
-            <input type="number" min="0" step="0.001" value={it.cantidad} onChange={(e) => setItem(i, { cantidad: e.target.value })} />
-            <input type="number" min="0" step="0.01" value={it.costoUnitario} onChange={(e) => setItem(i, { costoUnitario: e.target.value })} />
-            <input type="number" min="0" step="0.1" value={it.descuento} onChange={(e) => setItem(i, { descuento: e.target.value })} />
-            <input type="number" min="0" step="0.1" value={it.iva} onChange={(e) => setItem(i, { iva: e.target.value })} />
-            <div className={cx(s.mono, s.num)} style={{ fontWeight: 700 }}>{money(r.neto)}</div>
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr .6fr .8fr .9fr .6fr .6fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'start' }}>
+            {prod ? (
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ flex: 1, minWidth: 0, fontWeight: 600 }}>{prod.nombre}</span>
+                  <button
+                    type="button" className={s['pres-remove']} title="Cambiar producto"
+                    onClick={() => setItem(i, { productoId: '', costoBulto: '', costoAuto: true })}
+                  >×</button>
+                </div>
+                <div className={s.hint} style={{ margin: 0 }}>
+                  {activo?.proveedorId === pid
+                    ? 'activo con este proveedor'
+                    : `activo: ${store.getProveedor(activo?.proveedorId)?.nombre || 'sin activo'}`}
+                </div>
+                {/* La cuenta a la vista: total que entra al stock y $/kg real. */}
+                {r.cantidadTotal > 0 && (
+                  <div className={s.hint} style={{ margin: 0 }}>
+                    <strong>{num(r.cantidadTotal, 3)} {u}</strong>
+                    {r.costoUnitario > 0 && <> · <strong>{money(r.costoUnitario)}/{u.replace('.', '')}</strong></>}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <BuscadorProducto
+                candidatos={candidatos}
+                proveedorNombre={provElegido?.nombre || 'este proveedor'}
+                onElegir={(p) => onProducto(i, p)}
+                autoFocus={i > 0}
+              />
+            )}
+            <input
+              type="number" min="0" step="any" value={it.bultos}
+              title="Cuántos bultos llegaron"
+              onChange={(e) => setItem(i, { bultos: e.target.value })}
+            />
+            <div>
+              <input
+                type="number" min="0" step="any" value={it.porBulto}
+                title={prod ? `${u === 'kg' ? 'Kg' : 'Unidades'} por bulto de esta entrega` : 'Kg o unidades por bulto'}
+                onChange={(e) => setItem(i, { porBulto: e.target.value })}
+              />
+              {prod && <div className={s.hint} style={{ margin: 0, textAlign: 'center' }}>{u}/bulto</div>}
+            </div>
+            <input
+              type="number" min="0" step="any" value={it.costoBulto}
+              title="Costo del bulto, como figura en la factura"
+              onChange={(e) => setItem(i, { costoBulto: e.target.value, costoAuto: false })}
+            />
+            <input type="number" min="0" step="any" value={it.descuento} onChange={(e) => setItem(i, { descuento: e.target.value })} />
+            <input type="number" min="0" step="any" value={it.iva} onChange={(e) => setItem(i, { iva: e.target.value })} />
+            <div className={cx(s.mono, s.num)} style={{ fontWeight: 700, alignSelf: 'center' }}>{money(r.neto)}</div>
             <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>
           </div>
         );
       })}
-      <button type="button" className={cx(s.btn, s['btn-ghost'], s['btn-sm'])} onClick={addItem}>+ Agregar ítem</button>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button" className={cx(s.btn, s['btn-ghost'], s['btn-sm'])} onClick={addItem}>+ Agregar ítem</button>
+        <button type="button" className={cx(s.btn, s['btn-ghost'], s['btn-sm'])} onClick={() => setBusquedaLote(true)}>
+          Buscar en lote (marca / categoría)
+        </button>
+      </div>
 
       {/*
         IMPACTO EN PRECIOS. Las dos decisiones que mueven la góndola, juntas y
@@ -317,7 +838,7 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
           <Table
             cols={[
               { h: 'Actualizar costo' }, { h: 'Producto' },
-              { h: 'Costo cargado', num: true }, { h: 'Facturado', num: true }, { h: 'Var.', num: true },
+              { h: 'Cargado (unit.)', num: true }, { h: 'Facturado (unit.)', num: true }, { h: 'Var.', num: true },
               { h: 'Proveedor activo' }, { h: 'Precio góndola', num: true },
             ]}
           >
@@ -340,9 +861,23 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
                       />
                     ) : <span className={s.muted}>sin cambio</span>}
                   </td>
-                  <td>{d.nombre}</td>
-                  <td className={s.num}>{d.costoCargado == null ? <span className={s.muted}>nuevo</span> : money(d.costoCargado)}</td>
-                  <td className={s.num}><strong>{money(d.costoFacturado)}</strong></td>
+                  <td>
+                    {d.nombre}
+                    {/* El bulto cambió de tamaño: el dato viaja junto al costo. */}
+                    {d.bultoCambio && (
+                      <div className={s.hint} style={{ margin: 0 }}>
+                        bulto: {num(d.entry?.cantidad || 1, 3)} → {num(d.bultoFacturado, 3)} {d.unidad}
+                      </div>
+                    )}
+                  </td>
+                  <td className={s.num}>
+                    {d.costoCargado == null
+                      ? <span className={s.muted}>nuevo</span>
+                      : <>{money(d.costoCargado)}<span className={s.muted}>/{d.unidad.replace('.', '')}</span></>}
+                  </td>
+                  <td className={s.num}>
+                    <strong>{money(d.costoFacturado)}</strong><span className={s.muted}>/{d.unidad.replace('.', '')}</span>
+                  </td>
                   <td className={s.num}>
                     {d.variacion == null ? '—' : (
                       <strong style={{ color: subio ? 'var(--crm-color-danger)' : 'var(--crm-color-success)' }}>
@@ -391,39 +926,376 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
         </>
       )}
 
-      <div className={s.field} style={{ marginTop: 14 }}>
-        <label>Observaciones</label>
-        <textarea rows="2" value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Referencia, remito asociado, etc." />
-      </div>
-
+      {/* La cuenta del paso: lo que suman los renglones cargados. */}
       <div className={cx(s.callout, s.ok)} style={{ display: 'flex', justifyContent: 'flex-end', gap: 24 }}>
         <span>Neto: <strong>{money(tot.neto)}</strong></span>
         <span>IVA: <strong>{money(tot.iva)}</strong></span>
         <span>Total: <strong>{money(total)}</strong></span>
       </div>
-    </ModalShell>
+      </>
+      )}
+
+      {/* ==================== PASO 3 · PAGO Y CONFIRMACIÓN ==================== */}
+      {paso === 3 && (
+      <>
+      {/* La foto de lo que se está por registrar: el pago se decide contra
+          este total — tenerlo a la vista evita volver a los ítems. */}
+      <div
+        className={cx(s.callout, s.ok)}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 16, flexWrap: 'wrap' }}
+      >
+        <span>
+          <strong>{TIPOS_COMPROBANTE[tipo]?.label || tipo} {letra} {puntoVenta}-{numero || 'auto'}</strong>
+          {' · '}{provElegido?.nombre || '—'} · {itemsValidos} ítem{itemsValidos === 1 ? '' : 's'}
+        </span>
+        <span style={{ display: 'flex', gap: 18 }}>
+          <span>Neto: <strong>{money(tot.neto)}</strong></span>
+          <span>IVA: <strong>{money(tot.iva)}</strong></span>
+          <span>Total: <strong style={{ fontSize: 16 }}>{money(total)}</strong></span>
+        </span>
+      </div>
+
+      {!generaDeuda && (
+        <div className={cx(s.callout, s.info)}>
+          {TIPOS_COMPROBANTE[tipo]?.label || 'Este comprobante'} no genera deuda: no hay nada que
+          pagar. Revisá el resumen y registrá.
+        </div>
+      )}
+
+      {/* ==================== CÓMO SE PAGA ==================== */}
+      {generaDeuda && total > 0 && (
+        <>
+          <div className={s['section-title']}>Cómo se paga</div>
+
+          {pagosOfrecidos.length > 0 && (
+            <>
+              <div className={cx(s.callout, s.info)}>
+                {provElegido?.nombre || 'Este proveedor'} tiene <strong>{money(aCuentaSuc)}</strong> pagados
+                desde <strong>{store.getSucursal(parseInt(sucId, 10))?.nombre || 'esta sucursal'}</strong> y
+                sin aplicar. Tildá los que esta factura explica: tomarlos es lo que los{' '}
+                <strong>aplica</strong> — no vuelve a mover plata. Si esta factura se pagó por otro
+                lado, no tildes nada y usá "Se paga ahora".
+              </div>
+              <Table
+                cols={[
+                  { h: 'Tomar' }, { h: 'Pago en sucursal' }, { h: 'Origen' },
+                  { h: 'Disponible', num: true }, { h: 'Importe a tomar', num: true },
+                ]}
+              >
+                {pagosOfrecidos.map((p) => {
+                  const tomado = tomados[p.id] != null;
+                  return (
+                    <tr key={p.id}>
+                      <td style={{ width: 60 }}>
+                        <input
+                          type="checkbox"
+                          checked={tomado}
+                          aria-label={`Tomar el pago del ${fmtFecha(p.fecha)}`}
+                          onChange={() => toggleTomar(p)}
+                        />
+                      </td>
+                      <td>
+                        {fmtFecha(p.fecha)}
+                        {p.concepto && <div className={s.hint} style={{ margin: 0 }}>{p.concepto}</div>}
+                      </td>
+                      <td>
+                        {p.sucursalNombre || <span className={s.muted}>—</span>}
+                        {p.cajaSesionId && (
+                          <div className={s.hint} style={{ margin: 0 }}>
+                            turno #{p.cajaSesionId}{p.usuarioNombre ? ` · ${p.usuarioNombre}` : ''}
+                          </div>
+                        )}
+                      </td>
+                      <td className={s.num}>{money(p.saldo)}</td>
+                      <td className={s.num}>
+                        {tomado ? (
+                          <input
+                            type="number" min="0" step="any" style={{ maxWidth: 130 }}
+                            placeholder="0,00"
+                            value={tomados[p.id]}
+                            onChange={(e) => setTomados((m) => ({ ...m, [p.id]: e.target.value }))}
+                          />
+                        ) : (
+                          <span className={s.muted}>sin tomar</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </Table>
+            </>
+          )}
+
+          {/* Pagos que esperan en OTRAS sucursales: se avisan, no se ofrecen —
+              cada uno se toma cargando la factura de SU sucursal. */}
+          {aCuentaOtras > 0.009 && (
+            <div className={s.hint}>
+              {provElegido?.nombre || 'El proveedor'} tiene además <strong>{money(aCuentaOtras)}</strong> pagados
+              desde otras sucursales. Acá no se ofrecen: se toman cargando la factura cuya
+              sucursal de recepción sea la que pagó.
+            </div>
+          )}
+
+          {/* La cuenta a la vista: total − tomado − lo que se paga ahora. */}
+          <div className={s['form-grid']}>
+            <div className={s.field}>
+              <label>Se paga ahora</label>
+              <input
+                type="number" min="0" step="any"
+                placeholder="0,00 = queda en cuenta corriente"
+                value={pagarAhora}
+                onChange={(e) => setPagarAhora(e.target.value)}
+              />
+              {saldoFinal > 0.009 && totalTomado <= 0.009 && (
+                <button
+                  type="button" className={s.linkBtn} tabIndex={-1}
+                  onClick={() => setPagarAhora(String(r2(total)))}
+                >
+                  Pagar el total
+                </button>
+              )}
+            </div>
+            {ahora > 0 && (
+              <>
+                <div className={s.field}>
+                  <label>Medio</label>
+                  <select value={medioPago} onChange={(e) => setMedioPago(e.target.value)}>
+                    {Object.entries(MEDIOS_PAGO_COMPRA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </div>
+                <div className={s.field}>
+                  <label>¿De dónde sale?</label>
+                  <select value={origenPago} onChange={(e) => setOrigenPago(e.target.value)}>
+                    <option value="">Administración (sin caja)</option>
+                    {turno && <option value={String(turno.id)}>Caja de la sucursal · turno #{turno.id}</option>}
+                  </select>
+                  <div className={s.hint} style={{ margin: '6px 0 0' }}>
+                    {turno
+                      ? 'Con la caja elegida, el egreso queda en ese turno y el arqueo lo muestra.'
+                      : 'No hay turno abierto en esa sucursal: sale de administración y no impacta en ningún arqueo.'}
+                  </div>
+                </div>
+                {medioPago !== 'efectivo' && (
+                  <div className={s.field}>
+                    <label>Referencia</label>
+                    <input
+                      value={refPago}
+                      placeholder="Nº de transferencia, cheque…"
+                      onChange={(e) => setRefPago(e.target.value)}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div
+            className={cx(s.callout, saldoFinal < -0.009 ? s.danger : saldoFinal > 0.009 ? s.warn : s.ok)}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}
+          >
+            <span>
+              Total {money(total)} − tomado {money(totalTomado)} − ahora {money(ahora)}
+            </span>
+            <strong style={{ fontSize: 18 }}>
+              {saldoFinal < -0.009
+                ? `Te pasaste por ${money(Math.abs(saldoFinal))}`
+                : saldoFinal > 0.009
+                  ? `Queda debiendo ${money(saldoFinal)}`
+                  : 'Queda saldada'}
+            </strong>
+          </div>
+        </>
+      )}
+
+      {/* El vencimiento solo tiene sentido si algo queda debiéndose. */}
+      {generaDeuda && saldoFinal > 0.009 && (
+        <div className={s['form-grid']}>
+          <div className={s.field}>
+            <label>Vencimiento de pago</label>
+            <input type="date" value={venc} onChange={(e) => setVenc(e.target.value)} />
+            <div className={s.hint} style={{ margin: '6px 0 0' }}>
+              Para el saldo que queda en cuenta corriente.
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={s.field} style={{ marginTop: 14 }}>
+        <label>Observaciones</label>
+        <textarea rows="2" value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Referencia, remito asociado, etc." />
+      </div>
+      </>
+      )}
+      </ModalShell>
+
+      {/* Montado ENCIMA del formulario, que sigue vivo con lo ya cargado. */}
+      {busquedaLote && (
+        <BusquedaLoteModal
+          candidatos={candidatos}
+          proveedorNombre={provElegido?.nombre || 'este proveedor'}
+          yaCargados={new Set(items.map((it) => parseInt(it.productoId, 10)).filter(Boolean))}
+          onAgregar={agregarLote}
+          onClose={() => setBusquedaLote(false)}
+        />
+      )}
+    </>
   );
 }
 
-function nuevoItem(store, provId) {
-  const prod = store.state.productos[0];
-  const entry = prod && provId ? (prod.proveedores || []).find((e) => e.proveedorId === provId) : null;
-  return {
-    productoId: prod?.id ?? '', presId: '', cantidad: '1',
-    costoUnitario: entry ? String(entry.costo) : '', descuento: '0', iva: prod ? String(prod.iva ?? 21) : '21',
+function nuevoItem() {
+  return { productoId: '', bultos: '1', porBulto: '', costoBulto: '', descuento: '0', iva: '21', costoAuto: true };
+}
+
+/* ==================================================================== *
+ * Búsqueda en lote
+ * ==================================================================== *
+ * El Shift+Ins de la caja, versión compras: los productos del proveedor con
+ * filtros por texto, marca y categoría, tildado manual y entrada de todos
+ * juntos a la factura — cada uno con el costo de este proveedor precargado.
+ */
+function BusquedaLoteModal({ candidatos, proveedorNombre, yaCargados, onAgregar, onClose }) {
+  const [texto, setTexto] = useState('');
+  const [marca, setMarca] = useState('');
+  const [categoria, setCategoria] = useState('');
+  const [checks, setChecks] = useState(() => new Set());
+
+  // Los filtros se arman con lo que este proveedor realmente trae, no con el
+  // catálogo entero: ofrecer marcas que él no vende sería ruido.
+  const marcas = useMemo(
+    () => [...new Set(candidatos.map((c) => c.prod.marca).filter(Boolean))].sort(),
+    [candidatos],
+  );
+  const categorias = useMemo(
+    () => [...new Set(candidatos.map((c) => c.prod.categoria).filter(Boolean))].sort(),
+    [candidatos],
+  );
+
+  const resultados = useMemo(() => {
+    const ql = norm(texto);
+    const digitos = texto.replace(/\D/g, '');
+    return candidatos.filter((c) => {
+      if (marca && c.prod.marca !== marca) return false;
+      if (categoria && c.prod.categoria !== categoria) return false;
+      if (!ql) return true;
+      return norm(c.prod.nombre).includes(ql)
+        || (c.prod.codigoPropio && norm(c.prod.codigoPropio).includes(ql))
+        || (digitos.length >= 4 && c.prod.codigoBarras && c.prod.codigoBarras.includes(digitos));
+    }).slice(0, 200);
+  }, [candidatos, texto, marca, categoria]);
+
+  const toggle = (id) => setChecks((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const confirmar = () => {
+    onAgregar(candidatos.filter((c) => checks.has(c.prod.id)));
   };
+
+  return (
+    <ModalShell
+      title={`Productos de ${proveedorNombre}`}
+      subtitle="Tildá lo que vino y entra todo junto a la factura"
+      size="lg"
+      onClose={onClose}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: onClose },
+        { texto: checks.size ? `Agregar ${checks.size} ítem(s)` : 'Agregar', clase: 'btn-primary', onClick: confirmar },
+      ]}
+    >
+      <div className={s.toolbar}>
+        <input
+          type="search" autoFocus style={{ flex: 1, minWidth: 180 }}
+          placeholder="Nombre, código interno o código de barras…"
+          value={texto} onChange={(e) => setTexto(e.target.value)}
+        />
+        <select className={s['select-inline']} value={marca} onChange={(e) => setMarca(e.target.value)}>
+          <option value="">Todas las marcas</option>
+          {marcas.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <select className={s['select-inline']} value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+          <option value="">Todas las categorías</option>
+          {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+
+      <Table
+        cols={[{ h: '' }, { h: 'Producto' }, { h: 'Marca' }, { h: 'Proveedor activo' }, { h: 'Costo de este prov.', num: true }]}
+        empty={candidatos.length
+          ? 'Sin coincidencias con esos filtros.'
+          : `${proveedorNombre} todavía no tiene productos relacionados. Se suman desde el Formato de Compra de cada producto, o creando el producto con su proveedor.`}
+      >
+        {resultados.map((c) => {
+          const ya = yaCargados.has(c.prod.id);
+          return (
+            <tr
+              key={c.prod.id}
+              className={ya ? undefined : s.clickable}
+              onClick={ya ? undefined : () => toggle(c.prod.id)}
+              style={ya ? { opacity: 0.55 } : undefined}
+            >
+              <td style={{ width: 36 }}>
+                {/* En una factura, el mismo producto dos veces es casi siempre un
+                    error de carga: el ya cargado no se puede volver a tildar.
+                    stopPropagation: sin él, el click en el checkbox dispara
+                    también el onClick de la fila y los dos toggles se anulan. */}
+                <input
+                  type="checkbox"
+                  disabled={ya}
+                  checked={ya || checks.has(c.prod.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={() => toggle(c.prod.id)}
+                />
+              </td>
+              <td>
+                {c.prod.nombre}
+                <div className={s.hint} style={{ margin: 0 }}>
+                  {c.prod.codigoPropio ? `#${c.prod.codigoPropio}` : ''}
+                  {ya ? ' · ya en la factura' : ''}
+                </div>
+              </td>
+              <td>{c.prod.marca || '—'}</td>
+              <td>
+                {c.esActivo
+                  ? <span className={cx(s.badge, s['badge-entero'])}>este proveedor</span>
+                  : c.activoNombre}
+              </td>
+              <td className={s.num}>
+                {c.entry?.costo > 0 ? (
+                  <>
+                    {money(c.entry.costo)}
+                    <div className={s.hint} style={{ margin: 0 }}>
+                      bulto {num(c.entry.cantidad || 1, 3)} {unidadDe(c.prod)} · {money(c.entry.costo / (c.entry.cantidad || 1))}/{unidadDe(c.prod).replace('.', '')}
+                    </div>
+                  </>
+                ) : <span className={s.muted}>sin costo</span>}
+              </td>
+            </tr>
+          );
+        })}
+      </Table>
+    </ModalShell>
+  );
 }
 function productoProveedorOptions(store) {
-  return store.state.proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>);
+  // El padrón es UNO, pero acá solo tienen sentido los que traen mercadería:
+  // al plomero no se le compra stock (sus facturas van por el módulo Gastos).
+  return store.state.proveedores
+    .filter((p) => p.proveeMercaderia !== false)
+    .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>);
 }
 
 /* ============================== DETALLE DE COMPROBANTE ============================== */
 export function ComprobanteDetalleModal({ id }) {
-  const { store, closeModal } = useProductos();
+  const { store, closeModal, openModal } = useProductos();
   const c = store.getComprobante(id);
   if (!c) return null;
   const prov = store.getProveedor(c.proveedorId);
   const suc = c.sucursalId ? store.getSucursal(c.sucursalId) : null;
+  const saldo = c.saldo ?? Math.round((c.total - (c.pagado ?? 0)) * 100) / 100;
+  // Solo la factura y la ND generan deuda: son las únicas que se pagan.
+  const puedePagar = c.estado === 'confirmado' && (c.tipo === 'factura' || c.tipo === 'nota_debito');
 
   const Di = ({ label, children }) => <div className={s.di}><div className={s.l}>{label}</div><div className={s.v}>{children}</div></div>;
 
@@ -457,6 +1329,50 @@ export function ComprobanteDetalleModal({ id }) {
         <Di label="Total">{money(c.total)}</Di>
       </div>
       {c.observaciones && <div className={s.callout}>{c.observaciones}</div>}
+
+      {/* ---- De dónde salió la plata ---- */}
+      {(c.pagos?.length > 0 || saldo > 0.009) && (
+        <>
+          <h3 className={s['card-title']}>Pagos</h3>
+          <Table
+            cols={[{ h: 'Fecha' }, { h: 'Medio' }, { h: 'Origen' }, { h: 'Importe', num: true }]}
+            empty="Todavía no se pagó nada de este comprobante."
+          >
+            {(c.pagos ?? []).map((p) => (
+              <tr key={p.pagoId}>
+                <td>{fmtFecha(p.fecha)}</td>
+                <td>{p.medio}</td>
+                <td>
+                  {p.cajaSesionId
+                    ? `${p.sucursalNombre || 'sucursal'} · turno #${p.cajaSesionId}${p.usuarioNombre ? ` · ${p.usuarioNombre}` : ''}`
+                    : 'Administración (sin caja)'}
+                </td>
+                <td className={s.num}>{money(p.importe)}</td>
+              </tr>
+            ))}
+          </Table>
+          {saldo > 0.009 && (
+            <div className={cx(s.callout, s.warn)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Queda debiendo <strong>{money(saldo)}</strong></span>
+              {/*
+                La puerta para el caso inverso: la factura ya estaba cargada y el
+                pago llegó después. Aplicar SIEMPRE se hace desde el documento —
+                acá o en el alta—, nunca desde la bandeja de pagos.
+              */}
+              {puedePagar && (
+                <Btn
+                  variant="btn-primary"
+                  small
+                  onClick={() => openModal('tomarPagosComprobante', { comprobanteId: c.id, proveedorId: c.proveedorId })}
+                >
+                  Tomar un pago de sucursal
+                </Btn>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
       <h3 className={s['card-title']}>Ítems</h3>
       <Table cols={[{ h: 'Producto' }, { h: 'Present.' }, { h: 'Cant.', num: true }, { h: 'Costo u.', num: true }, { h: 'Desc.', num: true }, { h: 'IVA', num: true }, { h: 'Subtotal', num: true }]}>
         {filas}

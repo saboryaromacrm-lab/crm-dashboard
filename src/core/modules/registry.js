@@ -84,6 +84,8 @@ class ModuleRegistry {
         order: m.navigation.order,
         permissions: m.permissions,
         children: m.navigation.children,
+        badgeCount: m.navigation.badgeCount,
+        badgeSubscribe: m.navigation.badgeSubscribe,
       }))
       .sort((a, b) => a.order - b.order);
   }

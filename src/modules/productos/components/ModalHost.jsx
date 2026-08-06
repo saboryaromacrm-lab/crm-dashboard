@@ -4,11 +4,14 @@ import { ModalShell } from './Modal.jsx';
 import { s } from './ui.jsx';
 import { ProductoFormModal, DetalleProductoModal } from './modals/ProductoModals.jsx';
 import { CompraModal, VenderModal, FraccionarModal, MovimientoModal } from './modals/StockModals.jsx';
-import { TransferenciaModal, DetalleTransferModal } from './modals/TransferModals.jsx';
+import { TransferenciaModal, DetalleTransferModal, RecibirTransferModal, PrepararTransferModal } from './modals/TransferModals.jsx';
 import { IncidenciaModal, ResolverIncidenciaModal, DetalleIncidenciaModal } from './modals/IncidenciaModals.jsx';
-import { SucursalModal } from './modals/CatalogoModals.jsx';
 import { ProveedorFormModal, DetalleProveedorModal } from './modals/ProveedorModals.jsx';
 import { ComprobanteFormModal, ComprobanteDetalleModal } from './modals/ComprobanteModals.jsx';
+import {
+  TomarPagosComprobanteModal, PagoSucursalDetalleModal,
+} from './modals/PagosSucursalModals.jsx';
+import { EnvioCafeteriaFormModal, EnvioCafeteriaDetalleModal } from './modals/CafeteriaModals.jsx';
 import { HistorialPreciosModal, MargenesMasivosModal } from './modals/PreciosModals.jsx';
 
 /* Confirmación genérica reutilizable. */
@@ -80,6 +83,10 @@ const REGISTRY = {
   eliminarProveedor: EliminarProveedorModal,
   comprobanteForm: ComprobanteFormModal,
   comprobanteDetalle: ComprobanteDetalleModal,
+  tomarPagosComprobante: TomarPagosComprobanteModal,
+  pagoSucursalDetalle: PagoSucursalDetalleModal,
+  envioCafeteria: EnvioCafeteriaFormModal,
+  envioCafeteriaDetalle: EnvioCafeteriaDetalleModal,
   historialPrecios: HistorialPreciosModal,
   margenesMasivos: MargenesMasivosModal,
   producto: ProductoFormModal,
@@ -90,10 +97,11 @@ const REGISTRY = {
   movimiento: MovimientoModal,
   transferencia: TransferenciaModal,
   detalleTransfer: DetalleTransferModal,
+  recibirTransfer: RecibirTransferModal,
+  prepararTransfer: PrepararTransferModal,
   incidencia: IncidenciaModal,
   resolverIncidencia: ResolverIncidenciaModal,
   detalleIncidencia: DetalleIncidenciaModal,
-  sucursal: SucursalModal,
 };
 
 /** Renderiza el modal activo según el estado del contexto. */

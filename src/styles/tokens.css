@@ -10,6 +10,19 @@
        on a [data-theme] scope — no component code changes.
 
    Convention: --crm-<category>-<name>. Never hard-code a raw hex in a module.
+
+   IDENTIDAD DE MARCA (Sabor y Aroma)
+   ----------------------------------
+   Dos colores y sus tonalidades, con papeles fijos:
+
+     VERDE OSCURO  el color PRINCIPAL: navegación, botones primarios, foco,
+                   selección, totales. Siempre con letra blanca encima.
+     NARANJA       el color de DETALLE: indicadores activos, badges, tabs,
+                   resaltados. Señala "acá", nunca superficies grandes.
+
+   Regla para elegir: si es una superficie o una acción → verde; si es un
+   acento chico que tiene que saltar a la vista → naranja. El resto de la
+   pantalla se mantiene CLARA y neutra con un tinte verde apenas perceptible.
    ========================================================================== */
 
 :root {
@@ -26,13 +39,14 @@
   --crm-space-12: 48px;
 
   /* ----- Radius ----- */
-  --crm-radius-sm: 6px;
-  --crm-radius-md: 10px;
+  --crm-radius-sm: 8px;
+  --crm-radius-md: 12px;
   --crm-radius-lg: 16px;
   --crm-radius-pill: 999px;
 
   /* ----- Typography ----- */
   --crm-font-sans: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --crm-font-mono: 'JetBrains Mono', 'Cascadia Code', ui-monospace, 'Segoe UI Mono', Consolas, monospace;
   --crm-font-size-xs: 0.75rem;
   --crm-font-size-sm: 0.875rem;
   --crm-font-size-md: 1rem;
@@ -61,60 +75,82 @@
    ------------------------------------------------------------------------- */
 :root,
 [data-theme='light'] {
-  --crm-color-primary: #2563eb;
-  --crm-color-primary-hover: #1d4ed8;
+  /* Verde principal: oscuro, siempre con blanco encima. */
+  --crm-color-primary: #166534;
+  --crm-color-primary-hover: #14532d;
   --crm-color-primary-contrast: #ffffff;
-  --crm-color-accent: #7c3aed;
+  /* Tinte del primario para fondos de selección/hover (superficie, no letra). */
+  --crm-color-primary-soft: #e7f2ea;
+
+  /* El accent interactivo de los módulos ES el verde: foco, selección, activo. */
+  --crm-color-accent: #166534;
+  /* Naranja: el detalle que salta a la vista. Nunca superficies grandes. */
+  --crm-color-accent-2: #ea580c;
+  --crm-color-accent-2-soft: #fff1e6;
 
   --crm-color-success: #16a34a;
-  --crm-color-warning: #d97706;
+  --crm-color-warning: #b45309;
   --crm-color-danger: #dc2626;
-  --crm-color-info: #0284c7;
+  /* Alias: hay módulos escritos con `error` y otros con `danger`. Uno solo
+     de verdad; el otro apunta acá. */
+  --crm-color-error: var(--crm-color-danger);
+  --crm-color-info: #0f766e;
 
-  --crm-color-bg: #f4f6fb;
+  /* Fondos claros con un tinte verde apenas perceptible: es lo que hace que
+     el blanco de las tarjetas se despegue sin necesitar bordes gruesos. */
+  --crm-color-bg: #f3f6f3;
   --crm-color-surface: #ffffff;
-  --crm-color-surface-2: #f9fafb;
-  --crm-color-sidebar-bg: #0f172a;
-  --crm-color-sidebar-text: #cbd5e1;
+  --crm-color-surface-2: #f7faf7;
+
+  /* Navegación: verde profundo, más oscuro que el primario para que los
+     botones verdes del contenido no compitan con el marco. */
+  --crm-color-sidebar-bg: #0c3b22;
+  --crm-color-sidebar-text: #a9c6b3;
   --crm-color-sidebar-text-active: #ffffff;
-  --crm-color-sidebar-active: #1e293b;
+  --crm-color-sidebar-active: #155232;
 
-  --crm-color-text: #111827;
-  --crm-color-text-secondary: #6b7280;
-  --crm-color-text-muted: #9ca3af;
-  --crm-color-border: #e5e7eb;
+  --crm-color-text: #16211a;
+  --crm-color-text-secondary: #56655c;
+  --crm-color-text-muted: #85948b;
+  --crm-color-border: #dde6de;
 
-  --crm-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --crm-shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
-  --crm-shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.12);
+  --crm-shadow-sm: 0 1px 2px rgba(12, 45, 26, 0.06);
+  --crm-shadow-md: 0 4px 14px rgba(12, 45, 26, 0.08);
+  --crm-shadow-lg: 0 12px 36px rgba(12, 45, 26, 0.14);
 }
 
 /* -------------------------------------------------------------------------
-   DARK THEME
+   DARK THEME — misma identidad (verde + naranja), invertida con criterio:
+   el primario se aclara para que siga contrastando, el naranja se calienta.
    ------------------------------------------------------------------------- */
 [data-theme='dark'] {
-  --crm-color-primary: #3b82f6;
-  --crm-color-primary-hover: #60a5fa;
-  --crm-color-primary-contrast: #0b1120;
-  --crm-color-accent: #a78bfa;
+  --crm-color-primary: #2f9e5f;
+  --crm-color-primary-hover: #3cb571;
+  --crm-color-primary-contrast: #06170d;
+  --crm-color-primary-soft: #12301e;
+
+  --crm-color-accent: #3fae6e;
+  --crm-color-accent-2: #fb923c;
+  --crm-color-accent-2-soft: #3a2312;
 
   --crm-color-success: #22c55e;
-  --crm-color-warning: #f59e0b;
+  --crm-color-warning: #d97706;
   --crm-color-danger: #ef4444;
-  --crm-color-info: #38bdf8;
+  --crm-color-error: var(--crm-color-danger);
+  --crm-color-info: #2dd4bf;
 
-  --crm-color-bg: #0b1120;
-  --crm-color-surface: #111827;
-  --crm-color-surface-2: #1f2937;
-  --crm-color-sidebar-bg: #060b16;
-  --crm-color-sidebar-text: #94a3b8;
+  --crm-color-bg: #0c1310;
+  --crm-color-surface: #131c16;
+  --crm-color-surface-2: #1a2620;
+  --crm-color-sidebar-bg: #081209;
+  --crm-color-sidebar-text: #8dab97;
   --crm-color-sidebar-text-active: #ffffff;
-  --crm-color-sidebar-active: #1e293b;
+  --crm-color-sidebar-active: #14532d;
 
-  --crm-color-text: #f3f4f6;
-  --crm-color-text-secondary: #9ca3af;
-  --crm-color-text-muted: #6b7280;
-  --crm-color-border: #1f2937;
+  --crm-color-text: #e9f0ea;
+  --crm-color-text-secondary: #a4b5aa;
+  --crm-color-text-muted: #6e8074;
+  --crm-color-border: #233129;
 
   --crm-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --crm-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);

@@ -1,16 +1,30 @@
+import { useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { useSeccion } from '../hooks/useSeccion.js';
 import { num, fmtFechaHora } from '../domain/format.js';
-import { Table, PanelHead, Btn, s } from '../components/ui.jsx';
+import { Table, PanelHead, Btn, usePaginado, s } from '../components/ui.jsx';
+
+/** Texto comparable: sin mayúsculas ni acentos. */
+const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
 export function FraccionamientoPanel() {
   const { store, can, openModal } = useProductos();
   useSeccion('movimientos');
   const puede = can('fraccionar');
+  const [q, setQ] = useState('');
 
-  const filas = store.state.stock
+  const ql = norm(q);
+  const granel = store.state.stock
     .filter((st) => !st.presentacionId && st.estado === 'disponible' && st.cantidad > 1e-9 && store.getProducto(st.productoId).tipo === 'granel')
-    .map((st) => {
+    .filter((st) => {
+      if (!ql) return true;
+      const p = store.getProducto(st.productoId);
+      return norm(p.nombre).includes(ql) || norm(p.marca).includes(ql);
+    });
+
+  const pag = usePaginado(granel, 'fraccionamiento', q);
+
+  const filas = pag.visibles.map((st) => {
       const p = store.getProducto(st.productoId), su = store.getSucursal(st.sucursalId);
       return (
         <tr key={st.id}>
@@ -45,10 +59,19 @@ export function FraccionamientoPanel() {
         title="Fraccionamiento"
         desc="Convertí granel en paquetes en la misma sucursal. Descuenta del stock a granel disponible."
       />
+      <div className={s.toolbar}>
+        <input
+          type="search"
+          placeholder="Buscar producto a granel por nombre o marca..."
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
       <h3 className={s['card-title']}>Granel disponible para fraccionar</h3>
       <Table
         cols={[{ h: 'Producto' }, { h: 'Sucursal' }, { h: 'Granel', num: true }, { h: '', cls: 'actions-col' }]}
         empty="No hay stock a granel disponible."
+        pag={pag}
       >
         {filas}
       </Table>

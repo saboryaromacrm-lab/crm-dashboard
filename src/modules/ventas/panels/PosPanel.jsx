@@ -3,13 +3,17 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi } from '../services/ventas.api.js';
-import { CONDICIONES_IVA, CONDICIONES_PAGO } from '../domain/constants.js';
+import { CONDICIONES_IVA, CONDICIONES_PAGO, MEDIOS_PAGO, ORIGEN_LISTA } from '../domain/constants.js';
 import {
   buscarEnCatalogo, calcularRenglon, extrasParaApi, itemsParaApi, parseEtiquetaBalanza,
   problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
   totalesTicket, ultimoArticulo,
 } from '../domain/pos.js';
+import { indicePrecios, listasDelCliente, sugerenciaPorMonto } from '../domain/listas.js';
+import { sugerenciasOfertaTicket } from '../domain/ofertas.js';
 import { Table, PanelHead, Btn, money, num, fmtFechaHora, s } from '../components/ui.jsx';
+import { configImpresion, cuerpoTicket, imprimirDocumento } from '@core/services/imprimir.js';
+import { EVENTO_PRECIOS, cambiosPrecio } from '@core/services/cambiosPrecio.js';
 import p from '../styles/Pos.module.css';
 
 /** Cada cuánto se persiste el ticket abierto mientras el cajero tipea. */
@@ -45,7 +49,8 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
   const resultados = useMemo(() => buscarEnCatalogo(catalogo, q), [catalogo, q]);
 
   const elegir = useCallback((item, cantidad) => {
-    onElegir(item, cantidad);
+    // El escaneo de una CAJA trae sus unidades: cargarla es cargar las N.
+    onElegir(item, cantidad ?? item._escaneoUnidades ?? 1);
     setQ('');
     setActivo(0);
   }, [onElegir]);
@@ -71,7 +76,9 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
     if (e.key === 'Enter') { e.preventDefault(); onEnter(); }
     else if (e.key === 'ArrowDown') { e.preventDefault(); setActivo((i) => Math.min(i + 1, resultados.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActivo((i) => Math.max(i - 1, 0)); }
-    else if (e.key === 'Escape') { setQ(''); setActivo(0); }
+    // Esc escalonado: con texto, limpia la búsqueda (y NO burbujea); vacío,
+    // deja subir el evento y la registradora vuelve a la lista de ventas.
+    else if (e.key === 'Escape' && q) { e.stopPropagation(); setQ(''); setActivo(0); }
   };
 
   return (
@@ -124,7 +131,7 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
  * Ticket
  * ==================================================================== */
 
-function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, esAdmin }) {
+function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, esAdmin, preciosDe, ultimoKey, listasPorId, overrideBloqueado }) {
   if (!renglones.length) {
     return (
       <div className={p.ticket}>
@@ -142,6 +149,7 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, esAd
           <tr>
             <th>Artículo</th>
             <th style={{ textAlign: 'right' }}>Cantidad</th>
+            <th>Lista</th>
             <th style={{ textAlign: 'right' }}>Precio</th>
             <th style={{ textAlign: 'right' }}>Desc. %</th>
             <th style={{ textAlign: 'right' }}>Subtotal</th>
@@ -154,13 +162,21 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, esAd
             const sinStock = !permitirStockNegativo && r.cantidad > r.stock + 1e-9;
             const descExcedido = !esAdmin && r.descuento > descuentoMax + 1e-9;
             return (
-              <tr key={r.uid}>
+              <tr key={r.uid} className={cx(r.key === ultimoKey && p.filaUltima)}>
                 <td>
                   <div className={p.nombreCol}>{r.nombre}</div>
                   <div className={p.detalleCol}>
                     {r.detalle}
                     {sinStock && <span className={p.sinStock}> · solo hay {num(r.stock)} {r.unidad}</span>}
                   </div>
+                  {/* La oferta se muestra donde está el producto, con nombre e
+                      importe: el cajero contesta "por qué dio ese número" sin
+                      hacer cuentas. */}
+                  {r.ofertaDescuento > 0 && (
+                    <div className={p.ofertaBadge} title={r.ofertaDetalle || r.oferta}>
+                      {r.oferta} · −{money(r.ofertaDescuento)}
+                    </div>
+                  )}
                 </td>
                 <td className={p.num}>
                   <input
@@ -171,6 +187,61 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, esAd
                     value={r.cantidad}
                     onChange={(e) => dispatch({ tipo: 'cantidad', uid: r.uid, valor: e.target.value })}
                   />
+                </td>
+                {/*
+                  Lista del renglón. Se muestra POR QUÉ la tiene (automática
+                  por condición, del cliente, o elegida a mano): si el cliente
+                  pregunta el precio, el cajero tiene que poder contestar.
+                  El selector aparece solo si hay más de una opción y el rol
+                  puede cambiarla.
+                */}
+                <td>
+                  {(() => {
+                    // Las opciones son el FORMATO DE VENTA del artículo: las
+                    // listas que ese producto tiene cargadas. No las del
+                    // catálogo entero — ofrecer una lista en la que no se vende
+                    // sería ofrecer un precio que no existe.
+                    const precios = preciosDe(r.key) ?? [];
+                    const opciones = precios
+                      .map((x) => ({ ...listasPorId.get(x.listaId), precio: x.precio }))
+                      .filter((x) => x.listaId);
+                    const motivo = ORIGEN_LISTA[r.listaOrigen];
+                    const pie = (
+                      <div className={p.detalleCol} title={motivo?.ayuda || ''}>
+                        {motivo?.corto || ''}
+                        {r.listaMotivo && <> · {r.listaMotivo}</>}
+                      </div>
+                    );
+                    if (opciones.length <= 1 || overrideBloqueado) {
+                      return (
+                        <>
+                          <div className={p.detalleCol} style={{ fontWeight: 600 }}>{r.lista || '—'}</div>
+                          {pie}
+                        </>
+                      );
+                    }
+                    return (
+                      <>
+                        <select
+                          className={p.selectMini}
+                          value={r.listaId ?? ''}
+                          aria-label={`Lista de precio de ${r.nombre}`}
+                          onChange={(e) => {
+                            const id = Number(e.target.value);
+                            if (!id) { dispatch({ tipo: 'lista', uid: r.uid, manual: false }); return; }
+                            const lista = opciones.find((l) => l.listaId === id);
+                            if (lista) dispatch({ tipo: 'lista', uid: r.uid, lista, precio: lista.precio });
+                          }}
+                        >
+                          {opciones.map((l) => (
+                            <option key={l.listaId} value={l.listaId}>{l.etiqueta}</option>
+                          ))}
+                          {r.listaManual && <option value="">↺ Automática</option>}
+                        </select>
+                        {pie}
+                      </>
+                    );
+                  })()}
                 </td>
                 <td className={p.num}>
                   {esAdmin ? (
@@ -291,7 +362,8 @@ function VentasAbiertas({ abiertas, catalogo, onAbrir, onNueva, cargando }) {
 
 export function PosPanel() {
   const {
-    clientes, config, ctx, usuarios, sucursales, getCliente, openModal, closeModal, toast,
+    clientes, config, ctx, usuarios, sucursales, getCliente, openModal, closeModal, toast, modal,
+    goPanel,
   } = useVentas();
 
   const [ticket, dispatch] = useReducer(ticketReducer, ticketInicial);
@@ -299,11 +371,22 @@ export function PosPanel() {
   const [clienteId, setClienteId] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [pestanaIds, setPestanaIds] = useState([]);
+  /**
+   * Último artículo cargado (clave + tick para re-disparar el destello). Es la
+   * confirmación visual del escaneo: el cajero no mira la tabla, mira ese
+   * renglón grande — como el visor de una registradora de supermercado.
+   */
+  const [ultimoKey, setUltimoKey] = useState(null);
+  const [flashTick, setFlashTick] = useState(0);
   const buscadorRef = useRef(null);
   const guardadoRef = useRef(null);
+  const ticketScrollRef = useRef(null);
+  const prevLenRef = useRef(0);
 
   const sucursalId = ctx.sucursalId;
-  const esAdmin = usuarios.find((u) => u.id === ctx.usuarioId)?.rol === 'admin';
+  const esAdmin = ['admin', 'superadmin'].includes(usuarios.find((u) => u.id === ctx.usuarioId)?.rolClave);
+  const permisosActual = usuarios.find((u) => u.id === ctx.usuarioId)?.permisos ?? [];
+  const puedePresupuestar = permisosActual.includes('*') || permisosActual.includes('presupuestos');
   const descuentoMax = Number(config.descuentoMaxVendedor) || 0;
 
   /* --------------------------- Datos del puesto --------------------------- */
@@ -316,14 +399,38 @@ export function PosPanel() {
 
   const consumidorFinal = useMemo(() => clientes.find((c) => c.esConsumidorFinal), [clientes]);
   const clienteActual = getCliente(clienteId) || consumidorFinal || null;
-  const lista = clienteActual?.listaPrecio || config.listaPrecioDefault || '';
 
-  // El catálogo se pide UNA vez por (sucursal, lista) y se busca en memoria.
-  const { data: catalogo, loading: cargandoCatalogo, error: errorCatalogo, reload: recargarCatalogo } = useResource(
-    `catalogo:${sucursalId}:${lista}`,
-    () => ventasApi.catalogo(sucursalId, lista),
+  /**
+   * El catálogo se pide UNA vez por sucursal y trae el precio en TODAS las
+   * listas disponibles: cambiar de cliente o cruzar un umbral se resuelve en
+   * memoria, sin volver a la red.
+   */
+  const { data: catalogoRaw, loading: cargandoCatalogo, error: errorCatalogo, reload: recargarCatalogo } = useResource(
+    `catalogo:${sucursalId}`,
+    () => ventasApi.catalogo(sucursalId),
     { enabled: !!sucursalId },
   );
+  const catalogo = useMemo(() => catalogoRaw?.items ?? [], [catalogoRaw]);
+  const listasCatalogo = useMemo(() => catalogoRaw?.listas ?? [], [catalogoRaw]);
+
+  /**
+   * "Actualizar precios" del aviso global (`PreciosAlert`) recarga el catálogo
+   * de acá. Los renglones ya cargados NO se re-precian: cada uno guarda el
+   * precio con el que entró al ticket, y cambiarlo por atrás sería cobrarle al
+   * cliente otro número del que se le dijo. Los precios nuevos rigen para lo
+   * que se agregue de ahora en más.
+   */
+  useEffect(() => {
+    const alRecargar = () => { recargarCatalogo(); };
+    window.addEventListener(EVENTO_PRECIOS, alRecargar);
+    return () => window.removeEventListener(EVENTO_PRECIOS, alRecargar);
+  }, [recargarCatalogo]);
+
+  /** Recarga el catálogo y da por visto el aviso de cambio de precios. */
+  const actualizarPrecios = useCallback(() => {
+    recargarCatalogo();
+    cambiosPrecio.marcarVisto();
+  }, [recargarCatalogo]);
 
   const { data: abiertasRaw, loading: cargandoAbiertas, reload: recargarAbiertas } = useResource(
     `abiertas:${sucursalId}`,
@@ -366,12 +473,131 @@ export function PosPanel() {
   );
 
   const totales = useMemo(() => totalesTicket(ticket.renglones, ticket.extras), [ticket.renglones, ticket.extras]);
+
+  /* ---------------------------- Listas de precio ---------------------------- */
+
+  /**
+   * Índice clave → formato de venta del artículo `[{listaId, precio,
+   * unidadesMinimas}]`, armado UNA vez por catálogo.
+   */
+  const idxPrecios = useMemo(() => indicePrecios(catalogo), [catalogo]);
+  const preciosDe = useCallback((key) => idxPrecios.get(key), [idxPrecios]);
+
+  /** Identidad de cada lista, para etiquetar sin recorrer el catálogo. */
+  const listasPorId = useMemo(
+    () => new Map((catalogoRaw?.listas ?? []).map((l) => [l.listaId, l])),
+    [catalogoRaw],
+  );
+
+  /** Las que el cliente tiene asignadas: se muestran, no se resuelven acá. */
+  const listasCliente = useMemo(
+    () => listasDelCliente(clienteActual, catalogoRaw?.listas ?? []),
+    [clienteActual, catalogoRaw],
+  );
+
+  /**
+   * El contexto de cotización vive en el reducer para que reasignar listas sea
+   * síncrono y sin efectos. Se re-inyecta cuando cambia el catálogo o el
+   * cliente, y eso recotiza todo lo que no esté fijado a mano.
+   */
+  useEffect(() => {
+    dispatch({
+      tipo: 'contexto',
+      // `ahora` entra con el contexto para que el reducer siga puro. Alcanza:
+      // cada carga de producto lo refresca, y una promo que vence a las 20:00
+      // no necesita más precisión que la próxima tecla.
+      ctx: {
+        catalogo: catalogoRaw, cliente: clienteActual, precios: idxPrecios,
+        sucursalId, ahora: new Date(),
+      },
+    });
+  }, [catalogoRaw, clienteActual, idxPrecios, sucursalId]);
+
+  /**
+   * Ofertas de ticket que el total habilita. Misma regla que el monto: se
+   * sugieren, nunca se aplican solas.
+   */
+  const sugerenciasOferta = useMemo(
+    () => sugerenciasOfertaTicket(
+      catalogoRaw?.ofertas ?? [], ticket.renglones, totales.total,
+      { ahora: new Date(), sucursalId }, ticket.ofertaTicket,
+    ),
+    [catalogoRaw, ticket.renglones, totales.total, sucursalId, ticket.ofertaTicket],
+  );
+
+  const aplicarOfertaTicket = useCallback((ofertaId) => {
+    dispatch({ tipo: 'ofertaTicket', ofertaId });
+    toast(ofertaId ? 'Oferta aplicada al ticket.' : 'Se retiró la oferta del ticket.', 'ok');
+  }, [toast]);
+
+  /**
+   * La sugerencia por MONTO: lo único que se ofrece en vez de aplicarse solo.
+   * Como el beneficio baja el total, auto-aplicarlo podría dejar el ticket por
+   * debajo del umbral y revertirse en un ciclo. Las puertas por cantidad no
+   * tienen ese problema y ya se aplicaron solas.
+   */
+  const sugerencia = useMemo(
+    () => sugerenciaPorMonto(ticket.renglones, totales.total, catalogoRaw, preciosDe, !!ticket.montoAplicado),
+    [ticket.renglones, ticket.montoAplicado, totales.total, catalogoRaw, preciosDe],
+  );
+
+  /** Desbloquea (o retira) la modalidad por monto. El motor reasigna el resto. */
+  const aplicarMonto = useCallback((modalidadId) => {
+    dispatch({ tipo: 'monto', modalidadId });
+    toast(modalidadId ? 'Precio por monto de compra aplicado.' : 'Se retiró el precio por monto.', 'ok');
+  }, [toast]);
+
+  /** Modalidades del catálogo, para la aplicación masiva a mano. */
+  const modalidades = useMemo(() => {
+    const vistas = new Map();
+    for (const l of catalogoRaw?.listas ?? []) {
+      if (!vistas.has(l.modalidadId)) vistas.set(l.modalidadId, { id: l.modalidadId, nombre: l.modalidad });
+    }
+    return [...vistas.values()];
+  }, [catalogoRaw]);
+
+  /**
+   * Aplica una modalidad a todo el ticket. Avisa cuántos quedaron afuera: un
+   * producto sin lista en esa modalidad conserva su precio, y el cajero tiene
+   * que enterarse antes de que lo pregunte el cliente.
+   */
+  const aplicarModalidadATodo = useCallback((valor) => {
+    if (!valor) return;
+    if (valor === 'auto') {
+      dispatch({ tipo: 'modalidadTodos', modalidadId: null, listasPorId, preciosDe });
+      toast('Los renglones volvieron al precio automático.', 'ok');
+      return;
+    }
+    const modalidadId = Number(valor);
+    const alcanza = ticket.renglones.filter(
+      (r) => (preciosDe(r.key) ?? []).some((x) => listasPorId.get(x.listaId)?.modalidadId === modalidadId),
+    ).length;
+    if (!alcanza) {
+      toast('Ningún artículo del ticket tiene una lista de esa modalidad.', 'err');
+      return;
+    }
+    dispatch({ tipo: 'modalidadTodos', modalidadId, listasPorId, preciosDe });
+    const afuera = ticket.renglones.length - alcanza;
+    toast(
+      afuera
+        ? `Aplicada a ${alcanza} artículo(s). ${afuera} sin lista de esa modalidad, quedaron como estaban.`
+        : `Aplicada a ${alcanza} artículo(s).`,
+      'ok',
+    );
+  }, [ticket.renglones, listasPorId, preciosDe, toast]);
   const problemas = useMemo(
     () => problemasDelTicket(ticket.renglones, {
       permitirStockNegativo: !!config.permitirStockNegativo, descuentoMax, esAdmin,
     }),
     [ticket.renglones, config.permitirStockNegativo, descuentoMax, esAdmin],
   );
+
+  /**
+   * Cambiar la lista a mano esquiva el tope de descuento (pasar a mayorista
+   * puede ser −40% sin registrarse como descuento). El automático por condición
+   * no se toca: es una regla, no una decisión.
+   */
+  const overrideBloqueado = !!config.overrideListaRequiereAdmin && !esAdmin;
 
   const cajaAbierta = caja?.estado === 'abierta';
   const requiereCaja = !!config.cajaObligatoria;
@@ -382,6 +608,26 @@ export function PosPanel() {
     // Se difiere un tick: el modal de MUI devuelve el foco al cerrarse.
     setTimeout(() => buscadorRef.current?.focus(), 60);
   }, []);
+
+  /**
+   * Con una venta abierta, la registradora tapa toda la pantalla (position:
+   * fixed): se bloquea el scroll del documento para que no quede una página
+   * "viva" scrolleando por detrás.
+   */
+  useEffect(() => {
+    if (!activaId) return undefined;
+    const previo = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previo; };
+  }, [activaId]);
+
+  // Un artículo NUEVO baja el ticket hasta el final (ahí aparece); editar uno
+  // existente no mueve nada — saltarle el scroll al cajero es perder el foco.
+  useEffect(() => {
+    const el = ticketScrollRef.current;
+    if (el && ticket.renglones.length > prevLenRef.current) el.scrollTop = el.scrollHeight;
+    prevLenRef.current = ticket.renglones.length;
+  }, [ticket.renglones.length]);
 
   /* ---------------------- Persistencia del borrador ---------------------- */
 
@@ -396,7 +642,6 @@ export function PosPanel() {
     try {
       await ventasApi.guardarVenta(id, {
         clienteId: cliente?.id,
-        listaPrecio: cliente?.listaPrecio || undefined,
         items: itemsParaApi(estado.renglones),
         extras: extrasParaApi(estado.extras),
       });
@@ -436,6 +681,8 @@ export function PosPanel() {
       dispatch({ tipo: 'cargar', ...cargado });
       setClienteId(borrador.clienteId);
       setActivaId(id);
+      setUltimoKey(null);
+      setFlashTick(0);
       abrirPestana(id);
       enfocarBuscador();
     } catch (e) {
@@ -456,6 +703,8 @@ export function PosPanel() {
       dispatch({ tipo: 'limpiar' });
       setClienteId(borrador.clienteId);
       setActivaId(borrador.id);
+      setUltimoKey(null);
+      setFlashTick(0);
       abrirPestana(borrador.id);
       recargarAbiertas();
       enfocarBuscador();
@@ -463,6 +712,59 @@ export function PosPanel() {
       toast(e?.data?.message || 'No se pudo abrir una venta nueva.', 'err');
     }
   }, [activaId, ticket, clienteActual, consumidorFinal, sucursalId, ctx.usuarioId, guardarAhora, abrirPestana, recargarAbiertas, enfocarBuscador, toast]);
+
+  /**
+   * Guarda el ticket actual como PRESUPUESTO (pedido mayorista): el mismo
+   * motor que cotiza en caja congela renglones y precios en un PR000N, y la
+   * venta en curso se descarta — era una cotización, no una venta.
+   */
+  const guardarPresupuesto = useCallback(async () => {
+    if (!activaId || !ticket.renglones.length) { toast('El ticket está vacío.', 'err'); return; }
+    if (!clienteActual || clienteActual.esConsumidorFinal) {
+      toast('Elegí el CLIENTE del presupuesto (Consumidor Final no lleva presupuesto).', 'err');
+      return;
+    }
+    try {
+      const items = ticket.renglones.map((r) => ({
+        productoId: r.productoId, presentacionId: r.presentacionId ?? null,
+        nombre: r.nombre, detalle: r.detalle,
+        cantidad: r.cantidad, precioLista: r.precioLista, descuento: r.descuento || 0,
+        iva: r.iva, lista: r.lista || '', ofertaNombre: r.oferta || '',
+      }));
+      const res = await ventasApi.crearPresupuesto({
+        clienteId: clienteActual.id, sucursalId,
+        usuarioId: ctx.usuarioId ?? undefined,
+        items,
+      });
+      // La venta en curso fue solo el lienzo de la cotización.
+      await ventasApi.descartarVenta(activaId);
+      cerrarPestana(activaId);
+      setActivaId(null);
+      dispatch({ tipo: 'limpiar' });
+      setClienteId(null);
+      recargarAbiertas();
+      toast(`Presupuesto ${res.codigo} guardado (borrador). Se envía desde Ventas › Presupuestos.`, 'ok');
+    } catch (e) {
+      toast(e?.data?.message || 'No se pudo guardar el presupuesto.', 'err');
+    }
+  }, [activaId, ticket, clienteActual, sucursalId, ctx.usuarioId, cerrarPestana, recargarAbiertas, toast]);
+
+  /** Reimprime el último ticket cobrado en este puesto (formato de Sistema › Impresión). */
+  const reimprimirTicket = useCallback(async () => {
+    const id = Number(localStorage.getItem('crm_ultimo_ticket'));
+    if (!id) { toast('Todavía no hay un ticket cobrado en este puesto.', 'err'); return; }
+    try {
+      const venta = await ventasApi.venta(id);
+      const { impresion } = await configImpresion();
+      imprimirDocumento('ticketPos', {
+        titulo: `Ticket ${venta.puntoVenta}-${venta.numero ?? ''}`,
+        esTicket: true,
+        cuerpo: cuerpoTicket(venta, { moneda: money, fechaHora: fmtFechaHora, leyendaNoFiscal: impresion.leyendaNoFiscal }),
+      });
+    } catch {
+      toast('No se pudo reimprimir el ticket.', 'err');
+    }
+  }, [toast]);
 
   /** Cierra la ventana sin tocar la venta: sigue en la tabla para retomarla. */
   const cerrarVentana = useCallback(async (id) => {
@@ -479,17 +781,30 @@ export function PosPanel() {
   /* ------------------------------ Acciones ------------------------------ */
 
   const agregar = useCallback((item, cantidad = 1) => {
-    if (item.precio <= 0) {
+    // Escaneo de una CAJA: además de las unidades, se fija la lista del
+    // formato — comprar la caja ES elegir el precio mayorista.
+    let listaFija = null;
+    if (item._escaneoListaId) {
+      const precioLista = (preciosDe(item.key) ?? []).find((x) => x.listaId === item._escaneoListaId)?.precio;
+      const lista = listasPorId.get(item._escaneoListaId);
+      if (precioLista != null && lista) listaFija = { listaId: lista.listaId, etiqueta: lista.etiqueta, precio: precioLista };
+    }
+    const precioEfectivo = listaFija?.precio ?? item.precio;
+    if (precioEfectivo <= 0) {
       toast(`${item.nombre} no tiene precio cargado. Definilo en Compras › Productos.`, 'err');
       return;
     }
-    dispatch({ tipo: 'agregar', item, cantidad, descuentoCliente: clienteActual?.descuento || 0 });
-  }, [toast, clienteActual]);
+    dispatch({ tipo: 'agregar', item, cantidad, listaFija, descuentoCliente: clienteActual?.descuento || 0 });
+    setUltimoKey(item.key);
+    setFlashTick((t) => t + 1);
+  }, [toast, clienteActual, preciosDe, listasPorId]);
 
   const trasCobrar = useCallback((idCobrado) => {
     setActivaId(null);
     dispatch({ tipo: 'limpiar' });
     setClienteId(null);
+    setUltimoKey(null);
+    setFlashTick(0);
     if (idCobrado) cerrarPestana(idCobrado);
     recargarCatalogo();   // el stock cambió con la venta
     recargarCaja();
@@ -539,13 +854,20 @@ export function PosPanel() {
         e.preventDefault();
         if (!activaId) { toast('Abrí una venta para cargar productos.', 'err'); return; }
         openModal(e.shiftKey ? 'busquedaMasiva' : 'cargaRapida', {
-          catalogo: catalogo ?? [], config, onAgregar: agregar,
+          catalogo, listas: listasCatalogo, config, onAgregar: agregar,
         });
+      }
+      // Esc sale de la registradora a la lista (guardando). Con un modal
+      // abierto no: ese Esc es del modal. El buscador con texto tampoco deja
+      // llegar el evento (limpia y corta la propagación).
+      else if (e.key === 'Escape' && activaId && !modal) {
+        e.preventDefault();
+        irALista();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cobrar, enfocarBuscador, activaId, catalogo, config, agregar, openModal, toast]);
+  }, [cobrar, enfocarBuscador, activaId, catalogo, config, agregar, openModal, toast, modal, irALista]);
 
   /* ------------------------------ Render ------------------------------ */
 
@@ -556,147 +878,177 @@ export function PosPanel() {
   const sucursal = sucursales.find((x) => x.id === sucursalId);
   const enLista = !activaId;
 
-  return (
-    <div>
-      <PanelHead
-        title="Punto de venta"
-        desc={`${sucursal?.nombre || ''} · lista ${lista || '—'}. Ins carga un producto, Shift+Ins abre la búsqueda, F2 cobra.`}
-        actions={
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {guardando && <span className={s.hint} style={{ margin: 0 }}>Guardando…</span>}
-            <Btn onClick={recargarCatalogo} disabled={cargandoCatalogo}>
-              {cargandoCatalogo ? 'Cargando…' : 'Actualizar precios'}
-            </Btn>
-          </div>
-        }
-      />
+  /**
+   * La misma barra de pestañas vive en las dos vistas: la lista (panel normal)
+   * y la registradora (pantalla completa). La primera pestaña vuelve a
+   * "Ventas en curso"; el × cierra la ventana SIN tocar la venta.
+   */
+  const barraPestanas = (enReg) => (
+    <div className={cx(p.tabs, enReg && p.tabsReg)} role="tablist" aria-label="Ventas abiertas">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={enLista}
+        className={cx(p.tab, enLista && p.tabActiva)}
+        onClick={irALista}
+      >
+        <span className={p.tabNombre}>Ventas en curso</span>
+        {abiertas.length > 0 && <span className={p.tabBadge}>{abiertas.length}</span>}
+      </button>
 
-      {/* ---------------- Barra de caja ---------------- */}
-      <div className={cx(p.cajaBar, !cajaAbierta && p.cajaBarCerrada)}>
-        {cargandoCaja ? (
-          <span className={s.muted}>Verificando el turno de caja…</span>
-        ) : cajaAbierta ? (
-          <>
-            <div className={p.cajaDato}><span>Turno</span><strong>#{caja.id} abierto</strong></div>
-            <div className={p.cajaDato}><span>Desde</span><strong>{fmtFechaHora(caja.apertura)}</strong></div>
-            <div className={p.cajaDato}><span>Fondo inicial</span><strong>{money(caja.montoInicial)}</strong></div>
-            <span className={p.spacer} />
-            <Btn small onClick={() => openModal('movimientoCaja', { cajaSesionId: caja.id, onChange: recargarCaja })}>
-              Ingreso / egreso
-            </Btn>
-            <Btn variant="btn-delete" small onClick={() => openModal('cerrarCaja', { cajaSesionId: caja.id, onChange: recargarCaja })}>
-              Cerrar caja
-            </Btn>
-          </>
-        ) : (
-          <>
-            <div className={p.cajaDato}><span>Caja</span><strong>Sin turno abierto</strong></div>
-            <span className={s.hint} style={{ margin: 0 }}>
-              {requiereCaja
-                ? 'La configuración exige un turno abierto para vender al contado.'
-                : 'La caja no es obligatoria, pero sin turno no vas a poder arquear.'}
-            </span>
-            <span className={p.spacer} />
-            <Btn variant="btn-primary" small onClick={() => openModal('abrirCaja', { onChange: recargarCaja })}>
-              Abrir caja
-            </Btn>
-          </>
-        )}
-      </div>
-
-      {/* ---------------- Pestañas ---------------- */}
-      <div className={p.tabs} role="tablist" aria-label="Ventas abiertas">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={enLista}
-          className={cx(p.tab, enLista && p.tabActiva)}
-          onClick={irALista}
-        >
-          <span className={p.tabNombre}>Ventas en curso</span>
-          {abiertas.length > 0 && <span className={p.tabBadge}>{abiertas.length}</span>}
-        </button>
-
-        {pestanas.map((v) => {
-          const cli = getCliente(v.clienteId);
-          const activa = v.id === activaId;
-          return (
-            <button
-              key={v.id}
-              type="button"
-              role="tab"
-              aria-selected={activa}
-              className={cx(p.tab, activa && p.tabActiva)}
-              onClick={() => (activa ? null : abrirVenta(v.id))}
+      {pestanas.map((v) => {
+        const cli = getCliente(v.clienteId);
+        const activa = v.id === activaId;
+        return (
+          <button
+            key={v.id}
+            type="button"
+            role="tab"
+            aria-selected={activa}
+            className={cx(p.tab, activa && p.tabActiva)}
+            onClick={() => (activa ? null : abrirVenta(v.id))}
+          >
+            <span className={p.tabNombre}>{cli?.nombre || `Venta #${v.id}`}</span>
+            <span className={p.tabTotal}>{money(activa ? totales.total : v.total)}</span>
+            <span
+              className={p.tabCerrar}
+              role="button"
+              tabIndex={-1}
+              aria-label="Cerrar la ventana (la venta queda abierta)"
+              title="Cerrar la ventana — la venta queda en curso"
+              onClick={(e) => { e.stopPropagation(); cerrarVentana(v.id); }}
             >
-              <span className={p.tabNombre}>{cli?.nombre || `Venta #${v.id}`}</span>
-              <span className={p.tabTotal}>{money(activa ? totales.total : v.total)}</span>
-              <span
-                className={p.tabCerrar}
-                role="button"
-                tabIndex={-1}
-                aria-label="Cerrar la ventana (la venta queda abierta)"
-                title="Cerrar la ventana — la venta queda en curso"
-                onClick={(e) => { e.stopPropagation(); cerrarVentana(v.id); }}
-              >
-                ×
-              </span>
-            </button>
-          );
-        })}
+              ×
+            </span>
+          </button>
+        );
+      })}
 
-        <button type="button" className={cx(p.tab, p.tabNueva)} onClick={nuevaVenta}>+ Nueva venta</button>
-      </div>
+      <button type="button" className={cx(p.tab, p.tabNueva)} onClick={nuevaVenta}>+ Nueva venta</button>
+    </div>
+  );
 
-      {errorCatalogo && (
-        <div className={cx(s.callout, s.warn)}>No se pudo cargar el catálogo: <strong>{errorCatalogo}</strong></div>
-      )}
+  /* ---------- Registradora: venta abierta, a pantalla completa ---------- */
 
-      {/* ---------------- Contenido ---------------- */}
-      {enLista ? (
-        <VentasAbiertas
-          abiertas={abiertas}
-          catalogo={catalogo ?? []}
-          onAbrir={abrirVenta}
-          onNueva={nuevaVenta}
-          cargando={cargandoAbiertas}
-        />
-      ) : (
-        <div className={p.pos}>
-          {/* ---------------- Columna izquierda ---------------- */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-3)' }}>
+  if (!enLista) {
+    // El visor muestra lo último que entró; si se retomó una venta guardada,
+    // el último renglón del ticket hace de referencia.
+    const ultimo = ticket.renglones.find((r) => r.key === ultimoKey)
+      ?? ticket.renglones[ticket.renglones.length - 1] ?? null;
+
+    return (
+      <div className={p.registradora}>
+        {/* Barra superior: pestañas + estado del puesto. Nada más. */}
+        <div className={p.regTop}>
+          {barraPestanas(true)}
+          <div className={p.regEstado}>
+            {guardando && <span className={s.hint} style={{ margin: 0 }}>Guardando…</span>}
+            <span className={cx(p.cajaChip, !cajaAbierta && p.cajaChipCerrada)}>
+              {cargandoCaja ? 'Caja…' : cajaAbierta ? `Caja #${caja.id}` : 'Caja cerrada'}
+            </span>
+            {!cargandoCaja && !cajaAbierta && (
+              <Btn variant="btn-primary" small onClick={() => goPanel('caja')}>
+                Ir a Caja
+              </Btn>
+            )}
+            <span className={p.regSucursal}>{sucursal?.nombre}</span>
+          </div>
+        </div>
+
+        {errorCatalogo && (
+          <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>
+            No se pudo cargar el catálogo: <strong>{errorCatalogo}</strong>
+          </div>
+        )}
+
+        <div className={p.regMain}>
+          {/* ------ Columna de trabajo: escanear → confirmar → corregir ------ */}
+          <div className={p.regIzq}>
             <Buscador catalogo={catalogo ?? []} config={config} onElegir={agregar} inputRef={buscadorRef} />
 
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {/* El "visor" de la registradora: lo último que entró, en grande. */}
+            <div key={flashTick} className={cx(p.ultimoStrip, flashTick > 0 && p.ultimoFlash)}>
+              {ultimo ? (
+                <>
+                  <span className={p.ultimoInfo}>
+                    <span className={p.ultimoNombre}>{ultimo.nombre}</span>
+                    <span className={p.ultimoMeta}>
+                      {ultimo.detalle} · {num(ultimo.cantidad)} {ultimo.unidad} × {money(ultimo.precioUnitario)}
+                    </span>
+                  </span>
+                  <span className={p.ultimoImporte}>{money(calcularRenglon(ultimo).total)}</span>
+                </>
+              ) : (
+                <span className={s.muted}>El próximo artículo escaneado aparece acá.</span>
+              )}
+            </div>
+
+            <div className={p.regTicketScroll} ref={ticketScrollRef}>
+              <Ticket
+                renglones={ticket.renglones}
+                dispatch={dispatch}
+                permitirStockNegativo={!!config.permitirStockNegativo}
+                descuentoMax={descuentoMax}
+                esAdmin={esAdmin}
+                preciosDe={preciosDe}
+                ultimoKey={ultimoKey}
+                listasPorId={listasPorId}
+                overrideBloqueado={overrideBloqueado}
+              />
+            </div>
+
+            {/* Acciones secundarias: chicas y abajo, no compiten con el escaneo. */}
+            <div className={p.regAcciones}>
               <Btn small onClick={() => openModal('cargaRapida', { catalogo: catalogo ?? [], config, onAgregar: agregar })}>
-                Cargar producto (Ins)
+                Cargar (Ins)
               </Btn>
-              <Btn small onClick={() => openModal('busquedaMasiva', { catalogo: catalogo ?? [], onAgregar: agregar })}>
-                Búsqueda de productos (Shift+Ins)
+              <Btn small onClick={() => openModal('busquedaMasiva', { catalogo, listas: listasCatalogo, onAgregar: agregar })}>
+                Buscar (⇧Ins)
+              </Btn>
+              {puedePresupuestar && (
+                <Btn small onClick={guardarPresupuesto} title="Guardar el ticket como presupuesto mayorista (no vende)">
+                  Presupuesto
+                </Btn>
+              )}
+              <Btn small onClick={reimprimirTicket} title="Reimprimir el último ticket cobrado en este puesto">
+                Reimprimir
               </Btn>
               <Btn small onClick={() => openModal('cargaExtra', { onAgregar: (x) => dispatch({ tipo: 'extraAgregar', ...x }) })}>
                 Cargo extra
               </Btn>
+              {/*
+                Se elige MODALIDAD, no lista: las listas son del producto, así
+                que "Mayorista" puede ser la 1 en un artículo y la 2 en otro.
+                Cada renglón toma la mejor suya dentro de la modalidad.
+              */}
+              <select
+                className={s['select-inline']}
+                value=""
+                aria-label="Aplicar una modalidad de precio a todo el ticket"
+                disabled={!ticket.renglones.length || overrideBloqueado}
+                onChange={(e) => { aplicarModalidadATodo(e.target.value); e.target.value = ''; }}
+              >
+                <option value="">Aplicar modalidad…</option>
+                {modalidades.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                <option value="auto">↺ Volver al automático</option>
+              </select>
               <span className={p.spacer} />
               <Btn small onClick={() => openModal('delegarVenta', { ventaId: activaId, actualId: ctx.usuarioId, onChange: recargarAbiertas })}>
                 Delegar
               </Btn>
-              <Btn variant="btn-delete" small onClick={() => dispatch({ tipo: 'limpiar' })} disabled={!ticket.renglones.length && !ticket.extras.length}>
+              <Btn
+                variant="btn-delete"
+                small
+                onClick={() => dispatch({ tipo: 'limpiar' })}
+                disabled={!ticket.renglones.length && !ticket.extras.length}
+              >
                 Vaciar
               </Btn>
             </div>
-
-            <Ticket
-              renglones={ticket.renglones}
-              dispatch={dispatch}
-              permitirStockNegativo={!!config.permitirStockNegativo}
-              descuentoMax={descuentoMax}
-              esAdmin={esAdmin}
-            />
           </div>
 
-          {/* ---------------- Columna derecha ---------------- */}
-          <div className={p.lateral}>
+          {/* ------ Columna de cobro: cliente, resumen y el TOTAL ------ */}
+          <div className={p.regLateral}>
             <div className={p.bloque}>
               <div className={p.bloqueTitulo}>Cliente</div>
               <select
@@ -715,6 +1067,66 @@ export function PosPanel() {
                 {clienteActual?.ctaCteHabilitada && ' · cuenta corriente'}
               </div>
             </div>
+
+            {/*
+              Sugerencia por monto. Se avisa POR ADELANTADO qué medio de pago
+              exige: el precio se arma antes de cobrar, y descubrirlo recién al
+              confirmar sería descubrirlo con el cliente enfrente.
+            */}
+            {sugerencia && (
+              <div className={cx(s.callout, s.ok)} style={{ margin: 0 }}>
+                Supera <strong>{money(sugerencia.monto)}</strong>: califica para{' '}
+                <strong>{sugerencia.modalidad}</strong> en {sugerencia.renglones} artículo(s).
+                {sugerencia.mediosPago.length > 0 && (
+                  <div className={s.hint} style={{ margin: '4px 0 0' }}>
+                    Solo pagando con {sugerencia.mediosPago.map((m) => MEDIOS_PAGO[m] || m).join(' o ')}.
+                  </div>
+                )}
+                <div style={{ marginTop: 8 }}>
+                  <Btn variant="btn-primary" small onClick={() => aplicarMonto(sugerencia.modalidadId)}>
+                    Aplicar {sugerencia.modalidad}
+                  </Btn>
+                </div>
+              </div>
+            )}
+
+            {ticket.montoAplicado && (
+              <div className={cx(s.callout, s.info)} style={{ margin: 0 }}>
+                Precio por <strong>monto de compra</strong> aplicado.
+                <div style={{ marginTop: 8 }}>
+                  <Btn small onClick={() => aplicarMonto(null)}>Quitar</Btn>
+                </div>
+              </div>
+            )}
+
+            {/* Ofertas de ticket: misma mecánica que el monto — avisan, no se
+                aplican solas, y anuncian el medio de pago por adelantado. */}
+            {sugerenciasOferta.map((o) => (
+              <div key={o.id} className={cx(s.callout, s.ok)} style={{ margin: 0 }}>
+                Supera <strong>{money(o.montoMinimo)}</strong>: oferta{' '}
+                <strong>{o.nombre}</strong> (−{o.porcentaje}%).
+                {o.mediosPago.length > 0 && (
+                  <div className={s.hint} style={{ margin: '4px 0 0' }}>
+                    Solo pagando con {o.mediosPago.map((m) => MEDIOS_PAGO[m] || m).join(' o ')}.
+                  </div>
+                )}
+                <div style={{ marginTop: 8 }}>
+                  <Btn variant="btn-primary" small onClick={() => aplicarOfertaTicket(o.id)}>
+                    Aplicar oferta
+                  </Btn>
+                </div>
+              </div>
+            ))}
+
+            {ticket.ofertaTicket && (
+              <div className={cx(s.callout, s.info)} style={{ margin: 0 }}>
+                Oferta de ticket aplicada
+                {totales.ahorro > 0 && <> · ahorra <strong>{money(totales.ahorro)}</strong></>}.
+                <div style={{ marginTop: 8 }}>
+                  <Btn small onClick={() => aplicarOfertaTicket(null)}>Quitar</Btn>
+                </div>
+              </div>
+            )}
 
             {ticket.extras.length > 0 && (
               <div className={p.bloque}>
@@ -738,15 +1150,23 @@ export function PosPanel() {
               </div>
             )}
 
-            <div className={p.bloque}>
-              <div className={p.bloqueTitulo}>Ticket</div>
+            <div className={cx(p.bloque, p.regResumen)}>
               <div className={p.linea}><span>Artículos</span><strong>{totales.renglones}</strong></div>
               <div className={p.linea}><span>Unidades</span><strong>{num(totales.unidades)}</strong></div>
               <div className={p.linea}><span>Neto</span><strong>{money(totales.neto)}</strong></div>
-              {totales.descuento > 0 && (
+              {/* `descuento` incluye las ofertas; acá se separan para que el
+                  cajero vea dos cosas distintas: lo que él descontó y lo que
+                  descontó la promoción. */}
+              {totales.descuento - totales.ahorro > 0.005 && (
                 <div className={p.linea}>
                   <span>Descuentos</span>
-                  <strong style={{ color: 'var(--crm-color-success)' }}>−{money(totales.descuento)}</strong>
+                  <strong style={{ color: 'var(--crm-color-success)' }}>−{money(totales.descuento - totales.ahorro)}</strong>
+                </div>
+              )}
+              {totales.ahorro > 0 && (
+                <div className={p.linea}>
+                  <span>Ahorro por ofertas</span>
+                  <strong style={{ color: 'var(--crm-color-success)' }}>−{money(totales.ahorro)}</strong>
                 </div>
               )}
               {totales.extras > 0 && (
@@ -768,17 +1188,84 @@ export function PosPanel() {
                 <span className={p.tecla}><kbd>⇧Ins</kbd> buscar</span>
                 <span className={p.tecla}><kbd>F2</kbd> cobrar</span>
                 <span className={p.tecla}><kbd>F4</kbd> foco</span>
+                <span className={p.tecla}><kbd>Esc</kbd> salir</span>
               </div>
             </div>
 
             {problemas.length > 0 && (
-              <div className={cx(s.callout, s.warn)}>
+              <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>
                 {problemas.map((m, i) => <div key={i}>{m}</div>)}
               </div>
             )}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  /* --------------- Lista de ventas en curso (panel normal) --------------- */
+
+  return (
+    <div>
+      <PanelHead
+        title="Punto de venta"
+        desc={`${sucursal?.nombre || ''}. Ins carga un producto, Shift+Ins abre la búsqueda, F2 cobra.`}
+        actions={
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {guardando && <span className={s.hint} style={{ margin: 0 }}>Guardando…</span>}
+            {/* Traer precios a mano también da por visto el aviso: el cajero que
+                acaba de actualizar no tiene que ver el cartel. */}
+            <Btn onClick={actualizarPrecios} disabled={cargandoCatalogo}>
+              {cargandoCatalogo ? 'Cargando…' : 'Actualizar precios'}
+            </Btn>
+          </div>
+        }
+      />
+
+      {/*
+        Barra de caja MÍNIMA: la gestión del turno (abrir, movimientos, pagos a
+        proveedor, controles, cierre) vive en Ventas › Caja. Acá queda solo el
+        estado, porque el cajero necesita saber por qué un cobro se rechazaría.
+      */}
+      <div className={cx(p.cajaBar, !cajaAbierta && p.cajaBarCerrada)}>
+        {cargandoCaja ? (
+          <span className={s.muted}>Verificando el turno de caja…</span>
+        ) : cajaAbierta ? (
+          <>
+            <div className={p.cajaDato}><span>Turno</span><strong>#{caja.id} abierto</strong></div>
+            <div className={p.cajaDato}><span>Desde</span><strong>{fmtFechaHora(caja.apertura)}</strong></div>
+            <span className={p.spacer} />
+            <Btn small onClick={() => goPanel('caja')}>Gestionar caja</Btn>
+          </>
+        ) : (
+          <>
+            <div className={p.cajaDato}><span>Caja</span><strong>Sin turno abierto</strong></div>
+            <span className={s.hint} style={{ margin: 0 }}>
+              {requiereCaja
+                ? 'La configuración exige un turno abierto para vender al contado. Se abre desde Caja.'
+                : 'La caja no es obligatoria, pero sin turno no vas a poder arquear.'}
+            </span>
+            <span className={p.spacer} />
+            <Btn variant="btn-primary" small onClick={() => goPanel('caja')}>Ir a Caja</Btn>
+          </>
+        )}
+      </div>
+
+      {/* ---------------- Pestañas ---------------- */}
+      {barraPestanas(false)}
+
+      {errorCatalogo && (
+        <div className={cx(s.callout, s.warn)}>No se pudo cargar el catálogo: <strong>{errorCatalogo}</strong></div>
       )}
+
+      {/* ---------------- Contenido ---------------- */}
+      <VentasAbiertas
+        abiertas={abiertas}
+        catalogo={catalogo ?? []}
+        onAbrir={abrirVenta}
+        onNueva={nuevaVenta}
+        cargando={cargandoAbiertas}
+      />
     </div>
   );
 }

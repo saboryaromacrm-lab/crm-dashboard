@@ -29,10 +29,14 @@ export function ProveedorFormModal({ provId }) {
   const [telefono, setTelefono] = useState(prov?.telefono || '');
   const [email, setEmail] = useState(prov?.email || '');
   const [direccion, setDireccion] = useState(prov?.direccion || '');
+  // Clasificación compartida con el módulo Gastos: un proveedor, un CUIT, una
+  // cuenta. Los flags solo definen en qué buscador aparece.
+  const [proveeMercaderia, setProveeMercaderia] = useState(prov ? prov.proveeMercaderia !== false : true);
+  const [proveeGastos, setProveeGastos] = useState(!!prov?.proveeGastos);
 
   const guardar = () => {
     if (!nombre.trim()) { toast('El nombre comercial es obligatorio.', 'err'); return; }
-    const o = { nombre, cuit, condicionIva, telefono, email, direccion };
+    const o = { nombre, cuit, condicionIva, telefono, email, direccion, proveeMercaderia, proveeGastos };
     act(prov ? store.editarProveedor(prov.id, o) : store.crearProveedor(o), prov ? 'Proveedor actualizado.' : 'Proveedor creado.');
   };
 
@@ -74,14 +78,29 @@ export function ProveedorFormModal({ provId }) {
         <label>Dirección</label>
         <input value={direccion} placeholder="Calle, número, localidad" onChange={(e) => setDireccion(e.target.value)} />
       </div>
+
+      <div className={s.field}>
+        <label>Qué provee</label>
+        <div className={s.chipRow}>
+          <label className={s.chip} style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+            <input type="checkbox" checked={proveeMercaderia} onChange={(e) => setProveeMercaderia(e.target.checked)} />
+            Mercadería (Compras)
+          </label>
+          <label className={s.chip} style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+            <input type="checkbox" checked={proveeGastos} onChange={(e) => setProveeGastos(e.target.checked)} />
+            Gastos
+          </label>
+        </div>
+        <div className={s.hint}>
+          Define en qué buscador aparece. Puede ser las dos cosas: el que trae mercadería y además
+          te cobra el flete es un solo proveedor, con una sola cuenta.
+        </div>
+      </div>
     </ModalShell>
   );
 }
 
 /* ============================== DETALLE DE PROVEEDOR ============================== */
-function Di({ label, children }) {
-  return <div className={s.di}><div className={s.l}>{label}</div><div className={s.v}>{children}</div></div>;
-}
 
 export function DetalleProveedorModal({ provId }) {
   const { store, isAdmin, closeModal, openModal } = useProductos();
@@ -105,13 +124,12 @@ export function DetalleProveedorModal({ provId }) {
   footer.push({ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal });
 
   return (
+    /*
+     * Sin ficha de datos arriba: CUIT, teléfono, email y dirección se editan en
+     * el formulario del proveedor (botón Editar) y ocupaban media pantalla
+     * antes de lo que se viene a mirar acá, que son las pestañas.
+     */
     <ModalShell title={'Proveedor — ' + prov.nombre} wide onClose={closeModal} footer={footer}>
-      <div className={s['detalle-grid']}>
-        <Di label="CUIT"><span className={s.mono}>{prov.cuit || '—'}</span></Di>
-        <Di label="Teléfono">{prov.telefono || '—'}</Di>
-        <Di label="Email">{prov.email || '—'}</Di>
-        <Di label="Dirección">{prov.direccion || '—'}</Di>
-      </div>
       <Tabs
         value={tab}
         onChange={(e, v) => setTab(v)}

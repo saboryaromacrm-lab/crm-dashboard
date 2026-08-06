@@ -53,7 +53,16 @@ export function ProductosProvider({ children, panels = [], defaultPanel }) {
   );
 
   const ctx = store.state.ctx;
-  const isAdmin = store.rolActual() === 'admin';
+  /**
+   * La VERSIÓN del store entra en las deps del value: el estado del store es
+   * MUTABLE (misma referencia siempre), así que sin la versión una mutación
+   * que no viene acompañada de un setState propio (p. ej. `setCtx` al cambiar
+   * de usuario o sucursal) re-renderizaba el Provider pero el value memoizado
+   * no cambiaba de identidad — y React salteaba a TODOS los consumidores.
+   */
+  const version = store.getVersion();
+  // El superadmin maneja todo: a efectos operativos es un admin más.
+  const isAdmin = store.rolActual() === 'admin' || store.rolActual() === 'superadmin';
   const can = useCallback((perm) => store.can(perm), [store]);
   const sucOperativa = useCallback(
     () => ctx.sucursalId || (store.distribuidora() && store.distribuidora().id),
@@ -62,7 +71,7 @@ export function ProductosProvider({ children, panels = [], defaultPanel }) {
 
   const value = useMemo(
     () => ({
-      store,
+      store, version,
       panels,
       panel, panelParams, goPanel,
       modal, openModal, closeModal,
@@ -70,7 +79,7 @@ export function ProductosProvider({ children, panels = [], defaultPanel }) {
       isAdmin, can, ctx, sucOperativa,
       toastState, closeToast,
     }),
-    [store, panels, panel, panelParams, goPanel, modal, openModal, closeModal, toast, act, isAdmin, can, ctx, sucOperativa, toastState, closeToast],
+    [store, version, panels, panel, panelParams, goPanel, modal, openModal, closeModal, toast, act, isAdmin, can, ctx, sucOperativa, toastState, closeToast],
   );
 
   return <ProductosContext.Provider value={value}>{children}</ProductosContext.Provider>;

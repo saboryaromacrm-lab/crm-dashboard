@@ -65,20 +65,26 @@ npm run lint              # ESLint
 > El archivo `.env` está en `.gitignore` y **no se sube**: copialo de
 > `.env.example` en cada máquina.
 
-> Usuario demo (auth simulada): cualquier envío del formulario de login entra.
-> La lógica real se conecta únicamente en `src/core/auth/auth.service.js`.
+> Login real: usuario + contraseña + sucursal, contra la API (`/usuarios`).
+> La sesión es **por ventana/pestaña**: dos ventanas pueden operar con
+> usuarios y sucursales distintos sin pisarse.
 
 ## Módulos
 
 | Módulo | Ruta | Menú interno |
 |--------|------|--------------|
-| **Compras** | `/compras` | Dashboard · Productos · Proveedores · Facturación · Historial |
-| **Ventas** | `/ventas` | Punto de venta · Clientes · Cobranzas · Caja · Configuración |
-| **Almacén** | `/almacen` | Sucursales · Existencias · Fraccionamiento · Transferencias · Incidencias |
-| **Gerencia** | `/gerencia` | Próximamente |
+| **Compras** | `/compras` | Dashboard · Productos · Catálogos · Proveedores · Facturación (pestañas Facturas / Pagos en sucursal) · Historial |
+| **Ventas** | `/ventas` | Punto de venta · Caja · Órdenes web · Presupuestos · Clientes · Cobranzas · Formato de venta · Ofertas · Cambios de precio · Configuración |
+| **Almacén** | `/almacen` | Existencias · Fraccionamiento · Transferencias · Operaciones · Incidencias · Cafetería (envíos a coffit) |
+| **Gastos** | `/gastos` | Gastos (pestañas Gastos / Pagos en sucursal) · Cuentas a pagar · Gastos fijos · Rubros · Proveedores · Resumen |
+| **Web** | `/web` | Administración del sitio (productos publicados, ofertas, contenido, estadísticas, configuración) |
+| **Gerencia** | `/gerencia` | Usuarios y roles (permisos por sección y acción) · Reportes (en construcción) |
+| **Sistema** | `/sistema` | Empresa · Impresión (formatos por documento) · Respaldos |
+| **Info de sistema** | `/info` | La guía viva: cómo trabaja cada proceso, decisiones de diseño, registro de cambios y pendientes |
 
-Compras y Almacén comparten el subsistema de `src/modules/productos/`; Ventas es
-un módulo propio con su store y su contexto.
+Compras y Almacén comparten el subsistema de `src/modules/productos/`; Ventas y
+Gastos son módulos propios con su store/contexto. La visibilidad de cada
+sección la deciden los **permisos del rol** (dos niveles: secciones y acciones).
 
 ## Estructura (resumen)
 
@@ -87,8 +93,13 @@ src/
 ├── core/       # Núcleo del framework: layout, router, navegación, temas,
 │               # auth, permisos, hooks y servicios compartidos, registro de módulos.
 ├── modules/    # Módulos de negocio, cada uno 100% autocontenido.
-│   ├── productos/  # Subsistema compartido por Compras y Almacén
-│   ├── ventas/     # POS, clientes, cobranzas, caja y configuración
+│   ├── productos/  # Subsistema compartido por Compras y Almacén (incl. Cafetería)
+│   ├── ventas/     # POS, caja, órdenes web, presupuestos, clientes, ofertas
+│   ├── gastos/     # Gastos, pagos a proveedores, cuentas a pagar, fijos
+│   ├── web/        # Administración del sitio público (sitio-web)
+│   ├── gerencia/   # Usuarios y roles
+│   ├── sistema/    # Empresa, impresión, respaldos
+│   ├── manual/     # Info de sistema (documentación viva, es DATO)
 │   └── dashboard/
 ├── shared/     # Componentes/utilidades reutilizables, sin lógica de negocio.
 ├── assets/     # Imágenes, íconos, fuentes.

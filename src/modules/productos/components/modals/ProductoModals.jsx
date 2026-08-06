@@ -1,81 +1,320 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { useSeccion } from '../../hooks/useSeccion.js';
 import { money, num, fmtFechaHora } from '../../domain/format.js';
-import { CATEGORIAS, IVA_OPCIONES } from '../../domain/constants.js';
+import { IVA_OPCIONES, OPCIONES_REDONDEO_PRECIO } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
+import { CatalogoPicker, EtiquetasPicker } from '../CatalogoPicker.jsx';
+import { CatalogoAdmin } from '../CatalogoAdmin.jsx';
+import { FormatoCompraTab } from './FormatoCompraTab.jsx';
 import { Table, TipoBadge, StockPill, MovTag, Btn, s } from '../ui.jsx';
 
 /* ---- Alta / edición de producto ---- */
+
+/** Título de sección dentro del formulario. Agrupa sin costar una pestaña. */
+function Seccion({ children }) {
+  return <div className={s.seccion}>{children}</div>;
+}
+
 export function ProductoFormModal({ prodId }) {
   const { store, act, closeModal, toast } = useProductos();
   const prod = prodId != null ? store.getProducto(prodId) : null;
   const ed = !!prod;
+  const cat = store.state.catalogos;
 
   const [esGranel, setEsGranel] = useState(prod ? prod.tipo === 'granel' : false);
-  const [nombre, setNombre] = useState(prod?.nombre || '');
-  const [marca, setMarca] = useState(prod?.marca || '');
-  const [categoria, setCategoria] = useState(prod?.categoria || 'General');
-  const [iva, setIva] = useState(prod?.iva != null ? String(prod.iva) : '21');
+  const [f, setF] = useState(() => ({
+    nombre: prod?.nombre || '',
+    descripcion: prod?.descripcion || '',
+    codigoPropio: prod?.codigoPropio || '',
+    codigoBarras: prod?.codigoBarras || '',
+    dun: prod?.dun || '',
+    unidadesPorBulto: prod?.unidadesPorBulto != null ? String(prod.unidadesPorBulto) : '1',
+    marcaId: prod?.marcaId ?? null,
+    categoriaId: prod?.categoriaId ?? null,
+    subcategoriaId: prod?.subcategoriaId ?? null,
+    etiquetas: prod?.etiquetas || [],
+    iva: prod?.iva != null ? String(prod.iva) : '21',
+    // '' = heredar el redondeo de configuración, que es el caso normal.
+    redondeo: prod?.redondeo == null ? '' : String(prod.redondeo),
+    idExterno: prod?.idExterno || '',
+    // Solo alta: crea la relación producto/proveedor de entrada, así el
+    // producto ya aparece al cargar la factura de ese proveedor.
+    proveedorId: '',
+    costoInicial: '',
+  }));
+  /** Catálogo que se está administrando encima del formulario (o null). */
+  const [admin, setAdmin] = useState(null);
+
+  const set = (k, v) => setF((prev) => ({ ...prev, [k]: v }));
+
+  // Cascada: al cambiar de categoría, la subcategoría elegida deja de ser
+  // válida. Limpiarla acá evita guardar una combinación que el backend rechaza.
+  const setCategoria = (id) => setF((prev) => ({ ...prev, categoriaId: id, subcategoriaId: null }));
+  const subcategorias = useMemo(
+    () => cat.subcategorias.filter((sc) => sc.categoriaId === f.categoriaId),
+    [cat.subcategorias, f.categoriaId],
+  );
+
+  /**
+   * Alta rápida desde el propio desplegable. `_mutate` devuelve `{ok, ...fila}`,
+   * así que el `id` viene servido y el picker puede dejarlo seleccionado.
+   */
+  const crearEn = (tipo, extra) => async (nombre) => {
+    const r = await store.crearCatalogo(tipo, { nombre, ...extra });
+    if (!r || r.ok === false) { toast(r?.error || 'No se pudo crear.', 'err'); return null; }
+    return r;
+  };
+
+  const generarCodigo = async () => {
+    try {
+      const r = await store.siguienteCodigo();
+      if (r?.codigo) set('codigoPropio', r.codigo);
+    } catch (e) {
+      toast('No se pudo generar el código.', 'err');
+    }
+  };
 
   const guardar = () => {
-    const nom = nombre.trim();
-    if (!nom) { toast('El nombre es obligatorio.', 'err'); return; }
-    const o = { nombre: nom, categoria, marca, iva: Number(iva), esGranel };
-    act(prod ? store.editarProducto(prod.id, o) : store.crearProducto(o), prod ? 'Producto actualizado.' : 'Producto creado.');
+    const nombre = f.nombre.trim();
+    if (!nombre) { toast('El nombre es obligatorio.', 'err'); return; }
+    const o = {
+      nombre,
+      descripcion: f.descripcion.trim(),
+      codigoPropio: f.codigoPropio.trim(),
+      codigoBarras: f.codigoBarras.trim(),
+      dun: f.dun.trim(),
+      unidadesPorBulto: Number(f.unidadesPorBulto) || 1,
+      marcaId: f.marcaId,
+      categoriaId: f.categoriaId,
+      subcategoriaId: f.subcategoriaId,
+      etiquetas: f.etiquetas,
+      iva: Number(f.iva),
+      redondeo: f.redondeo === '' ? null : Number(f.redondeo),
+      idExterno: f.idExterno.trim(),
+      esGranel,
+    };
+    if (!ed && f.proveedorId) {
+      o.proveedorId = parseInt(f.proveedorId, 10);
+      o.costoInicial = Number(f.costoInicial) || 0;
+    }
+    act(
+      prod ? store.editarProducto(prod.id, o) : store.crearProducto(o),
+      prod ? 'Producto actualizado.' : 'Producto creado.',
+    );
   };
 
   return (
-    <ModalShell
-      title={ed ? 'Editar producto #' + prod.id : 'Nuevo producto'}
-      onClose={closeModal}
-      footer={[
-        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: ed ? 'Guardar' : 'Crear', clase: 'btn-primary', onClick: guardar },
-      ]}
-    >
-      <label className={s['granel-toggle']}>
-        <input type="checkbox" checked={esGranel} disabled={ed} onChange={(e) => setEsGranel(e.target.checked)} />
-        <span>
-          <span className={s['t-title']}>Es un producto a granel</span><br />
-          <span className={s['t-sub']}>Se vende por peso y se fracciona. Si no, es un producto entero por unidad.</span>
-        </span>
-      </label>
-      {ed && <div className={s.hint}>El tipo no se cambia luego de crear el producto.</div>}
+    <>
+      <ModalShell
+        title={ed ? `Editar producto #${prod.id}` : 'Nuevo producto'}
+        wide
+        onClose={closeModal}
+        footer={[
+          { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+          { texto: ed ? 'Guardar' : 'Crear', clase: 'btn-primary', onClick: guardar },
+        ]}
+      >
+        <label className={s['granel-toggle']}>
+          <input type="checkbox" checked={esGranel} disabled={ed} onChange={(e) => setEsGranel(e.target.checked)} />
+          <span>
+            <span className={s['t-title']}>Es un producto a granel</span><br />
+            <span className={s['t-sub']}>Se vende por peso y se fracciona. Si no, es un producto entero por unidad.</span>
+          </span>
+        </label>
+        {ed && <div className={s.hint}>El tipo no se cambia luego de crear el producto.</div>}
 
-      <div className={s['form-grid']} style={{ marginTop: 12 }}>
-        <div className={s.field}>
-          <label>Nombre <span className={s.req}>*</span></label>
-          <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Harina Integral" />
+        {/* --- Identificación --- */}
+        <Seccion>Identificación</Seccion>
+        <div className={s['form-grid-3']}>
+          <div className={s.field}>
+            <label>
+              Código propio
+              <button type="button" className={s.linkBtn} onClick={generarCodigo} tabIndex={-1}>Crear un código</button>
+            </label>
+            <input
+              value={f.codigoPropio}
+              onChange={(e) => set('codigoPropio', e.target.value)}
+              placeholder="Interno"
+            />
+          </div>
+          <div className={s.field}>
+            <label>Código de barras</label>
+            <input
+              value={f.codigoBarras}
+              onChange={(e) => set('codigoBarras', e.target.value)}
+              placeholder="EAN de la unidad"
+            />
+          </div>
+          <div className={s.field}>
+            <label>DUN</label>
+            <input value={f.dun} onChange={(e) => set('dun', e.target.value)} placeholder="EAN del bulto" />
+          </div>
         </div>
-        <div className={s.field}>
-          <label>Marca</label>
-          <input value={marca} onChange={(e) => setMarca(e.target.value)} placeholder="Ej: Molienda del Sur" />
+        <div className={s.hint}>
+          Los tres tienen que ser únicos entre sí y contra los de las presentaciones: si dos cosas
+          responden al mismo código, el lector de la caja no tiene con qué desempatar.
         </div>
-      </div>
-      <div className={s['form-grid']}>
-        <div className={s.field}>
-          <label>Categoría</label>
-          <select value={categoria} onChange={(e) => setCategoria(e.target.value)}>
-            {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-        <div className={s.field}>
-          <label>IVA</label>
-          <select value={iva} onChange={(e) => setIva(e.target.value)}>
-            {IVA_OPCIONES.map((v) => <option key={v} value={v}>{num(v, 1)}%</option>)}
-          </select>
-        </div>
-      </div>
 
-      <div className={cx(s.callout, s.info)}>
-        El <strong>precio de venta</strong> se define en la pestaña <strong>Venta</strong> del detalle (por % de ganancia).
-        {esGranel && <> Las <strong>presentaciones</strong> se cargan en la pestaña <strong>Presentaciones</strong> del detalle.</>}
-        {' '}El <strong>stock</strong> se carga desde <strong>Facturación</strong>.
-      </div>
-    </ModalShell>
+        <div className={s.field}>
+          <label>Concepto <span className={s.req}>*</span></label>
+          <input
+            value={f.nombre}
+            onChange={(e) => set('nombre', e.target.value)}
+            placeholder="Ej: ALFAJOR 72% CACAO ALMENDRAS X64G"
+          />
+        </div>
+        <div className={s.field}>
+          <label>Descripción adicional</label>
+          <input
+            value={f.descripcion}
+            onChange={(e) => set('descripcion', e.target.value)}
+            placeholder="Opcional"
+          />
+        </div>
+
+        {/* --- Clasificación --- */}
+        <Seccion>Clasificación</Seccion>
+        <div className={s['form-grid']}>
+          <CatalogoPicker
+            label="Marca"
+            value={f.marcaId}
+            opciones={cat.marcas}
+            onChange={(id) => set('marcaId', id)}
+            onCrear={crearEn('marcas')}
+            onAdministrar={() => setAdmin('marcas')}
+          />
+          <CatalogoPicker
+            label="Categoría"
+            value={f.categoriaId}
+            opciones={cat.categorias}
+            onChange={setCategoria}
+            onCrear={crearEn('categorias')}
+            onAdministrar={() => setAdmin('categorias')}
+          />
+        </div>
+        <div className={s['form-grid']}>
+          <CatalogoPicker
+            label="Subcategoría"
+            value={f.subcategoriaId}
+            opciones={subcategorias}
+            disabled={!f.categoriaId}
+            onChange={(id) => set('subcategoriaId', id)}
+            onCrear={f.categoriaId ? crearEn('subcategorias', { categoriaId: f.categoriaId }) : null}
+            onAdministrar={() => setAdmin('subcategorias')}
+            ayuda={f.categoriaId ? 'Opcional.' : 'Elegí primero una categoría.'}
+          />
+          <EtiquetasPicker
+            value={f.etiquetas}
+            opciones={cat.etiquetas}
+            onChange={(ids) => set('etiquetas', ids)}
+            onCrear={crearEn('etiquetas')}
+            onAdministrar={() => setAdmin('etiquetas')}
+          />
+        </div>
+
+        {/* --- Valores --- */}
+        <Seccion>Valores</Seccion>
+        <div className={s['form-grid-3']}>
+          <div className={s.field}>
+            <label>Unidades por bulto</label>
+            <input
+              type="number"
+              min="1"
+              value={f.unidadesPorBulto}
+              onChange={(e) => set('unidadesPorBulto', e.target.value)}
+            />
+          </div>
+          <div className={s.field}>
+            <label>Tasa de IVA</label>
+            <select value={f.iva} onChange={(e) => set('iva', e.target.value)}>
+              {IVA_OPCIONES.map((v) => <option key={v} value={v}>{num(v, 1)} %</option>)}
+            </select>
+          </div>
+          <div className={s.field}>
+            <label>Tipo de redondeo</label>
+            <select value={f.redondeo} onChange={(e) => set('redondeo', e.target.value)}>
+              <option value="">Heredar de configuración</option>
+              {OPCIONES_REDONDEO_PRECIO.map((o) => (
+                <option key={o.valor} value={o.valor}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className={s.hint}>
+          El redondeo se aplica sobre el precio final con IVA. Dejalo heredado salvo que este
+          producto necesite otra cosa.
+        </div>
+
+        {/* --- Proveedor (solo alta) --- */}
+        {!ed && (
+          <>
+            <Seccion>Proveedor</Seccion>
+            <div className={s['form-grid']}>
+              <div className={s.field}>
+                <label>Con quién llega</label>
+                <select value={f.proveedorId} onChange={(e) => set('proveedorId', e.target.value)}>
+                  <option value="">Elegir después (Formato de Compra)</option>
+                  {store.state.proveedores
+                    .filter((p) => p.proveeMercaderia !== false)
+                    .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+              </div>
+              <div className={s.field}>
+                <label>Costo de lista (neto)</label>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={f.costoInicial}
+                  disabled={!f.proveedorId}
+                  onChange={(e) => set('costoInicial', e.target.value)}
+                  placeholder="Opcional"
+                />
+              </div>
+            </div>
+            <div className={s.hint}>
+              Crea la relación con ese proveedor de entrada: el producto ya aparece al cargar su
+              factura, y al ser el primero fija el precio. Los demás proveedores se suman después
+              en el <strong>Formato de Compra</strong> del producto.
+            </div>
+          </>
+        )}
+
+        {/* --- Tienda --- */}
+        <Seccion>Tienda</Seccion>
+        <div className={s.hint} style={{ marginBottom: 10 }}>
+          El producto aparece en el sitio web cuando tiene <strong>precio en la lista Mayorista</strong> —
+          no hay switch de publicación. El destacado y la foto se manejan en el módulo <strong>Web</strong>.
+        </div>
+        <div className={s['form-grid']}>
+          <div className={s.field}>
+            <label>Id en la tienda</label>
+            <input
+              value={f.idExterno}
+              onChange={(e) => set('idExterno', e.target.value)}
+              placeholder="Lo asigna la tienda"
+            />
+          </div>
+        </div>
+
+        <div className={cx(s.callout, s.info)}>
+          El <strong>precio de venta</strong> se define en <strong>Formato de Venta</strong>, y el costo y el
+          código del proveedor en <strong>Formato de Compra</strong>, dentro del detalle.
+          {esGranel && <> Las <strong>presentaciones</strong> se cargan en su propia pestaña.</>}
+          {' '}El <strong>stock</strong> entra por <strong>Facturación</strong>.
+        </div>
+      </ModalShell>
+
+      {/* Va montado ENCIMA: el formulario sigue vivo y no se pierde nada. */}
+      {admin && (
+        <ModalShell title="Administrar catálogo" wide onClose={() => setAdmin(null)}
+          footer={[{ texto: 'Volver al producto', clase: 'btn-primary', onClick: () => setAdmin(null) }]}
+        >
+          <CatalogoAdmin tipo={admin} />
+        </ModalShell>
+      )}
+    </>
   );
 }
 
@@ -91,11 +330,13 @@ export function DetalleProductoModal({ prodId }) {
   const [tab, setTab] = useState(0);
   if (!p) return null;
 
+  // Compra y Venta, en ese orden: es el recorrido real del producto — primero
+  // cómo entra (y a qué costo), después cómo sale (y a qué precio).
   const tabDefs = [
     { label: 'Resumen', C: ResumenTab },
-    { label: 'Proveedor', C: ProveedorTab },
-    { label: 'Costo', C: CostoTab },
-    { label: 'Venta', C: VentaTab },
+    { label: 'Formato de Compra', C: FormatoCompraTab },
+    { label: 'Formato de Venta', C: VentaTab },
+    { label: 'Evolución de precios', C: EvolucionPreciosTab },
   ];
   if (p.tipo === 'granel') tabDefs.push({ label: 'Presentaciones', C: PresentacionesTab });
   const Active = (tabDefs[tab] || tabDefs[0]).C;
@@ -128,7 +369,7 @@ function ResumenTab({ prod: p }) {
     : store.suma({ productoId: p.id, estado: 'disponible' });
   let valor = 0;
   store.state.stock.forEach((st) => { if (st.productoId === p.id && st.estado === 'disponible') valor += store.valorEntry(st); });
-  const provAct = store.proveedorActivoEntry(p);
+  const provAct = store.formatoActivo(p);
   const provActNom = provAct ? (store.getProveedor(provAct.proveedorId) || {}).nombre : '—';
 
   const rows = store.state.stock.filter((st) => st.productoId === p.id && st.cantidad > 1e-9).map((st) => (
@@ -237,177 +478,294 @@ function PresentacionesTab({ prod: p }) {
 }
 
 /* ---- Pestaña Proveedor: costo por proveedor, descuento y flete (%), proveedor activo ---- */
-function ProveedorTab({ prod: p }) {
-  const { store, isAdmin, toast } = useProductos();
-  const proveedores = store.state.proveedores;
-  const [rows, setRows] = useState(() =>
-    (p.proveedores || []).map((e) => ({ proveedorId: e.proveedorId, costo: String(e.costo ?? ''), descuento: String(e.descuento ?? ''), flete: String(e.flete ?? '') })),
-  );
-  const [activo, setActivo] = useState(p.proveedorActivoId ?? null);
+/* ==================================================================== *
+ * EVOLUCIÓN DE PRECIOS — las veces que cambió el precio, con su %
+ * ==================================================================== *
+ * Lee el historial que el backend registra por snapshot-diff después de cada
+ * operación que mueve precios. Se pide al abrir la pestaña (no viaja con el
+ * producto): es un dato de consulta, no de operación.
+ */
+const ORIGEN_PRECIO = {
+  inicial: 'Alta',
+  costo: 'Cambio de costo',
+  formato_compra: 'Formato de compra',
+  formato_venta: 'Formato de venta',
+  activacion: 'Cambio de formato activo',
+  reversion: 'Reversión',
+};
 
-  const setRow = (i, patch) => setRows((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)));
-  const delRow = (i) => setRows((r) => r.filter((_, j) => j !== i));
-  const addRow = () => {
-    const usados = new Set(rows.map((r) => Number(r.proveedorId)));
-    const libre = proveedores.find((pv) => !usados.has(pv.id)) || proveedores[0];
-    if (!libre) { toast('Primero creá proveedores en el menú Proveedores.', 'err'); return; }
-    setRows((r) => [...r, { proveedorId: libre.id, costo: '', descuento: '', flete: '' }]);
-  };
-
-  const guardar = async () => {
-    const res = await store.guardarProveedoresProducto(p.id, { proveedores: rows, proveedorActivoId: activo });
-    toast(res.ok ? 'Proveedores del producto guardados.' : res.error, res.ok ? 'ok' : 'err');
-  };
-
-  return (
-    <div className={s.form}>
-      <div className={cx(s.callout, s.info)}>
-        Cargá el costo del producto con cada proveedor (descuento y flete en %). Tildá con cuál
-        <strong> vino esta última vez</strong>: ese es el proveedor activo que define el costo y los precios.
-        Los costos se guardan <strong>netos, sin IVA</strong>; al lado se muestra cuánto es con IVA
-        ({num(p.iva, 1)}%) para poder contrastar contra la lista del proveedor sin sacar la cuenta.
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '48px 1.5fr .9fr .8fr .8fr .9fr .9fr auto', gap: 8, alignItems: 'end' }}>
-          <div className={s['mini-label']} style={{ textAlign: 'center' }}>Activo</div>
-          <div className={s['mini-label']}>Proveedor</div>
-          <div className={s['mini-label']}>Costo neto</div>
-          <div className={s['mini-label']}>Desc. %</div>
-          <div className={s['mini-label']}>Flete %</div>
-          <div className={s['mini-label']}>Neto final</div>
-          <div className={s['mini-label']}>c/IVA</div>
-          <div />
-        </div>
-        {rows.map((r, i) => {
-          const neto = store.costoNetoEntry({ costo: r.costo, descuento: r.descuento, flete: r.flete });
-          return (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '48px 1.5fr .9fr .8fr .8fr .9fr .9fr auto', gap: 8, alignItems: 'center' }}>
-              <input type="radio" name="prov-activo" style={{ width: 18, height: 18, justifySelf: 'center' }}
-                checked={Number(activo) === Number(r.proveedorId)} onChange={() => setActivo(Number(r.proveedorId))} />
-              <select value={r.proveedorId} onChange={(e) => setRow(i, { proveedorId: Number(e.target.value) })}>
-                {proveedores.map((pv) => <option key={pv.id} value={pv.id}>{pv.nombre}</option>)}
-              </select>
-              <input type="number" min="0" step="0.01" value={r.costo} placeholder="0" onChange={(e) => setRow(i, { costo: e.target.value })} />
-              <input type="number" min="0" step="0.1" value={r.descuento} placeholder="0" onChange={(e) => setRow(i, { descuento: e.target.value })} />
-              <input type="number" min="0" step="0.1" value={r.flete} placeholder="0" onChange={(e) => setRow(i, { flete: e.target.value })} />
-              <div className={s.mono} style={{ fontWeight: 700 }}>{money(neto)}</div>
-              {/* El mismo costo visto con IVA: el error de cargarlo con IVA
-                  incluido se vuelve visible sin necesidad de validar nada. */}
-              <div className={cx(s.mono, s.muted)} title={`Costo neto + ${num(p.iva, 1)}% de IVA`}>
-                {money(neto * (1 + (Number(p.iva) || 0) / 100))}
-              </div>
-              <button type="button" className={s['pres-remove']} onClick={() => delRow(i)}>×</button>
-            </div>
-          );
-        })}
-        {!rows.length && <div className={s.muted} style={{ padding: '8px 0' }}>Sin proveedores asignados a este producto.</div>}
-      </div>
-      {isAdmin && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-          <Btn variant="btn-ghost" small onClick={addRow}>+ Agregar proveedor</Btn>
-          <Btn variant="btn-primary" small onClick={guardar}>Guardar</Btn>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ---- Pestaña Costo: costo neto del proveedor activo y comparación ---- */
-function CostoTab({ prod: p }) {
+function EvolucionPreciosTab({ prod: p }) {
   const { store } = useProductos();
-  const act = store.proveedorActivoEntry(p);
-  const unidad = p.tipo === 'granel' ? '/kg' : '/u';
+  const [filas, setFilas] = useState(null);
 
-  if (!act) {
-    return <div className={cx(s.callout, s.info)}>Asigná un proveedor en la pestaña <strong>Proveedor</strong> para calcular el costo.</div>;
-  }
-  const bruto = Number(act.costo) || 0;
-  const desc = Number(act.descuento) || 0;
-  const flete = Number(act.flete) || 0;
-  const neto = store.costoNetoEntry(act);
-  const nombreAct = (store.getProveedor(act.proveedorId) || {}).nombre || '—';
-
-  const comp = (p.proveedores || []).map((e) => (
-    <tr key={e.proveedorId}>
-      <td>{(store.getProveedor(e.proveedorId) || {}).nombre || '—'}{e.proveedorId === p.proveedorActivoId && <span className={cx(s.pill, s['st-disponible'])} style={{ marginLeft: 6 }}>Activo</span>}</td>
-      <td className={s.num}>{money(e.costo)}</td>
-      <td className={s.num}>{num(e.descuento, 1)}%</td>
-      <td className={s.num}>{num(e.flete, 1)}%</td>
-      <td className={cx(s.num, s.mono)}>{money(store.costoNetoEntry(e))}</td>
-    </tr>
-  ));
+  useEffect(() => {
+    let vivo = true;
+    store.evolucionPrecios(p.id).then((r) => { if (vivo) setFilas(r); }).catch(() => { if (vivo) setFilas([]); });
+    return () => { vivo = false; };
+  }, [p.id, store]);
 
   return (
     <>
-      <div className={cx(s.callout)} style={{ marginBottom: 12 }}>
-        Costo del proveedor activo <strong>{nombreAct}</strong>:
+      <div className={cx(s.callout, s.info)} style={{ marginBottom: 12 }}>
+        Cada vez que el precio de góndola de una lista cambió, quedó acá: cuánto valía, cuánto pasó
+        a valer y <strong>por qué</strong> (costo nuevo, markup, formato). Los precios son finales,
+        con IVA — el número de la etiqueta.
       </div>
-      <div className={s['detalle-grid']}>
-        <Di label="Costo bruto">{money(bruto)} {unidad}</Di>
-        <Di label={'Descuento (' + num(desc, 1) + '%)'}>− {money(bruto * desc / 100)}</Di>
-        <Di label={'Flete (' + num(flete, 1) + '%)'}>+ {money(bruto * (1 - desc / 100) * flete / 100)}</Di>
-      </div>
-      <div className={cx(s.callout, s.ok)}>
-        Costo neto: <strong>{money(neto)} {unidad}</strong>
-      </div>
-      <h3 className={s['card-title']} style={{ marginTop: 12 }}>Comparación por proveedor</h3>
-      <Table cols={[{ h: 'Proveedor' }, { h: 'Costo', num: true }, { h: 'Desc.', num: true }, { h: 'Flete', num: true }, { h: 'Neto', num: true }]} empty="Sin proveedores.">
-        {comp}
+      <Table
+        cols={[
+          { h: 'Fecha' }, { h: 'Lista' }, { h: 'Antes', num: true }, { h: 'Después', num: true },
+          { h: 'Variación', num: true }, { h: 'Motivo' },
+        ]}
+        empty={filas === null ? 'Cargando…' : 'Sin cambios registrados todavía.'}
+      >
+        {(filas ?? []).map((f) => (
+          <tr key={f.id}>
+            <td className={s.mono}>{fmtFechaHora(f.fecha)}</td>
+            <td>{f.lista}</td>
+            <td className={cx(s.num, s.mono)}>{f.precioAnterior != null ? money(f.precioAnterior) : '—'}</td>
+            <td className={cx(s.num, s.mono)}><strong>{money(f.precio)}</strong></td>
+            <td className={s.num}>
+              {f.variacion == null
+                ? <span className={s.muted}>alta</span>
+                : (
+                  <strong style={{ color: f.variacion > 0 ? 'var(--crm-color-error)' : 'var(--crm-color-success)' }}>
+                    {f.variacion > 0 ? '+' : ''}{num(f.variacion, 2)}%
+                  </strong>
+                )}
+            </td>
+            <td>
+              {ORIGEN_PRECIO[f.origen] || f.origen}
+              {f.detalle && <div className={cx(s.muted)} style={{ fontSize: 12 }}>{f.detalle}</div>}
+            </td>
+          </tr>
+        ))}
       </Table>
     </>
   );
 }
 
-/* ---- Pestaña Venta: listas de precio por % de ganancia sobre el costo neto ---- */
+/* ==================================================================== *
+ * FORMATO DE VENTA — cómo se vende este producto
+ * ==================================================================== *
+ * Acá vive el markup, y por eso esta pestaña es el corazón del precio.
+ *
+ * La lista existe en el catálogo (Ventas › Formato de venta) pero NO lleva
+ * precio: cada producto define el suyo. La misma "Mayorista" puede ir al 30% en
+ * un producto y al 50% en otro, y un producto que no tiene fila mayorista
+ * simplemente no se vende así — no hay nada que excluir ni que destildar.
+ */
 function VentaTab({ prod: p }) {
   const { store, isAdmin, toast } = useProductos();
   const neto = store.costoNeto(p);
   const unidad = p.tipo === 'granel' ? '/kg' : '/u';
-  const act = store.proveedorActivoEntry(p);
+  const act = store.formatoActivo(p);
   const nombreAct = act ? (store.getProveedor(act.proveedorId) || {}).nombre : null;
 
+  const catalogo = store.state.listasCatalogo ?? { listas: [] };
+  const activas = useMemo(
+    () => (catalogo.listas ?? []).filter((l) => l.activa).sort((a, b) => a.orden - b.orden),
+    [catalogo],
+  );
+  const baseId = store.state.configVentas?.listaBaseId;
+
+  // Los números se editan como texto (permite borrar y tipear a medias).
   const [rows, setRows] = useState(() =>
-    (p.listasPrecio || []).map((l) => ({ id: l.id, nombre: l.nombre, ganancia: String(l.ganancia ?? '') })),
+    (p.listas || []).map((l) => ({
+      listaId: l.listaId,
+      modoPrecio: l.modoPrecio ?? 'markup',
+      markup: String(l.markup ?? 0),
+      precioFijo: String(l.precioFijo || ''),
+      unidades: String(l.unidades ?? 1),
+      codigoBarras: l.codigoBarras ?? '',
+      unidadesMinimas: String(l.unidadesMinimas ?? 0),
+    })),
   );
   const setRow = (i, patch) => setRows((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)));
-  const delRow = (i) => setRows((r) => r.filter((_, j) => j !== i));
-  const addRow = () => setRows((r) => [...r, { id: null, nombre: '', ganancia: '' }]);
+  const quitar = (i) => setRows((r) => r.filter((_, j) => j !== i));
+
+  /** Las que todavía no están cargadas: agregar una es agregar una fila. */
+  const disponibles = activas.filter((l) => !rows.some((r) => r.listaId === l.id));
+  const agregar = (id) => {
+    const l = activas.find((x) => x.id === Number(id));
+    if (l) {
+      setRows((r) => [...r, {
+        listaId: l.id, modoPrecio: 'markup', markup: '0', precioFijo: '',
+        unidades: '1', codigoBarras: '', unidadesMinimas: '0',
+      }]);
+    }
+  };
+
+  const meta = (id) => activas.find((l) => l.id === id);
+  const ordenadas = [...rows].sort((a, b) => (meta(a.listaId)?.orden ?? 999) - (meta(b.listaId)?.orden ?? 999));
+  const tieneBase = rows.some((r) => r.listaId === baseId);
 
   const guardar = async () => {
-    const res = await store.guardarListasProducto(p.id, { listasPrecio: rows });
-    toast(res.ok ? 'Listas de precio guardadas.' : res.error, res.ok ? 'ok' : 'err');
+    for (const r of rows) {
+      if (r.modoPrecio === 'precio' && !(parseFloat(r.precioFijo) > 0)) {
+        toast(`Con precio definido, cargá el precio del formato en ${meta(r.listaId)?.etiqueta ?? 'la lista'}.`, 'err');
+        return;
+      }
+    }
+    const res = await store.guardarListasProducto(p.id, { listas: rows });
+    toast(res.ok ? 'Formato de venta guardado.' : res.error, res.ok ? 'ok' : 'err');
   };
 
   return (
     <div className={s.form}>
       <div className={cx(s.callout, s.info)}>
-        El precio se calcula sobre el <strong>costo neto</strong> del proveedor activo{nombreAct ? <> (<strong>{nombreAct}</strong>)</> : ''}:
-        {' '}<strong>{money(neto)} {unidad}</strong>. Definí una ganancia (%) por lista (minorista, mayorista, oferta…).
+        Cada fila es una <strong>forma de vender</strong> este producto: en qué lista, en cuántas
+        unidades (suelto o caja), con qué código y cómo se define el precio — un <strong>markup</strong>
+        {' '}sobre el costo neto{nombreAct ? <> de <strong>{nombreAct}</strong></> : ''} ({money(neto)} {unidad}),
+        que acompaña al costo, o un <strong>precio definido</strong> que no se mueve hasta que lo
+        cambies. Si no está la fila, no se vende en esa lista.
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.6fr .9fr 1.1fr auto', gap: 8 }}>
-          <div className={s['mini-label']}>Lista</div>
-          <div className={s['mini-label']}>Ganancia %</div>
-          <div className={s['mini-label']}>Precio</div>
-          <div />
+
+      {!tieneBase && activas.some((l) => l.id === baseId) && (
+        <div className={cx(s.callout, s.warn)}>
+          Falta la lista base (<strong>{meta(baseId)?.etiqueta}</strong>), que es el <strong>piso</strong>:
+          el precio que se cobra cuando el ticket no habilita ninguna otra. Sin ella, el producto cae
+          a la lista más cara que tenga cargada.
         </div>
-        {rows.map((r, i) => {
-          const precio = neto * (1 + (Number(r.ganancia) || 0) / 100);
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-3)' }}>
+        {ordenadas.map((r) => {
+          const i = rows.indexOf(r);
+          const l = meta(r.listaId);
+          const esPrecio = r.modoPrecio === 'precio';
+          const unidades = Math.max(parseFloat(r.unidades) || 1, 1);
+          // El MISMO cálculo que el backend (espejo en el store): la vista
+          // previa no puede discrepar del precio que después cobra la caja.
+          const pv = store.ventaFormato(p, {
+            modoPrecio: r.modoPrecio,
+            markup: parseFloat(r.markup) || 0,
+            precioFijo: parseFloat(r.precioFijo) || 0,
+            unidades,
+          });
           return (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.6fr .9fr 1.1fr auto', gap: 8, alignItems: 'center' }}>
-              <input value={r.nombre} placeholder="Ej: Minorista" onChange={(e) => setRow(i, { nombre: e.target.value })} />
-              <input type="number" min="0" step="0.1" value={r.ganancia} placeholder="0" onChange={(e) => setRow(i, { ganancia: e.target.value })} />
-              <div className={s.mono} style={{ fontWeight: 700 }}>{money(precio)} {unidad}</div>
-              <button type="button" className={s['pres-remove']} onClick={() => delRow(i)}>×</button>
+            <div key={r.listaId} className={cx(s.card, s.cardPad)}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div>
+                  <strong style={{ fontSize: 14 }}>{l?.etiqueta ?? `Lista ${r.listaId}`}</strong>
+                  <span className={s.muted} style={{ marginLeft: 8, fontSize: 12 }}>
+                    {r.listaId === baseId ? 'piso · siempre disponible' : `orden ${l?.orden ?? '—'}`}
+                  </span>
+                </div>
+                {isAdmin && (
+                  <button type="button" className={s['pres-remove']} onClick={() => quitar(i)} aria-label={`Quitar ${l?.etiqueta ?? ''}`}>×</button>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1.1fr .7fr 1fr .9fr .8fr', gap: 8, alignItems: 'end' }}>
+                <div>
+                  <div className={s['mini-label']}>Código de barras del formato</div>
+                  <input
+                    value={r.codigoBarras}
+                    placeholder={unidades > 1 ? 'EAN de la caja' : 'Opcional'}
+                    disabled={!isAdmin}
+                    onChange={(e) => setRow(i, { codigoBarras: e.target.value.trim() })}
+                  />
+                </div>
+                <div>
+                  <div className={s['mini-label']}>Vende por</div>
+                  <input
+                    type="number" min="1" step="1" value={r.unidades} disabled={!isAdmin}
+                    title="1 = por unidad; 12 = caja de 12"
+                    onChange={(e) => setRow(i, { unidades: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <div className={s['mini-label']}>Precio por</div>
+                  <select
+                    value={r.modoPrecio} disabled={!isAdmin}
+                    onChange={(e) => setRow(i, { modoPrecio: e.target.value })}
+                  >
+                    <option value="markup">Markup %</option>
+                    <option value="precio">Precio definido</option>
+                  </select>
+                </div>
+                <div>
+                  <div className={s['mini-label']}>{esPrecio ? 'Precio del formato (final)' : 'Markup %'}</div>
+                  {esPrecio ? (
+                    <input
+                      type="number" min="0" step="0.01" value={r.precioFijo} placeholder="$ con IVA" disabled={!isAdmin}
+                      onChange={(e) => setRow(i, { precioFijo: e.target.value })}
+                    />
+                  ) : (
+                    <input
+                      type="number" min="0" step="0.1" value={r.markup} disabled={!isAdmin}
+                      onChange={(e) => setRow(i, { markup: e.target.value })}
+                    />
+                  )}
+                </div>
+                <div>
+                  <div className={s['mini-label']}>Desde (unid.)</div>
+                  <input
+                    type="number" min="0" step="1" value={r.unidadesMinimas}
+                    disabled={!isAdmin || r.listaId === baseId}
+                    onChange={(e) => setRow(i, { unidadesMinimas: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Los DOS precios finales, siempre a la vista: el del formato
+                  (la caja — el número del cartel) y el detalle por unidad. */}
+              <div style={{
+                display: 'flex', gap: 24, marginTop: 10, paddingTop: 10, flexWrap: 'wrap',
+                borderTop: '1px solid var(--crm-color-border)',
+              }}>
+                <div>
+                  <div className={s['mini-label']}>Precio final unitario</div>
+                  <strong className={s.mono} style={{ fontSize: 16 }}>{money(pv.finalUnitario)}</strong>
+                </div>
+                <div>
+                  <div className={s['mini-label']}>
+                    Precio final formato{unidades > 1 ? ` (x${unidades})` : ''}
+                  </div>
+                  <strong className={s.mono} style={{ fontSize: 16, color: 'var(--crm-color-primary)' }}>
+                    {money(pv.finalFormato)}
+                  </strong>
+                </div>
+                {esPrecio && neto > 0 && (
+                  <div>
+                    <div className={s['mini-label']}>Markup equivalente</div>
+                    <span className={s.mono} style={{ fontWeight: 600 }}>
+                      {num(((pv.netoUnitario / neto) - 1) * 100, 1)}%
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}
-        {!rows.length && <div className={s.muted} style={{ padding: '8px 0' }}>Sin listas de precio.</div>}
+
+        {!rows.length && (
+          <div className={s.muted} style={{ padding: '8px 0' }}>
+            Este producto no se vende en ninguna lista todavía.
+          </div>
+        )}
       </div>
+
+      <div className={s.hint} style={{ marginTop: 10 }}>
+        <strong>Vende por</strong>: 1 = suelto; 12 = caja de 12 — al escanear el código del formato,
+        la caja registradora carga las 12 unidades de una. <strong>Desde (unidades)</strong> en 0
+        significa que la lista no se abre sola: se llega por contrato del cliente, regla de marca o
+        monto de compra.
+      </div>
+
       {isAdmin && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-          <Btn variant="btn-ghost" small onClick={addRow}>+ Agregar lista</Btn>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
           <Btn variant="btn-primary" small onClick={guardar}>Guardar</Btn>
+          {disponibles.length > 0 && (
+            <select
+              value=""
+              aria-label="Agregar una lista a este producto"
+              onChange={(e) => { agregar(e.target.value); e.target.value = ''; }}
+            >
+              <option value="">+ Agregar lista…</option>
+              {disponibles.map((l) => <option key={l.id} value={l.id}>{l.etiqueta}</option>)}
+            </select>
+          )}
         </div>
       )}
     </div>

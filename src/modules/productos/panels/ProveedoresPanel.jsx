@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
-import { Table, PanelHead, Btn, s } from '../components/ui.jsx';
+import { Table, PanelHead, Btn, usePaginado, s } from '../components/ui.jsx';
 
 export function ProveedoresPanel() {
   const { store, isAdmin, openModal } = useProductos();
@@ -12,11 +12,13 @@ export function ProveedoresPanel() {
   );
 
   // Cuántos productos usan cada proveedor (referencias en datos comerciales).
-  const usoDe = (provId) => store.state.productos.filter((p) => (p.proveedores || []).some((e) => e.proveedorId === provId)).length;
+  const usoDe = (provId) => store.state.productos.filter((p) => (p.formatosCompra || []).some((e) => e.proveedorId === provId)).length;
 
   const stop = (e) => e.stopPropagation();
 
-  const filas = proveedores.map((p) => (
+  const pag = usePaginado(proveedores, 'proveedores', q);
+
+  const filas = pag.visibles.map((p) => (
     <tr key={p.id} className={s.clickable} onClick={() => openModal('detalleProveedor', { provId: p.id })}>
       <td>{p.nombre}</td>
       <td className={s.mono}>{p.cuit || '—'}</td>
@@ -54,6 +56,7 @@ export function ProveedoresPanel() {
           { h: 'Productos', num: true }, { h: 'Acciones', cls: 'actions-col' },
         ]}
         empty="No hay proveedores."
+        pag={pag}
       >
         {filas}
       </Table>

@@ -25,11 +25,13 @@
   width: 36px;
   height: 36px;
   border-radius: var(--crm-radius-md);
-  background: linear-gradient(135deg, var(--crm-color-primary), var(--crm-color-accent));
+  /* Los dos colores de la marca, juntos una sola vez: en el logo. */
+  background: linear-gradient(135deg, var(--crm-color-success), var(--crm-color-accent-2));
   color: #fff;
   font-weight: 800;
   font-size: 0.8rem;
   flex-shrink: 0;
+  box-shadow: var(--crm-shadow-sm);
 }
 
 .brandName {
@@ -54,8 +56,10 @@
   padding: var(--crm-space-2) var(--crm-space-3);
   font-size: var(--crm-font-size-xs);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--crm-color-text-muted);
+  letter-spacing: 0.08em;
+  /* Del propio texto del sidebar, atenuado: `text-muted` es un gris del
+     contenido y sobre el verde profundo quedaba sucio. */
+  color: color-mix(in srgb, var(--crm-color-sidebar-text) 62%, transparent);
 }
 
 .navList {
@@ -65,6 +69,7 @@
 }
 
 .navItem {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--crm-space-3);
@@ -76,18 +81,34 @@
 }
 
 .navItem:hover {
+  background-color: color-mix(in srgb, #ffffff 7%, transparent);
+  color: var(--crm-color-sidebar-text-active);
+}
+
+/*
+ * El módulo activo: fondo verde un paso más claro que el rail + la barrita
+ * NARANJA a la izquierda. Sobre un sidebar verde, "más verde" no se ve; el
+ * naranja es lo que dice "estás acá" desde el rabillo del ojo.
+ */
+.navItemActive {
   background-color: var(--crm-color-sidebar-active);
   color: var(--crm-color-sidebar-text-active);
 }
 
-.navItemActive {
-  background-color: var(--crm-color-primary);
-  color: var(--crm-color-primary-contrast);
+.navItemActive::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: var(--crm-radius-pill);
+  background: var(--crm-color-accent-2);
 }
 
 .navItemActive:hover {
-  background-color: var(--crm-color-primary);
-  color: var(--crm-color-primary-contrast);
+  background-color: var(--crm-color-sidebar-active);
+  color: var(--crm-color-sidebar-text-active);
 }
 
 .navIcon {
@@ -102,6 +123,35 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+}
+
+/* Pendientes del módulo (ej. transferencias + incidencias de Almacén). */
+.navBadge {
+  flex-shrink: 0;
+  background: var(--crm-color-danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: var(--crm-radius-pill);
+  padding: 1px 7px;
+  min-width: 20px;
+  text-align: center;
+}
+.navItemActive .navBadge {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* Rail colapsado: no entra el número, un punto alcanza (el total va en el tooltip). */
+.navBadgeDot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--crm-color-danger);
+  border: 2px solid var(--crm-color-sidebar-bg, var(--crm-color-sidebar-active));
 }
 
 .footer {
@@ -111,5 +161,5 @@
 
 .version {
   font-size: var(--crm-font-size-xs);
-  color: var(--crm-color-text-muted);
+  color: color-mix(in srgb, var(--crm-color-sidebar-text) 62%, transparent);
 }

@@ -115,7 +115,7 @@ export function CargaRapidaModal({ catalogo, config, onAgregar }) {
  * por sucursal y las tres listas de precio— para poder responderle al cliente
  * sin salir de la pantalla.
  */
-export function BusquedaMasivaModal({ catalogo, onAgregar }) {
+export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
   const { closeModal, toast } = useVentas();
   const [categoria, setCategoria] = useState('');
   const [marca, setMarca] = useState('');
@@ -130,6 +130,22 @@ export function BusquedaMasivaModal({ catalogo, onAgregar }) {
     [catalogo],
   );
 
+  /**
+   * Columnas de las cabeceras agrupadas. Se calculan una vez por catálogo (que
+   * se pide una sola vez al abrir la caja), no por fila ni por tecla.
+   */
+  const sucursalesCols = useMemo(
+    () => catalogo[0]?.stockSucursales?.map((x) => ({ sucursalId: x.sucursalId, nombre: x.nombre })) ?? [],
+    [catalogo],
+  );
+  /** Listas que aparecen como columna, en su orden de preferencia. */
+  const listasCols = useMemo(() => {
+    const presentes = new Set();
+    for (const i of catalogo) for (const x of i.precios || []) presentes.add(x.listaId);
+    return (listas ?? []).filter((l) => presentes.has(l.listaId));
+  }, [catalogo, listas]);
+  const totalCols = 4 + sucursalesCols.length + listasCols.length;
+
   const resultados = useMemo(() => {
     const ql = norm(texto);
     const digitos = texto.replace(/\D/g, '');
@@ -137,8 +153,9 @@ export function BusquedaMasivaModal({ catalogo, onAgregar }) {
       if (categoria && i.categoria !== categoria) return false;
       if (marca && i.marca !== marca) return false;
       if (!ql) return true;
-      // El campo busca por nombre O por código de barras, sin cambiar de modo.
+      // El campo busca por nombre, código interno o código de barras.
       return norm(i.nombre).includes(ql)
+        || (i.codigoPropio && norm(i.codigoPropio).includes(ql))
         || (digitos && i.codigoBarras && i.codigoBarras.includes(digitos));
     }).slice(0, 200);
   }, [catalogo, categoria, marca, texto]);
@@ -177,7 +194,7 @@ export function BusquedaMasivaModal({ catalogo, onAgregar }) {
           <label>Producto</label>
           <input
             autoFocus
-            placeholder="Nombre o código de barras…"
+            placeholder="Nombre, código interno o código de barras…"
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
           />
@@ -187,52 +204,67 @@ export function BusquedaMasivaModal({ catalogo, onAgregar }) {
 
       <div className={p.masivaScroll}>
         <table className={p.masivaTabla}>
+          {/*
+            Cabecera de dos filas: `stock` y `precio` son grupos que se abren en
+            una columna por sucursal y una por lista. Así se compara de un
+            vistazo dónde hay mercadería y cuánto sale en cada lista, sin abrir
+            el producto.
+          */}
           <thead>
             <tr>
-              <th>Código</th>
-              <th>Producto</th>
-              <th>Unidad</th>
-              <th>Stock</th>
-              <th style={{ textAlign: 'right' }}>Precio</th>
-              <th />
+              <th rowSpan={2}>Código</th>
+              <th rowSpan={2}>Producto</th>
+              <th rowSpan={2}>Present.</th>
+              <th colSpan={sucursalesCols.length} className={p.grupoCol}>Stock</th>
+              <th colSpan={listasCols.length} className={p.grupoCol}>Precio</th>
+              <th rowSpan={2} />
+            </tr>
+            <tr>
+              {sucursalesCols.map((su) => (
+                <th key={su.sucursalId} className={p.subCol}>{su.nombre}</th>
+              ))}
+              {listasCols.map((l) => (
+                <th key={l.listaId} className={cx(p.subCol, p.num)} title={l.etiqueta}>
+                  {l.modalidad} {l.numero}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {resultados.length === 0 && (
-              <tr><td colSpan={6} className={p.vacio}>Ningún producto coincide con esos filtros.</td></tr>
+              <tr><td colSpan={totalCols} className={p.vacio}>Ningún producto coincide con esos filtros.</td></tr>
             )}
             {resultados.map((i) => {
-              const conStock = i.stockSucursales.filter((x) => x.cantidad > 0);
+              const stockPorSuc = new Map(i.stockSucursales.map((x) => [x.sucursalId, x.cantidad]));
+              const precioPorLista = new Map(i.precios.map((x) => [x.listaId, x.precio]));
               return (
                 <tr key={i.key}>
-                  <td className={s.mono}>{i.codigoBarras || <span className={s.muted}>—</span>}</td>
-                  <td>
-                    <div className={p.nombreCol}>{i.nombre}</div>
-                    <div className={p.detalleCol}>
-                      {i.detalle}{i.marca ? ` · ${i.marca}` : ''}{i.categoria ? ` · ${i.categoria}` : ''}
-                    </div>
-                  </td>
-                  <td>{i.unidad}</td>
-                  <td>
-                    <div className={cx(p.nombreCol, i.stock <= 0 && p.sinStock)}>
-                      {num(i.stock)} {i.unidad}
-                    </div>
-                    <div className={p.subLista}>
-                      {conStock.length === 0
-                        ? <span className={s.muted}>sin stock en ninguna sucursal</span>
-                        : conStock.map((x) => (
-                          <span key={x.sucursalId}>{x.nombre}: <strong>{num(x.cantidad)}</strong></span>
-                        ))}
-                    </div>
-                  </td>
-                  <td className={p.num}>
-                    <div className={p.nombreCol}>{i.precio > 0 ? money(i.precio) : <span className={p.sinStock}>sin precio</span>}</div>
-                    <div className={p.subLista} style={{ justifyContent: 'flex-end' }}>
-                      {i.precios.map((x) => (
-                        <span key={x.nombre}>{x.nombre}: <strong>{money(x.precio)}</strong></span>
-                      ))}
-                    </div>
-                  </td>
+                  {/* CÓDIGO INTERNO (el "código" del negocio), no el de barras. */}
+                  <td className={s.mono}>{i.codigoPropio || <span className={s.muted}>—</span>}</td>
+                  {/* Solo el nombre: la presentación tiene su columna y marca/categoría son los filtros de arriba. */}
+                  <td><div className={p.nombreCol}>{i.nombre}</div></td>
+                  <td>{i.detalle}</td>
+
+                  {sucursalesCols.map((su) => {
+                    const c = stockPorSuc.get(su.sucursalId) ?? 0;
+                    return (
+                      <td key={su.sucursalId} className={cx(p.num, c <= 0 && p.sinStock)}>
+                        {c > 0 ? num(c) : '—'}
+                      </td>
+                    );
+                  })}
+
+                  {listasCols.map((l) => {
+                    const precio = precioPorLista.get(l.listaId);
+                    // Un producto sin esa lista muestra un guion: es justamente
+                    // el dato que el vendedor necesita ver antes de ofrecerla.
+                    return (
+                      <td key={l.listaId} className={p.num}>
+                        {precio == null ? <span className={s.muted}>—</span> : <strong>{money(precio)}</strong>}
+                      </td>
+                    );
+                  })}
+
                   <td>
                     <Btn variant="btn-primary" small onClick={() => agregar(i)}>Agregar</Btn>
                   </td>
@@ -244,7 +276,8 @@ export function BusquedaMasivaModal({ catalogo, onAgregar }) {
       </div>
 
       <div className={s.hint} style={{ marginTop: 10 }}>
-        {resultados.length} resultado(s). El stock se muestra desglosado por sucursal y el precio por cada lista.
+        {resultados.length} resultado(s). El stock se abre por sucursal y el precio por lista;
+        un <strong>—</strong> en una lista significa que ese producto no la tiene.
       </div>
     </ModalShell>
   );

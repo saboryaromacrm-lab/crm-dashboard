@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { ESTADOS_INCIDENCIA } from '../domain/constants.js';
-import { Table, PanelHead, IncidPill, Btn, s } from '../components/ui.jsx';
+import { Table, PanelHead, IncidPill, Btn, usePaginado, s } from '../components/ui.jsx';
 
 export function IncidenciasPanel() {
   const { store, isAdmin, can, act, openModal } = useProductos();
   const [estadoF, setEstadoF] = useState('');
 
-  const filas = store.state.incidencias
+  const incidencias = store.state.incidencias
     .slice()
     .sort((a, b) => b.id - a.id)
-    .filter((i) => !estadoF || i.estado === estadoF)
-    .map((i) => {
+    .filter((i) => !estadoF || i.estado === estadoF);
+
+  const pag = usePaginado(incidencias, 'incidencias', estadoF);
+
+  const filas = pag.visibles.map((i) => {
       const p = store.getProducto(i.productoId), su = store.getSucursal(i.sucursalId), r = store.getUsuario(i.responsableId);
       return (
         <tr key={i.id}>
@@ -56,6 +59,7 @@ export function IncidenciasPanel() {
           { h: 'Cant.', num: true }, { h: 'Estado' }, { h: 'Responsable' }, { h: 'Acciones', cls: 'actions-col' },
         ]}
         empty="Sin incidencias."
+        pag={pag}
       >
         {filas}
       </Table>

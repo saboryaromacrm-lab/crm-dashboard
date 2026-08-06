@@ -13,7 +13,7 @@
  * localStorage — no hay auth todavía.
  */
 import { httpClient, HttpError } from '@core/services/httpClient.js';
-import { PERMISOS_ROL } from '../domain/constants.js';
+import { leerClave, escribirClave, leerSesion } from '@core/auth/sesion.js';
 import { num, fmtTam } from '../domain/format.js';
 
 const CTX_KEY = 'crm_inv_ctx';
@@ -37,10 +37,9 @@ function subscribe(listener) {
 function getVersion() { return _version; }
 
 function _loadCtx() {
-  try { const r = localStorage.getItem(CTX_KEY); if (r) return JSON.parse(r); } catch (e) { /* ignore */ }
-  return { sucursalId: null, usuarioId: null };
+  return leerClave(CTX_KEY) || { sucursalId: null, usuarioId: null };
 }
-function _persistCtx() { try { localStorage.setItem(CTX_KEY, JSON.stringify(state.ctx)); } catch (e) { /* ignore */ } }
+function _persistCtx() { escribirClave(CTX_KEY, state.ctx); }
 
 function nuevoEstado() {
   return {
@@ -48,6 +47,14 @@ function nuevoEstado() {
     stock: [], movimientos: [], transferencias: [], incidencias: [], comprobantes: [],
     // Preferencias que afectan el cálculo de precios (llegan en el bootstrap).
     configVentas: {},
+    // Catálogo del formato de venta (modalidad › lista). Se necesita para
+    // ofrecer "agregar lista" en el producto: la lista existe en el catálogo,
+    // lo que se carga acá es el markup de ESE producto en ella.
+    listasCatalogo: { modalidades: [], listas: [], reglasMarca: [] },
+    // Catálogos del producto (marca, categoría › subcategoría, etiquetas). Son
+    // chicos y estables: viajan enteros en el bootstrap y los desplegables del
+    // modal filtran en memoria, sin una llamada por tecla.
+    catalogos: { marcas: [], categorias: [], subcategorias: [], etiquetas: [] },
     ctx: _loadCtx(),
   };
 }
@@ -92,17 +99,75 @@ function movimientosDe(productoId) {
 }
 
 /* ---------------- Costos / precios (idéntico al backend) ---------------- */
-function costoNetoEntry(e) {
+/**
+ * FORMATO DE COMPRA — espejo exacto de `costosFormato()` de `pricing.ts`.
+ *
+ * Está duplicado a propósito: la pantalla necesita recalcular la cadena con
+ * cada tecla, y pedírsela a la API en cada pulsación sería inusable. Cualquier
+ * cambio va en los dos lados o el formulario miente.
+ *
+ * Todos los importes son del BULTO; lo unitario se deriva con `cantidad`.
+ */
+function descuentoEfectivo(e) {
   if (!e) return 0;
-  const c = Number(e.costo) || 0, d = Number(e.descuento) || 0, f = Number(e.flete) || 0;
-  return c * (1 - d / 100) * (1 + f / 100);
+  const factor = [e.descuento, e.descuento2, e.descuento3, e.descuento4]
+    .reduce((acc, d) => acc * (1 - (Number(d) || 0) / 100), 1);
+  return (1 - factor) * 100;
 }
-function proveedorActivoEntry(prod) {
-  const arr = prod.proveedores || [];
+
+function costosFormato(e, iva) {
+  const vacio = {
+    cantidad: 1, costoLista: 0, costoListaUnitario: 0, descuentoEfectivo: 0,
+    costoBruto: 0, costoNeto: 0, costoFinal: 0, costoNetoUnitario: 0, costoFinalUnitario: 0,
+  };
+  if (!e) return vacio;
+  // Una cantidad en 0 dividiría por cero y dejaría los precios en Infinity.
+  const cantidad = Math.max(Number(e.cantidad) || 1, 1e-9);
+  const factorIva = 1 + (Number(iva) || 0) / 100;
+
+  if (e.modoCosto === 'final') {
+    const costoFinal = Number(e.costoFinal) || 0;
+    const costoNeto = costoFinal / factorIva;
+    return {
+      cantidad, costoLista: 0, costoListaUnitario: 0, descuentoEfectivo: 0,
+      costoBruto: costoNeto, costoNeto, costoFinal,
+      costoNetoUnitario: costoNeto / cantidad,
+      costoFinalUnitario: costoFinal / cantidad,
+    };
+  }
+
+  const costoLista = Number(e.costo) || 0;
+  const desc = descuentoEfectivo(e);
+  const costoBruto = costoLista * (1 - desc / 100);
+  const costoNeto = costoBruto * (1 + (Number(e.flete) || 0) / 100);
+  const costoFinal = costoNeto * factorIva;
+  return {
+    cantidad,
+    costoLista,
+    costoListaUnitario: costoLista / cantidad,
+    descuentoEfectivo: desc,
+    costoBruto,
+    costoNeto,
+    costoFinal,
+    costoNetoUnitario: costoNeto / cantidad,
+    costoFinalUnitario: costoFinal / cantidad,
+  };
+}
+
+/** El costo que alimenta el precio de venta: neto y unitario. */
+function costoNetoEntry(e, iva) { return costosFormato(e, iva).costoNetoUnitario; }
+
+/**
+ * El formato que fija el precio. Una sola definición, igual que en el backend:
+ * si cada pantalla eligiera por su cuenta, el precio de la ficha podría no
+ * coincidir con el del POS.
+ */
+function formatoActivo(prod) {
+  const arr = prod?.formatosCompra || prod?.proveedores || [];
   if (!arr.length) return null;
-  return arr.find((e) => e.proveedorId === prod.proveedorActivoId) || arr[0];
+  return arr.find((e) => e.usarParaPrecio) || arr[0];
 }
-function costoNeto(prod) { return costoNetoEntry(proveedorActivoEntry(prod)); }
+function costoNeto(prod) { return costoNetoEntry(formatoActivo(prod), prod?.iva); }
 
 /**
  * REDONDEO DE GÓNDOLA — espejo exacto de `pricing.ts` del backend.
@@ -134,26 +199,74 @@ function precioFinal(neto, iva) {
   return redondearPrecio((Number(neto) || 0) * (1 + (Number(iva) || 0) / 100), state.configVentas?.redondeoPrecio);
 }
 
+/**
+ * Espejo de `precioVentaFila` (pricing.ts): la fila del formato de venta hecha
+ * precio, en los dos modos. Con MARKUP el precio acompaña al costo (redondeo de
+ * góndola sobre el final unitario); con PRECIO definido el final del FORMATO es
+ * exacto — es la voluntad del que lo fijó — y la unidad se deriva dividiendo.
+ */
+function ventaFormato(prod, fila) {
+  const unidades = Math.max(Number(fila?.unidades) || 1, 1e-9);
+  const iva = Number(prod?.iva) || 0;
+  const redondeo = prod?.redondeo ?? (Number(state.configVentas?.redondeoPrecio) || 0);
+  if (fila?.modoPrecio === 'precio') {
+    const finalFormato = money(Number(fila.precioFijo) || 0);
+    return {
+      unidades,
+      netoUnitario: money(finalFormato / (1 + iva / 100) / unidades),
+      finalUnitario: money(finalFormato / unidades),
+      finalFormato,
+    };
+  }
+  const bruto = costoNeto(prod) * (1 + (Number(fila?.markup) || 0) / 100);
+  const netoUnitario = redondeo > 0 ? money(redondearPrecio(bruto * (1 + iva / 100), redondeo) / (1 + iva / 100)) : money(bruto);
+  const finalUnitario = redondeo > 0 ? redondearPrecio(netoUnitario * (1 + iva / 100), redondeo) : money(netoUnitario * (1 + iva / 100));
+  return { unidades, netoUnitario, finalUnitario, finalFormato: money(finalUnitario * unidades) };
+}
+
 function preciosVenta(prod) {
   const cn = costoNeto(prod);
-  return (prod.listasPrecio || []).map((l) => ({
+  // `prod.listas` es el FORMATO DE VENTA: solo las listas en las que este
+  // producto se vende, cada una con SU markup. Acá solo se aplica el redondeo.
+  return (prod.listas || []).map((l) => ({
     ...l,
-    precio: ajustarNeto(cn * (1 + (Number(l.ganancia) || 0) / 100), prod.iva),
+    // El servidor ya resolvió el modo (markup o precio definido); recalcular
+    // acá con markup rompería las filas de precio fijo.
+    precio: l.precio != null ? l.precio : ajustarNeto(cn * (1 + (Number(l.markup) || 0) / 100), prod.iva),
   }));
 }
+
+/**
+ * La fila del PISO: la lista base configurada, o —si el producto no la tiene—
+ * la de peor orden, que es la más cara. Es el precio de vidriera: lo que se
+ * cobra sin que el ticket habilite ninguna otra lista.
+ */
+function filaPiso(prod) {
+  const suyas = prod.listas || [];
+  if (!suyas.length) return null;
+  const baseId = state.configVentas?.listaBaseId;
+  return suyas.find((l) => l.listaId === baseId) || suyas[suyas.length - 1];
+}
+
 function precioBaseVenta(prod) {
-  const pv = preciosVenta(prod);
-  return pv.length ? pv[0].precio : costoNeto(prod);
+  const piso = filaPiso(prod);
+  if (!piso) return costoNeto(prod);
+  if (piso.precio != null) return piso.precio;
+  return ajustarNeto(costoNeto(prod) * (1 + (Number(piso.markup) || 0) / 100), prod.iva);
 }
 /**
- * El margen lo pone la LISTA; la presentación solo agrega su recargo de
- * fraccionamiento. Sin `gananciaLista` usa la primera lista del producto, que
- * es el precio de referencia que muestra el catálogo.
+ * El markup lo pone la fila producto × lista; la presentación solo agrega su
+ * recargo de fraccionamiento. Sin `markupLista` usa el piso, que es el precio
+ * de referencia que muestra el catálogo.
  */
-function precioPresentacion(prod, presOrId, gananciaLista) {
+function precioPresentacion(prod, presOrId, markupLista) {
   const pr = typeof presOrId === 'object' ? presOrId : presDe(prod, presOrId);
   if (!pr) return 0;
-  const g = gananciaLista != null ? gananciaLista : ((prod.listasPrecio || [])[0] || {}).ganancia || 0;
+  // Con precio definido el markup no manda: se usa el equivalente del piso.
+  const piso = filaPiso(prod);
+  const cnP = costoNeto(prod);
+  const gPiso = piso ? (piso.precio != null && cnP > 0 ? ((piso.precio / cnP) - 1) * 100 : (piso.markup || 0)) : 0;
+  const g = markupLista != null ? markupLista : gPiso;
   const porKg = costoNeto(prod) * (1 + (Number(g) || 0) / 100);
   return ajustarNeto(porKg * (Number(pr.tamKg) || 0) * (1 + (Number(pr.recargo) || 0) / 100), prod.iva);
 }
@@ -188,21 +301,24 @@ function stockBajo() {
 function incidenciasAbiertas() { return state.incidencias.filter((i) => i.estado !== 'resuelta'); }
 function transferenciasPendientes() { return state.transferencias.filter((t) => t.estado !== 'recibida' && t.estado !== 'cancelada'); }
 
-/* ---------------- Permisos (según el usuario activo del ctx) ---------------- */
+/* ---------------- Permisos (dinámicos: viajan con el usuario en el bootstrap) ---------------- */
 function rolActual() {
   const u = getUsuario(state.ctx.usuarioId);
-  return u ? u.rol : 'vendedor';
+  return u ? u.rolClave : '';
 }
 function can(perm) {
-  const ps = PERMISOS_ROL[rolActual()] || [];
+  const u = getUsuario(state.ctx.usuarioId);
+  const ps = (u && u.permisos) || [];
   return ps.indexOf('*') >= 0 || ps.indexOf(perm) >= 0;
 }
+/** Tipos de movimiento manual que el usuario puede registrar, según sus permisos. */
 function tiposMovPermitidos() {
-  const r = rolActual();
-  if (r === 'admin') return ['devolucion', 'ajuste', 'merma', 'vencido', 'defectuoso'];
-  if (r === 'fraccionador') return ['merma', 'defectuoso'];
-  if (r === 'vendedor') return ['devolucion'];
-  return [];
+  const tipos = [];
+  if (can('devoluciones')) tipos.push('devolucion');
+  if (can('inventario')) tipos.push('ajuste', 'vencido');
+  if (can('merma')) tipos.push('merma');
+  if (can('defectuoso')) tipos.push('defectuoso');
+  return tipos;
 }
 
 /* ---------------- Contexto (cliente) ---------------- */
@@ -224,6 +340,8 @@ function mergeState(data) {
   // Preferencias que el cálculo local de precios necesita para dar el mismo
   // número que la API (hoy: el redondeo de góndola).
   state.configVentas = data.configVentas || {};
+  state.listasCatalogo = data.listasCatalogo || { modalidades: [], listas: [], reglasMarca: [] };
+  state.catalogos = data.catalogos || { marcas: [], categorias: [], subcategorias: [], etiquetas: [] };
   // Normalización de nombres de campo que el frontend espera.
   state.transferencias = (data.transferencias || []).map((t) => ({
     ...t, items: (t.items || []).map((it) => ({ ...it, presId: it.presentacionId ?? null })),
@@ -301,9 +419,23 @@ async function init() {
   try {
     const data = await httpClient.get('/bootstrap');
     mergeState(data);
-    if (state.ctx.usuarioId == null || !getUsuario(state.ctx.usuarioId)) {
-      const admin = state.usuarios.find((u) => u.rol === 'admin') || state.usuarios[0];
-      state.ctx.usuarioId = admin ? admin.id : null;
+    // LA SESIÓN MANDA: el usuario operativo es el que se LOGUEÓ — con login
+    // real ya no hay selector libre de usuario. Si el logueado no es
+    // admin/superadmin, tampoco cambia de sucursal: opera donde dijo al entrar.
+    const sesion = leerSesion();
+    const uSesion = sesion?.usuario?.id != null ? getUsuario(sesion.usuario.id) : null;
+    if (uSesion) {
+      state.ctx.usuarioId = uSesion.id;
+      const esJefe = uSesion.rolClave === 'admin' || uSesion.rolClave === 'superadmin';
+      if (!esJefe && sesion?.sucursal?.id != null && getSucursal(sesion.sucursal.id)) {
+        state.ctx.sucursalId = sesion.sucursal.id;
+      }
+    } else if (state.ctx.usuarioId == null || !getUsuario(state.ctx.usuarioId)) {
+      // Sin sesión (desarrollo con la API abierta): cae al jefe para no romper.
+      const activos = state.usuarios.filter((u) => u.activo !== false);
+      const jefe = activos.find((u) => u.rolClave === 'superadmin')
+        || activos.find((u) => u.rolClave === 'admin') || activos[0];
+      state.ctx.usuarioId = jefe ? jefe.id : null;
     }
     if (state.ctx.sucursalId != null && !getSucursal(state.ctx.sucursalId)) state.ctx.sucursalId = null;
     if (state.ctx.sucursalId == null && distribuidora()) state.ctx.sucursalId = distribuidora().id;
@@ -334,14 +466,34 @@ const crearProducto = (o) => _mutate(() => httpClient.post('/productos', o));
 const editarProducto = (id, o) => _mutate(() => httpClient.patch('/productos/' + id, o));
 const eliminarProducto = (id) => _mutate(() => httpClient.delete('/productos/' + id));
 const guardarPresentaciones = (prodId, presentaciones) => _mutate(() => httpClient.put('/productos/' + prodId + '/presentaciones', { presentaciones }));
-const guardarProveedoresProducto = (prodId, o) => _mutate(() => httpClient.put('/productos/' + prodId + '/proveedores', o));
+const guardarFormatosCompra = (prodId, formatos) => _mutate(() => httpClient.put('/productos/' + prodId + '/formatos-compra', { formatos }));
 const guardarListasProducto = (prodId, o) => _mutate(() => httpClient.put('/productos/' + prodId + '/listas', o));
+
+/* ---------------- Catálogos del producto ---------------- */
+
+/**
+ * `tipo` es 'marcas' | 'categorias' | 'subcategorias' | 'etiquetas'. Un solo
+ * juego de métodos para los cuatro: el backend resuelve las diferencias, acá
+ * no hay razón para escribir lo mismo cuatro veces.
+ */
+const crearCatalogo = (tipo, o) => _mutate(() => httpClient.post('/catalogos/' + tipo, o));
+const editarCatalogo = (tipo, id, o) => _mutate(() => httpClient.patch('/catalogos/' + tipo + '/' + id, o));
+const eliminarCatalogo = (tipo, id) => _mutate(() => httpClient.delete('/catalogos/' + tipo + '/' + id));
+const fusionarCatalogo = (tipo, id, haciaId) =>
+  _mutate(() => httpClient.post('/catalogos/' + tipo + '/' + id + '/fusionar', { haciaId }));
+
+/** Siguiente código propio libre, para el botón "Crear un código". */
+const siguienteCodigo = () => httpClient.get('/productos/siguiente-codigo');
+
+/** Subcategorías de una categoría: la mitad de abajo de la cascada. */
+function subcategoriasDe(categoriaId) {
+  if (!categoriaId) return [];
+  return state.catalogos.subcategorias.filter((sc) => sc.categoriaId === categoriaId);
+}
 
 const crearProveedor = (o) => _mutate(() => httpClient.post('/proveedores', o));
 const editarProveedor = (id, o) => _mutate(() => httpClient.patch('/proveedores/' + id, o));
 const eliminarProveedor = (id) => _mutate(() => httpClient.delete('/proveedores/' + id));
-
-const crearSucursal = (o) => _mutate(() => httpClient.post('/sucursales', o));
 
 const opCompra = (o) => _mutate(() => httpClient.post('/operaciones/compra', o));
 const opVenta = (o) => _mutate(() => httpClient.post('/operaciones/venta', o));
@@ -349,8 +501,18 @@ const opFraccionar = (o) => _mutate(() => httpClient.post('/operaciones/fraccion
 const opSimple = (o) => _mutate(() => httpClient.post('/operaciones/movimiento', o));
 
 const crearTransferencia = (o) => _mutate(() => httpClient.post('/transferencias', o));
-const avanzarTransferencia = (id) => _mutate(() => httpClient.post('/transferencias/' + id + '/avanzar'));
+const avanzarTransferencia = (id, desde) => _mutate(() => httpClient.post('/transferencias/' + id + '/avanzar', { usuarioId: state.ctx.usuarioId, desde }));
 const cancelarTransferencia = (id) => _mutate(() => httpClient.post('/transferencias/' + id + '/cancelar'));
+
+/* Preparación en dos listas: editar renglones, agregar/quitar y confirmar con reserva. */
+const editarItemTransferencia = (id, itemId, o) => _mutate(() => httpClient.patch(`/transferencias/${id}/items/${itemId}`, o));
+const agregarItemTransferencia = (id, o) => _mutate(() => httpClient.post(`/transferencias/${id}/items`, o));
+const quitarItemTransferencia = (id, itemId) => _mutate(() => httpClient.delete(`/transferencias/${id}/items/${itemId}`));
+const confirmarListaTransferencia = (id, tipo, listo) => _mutate(() => httpClient.post(`/transferencias/${id}/lista`, { tipo, listo, usuarioId: state.ctx.usuarioId }));
+/** Recepción CONTADA: items = [{itemId, cantidadRecibida}]. La diferencia genera incidencia sola. */
+const recibirTransferencia = (id, o) => _mutate(() => httpClient.post('/transferencias/' + id + '/recibir', o));
+/** El libro del almacén: una fila por documento, valuada a costo congelado. */
+const operacionesAlmacen = (q = '') => httpClient.get('/operaciones/almacen' + q);
 
 const crearIncidencia = (o) => _mutate(() => httpClient.post('/incidencias', o));
 const avanzarIncidencia = (id) => _mutate(() => httpClient.post('/incidencias/' + id + '/avanzar'));
@@ -375,11 +537,41 @@ function _cleanComprobante(o) {
     numero: o.numero != null && o.numero !== '' ? Number(o.numero) : undefined,
     condicionPago: o.condicionPago, recepcion: !!o.recepcion,
     vencimientoPago: _fechaLocal(o.vencimientoPago), observaciones: o.observaciones || '',
-    // Costos que el usuario aceptó actualizar desde "Diferencias de costo".
+    /*
+     * Costos que el usuario aceptó actualizar desde "Impacto en precios".
+     * `cantidad` es el tamaño del bulto de ESTA entrega (kg o unidades) y viaja
+     * JUNTO al costo porque son un solo hecho: "la bolsa de 20 kg sale
+     * $40.000". Mandar el precio nuevo con los kilos viejos dejaría el $/kg
+     * —que es lo que fija la góndola— mintiendo.
+     */
     actualizarCostos: (o.actualizarCostos || []).map((x) => ({
-      productoId: Number(x.productoId), costo: Number(x.costo) || 0,
+      productoId: Number(x.productoId),
+      costo: Number(x.costo) || 0,
+      cantidad: Number(x.cantidad) > 0 ? Number(x.cantidad) : undefined,
     })),
-    usuarioId: o.usuarioId != null ? Number(o.usuarioId) : undefined,
+    /** Productos cuyo proveedor activo pasa a ser el de este comprobante. */
+    activarProveedor: (o.activarProveedor || []).map(Number).filter(Boolean),
+    /**
+     * El pago, en el mismo acto de cargar el comprobante: los pagos de sucursal
+     * que esta factura toma (así se APLICAN) y el resto que se paga ahora.
+     */
+    tomarPagos: (o.tomarPagos || [])
+      .map((x) => ({ pagoId: Number(x.pagoId), importe: Number(x.importe) || 0 }))
+      .filter((x) => x.pagoId && x.importe > 0),
+    pagoContado: o.pagoContado && Number(o.pagoContado.importe) > 0
+      ? {
+        importe: Number(o.pagoContado.importe),
+        medio: o.pagoContado.medio || 'efectivo',
+        cajaSesionId: o.pagoContado.cajaSesionId != null ? Number(o.pagoContado.cajaSesionId) : undefined,
+        referencia: o.pagoContado.referencia || undefined,
+      }
+      : undefined,
+    /*
+     * Quién lo cargó. Por defecto el usuario operativo (el de la sesión): sin
+     * esto el cambio de precio que dispara la recepción queda sin autor, y ni
+     * la auditoría ni el aviso a los cajeros pueden decir quién lo hizo.
+     */
+    usuarioId: o.usuarioId != null ? Number(o.usuarioId) : (state.ctx.usuarioId ?? undefined),
     items: (o.items || []).map((it) => ({
       productoId: Number(it.productoId),
       presentacionId: it.presentacionId != null && it.presentacionId !== '' ? Number(it.presentacionId) : undefined,
@@ -390,6 +582,42 @@ function _cleanComprobante(o) {
 }
 const crearComprobante = (o) => _mutate(() => httpClient.post('/comprobantes', _cleanComprobante(o)));
 
+/* ---- Pagos en sucursal (plata a cuenta de proveedores de MERCADERÍA) ---- */
+/**
+ * El pago nace en la caja de una sucursal (módulo Ventas) con destino
+ * "mercaderia" y espera acá a que el administrador cargue la factura y lo
+ * aplique. Lecturas directas (no viven en el snapshot del store: crecen y se
+ * filtran); las mutaciones pasan por `_mutate` para refrescar lo abierto —
+ * aplicar un pago cambia el `pagado` de los comprobantes.
+ */
+const _qsPagos = (filtros = {}) => {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(filtros)) {
+    if (v !== undefined && v !== null && v !== '') p.set(k, String(v));
+  }
+  const q = p.toString();
+  return q ? `?${q}` : '';
+};
+const pagosSucursal = (filtros) => httpClient.get('/pagos-proveedor' + _qsPagos({ destino: 'mercaderia', ...filtros }));
+const pagoSucursal = (id) => httpClient.get('/pagos-proveedor/' + id);
+const pagosDisponibles = (proveedorId) => httpClient.get(`/pagos-proveedor/disponibles/${proveedorId}?destino=mercaderia`);
+/** Turno abierto de una sucursal, o null. Lo usa el pago al contado del comprobante. */
+const cajaAbierta = (sucursalId) => httpClient.get(`/caja/actual/${sucursalId}`);
+const pagosDocsPendientes = (proveedorId) => httpClient.get(`/pagos-proveedor/pendientes/${proveedorId}?destino=mercaderia`);
+const imputarPago = (id, imputaciones, usuarioId) => _mutate(() => httpClient.post(`/pagos-proveedor/${id}/imputar`, { imputaciones, usuarioId }));
+const quitarImputacionPago = (imputacionId) => _mutate(() => httpClient.delete('/pagos-proveedor/imputaciones/' + imputacionId));
+const anularPago = (id, motivo) => _mutate(() => httpClient.post(`/pagos-proveedor/${id}/anular`, { motivo }));
+const moverDestinoPago = (id, destino) => _mutate(() => httpClient.patch(`/pagos-proveedor/${id}/destino`, { destino }));
+
+/* ---- Cafetería (coffit) ----
+ * El envío es un PUNTO DE SALIDA a costo: el CRM no lleva el stock del café
+ * (coffit es el dueño). Crear/anular pasan por `_mutate` porque mueven stock. */
+const enviosCafeteria = (filtros) => httpClient.get('/cafeteria/envios' + _qsPagos(filtros || {}));
+const envioCafeteria = (id) => httpClient.get('/cafeteria/envios/' + id);
+const resumenCafeteria = (filtros) => httpClient.get('/cafeteria/resumen' + _qsPagos(filtros || {}));
+const crearEnvioCafeteria = (o) => _mutate(() => httpClient.post('/cafeteria/envios', { usuarioId: state.ctx.usuarioId ?? undefined, ...o }));
+const anularEnvioCafeteria = (id, motivo) => _mutate(() => httpClient.post(`/cafeteria/envios/${id}/anular`, { motivo, usuarioId: state.ctx.usuarioId ?? undefined }));
+
 /* ---- Costos y márgenes ----
  * La previsualización se calcula en el navegador (el store ya tiene costos y
  * márgenes), así que acá solo viajan los cambios aprobados. `historial` es
@@ -397,6 +625,7 @@ const crearComprobante = (o) => _mutate(() => httpClient.post('/comprobantes', _
 const actualizarCostos = (o) => _mutate(() => httpClient.post('/precios/costos', o));
 const actualizarMargenes = (o) => _mutate(() => httpClient.post('/precios/margenes', o));
 const historialPrecios = (q = '') => httpClient.get('/precios/historial' + q);
+const evolucionPrecios = (productoId) => httpClient.get('/precios/evolucion?productoId=' + productoId);
 const revertirLotePrecios = (lote) => _mutate(() => httpClient.post('/precios/revertir/' + lote, {}));
 
 export const inventoryStore = {
@@ -410,13 +639,19 @@ export const inventoryStore = {
   rolActual, can, tiposMovPermitidos, setCtx,
   opCompra, opFraccionar, opVenta, opSimple,
   crearTransferencia, avanzarTransferencia, cancelarTransferencia,
+  editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
-  crearProducto, editarProducto, eliminarProducto, guardarPresentaciones, crearSucursal,
+  crearProducto, editarProducto, eliminarProducto, guardarPresentaciones,
+  crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, subcategoriasDe, siguienteCodigo,
   crearProveedor, editarProveedor, eliminarProveedor,
-  guardarProveedoresProducto, guardarListasProducto,
-  costoNeto, costoNetoEntry, proveedorActivoEntry, preciosVenta, precioBaseVenta, precioPresentacion,
+  guardarFormatosCompra, guardarListasProducto,
+  costoNeto, costoNetoEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPresentacion,
   precioFinal, redondearPrecio,
   crearComprobante, getComprobante, comprobantesDe, cuentaProveedor,
-  actualizarCostos, actualizarMargenes, historialPrecios, revertirLotePrecios,
+  pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
+  enviosCafeteria, envioCafeteria, resumenCafeteria, crearEnvioCafeteria, anularEnvioCafeteria,
+  imputarPago, quitarImputacionPago, anularPago, moverDestinoPago,
+  actualizarCostos, actualizarMargenes, historialPrecios, evolucionPrecios, revertirLotePrecios,
   stockBajo, incidenciasAbiertas, transferenciasPendientes,
+  recibirTransferencia, operacionesAlmacen,
 };

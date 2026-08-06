@@ -18,7 +18,11 @@ import { dashboardModule } from './dashboard';
 import { comprasModule } from './compras';
 import { ventasModule } from './ventas';
 import { almacenModule } from './almacen';
+import { webModule } from './web';
+import { gastosModule } from './gastos';
 import { gerenciaModule } from './gerencia';
+import { sistemaModule } from './sistema';
+import { manualModule } from './manual';
 
 /** The ordered list of every module the application ships with. */
 export const appModules = [
@@ -26,7 +30,11 @@ export const appModules = [
   comprasModule,
   ventasModule,
   almacenModule,
+  webModule,
+  gastosModule,
   gerenciaModule,
+  sistemaModule,
+  manualModule,
 ];
 
 /** Registers all application modules. Call once at startup (see main.jsx). */

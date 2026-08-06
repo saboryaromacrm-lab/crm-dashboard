@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { leerClave, escribirClave, leerSesion } from '@core/auth/sesion.js';
 import { errorMsg, ventasApi } from '../services/ventas.api.js';
 
 /**
@@ -15,12 +16,15 @@ import { errorMsg, ventasApi } from '../services/ventas.api.js';
 const VentasContext = createContext(null);
 
 /** Estado inicial: evita chequear `?.` en cada consumidor. */
-const VACIO = { clientes: [], config: {}, sucursales: [], usuarios: [] };
+const VACIO = {
+  clientes: [], config: {}, sucursales: [], usuarios: [], marcas: [],
+  listasCatalogo: { modalidades: [], listas: [], reglasMarca: [] },
+};
 
-/** Sucursal y usuario operativos. Es preferencia del puesto, no dato: localStorage. */
+/** Sucursal y usuario operativos. Preferencia del puesto, POR PESTAÑA (sesion.js). */
 const CTX_KEY = 'crm_ventas_ctx';
 function leerCtx() {
-  try { return JSON.parse(localStorage.getItem(CTX_KEY)) || {}; } catch { return {}; }
+  return leerClave(CTX_KEY) || {};
 }
 
 export function VentasProvider({ children, panels = [], defaultPanel }) {
@@ -41,12 +45,32 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
       const d = await ventasApi.bootstrap();
       const sucursales = d.sucursales ?? [];
       const usuarios = d.usuarios ?? [];
-      setData({ clientes: d.clientes ?? [], config: d.config ?? {}, sucursales, usuarios });
+      setData({
+        clientes: d.clientes ?? [],
+        config: d.config ?? {},
+        sucursales,
+        usuarios,
+        // Catálogo del formato de venta (modalidad › lista + reglas de marca):
+        // chico y estable, viaja con el bootstrap para que cotizar no necesite
+        // otra llamada.
+        listasCatalogo: d.listasCatalogo ?? { modalidades: [], listas: [], reglasMarca: [] },
+        marcas: d.marcas ?? [],
+      });
 
-      // Primera carga: si no hay puesto elegido, se toma uno razonable.
+      /*
+       * LA SESIÓN MANDA: el usuario operativo es el que se logueó — ya no hay
+       * selector libre. Admin y superadmin pueden pararse en otra sucursal
+       * (desde el menú del perfil); el resto opera donde dijo al entrar.
+       */
+      const sesion = leerSesion();
+      const uSesion = usuarios.find((u) => u.id === sesion?.usuario?.id);
+      const esJefe = uSesion?.rolClave === 'admin' || uSesion?.rolClave === 'superadmin';
       setCtxState((c) => ({
-        sucursalId: sucursales.some((s) => s.id === c.sucursalId) ? c.sucursalId : (sucursales[0]?.id ?? null),
-        usuarioId: usuarios.some((u) => u.id === c.usuarioId) ? c.usuarioId : (usuarios[0]?.id ?? null),
+        sucursalId: esJefe && sucursales.some((s) => s.id === c.sucursalId)
+          ? c.sucursalId
+          : (sucursales.find((s) => s.id === sesion?.sucursal?.id)?.id ?? sucursales[0]?.id ?? null),
+        usuarioId: uSesion?.id
+          ?? (usuarios.some((u) => u.id === c.usuarioId) ? c.usuarioId : (usuarios[0]?.id ?? null)),
       }));
       setLoadError(null);
     } catch (e) {
@@ -61,7 +85,7 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
   const setCtx = useCallback((campo, valor) => {
     setCtxState((c) => {
       const next = { ...c, [campo]: valor };
-      try { localStorage.setItem(CTX_KEY, JSON.stringify(next)); } catch { /* modo privado */ }
+      escribirClave(CTX_KEY, next);
       return next;
     });
   }, []);
@@ -105,10 +129,10 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
 
   const getCliente = useCallback((id) => data.clientes.find((c) => c.id === id) || null, [data.clientes]);
 
-  /** Listas de precio configuradas (con fallback si la config aún no cargó). */
-  const listasPrecio = useMemo(
-    () => (data.config.listasPrecio?.length ? data.config.listasPrecio : ['Minorista']),
-    [data.config.listasPrecio],
+  /** Catálogo del formato de venta que llega con el bootstrap. */
+  const listasCatalogo = useMemo(
+    () => data.listasCatalogo ?? { modalidades: [], listas: [], reglasMarca: [] },
+    [data.listasCatalogo],
   );
 
   const value = useMemo(
@@ -118,10 +142,10 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
       panels, panel, panelParams, goPanel,
       modal, openModal, closeModal,
       toast, toastState, closeToast, act,
-      getCliente, listasPrecio,
+      getCliente, listasCatalogo,
     }),
     [data, loaded, loadError, cargar, ctx, setCtx, panels, panel, panelParams, goPanel, modal,
-      openModal, closeModal, toast, toastState, closeToast, act, getCliente, listasPrecio],
+      openModal, closeModal, toast, toastState, closeToast, act, getCliente, listasCatalogo],
   );
 
   return <VentasContext.Provider value={value}>{children}</VentasContext.Provider>;

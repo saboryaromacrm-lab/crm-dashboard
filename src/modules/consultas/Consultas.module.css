@@ -1,0 +1,207 @@
+/* CONSULTAS RÁPIDAS — layout de grilla
+   ==========================================================================
+   Estructura de tres franjas, fija:
+
+     [ filtros        ]  ← no scrollea nunca
+     [ tabla          ]  ← única zona con scroll, cabecera pegajosa
+     [ pie / resumen  ]  ← no scrollea nunca
+
+   El problema que resuelve: con la tabla y los filtros scrolleando juntos, al
+   bajar tres filas se perdían de vista los filtros y los encabezados, y ya no
+   se sabía qué columna era cuál. */
+
+.consulta {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;      /* sin esto el hijo con scroll desborda el flex */
+  height: 100%;
+}
+
+/* ---------------- Filtros ---------------- */
+
+.filtros {
+  display: grid;
+  gap: var(--crm-space-3);
+  padding: var(--crm-space-3) var(--crm-space-4);
+  border-bottom: 1px solid var(--crm-color-border);
+  background: var(--crm-color-surface);
+  flex: 0 0 auto;
+}
+
+.campo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+.campo > label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--crm-color-text-muted);
+  white-space: nowrap;
+}
+
+.campo > input,
+.campo > select {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13.5px;
+  border: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-sm);
+  background: var(--crm-color-bg);
+  color: var(--crm-color-text);
+  min-width: 0;
+}
+.campo > input:focus,
+.campo > select:focus { outline: none; border-color: var(--crm-color-accent); }
+
+/* El buscador manda: se ve distinto del resto de los filtros. */
+.buscador > input {
+  font-size: 15px;
+  padding: 9px 12px;
+  font-weight: 500;
+}
+
+/* ---------------- Barra de estado ---------------- */
+
+.estado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--crm-space-3);
+  padding: 8px var(--crm-space-4);
+  border-bottom: 1px solid var(--crm-color-border);
+  background: color-mix(in srgb, var(--crm-color-text) 3%, transparent);
+  font-size: 12.5px;
+  color: var(--crm-color-text-muted);
+  flex: 0 0 auto;
+}
+.conteo strong { color: var(--crm-color-text); font-size: 13.5px; }
+
+.limpiar {
+  border: 1px solid var(--crm-color-border);
+  background: transparent;
+  color: var(--crm-color-text);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.limpiar:hover { background: color-mix(in srgb, var(--crm-color-text) 8%, transparent); }
+
+/* ---------------- Tabla ---------------- */
+
+.scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.tabla {
+  width: 100%;
+  border-collapse: separate;   /* separate: sticky + border-bottom conviven */
+  border-spacing: 0;
+  font-size: 13px;
+}
+
+/* Cabecera pegajosa de dos niveles. El grupo va arriba (PRODUCTO / STOCK /
+   PRECIOS) y las columnas abajo, igual que en la pantalla que se está
+   reemplazando: sin el grupo, ocho columnas de números son indistinguibles. */
+.tabla thead th {
+  position: sticky;
+  background: var(--crm-color-surface);
+  z-index: 2;
+  text-align: left;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.grupoFila th {
+  top: 0;
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--crm-color-text-muted);
+  padding: 7px 10px 4px;
+  border-bottom: 1px solid var(--crm-color-border);
+}
+.colFila th {
+  top: 27px;
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--crm-color-text-muted);
+  padding: 5px 10px 7px;
+  border-bottom: 2px solid var(--crm-color-border);
+}
+
+/* Separadores verticales entre grupos: es lo que hace legible el bloque de
+   sucursales frente al de precios. */
+.grupo { border-left: 1px solid var(--crm-color-border); }
+
+.tabla tbody td {
+  padding: 7px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--crm-color-border) 55%, transparent);
+  vertical-align: middle;
+}
+.tabla tbody tr:hover td { background: color-mix(in srgb, var(--crm-color-accent) 6%, transparent); }
+
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--crm-font-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; }
+
+/* Producto: nombre arriba, contexto abajo y más chico. */
+.prodNombre { font-weight: 600; line-height: 1.25; }
+.prodMeta { font-size: 11px; color: var(--crm-color-text-muted); line-height: 1.3; margin-top: 1px; }
+
+.vacio {
+  padding: var(--crm-space-5) var(--crm-space-4);
+  text-align: center;
+  color: var(--crm-color-text-muted);
+}
+
+/* ---------------- Stock ---------------- */
+
+.cero { opacity: .28; }
+.total { font-weight: 700; }
+.totalCol { background: color-mix(in srgb, var(--crm-color-text) 4%, transparent); }
+
+/* ---------------- Precios y variación ---------------- */
+
+.precioBase { font-weight: 700; font-size: 13.5px; }
+
+.chipLista {
+  display: inline-block;
+  border: 1px solid var(--crm-color-border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin: 1px 3px 1px 0;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.chipLista b { font-weight: 700; }
+
+/* Variación con flecha: el signo se lee antes que el número. */
+.variacion {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.sube { color: var(--crm-color-error); }
+.baja { color: var(--crm-color-success); }
+.alta { color: var(--crm-color-text-muted); font-weight: 400; font-size: 12px; }
+
+.flecha { flex: 0 0 auto; opacity: .6; }
+.antes { color: var(--crm-color-text-muted); text-decoration: line-through; }
+
+.motivo { font-weight: 500; }
+.motivoDetalle { font-size: 11px; color: var(--crm-color-text-muted); line-height: 1.3; }
+
+/* ---------------- Responsive ---------------- */
+
+@media (max-width: 1100px) {
+  .filtros { grid-template-columns: 1fr 1fr !important; }
+}
+@media (max-width: 640px) {
+  .filtros { grid-template-columns: 1fr !important; }
+}

@@ -6,13 +6,18 @@ import {
   CobranzaFormModal, CobranzaDetalleModal, AnularCobranzaModal,
 } from './modals/CobranzaModals.jsx';
 import {
-  AbrirCajaModal, CerrarCajaModal, MovimientoCajaModal, ArqueoTurnoModal,
+  AbrirCajaModal, CerrarCajaModal, ControlCajaModal, MovimientoCajaModal, ArqueoTurnoModal,
 } from './modals/CajaModals.jsx';
 import { CobroModal, VentaEmitidaModal } from './modals/CobroModal.jsx';
 import {
   CargaRapidaModal, BusquedaMasivaModal, CargaExtraModal,
   DelegarVentaModal, DescartarVentaModal,
 } from './modals/PosModals.jsx';
+import {
+  ModalidadFormModal, BorrarModalidadModal, ListaFormModal, BorrarListaModal, VerLogicaModal,
+  ReglaMarcaFormModal, BorrarReglaMarcaModal,
+} from './modals/ListaModals.jsx';
+import { OfertaFormModal, BorrarOfertaModal } from './modals/OfertaModals.jsx';
 
 /** Un solo modal a la vez: el contexto guarda `{ type, props }`. */
 const REGISTRY = {
@@ -25,8 +30,18 @@ const REGISTRY = {
   anularCobranza: AnularCobranzaModal,
   abrirCaja: AbrirCajaModal,
   cerrarCaja: CerrarCajaModal,
+  controlCaja: ControlCajaModal,
   movimientoCaja: MovimientoCajaModal,
   arqueoTurno: ArqueoTurnoModal,
+  modalidadForm: ModalidadFormModal,
+  borrarModalidad: BorrarModalidadModal,
+  listaForm: ListaFormModal,
+  borrarLista: BorrarListaModal,
+  reglaMarcaForm: ReglaMarcaFormModal,
+  borrarReglaMarca: BorrarReglaMarcaModal,
+  ofertaForm: OfertaFormModal,
+  borrarOferta: BorrarOfertaModal,
+  verLogica: VerLogicaModal,
   cobro: CobroModal,
   ventaEmitida: VentaEmitidaModal,
   cargaRapida: CargaRapidaModal,

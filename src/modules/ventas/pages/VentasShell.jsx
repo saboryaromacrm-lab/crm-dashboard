@@ -1,42 +1,59 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Button, Snackbar, Alert } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
 import { FullScreenLoader } from '@shared/components/FullScreenLoader/FullScreenLoader.jsx';
 import { cx } from '@shared/utils/classNames.js';
+import { ordenesWeb } from '@core/services/ordenesWeb.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { ModalHost } from '../components/ModalHost.jsx';
 import { Btn, s } from '../components/ui.jsx';
 
 import { PosPanel } from '../panels/PosPanel.jsx';
+import { OrdenesPanel } from '../panels/OrdenesPanel.jsx';
+import { PresupuestosPanel } from '../panels/PresupuestosPanel.jsx';
 import { ClientesPanel } from '../panels/ClientesPanel.jsx';
 import { CobranzasPanel } from '../panels/CobranzasPanel.jsx';
 import { CajaPanel } from '../panels/CajaPanel.jsx';
+import { ListasPanel } from '../panels/ListasPanel.jsx';
+import { OfertasPanel } from '../panels/OfertasPanel.jsx';
+import { CambiosPrecioPanel } from '../panels/CambiosPrecioPanel.jsx';
 import { ConfiguracionPanel } from '../panels/ConfiguracionPanel.jsx';
 
 /** Los `id` coinciden con `VENTAS_PANELS` (config/ventas.config.js). */
 const PANEL_COMPONENTS = {
   pos: PosPanel,
+  ordenes: OrdenesPanel,
+  presupuestos: PresupuestosPanel,
   clientes: ClientesPanel,
   cobranzas: CobranzasPanel,
   caja: CajaPanel,
+  listas: ListasPanel,
+  ofertas: OfertasPanel,
+  cambiosPrecio: CambiosPrecioPanel,
   configuracion: ConfiguracionPanel,
 };
 
 /**
- * Shell del módulo Ventas: cabecera + barra de puesto (sucursal/usuario) +
- * sub-sidebar + panel activo. Misma estructura que el shell de inventario para
- * que moverse entre módulos no cambie de idioma visual.
+ * Shell del módulo Ventas: cabecera + sub-sidebar + panel activo. Misma
+ * estructura que el shell de inventario para que moverse entre módulos no
+ * cambie de idioma visual.
  */
 export function VentasShell({ title, subtitle }) {
   const {
-    loaded, loadError, recargar, panels, panel, goPanel,
-    ctx, setCtx, sucursales, usuarios, toast, toastState, closeToast,
+    loaded, loadError, recargar, panels, panel, goPanel, toast, toastState, closeToast,
   } = useVentas();
   const [refrescando, setRefrescando] = useState(false);
 
-  const primero = panels[0]?.id || 'clientes';
-  const ActivePanel = PANEL_COMPONENTS[panel] || PANEL_COMPONENTS[primero];
+  // Contador vivo de pedidos web sin revisar (mismo poller que el sidebar).
+  const pendientesWeb = useSyncExternalStore(ordenesWeb.subscribe, ordenesWeb.count, ordenesWeb.count);
+  const counts = { ordenes: pendientesWeb };
+
+  // Solo se renderiza lo PERMITIDO: si el panel pedido no está en el menú del
+  // rol (link viejo, atajo, URL), cae al primero visible — nunca a uno oculto.
+  const primero = panels[0]?.id;
+  const visible = panels.some((x) => x.id === panel) ? panel : primero;
+  const ActivePanel = (visible && PANEL_COMPONENTS[visible]) || null;
 
   const onRefresh = async () => {
     setRefrescando(true);
@@ -76,34 +93,13 @@ export function VentasShell({ title, subtitle }) {
         }
       />
 
-      {/* Puesto de trabajo: queda grabado en el navegador y sella los recibos. */}
-      <div className={s.ctxbar} style={{ marginBottom: 'var(--crm-space-5)' }}>
-        <label className={s.ctxField}>
-          <span>Sucursal</span>
-          <select
-            className={s['select-inline']}
-            value={ctx.sucursalId ?? ''}
-            onChange={(e) => setCtx('sucursalId', e.target.value ? Number(e.target.value) : null)}
-          >
-            {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
-          </select>
-        </label>
-        <label className={s.ctxField}>
-          <span>Usuario</span>
-          <select
-            className={s['select-inline']}
-            value={ctx.usuarioId ?? ''}
-            onChange={(e) => setCtx('usuarioId', e.target.value ? Number(e.target.value) : null)}
-          >
-            {usuarios.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-          </select>
-        </label>
-      </div>
-
+      {/* El puesto de trabajo (usuario + sucursal) vive en la sesión y se ve
+          arriba, al lado del perfil: acá sería repetirlo. */}
       <div className={s.shell}>
         <nav className={s.subnav} aria-label={`Secciones de ${title}`}>
           {panels.map((p) => {
             const Icon = p.icon;
+            const count = p.badge ? counts[p.badge] ?? 0 : 0;
             return (
               <button
                 key={p.id}
@@ -113,23 +109,30 @@ export function VentasShell({ title, subtitle }) {
               >
                 <span className={s.subnavIcon}><Icon fontSize="small" /></span>
                 <span className={s.subnavLabel}>{p.label}</span>
+                {count > 0 && <span className={s.subnavBadge}>{count}</span>}
               </button>
             );
           })}
         </nav>
 
         <div className={s.content}>
-          <ActivePanel />
+          {ActivePanel ? <ActivePanel /> : (
+            <div className={cx(s.callout, s.warn)}>
+              Tu rol no tiene ninguna sección habilitada en este módulo.
+            </div>
+          )}
         </div>
       </div>
 
       <ModalHost />
 
+      {/* Arriba a la derecha: los modales grandes tapaban el aviso de abajo y
+          los errores de una acción no se llegaban a leer. */}
       <Snackbar
         open={toastState.open}
-        autoHideDuration={3500}
+        autoHideDuration={4000}
         onClose={closeToast}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
         <Alert
           onClose={closeToast}
