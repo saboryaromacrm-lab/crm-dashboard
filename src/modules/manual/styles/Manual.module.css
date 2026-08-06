@@ -13,12 +13,32 @@
 .titulo { font-size: 22px; font-weight: 700; margin: 0; }
 .bajada { color: var(--crm-color-text-muted); margin: 4px 0 0; max-width: 70ch; font-size: 13.5px; }
 
+.herramientas { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+
 .buscador {
   min-width: 280px; padding: 9px 12px;
   border: 1px solid var(--crm-color-border); border-radius: var(--crm-radius-sm);
   background: var(--crm-color-surface); color: var(--crm-color-text); font-size: 14px;
 }
 .buscador:focus { outline: none; border-color: var(--crm-color-accent); }
+
+/* Orden del manual: temático (para aprender) o reciente (para retomar). */
+.orden { display: flex; align-items: center; gap: 4px; }
+.ordenEtiqueta {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--crm-color-text-muted); margin-right: 4px;
+}
+.ordenBtn {
+  padding: 4px 11px; font: inherit; font-size: 12.5px; cursor: pointer;
+  border: 1px solid var(--crm-color-border); border-radius: 999px;
+  background: var(--crm-color-surface); color: var(--crm-color-text-secondary);
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
+}
+.ordenBtn:hover { border-color: var(--crm-color-accent); }
+.ordenActivo {
+  background: var(--crm-color-primary); border-color: var(--crm-color-primary);
+  color: var(--crm-color-primary-contrast); font-weight: 600;
+}
 
 .cuerpo { display: grid; grid-template-columns: 260px 1fr; gap: var(--crm-space-4); align-items: start; }
 
@@ -45,6 +65,11 @@
   background: var(--crm-color-accent); color: #fff; border-radius: 999px;
   padding: 0 6px; font-size: 10.5px; font-weight: 700; line-height: 16px;
 }
+/* Cuándo se tocó por última vez: solo aparece si ES el criterio de orden. */
+.indiceFecha {
+  margin-left: auto; font-size: 10.5px; font-weight: 600;
+  color: var(--crm-color-text-muted); white-space: nowrap;
+}
 
 /* ---------------- Contenido ---------------- */
 .contenido { min-width: 0; display: flex; flex-direction: column; gap: var(--crm-space-4); }
@@ -61,8 +86,13 @@
   padding: var(--crm-space-4); margin-bottom: var(--crm-space-3);
 }
 .temaTitulo {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
   font-size: 16px; font-weight: 700; margin: 0 0 var(--crm-space-3);
   padding-bottom: 8px; border-bottom: 1px solid var(--crm-color-border);
+}
+.temaFecha {
+  font-size: 11px; font-weight: 600; color: var(--crm-color-text-muted);
+  white-space: nowrap; flex: none;
 }
 
 .parrafo { margin: 0 0 12px; line-height: 1.65; max-width: 78ch; font-size: 14px; }

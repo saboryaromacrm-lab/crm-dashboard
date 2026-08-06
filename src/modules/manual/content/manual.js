@@ -31,6 +31,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'piezas',
+        actualizado: '2026-07-30',
         titulo: 'Las tres piezas',
         bloques: [
           { t: 'flujo', items: ['PostgreSQL', 'crm-api (NestJS)', 'crm-dashboard (React)'] },
@@ -52,6 +53,7 @@ export const MANUAL = [
       },
       {
         id: 'identidad',
+        actualizado: '2026-07-30',
         titulo: 'Identidad visual',
         bloques: [
           {
@@ -76,6 +78,7 @@ export const MANUAL = [
       },
       {
         id: 'paginacion',
+        actualizado: '2026-07-30',
         titulo: 'Tablas y paginación',
         bloques: [
           {
@@ -100,6 +103,7 @@ export const MANUAL = [
       },
       {
         id: 'modulos',
+        actualizado: '2026-08-06 18:53',
         titulo: 'Módulos',
         bloques: [
           {
@@ -135,6 +139,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'que-es',
+        actualizado: '2026-07-30',
         titulo: 'Qué es un formato de compra',
         bloques: [
           {
@@ -156,6 +161,7 @@ export const MANUAL = [
       },
       {
         id: 'carga-factura',
+        actualizado: '2026-08-06 18:53',
         titulo: 'Cargar la factura: asistente en tres pasos',
         bloques: [
           {
@@ -196,6 +202,7 @@ export const MANUAL = [
       },
       {
         id: 'cadena',
+        actualizado: '2026-07-30',
         titulo: 'La cadena de costos',
         bloques: [
           {
@@ -227,6 +234,7 @@ export const MANUAL = [
       },
       {
         id: 'descuentos',
+        actualizado: '2026-07-30',
         titulo: 'La escala de descuentos',
         bloques: [
           {
@@ -252,6 +260,7 @@ export const MANUAL = [
       },
       {
         id: 'modo-carga',
+        actualizado: '2026-07-30',
         titulo: 'Los dos modos de carga',
         bloques: [
           {
@@ -271,6 +280,7 @@ export const MANUAL = [
       },
       {
         id: 'formato-activo',
+        actualizado: '2026-07-30',
         titulo: 'Cuál formato fija el precio',
         bloques: [
           {
@@ -303,6 +313,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'modelo',
+        actualizado: '2026-08-01',
         titulo: 'El precio es del producto, no de la lista',
         bloques: [
           {
@@ -329,6 +340,7 @@ export const MANUAL = [
       },
       {
         id: 'formato-fila',
+        actualizado: '2026-08-01',
         titulo: 'La fila del formato: unidades, código y modo de precio',
         bloques: [
           {
@@ -359,6 +371,7 @@ export const MANUAL = [
       },
       {
         id: 'modalidad',
+        actualizado: '2026-08-01',
         titulo: 'Modalidad › Lista',
         bloques: [
           {
@@ -379,6 +392,7 @@ export const MANUAL = [
       },
       {
         id: 'puertas',
+        actualizado: '2026-08-01',
         titulo: 'Las cuatro puertas',
         bloques: [
           {
@@ -399,6 +413,7 @@ export const MANUAL = [
       },
       {
         id: 'regla-oro',
+        actualizado: '2026-08-01',
         titulo: 'La regla de oro',
         bloques: [
           {
@@ -422,6 +437,7 @@ export const MANUAL = [
       },
       {
         id: 'regla-marca',
+        actualizado: '2026-08-01',
         titulo: 'Reglas de marca',
         bloques: [
           {
@@ -455,6 +471,7 @@ export const MANUAL = [
       },
       {
         id: 'monto',
+        actualizado: '2026-08-01',
         titulo: 'Condición por monto',
         bloques: [
           {
@@ -483,6 +500,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'mecanicas',
+        actualizado: '2026-08-01',
         titulo: 'Las siete mecánicas',
         bloques: [
           {
@@ -507,6 +525,7 @@ export const MANUAL = [
       },
       {
         id: 'alcance',
+        actualizado: '2026-08-01',
         titulo: 'Alcance y condiciones',
         bloques: [
           {
@@ -527,6 +546,7 @@ export const MANUAL = [
       },
       {
         id: 'resolucion',
+        actualizado: '2026-08-01',
         titulo: 'Cómo resuelve la caja',
         bloques: [
           {
@@ -570,6 +590,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'derivacion',
+        actualizado: '2026-08-01',
         titulo: 'La derivación completa',
         bloques: [
           {
@@ -584,6 +605,7 @@ export const MANUAL = [
       },
       {
         id: 'redondeo',
+        actualizado: '2026-08-01',
         titulo: 'Redondeo de góndola',
         bloques: [
           {
@@ -604,6 +626,7 @@ export const MANUAL = [
       },
       {
         id: 'evolucion',
+        actualizado: '2026-08-01',
         titulo: 'Evolución de precios',
         bloques: [
           {
@@ -623,6 +646,7 @@ export const MANUAL = [
       },
       {
         id: 'aviso-precios',
+        actualizado: '2026-08-06 18:53',
         titulo: 'Aviso de cambio de precios a los cajeros',
         bloques: [
           {
@@ -659,6 +683,7 @@ export const MANUAL = [
       },
       {
         id: 'actualizacion',
+        actualizado: '2026-08-01',
         titulo: 'Actualización masiva y deshacer',
         bloques: [
           {
@@ -690,6 +715,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'presupuestos',
+        actualizado: '2026-08-01',
         titulo: 'Presupuestos (pedidos mayoristas)',
         bloques: [
           {
@@ -725,6 +751,7 @@ export const MANUAL = [
       },
       {
         id: 'ordenes-web',
+        actualizado: '2026-08-06 18:53',
         titulo: 'Órdenes web (recepción de pedidos del sitio)',
         bloques: [
           {
@@ -753,6 +780,7 @@ export const MANUAL = [
       },
       {
         id: 'sitio-web',
+        actualizado: '2026-08-01',
         titulo: 'Sitio web (sitio-web/, Next.js)',
         bloques: [
           {
@@ -798,6 +826,7 @@ export const MANUAL = [
       },
       {
         id: 'web-seo-stats',
+        actualizado: '2026-08-01',
         titulo: 'SEO y estadísticas del sitio',
         bloques: [
           {
@@ -825,6 +854,7 @@ export const MANUAL = [
       },
       {
         id: 'modulo-web',
+        actualizado: '2026-08-06 18:53',
         titulo: 'Módulo Web (administrar el sitio)',
         bloques: [
           {
@@ -854,6 +884,7 @@ export const MANUAL = [
       },
       {
         id: 'impresion',
+        actualizado: '2026-08-01',
         titulo: 'Impresión y módulo Sistema',
         bloques: [
           {
@@ -875,6 +906,7 @@ export const MANUAL = [
       },
       {
         id: 'ventas-curso',
+        actualizado: '2026-08-01',
         titulo: 'Ventas en curso',
         bloques: [
           {
@@ -889,6 +921,7 @@ export const MANUAL = [
       },
       {
         id: 'atajos',
+        actualizado: '2026-08-01',
         titulo: 'Atajos de teclado',
         bloques: [
           {
@@ -932,6 +965,7 @@ export const MANUAL = [
       },
       {
         id: 'cierre',
+        actualizado: '2026-08-01',
         titulo: 'Cerrar la venta',
         bloques: [
           {
@@ -959,6 +993,7 @@ export const MANUAL = [
       },
       {
         id: 'arqueo-caja',
+        actualizado: '2026-08-06 18:53',
         titulo: 'Arqueo de caja',
         bloques: [
           {
@@ -993,6 +1028,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'modelo',
+        actualizado: '2026-07-30',
         titulo: 'Modelo sin lote',
         bloques: [
           {
@@ -1014,6 +1050,7 @@ export const MANUAL = [
       },
       {
         id: 'movimientos',
+        actualizado: '2026-07-30',
         titulo: 'Movimientos',
         bloques: [
           {
@@ -1036,6 +1073,7 @@ export const MANUAL = [
       },
       {
         id: 'fraccionamiento',
+        actualizado: '2026-07-30',
         titulo: 'Fraccionamiento',
         bloques: [
           {
@@ -1046,6 +1084,7 @@ export const MANUAL = [
       },
       {
         id: 'transferencias',
+        actualizado: '2026-07-30',
         titulo: 'Transferencias entre sucursales',
         bloques: [
           {
@@ -1098,6 +1137,7 @@ export const MANUAL = [
       },
       {
         id: 'operaciones',
+        actualizado: '2026-07-30',
         titulo: 'Operaciones del almacén',
         bloques: [
           {
@@ -1123,6 +1163,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'entidades',
+        actualizado: '2026-07-30',
         titulo: 'Por qué son entidades y no texto',
         bloques: [
           {
@@ -1142,6 +1183,7 @@ export const MANUAL = [
       },
       {
         id: 'cascada',
+        actualizado: '2026-07-30',
         titulo: 'Categoría › Subcategoría',
         bloques: [
           {
@@ -1156,6 +1198,7 @@ export const MANUAL = [
       },
       {
         id: 'codigos',
+        actualizado: '2026-07-30',
         titulo: 'Los tres códigos',
         bloques: [
           {
@@ -1189,6 +1232,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'gastos-que-es',
+        actualizado: '2026-08-05',
         titulo: 'Qué es un gasto y qué no',
         bloques: [
           {
@@ -1216,6 +1260,7 @@ export const MANUAL = [
       },
       {
         id: 'gastos-proveedor',
+        actualizado: '2026-08-05',
         titulo: 'Un solo padrón de proveedores',
         bloques: [
           {
@@ -1234,6 +1279,7 @@ export const MANUAL = [
       },
       {
         id: 'gastos-rubros',
+        actualizado: '2026-08-05',
         titulo: 'Rubros: fijos y variables',
         bloques: [
           {
@@ -1258,6 +1304,7 @@ export const MANUAL = [
       },
       {
         id: 'gastos-carga',
+        actualizado: '2026-08-06 18:53',
         titulo: 'Cargar un gasto',
         bloques: [
           {
@@ -1279,6 +1326,7 @@ export const MANUAL = [
       },
       {
         id: 'gastos-pagos',
+        actualizado: '2026-08-06 18:53',
         titulo: 'Pagos a proveedores: la plata sale una sola vez',
         bloques: [
           {
@@ -1359,6 +1407,7 @@ export const MANUAL = [
       },
       {
         id: 'gastos-fijos',
+        actualizado: '2026-08-05',
         titulo: 'Gastos fijos (los que se repiten)',
         bloques: [
           {
@@ -1378,6 +1427,7 @@ export const MANUAL = [
       },
       {
         id: 'gastos-resumen',
+        actualizado: '2026-08-05',
         titulo: 'Cuentas a pagar y resumen',
         bloques: [
           {
@@ -1407,6 +1457,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'chat-como-funciona',
+        actualizado: '2026-08-06 20:00',
         titulo: 'Cómo funciona',
         bloques: [
           {
@@ -1446,6 +1497,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'modelo-roles',
+        actualizado: '2026-08-06 18:53',
         titulo: 'Roles dinámicos con permisos',
         bloques: [
           {
@@ -1492,6 +1544,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'cafeteria-como-funciona',
+        actualizado: '2026-08-06 19:19',
         titulo: 'Cómo funciona',
         bloques: [
           {
@@ -1534,6 +1587,7 @@ export const MANUAL = [
       },
       {
         id: 'cafeteria-conectar-coffit',
+        actualizado: '2026-08-06 18:53',
         titulo: 'Qué desarrollar en coffit para conectarse',
         bloques: [
           {
@@ -1578,6 +1632,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'principios',
+        actualizado: '2026-08-06 18:53',
         titulo: 'Los principios que se repiten',
         bloques: [
           {
@@ -1597,6 +1652,7 @@ export const MANUAL = [
       },
       {
         id: 'trampas',
+        actualizado: '2026-08-06 18:53',
         titulo: 'Trampas conocidas',
         bloques: [
           {
@@ -1614,6 +1670,7 @@ export const MANUAL = [
       },
       {
         id: 'lecciones',
+        actualizado: '2026-08-06 18:53',
         titulo: 'Lecciones que costaron caro',
         bloques: [
           {
@@ -1639,6 +1696,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
+        actualizado: '2026-08-06 20:00',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -1664,6 +1722,7 @@ export const MANUAL = [
       },
       {
         id: 'proximo',
+        actualizado: '2026-08-06 20:00',
         titulo: 'Lo próximo',
         bloques: [
           {
@@ -1690,6 +1749,7 @@ export const MANUAL = [
       },
       {
         id: 'aflojar',
+        actualizado: '2026-08-06 20:00',
         titulo: 'Cosas a revisar',
         bloques: [
           {
@@ -1712,6 +1772,7 @@ export const MANUAL = [
       },
       {
         id: 'gastos-notas-tecnicas',
+        actualizado: '2026-08-05',
         titulo: 'Nota técnica: fechas del formulario',
         bloques: [
           {
@@ -1733,11 +1794,20 @@ export const MANUAL = [
       },
       {
         id: 'como-mantener',
+        actualizado: '2026-08-06 20:30',
         titulo: 'Cómo se mantiene esta sección',
         bloques: [
           {
             t: 'p',
             texto: 'Al cerrar cualquier función o cambiar una regla de negocio se actualiza la sección que corresponda **y esta lista**. Documentación vieja es peor que no tener ninguna: si dice algo que ya no es cierto, alguien la va a creer.',
+          },
+          {
+            t: 'p',
+            texto: 'Cada tema lleva su **fecha de última modificación** (se ve al lado del título) y el botón **Orden › Reciente** de arriba pone lo último primero — el índice se reordena y salta a lo más nuevo. La fecha de una sección es la del tema más nuevo que tenga adentro: se deriva, no se escribe aparte, así no puede contradecir a sus temas. Tocar un tema significa actualizar su `actualizado`: si no se hace, el orden por fecha empieza a mentir.',
+          },
+          {
+            t: 'p',
+            texto: 'El campo admite `AAAA-MM-DD` y, cuando hace falta desempatar dentro del mismo día, `AAAA-MM-DD HH:MM` — sin eso, una jornada con diez secciones tocadas las deja empatadas y el orden "Reciente" pierde sentido. La hora **no se muestra** (queda en el tooltip): sirve solo para ordenar. Las fechas históricas salieron de los commits del repositorio, no de la memoria de nadie.',
           },
           {
             t: 'p',
