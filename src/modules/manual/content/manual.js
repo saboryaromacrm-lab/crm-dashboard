@@ -1839,8 +1839,8 @@ export const MANUAL = [
       },
       {
         id: 'agentes-catalogo',
-        actualizado: '2026-08-07 23:40',
-        titulo: 'Agentes del catálogo de aitmpl.com: pros, contras y qué conviene',
+        actualizado: '2026-08-08 00:30',
+        titulo: 'Agentes: los dos propios, y por qué no el catálogo de aitmpl.com',
         bloques: [
           {
             t: 'p',
@@ -1882,7 +1882,24 @@ export const MANUAL = [
             t: 'p',
             texto: 'Si igual se quiere probar el catálogo, el movimiento de menor riesgo es instalar **uno solo** en crm-dashboard, leer el archivo completo, y usarlo en una tarea real de bajo riesgo antes de decidir.',
           },
-          { t: 'ruta', texto: 'aitmpl.com/agents · docs.aitmpl.com · github.com/davila7/claude-code-templates · los agentes propios irían en ~/.claude/agents/' },
+          {
+            t: 'p',
+            texto: '**Hecho el 7/8/2026: dos agentes propios, ninguno del catálogo.** Viven en `~/.claude/agents/`, así que sirven en los tres repos. Los dos escriben **un informe en español** con `archivo:línea` y tienen prohibido reportar sin poder señalar la línea, para que no devuelvan una pared de riesgos plausibles.',
+          },
+          {
+            t: 'tabla',
+            cols: ['Agente', 'Qué hace', 'Qué sabe de acá'],
+            filas: [
+              ['**auditor-seguridad** — solo lectura (`Read, Grep, Glob, Bash`)', 'Informe de vulnerabilidades ordenado por severidad, cada una con **cómo se explota** concreto (el request, el campo, el valor) más dos secciones que casi nunca aparecen en un informe automático: **"Para mirar"** (sospechas sin probar) y **"Revisado y está bien"**, que le da un piso de confianza y evita re-auditar lo mismo cada vez. Usarlo antes de un deploy y después de agregar endpoints.', 'Que **la falta de autenticación ya está asumida** y va en una línea arriba, no como descubrimiento — lo que le toca es ver si algo **empeoró**. Que solo los 4 endpoints de tienda pueden ser públicos. Que `trust proxy` es correcto **solo** si Node escucha en localhost. Que un chequeo que vive solo en el frontend **no es un chequeo**. Que Vite mete todo `VITE_*` en el código fuente de la página. Que un `@Body() dto: any` anula el `whitelist` del ValidationPipe. Que el `sql.raw` de `catalogos.module.ts` **está bien** (los nombres de tabla salen de un mapa fijo) y no hay que reportarlo.'],
+              ['**depurador-codigo** — puede editar (`Read, Grep, Glob, Bash, Edit`)', 'Busca código muerto, peso al aire y cuellos de botella. Clasifica en **Seguro** / **Requiere criterio** / **No tocar (y por qué)** — esta última es la sección más valiosa, porque evita que la próxima limpieza rompa lo mismo. **Siempre muestra el informe primero**; solo aplica cambios si se le pide explícitamente, solo los "Seguro", y después compila.', 'La trampa de los **registros por string**: los paneles y modales se registran por clave de texto, así que buscar el identificador da cero usos y el archivo parece muerto estando en producción — tiene que grepear identificador, nombre de archivo Y clave. La trampa inversa de las **listas explícitas incompletas** (`_cleanComprobante` se traga los campos nuevos sin avisar: eso es un bug abierto, no basura). Que las **subqueries correlacionadas de Drizzle** fallan en silencio. Que el peso real está en las columnas base64 (`factura_archivos`, `gasto_adjuntos`, `web_imagenes`) colándose en un listado, y en los `bootstrap()` que engordan.'],
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**Al depurador se le prohibió explícitamente**: tocar la carpeta `crm-api/drizzle/` (son migraciones aplicadas más el journal y los snapshots: el historial que reconstruye la base, no archivos viejos), **borrar comentarios explicativos** (este proyecto comenta el *por qué* y esos comentarios son la única copia de lecciones que costaron caro), reformatear, actualizar dependencias, tocar el contenido de esta guía, y simplificar matemática de plata. Unificar helpers duplicados (`r2`, `money`) va en "Requiere criterio", nunca en "Seguro": es un cambio de diseño, no una limpieza.',
+          },
+          { t: 'ruta', texto: '~/.claude/agents/auditor-seguridad.md · ~/.claude/agents/depurador-codigo.md · aitmpl.com/agents · github.com/davila7/claude-code-templates' },
         ],
       },
     ],
@@ -1896,7 +1913,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-07 23:40',
+        actualizado: '2026-08-08 00:30',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -1907,6 +1924,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**7/8/2026**', '**Dos agentes propios escritos**, ninguno del catálogo: **auditor-seguridad** (informe de vulnerabilidades por severidad, con cómo se explota cada una; solo lectura) y **depurador-codigo** (código muerto, peso al aire y cuellos de botella, clasificado en Seguro / Requiere criterio / **No tocar y por qué**; muestra el informe antes de tocar nada). Viven en `~/.claude/agents/` para que sirvan en los tres repos. Lo que los hace útiles no es el rol sino **las trampas de acá metidas adentro**: que la falta de autenticación ya está asumida y no es un descubrimiento, que un chequeo que vive solo en el frontend no es un chequeo, que los paneles se registran por clave de texto (así que "0 usos" no prueba que esté muerto), que `_cleanComprobante` se traga los campos nuevos, y que las migraciones de `drizzle/` y los comentarios explicativos no se tocan. Detalle en Decisiones de diseño › "Agentes del catálogo de aitmpl.com"'],
               ['**7/8/2026**', '**Evaluado el catálogo de agentes de aitmpl.com** (Claude Code Templates). Un agente de ahí es un archivo `.md` con tres líneas de frontmatter y un prompt: el mecanismo de subagentes es de Claude Code, el catálogo solo ahorra escribirlo. **Recomendación: no instalar el catálogo** y escribir dos o tres propios con el criterio de este proyecto, en `~/.claude/agents/` para que sirvan en los tres repos — los genéricos de framework traen opiniones ajenas y las aplican con seguridad. Pros, contras y las advertencias (es código de terceros que se ejecuta como instrucciones; `.claude/agents/` es por proyecto; un agente no reemplaza a CLAUDE.md porque arranca sin contexto) quedaron en Decisiones de diseño › "Agentes del catálogo de aitmpl.com"'],
               ['**7/8/2026**', '**Las notas de crédito y de débito ahora se toman de una factura.** El paso 3 del alta lista las facturas del proveedor con su saldo y muestra en cuánto queda al elegirla: la NC resta, la ND suma. **Arregla que se le pagaba de más al proveedor**: el campo de la referencia existía en la base pero ninguna pantalla lo cargaba, así que una NC restaba de la deuda TOTAL —la cuenta corriente cerraba bien— pero la factura seguía ofreciendo su importe entero en la bandeja de pago. Probado: una NC de $38.675 sobre una factura de $41.934,75 dejó la bandeja ofreciendo $3.259,75 en lugar de $41.934,75. Además la ND referenciada ya no se puede pagar por separado (sería cobrar dos veces el mismo ajuste) y el detalle de la factura muestra la tabla de sus notas. Guía nueva: Formato de Compra › "Notas de crédito y de débito"'],
               ['**7/8/2026**', '**Lectura automática de los renglones: diseñada y EN ESPERA.** Es la etapa que le falta a la bandeja. Quedó documentada entera —el circuito, qué se le pide al modelo y sobre todo **qué no** (ni el encabezado, ni identificar el producto, ni sumar: solo copiar la tabla), el control contra el total del QR con reintento escalando de modelo, el costo (~US$3 por 50 facturas al mes) y lo que no arregla— pero **no está construido**: espera una decisión que no es técnica (**la imagen de la factura sale de la máquina**) más una clave de API, y que se resuelvan antes los renglones que no son mercadería. Ficha: Pendientes › "Leer los renglones de la factura"'],
