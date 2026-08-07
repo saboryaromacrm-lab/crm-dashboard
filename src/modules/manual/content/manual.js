@@ -1812,7 +1812,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-07 19:40',
+        actualizado: '2026-08-07 21:10',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -1823,6 +1823,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**7/8/2026**', '**Lectura automática de los renglones: diseñada y EN ESPERA.** Es la etapa que le falta a la bandeja. Quedó documentada entera —el circuito, qué se le pide al modelo y sobre todo **qué no** (ni el encabezado, ni identificar el producto, ni sumar: solo copiar la tabla), el control contra el total del QR con reintento escalando de modelo, el costo (~US$3 por 50 facturas al mes) y lo que no arregla— pero **no está construido**: espera una decisión que no es técnica (**la imagen de la factura sale de la máquina**) más una clave de API, y que se resuelvan antes los renglones que no son mercadería. Ficha: Pendientes › "Leer los renglones de la factura"'],
               ['**7/8/2026**', '**Facturas por procesar: subir el papel ahora y cargarlo después** (Compras › Por procesar, permiso `compras.lecturas`). La cajera fotografía la factura cuando llega el camión y el admin la procesa cuando puede — ese desacople es la mayor parte del ahorro, y no depende de ninguna magia. Lo que sí ahorra tipeo es el **QR de la RG 4892**: es un JSON, no una imagen para interpretar, y de ahí salen proveedor (por CUIT, exacto), tipo, letra, punto de venta, número, fecha, **total** y CAE. El total del papel se usa como **control**: el pie del alta compara en vivo y avisa si cierra o cuánto falta. El papel queda guardado y pegado al comprobante. Semáforo en la bandeja: rojo frena (falta proveedor / número / sucursal, o ya está cargada), amarillo avisa. **Lo que NO hace todavía**: leer los renglones — eso es la etapa siguiente. Guía nueva: Formato de Compra › "Facturas por procesar"'],
               ['**7/8/2026**', '**Tres agujeros que la bandeja destapó y quedaron tapados.** (1) `comprobantes` **no tenía índice único de número** (Ventas y Cobranzas sí): con carga manual no molestaba, con papeles entrando del celular el duplicado era cuestión de tiempo — y entraba dos veces al stock y a la deuda. (2) El **punto de venta se normaliza a cuatro dígitos** en las dos puertas: el papel imprime "00115" y el QR trae "115", así que antes eran dos puntos de venta distintos y el control de duplicados no los cruzaba. (3) Una **nota de crédito con recepción ahora descuenta stock**: la deuda ya se ajustaba pero la mercadería devuelta quedaba en el depósito. No se hizo automático por tipo porque una NC no siempre es devolución (también ajusta un precio mal facturado): lo decide el tilde de recepción'],
               ['**7/8/2026**', '**El pie de la factura de compra: bonificación y percepciones.** Faltaban las dos y el total del sistema no cerraba con el del proveedor. Ahora el paso 2 replica el papel (subtotal → bonificación → neto → IVA → percepciones → TOTAL), el IVA se calcula sobre el neto ya bonificado y renglón por renglón (para que cierre con dos alícuotas), y las **percepciones se configuran por proveedor** (nueva pestaña en su ficha) y se **tildan** al cargar la factura porque no siempre vienen. Probado contra una factura real de Bavosi: el pie coincide al centavo salvo 1 centavo del redondeo que el proveedor hace por renglón'],
@@ -1853,8 +1854,8 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Qué', 'Por qué importa'],
             filas: [
-              ['**Leer los RENGLONES de la factura** (la etapa que sigue de la bandeja)', 'El encabezado ya sale del QR, exacto. Los ítems solo existen en el PDF del proveedor, así que hay que interpretar imagen — y eso exige **decidir si la factura sale de la máquina**: un modelo de visión acierta con cualquier formato pero el papel viaja a un servicio externo (centavos por factura); la alternativa offline es más frágil. Tercer camino, a veces el mejor: **pedirle el detalle en archivo al proveedor** (Bavosi ya pasó su catálogo en CSV). Cuando se haga, hacen falta dos guardas: **(1)** que el diccionario de códigos del proveedor aprenda de cada confirmación (`producto_proveedores.codigoProveedor` ya existe) para que la segunda factura salga casi sola, y **(2)** un control de **cantidad** aparte del de plata, porque el total cierra igual si una caja de 12 se carga como 1 unidad'],
-              ['**Renglones que NO son mercadería** (flete, envases retornables, redondeo)', 'Las facturas los traen y hoy **no se pueden guardar**: `comprobante_items.productoId` es obligatorio. Sin resolverlo, cada factura con flete no cierra contra el total del papel. Decisión de diseño pendiente: un flag de "concepto no inventariable" en el ítem (más honesto) o productos de servicio designados'],
+              ['**Leer los RENGLONES de la factura — EN ESPERA**', 'Diseñado y presupuestado, sin construir: espera una decisión del dueño (**el papel sale de la máquina**) más una clave de API. El detalle completo —qué se le pide al modelo y qué no, el control del total, el costo, lo que no arregla— está en su ficha propia: **Pendientes › "Leer los renglones de la factura"**. Un cuarto camino que no depende de nada de eso: **pedirle el detalle en archivo al proveedor** (Bavosi ya pasó su catálogo en CSV), y ahí no hay nada que interpretar'],
+              ['**Renglones que NO son mercadería** (flete, envases retornables, redondeo)', 'Las facturas los traen y hoy **no se pueden guardar**: `comprobante_items.productoId` es obligatorio. Sin resolverlo, cada factura con flete no cierra contra el total del papel — y es **bloqueante de la lectura automática de renglones**. Decisión de diseño pendiente: un flag de "concepto no inventariable" en el ítem (más honesto) o productos de servicio designados'],
               ['**Conciliar con "Mis Comprobantes" de ARCA**', 'ARCA deja bajar en CSV todas las facturas que cualquier proveedor emitió contra el CUIT de la empresa. Sirve para **encontrar facturas que existen y nunca se cargaron** — cada una es crédito fiscal de IVA no computado y deuda que no figura en la cuenta del proveedor. Es el mismo patrón de "subir un archivo y previsualizar" que ya está construido dos veces'],
               ['**CUIT de los proveedores y de la empresa**', 'El reconocimiento automático de la bandeja va **por CUIT**: los proveedores que no lo tengan cargado llegan sin proveedor y hay que elegirlo a mano. Y el CUIT de la empresa (Sistema › Empresa) todavía es el de prueba `30-71555666-7`: mientras siga así, **toda factura va a mostrar el aviso "no es nuestra"**, que es peor que no avisar — entrena a ignorar los avisos'],
               ['**Sesiones con token — BLOQUEANTE del deploy**', 'El login ya valida contraseña, pero la API sigue abierta: cualquiera que la alcance puede llamar cualquier endpoint. En la red local no duele; al publicar el sitio, la API queda en internet y esto pasa a ser **condición previa**: solo los 4 endpoints públicos de la tienda (catálogo, pedidos, eventos, imágenes) pueden quedar sin token — todo el resto tiene que exigir sesión autenticada ANTES de apuntar el dominio'],
@@ -1873,6 +1874,107 @@ export const MANUAL = [
               ['**Deploy del sitio (Hostinger)**', 'Hoy corre en local (localhost:3002); falta publicarlo y apuntar el dominio real. Checklist: (1) auth con token en toda la API salvo los 4 endpoints de tienda — BLOQUEANTE; (2) Node escuchando SOLO en localhost con nginx como única puerta (el `trust proxy` ya está activo y sin esto el X-Forwarded-For es falsificable); (3) `limit_req` de nginx como refuerzo del rate limit propio'],
             ],
           },
+        ],
+      },
+      {
+        id: 'lectura-renglones',
+        actualizado: '2026-08-07 21:10',
+        titulo: 'Leer los renglones de la factura — EN ESPERA (decisión pendiente)',
+        bloques: [
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**Diseñado y presupuestado, NO construido.** Queda en espera hasta que el dueño decida avanzar, porque hay una decisión que no es técnica: **la imagen de la factura sale de la máquina**. Nada de esto está en el código todavía — la bandeja funciona hoy sin esto y va a seguir funcionando igual si nunca se hace.',
+          },
+          {
+            t: 'p',
+            texto: 'Es la etapa que le falta a **Facturas por procesar** (ver su guía en Formato de Compra). Hoy el encabezado sale solo del QR y los renglones se cargan a mano. Esto último es lo que quedaría automático: subís la foto y los renglones aparecen cargados.',
+          },
+          {
+            t: 'p',
+            texto: '**Por qué hace falta un modelo de visión y no un programa.** El encabezado se resuelve leyendo un QR, que es un dato exacto. Los renglones no: solo existen dibujados en el PDF del proveedor, cada proveedor los imprime distinto, y Argentina no tiene intercambio de factura estructurada (nada como el CFDI mexicano). Hay que interpretar imagen, y eso lo hace un modelo.',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**El circuito**: el papel ya está guardado y el encabezado ya salió del QR (eso no cambia) → la API manda la imagen o el PDF al modelo con un esquema fijo de respuesta → vuelve un JSON con los renglones → el sistema calcula el pie y lo compara contra el total del QR → la factura aparece en la bandeja con los renglones puestos.',
+              '**Corre en la API (crm-api), nunca en el navegador**: la clave de la API no puede estar en el frontend, cualquiera la vería mirando el código de la página.',
+              '**Sería un interruptor, no una pieza**: sin clave configurada, la bandeja anda exactamente como hoy (papel guardado, encabezado del QR, renglones a mano). Se puede probar con veinte facturas y apagarlo si no convence.',
+            ],
+          },
+          {
+            t: 'p',
+            texto: '**Lo que se le pediría, y sobre todo lo que NO.** Acá está la diferencia entre que funcione y que sea una lotería: cuanto más chico el trabajo del modelo, más confiable el resultado.',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**NO se le pide el encabezado.** Ya lo tenemos exacto del QR; pedírselo sería meter una posibilidad de error donde hoy no hay ninguna.',
+              '**NO se le pide identificar el producto.** No se le pasa el catálogo para que elija: es justo donde un modelo inventa con más ganas — le das 900 productos y devuelve uno parecido con total seguridad. El producto lo resuelve el **código del proveedor** contra el diccionario que se va llenando (determinístico), y si no matchea es un rojo que decide una persona.',
+              '**NO se le pide sumar nada.** La aritmética la hace el código, siempre. Un modelo que suma es un modelo al que hay que revisarle la suma.',
+              '**SÍ se le pide una sola cosa: copiar lo que dice el papel** — por renglón: código, descripción, cantidad, unidad, precio unitario, % de descuento e importe; más las líneas del pie tal como están impresas. Transcribir, no interpretar. "Copiá esta tabla" es una tarea muchísimo más fácil y más verificable que "entendé esta factura".',
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'ok',
+            texto: '**El esquema no es una sugerencia.** La API tiene salida estructurada: se declara la forma exacta del JSON —qué campos, de qué tipo, cuáles obligatorios— y la respuesta está **obligada** a cumplirla. No es pedirle amablemente que devuelva JSON y después rezar. Lo que el esquema NO garantiza es que los números sean los correctos; para eso está el control del total.',
+          },
+          {
+            t: 'p',
+            texto: '**El lazo que se cierra solo.** El total del QR es la respuesta al final del libro. Si el pie calculado con los renglones leídos da ese número, la extracción está *demostrada* y la factura queda lista para confirmar. Si no da, **segundo intento con el modelo más capaz** — la primera pasada va con el barato y solo las que fallan escalan, así que el costo lo domina el camino barato. Si tampoco cierra, queda para cargar a mano con la diferencia marcada: nunca se carga nada roto en silencio.',
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: 'Lo que **no** se le pediría es que declare cuánta confianza tiene en cada renglón. Esa autoevaluación es poco confiable y da una falsa sensación de control: un renglón mal leído con "confianza alta" es peor que no tener el dato. **Vale más la prueba aritmética que la opinión del modelo sobre sí mismo.**',
+          },
+          {
+            t: 'p',
+            texto: '**El PDF se da vuelta y pasa a ser el mejor caso.** Hoy el PDF es el peor: no se le puede leer el QR y su encabezado va a mano. Para leer renglones es al revés — la API acepta PDF de forma nativa y un PDF de factura es texto vectorial, no una foto de un papel con sombras, arrugas y flash. Como muchos proveedores mandan la factura por mail en PDF, ese circuito (bajar del mail → subir → salen los renglones) sería el más confiable de todos, aunque su encabezado se siga tipeando.',
+          },
+          {
+            t: 'tabla',
+            cols: ['Modelo', 'Por factura', '50 facturas/mes'],
+            filas: [
+              ['Sonnet 5 (la primera pasada)', '~US$ 0,056', '**~US$ 3**'],
+              ['Opus 5 (solo los reintentos)', '~US$ 0,094', '—'],
+            ],
+          },
+          {
+            t: 'p',
+            texto: 'Las cuentas son sobre una factura de 40 renglones fotografiada (la de Bavosi tiene 3): la imagen a resolución completa pesa hasta ~4.800 tokens, la instrucción con el esquema ~1.500 y la respuesta con 40 renglones ~2.500, a US$3 por millón de entrada y US$15 de salida. **El costo no es el problema** — son unos pocos dólares por mes.',
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**La decisión real: el papel sale de la máquina.** La imagen viaja a la API del modelo — los precios de los proveedores, los CUITs, los códigos. Es el único componente de todo el sistema que manda datos afuera: el chat, el importador de catálogos, la lectura del QR y todo lo demás corren en la red local. No es una objeción, es el precio del servicio, pero la decisión es del dueño.',
+          },
+          {
+            t: 'p',
+            texto: '**Qué NO arregla, incluso funcionando perfecto:**',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**El bulto contra la unidad.** El modelo va a leer "4.00" y "CUM10x1kg" fielmente; decidir si son 4 cajas o 40 kg es conocimiento del negocio, no lectura. Es justo el punto ciego del control del total (la plata cierra igual), así que la guarda contra el costo histórico de la presentación sigue siendo necesaria.',
+              '**El flete y los envases retornables.** El modelo transcribe el renglón sin problema; el sistema sigue sin tener dónde guardarlo. **Esto hay que resolverlo ANTES**: si no, cada factura con flete falla el cuadre por más perfecta que sea la lectura.',
+              '**La compresión del papel.** Lo que se guarda hoy está comprimido a 2.200 px de lado largo, justo debajo del límite de 2.576 px de la API, así que sirve. Si algún día se baja esa compresión para ahorrar base, la letra chica de los renglones se pierde y la lectura empeora sin que nada avise.',
+            ],
+          },
+          {
+            t: 'p',
+            texto: '**Qué falta para poder empezar** — dos cosas, y una es del dueño:',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**Decidir que el papel puede salir de la máquina**, y sacar una **clave de API de Anthropic** (console.anthropic.com, con tarjeta). Esa clave es una credencial de la cuenta del dueño y factura a su nombre: no la puede sacar nadie más.',
+              '**Resolver los renglones que no son mercadería** (flete, envases retornables, redondeo). Hoy `comprobante_items` exige un producto, así que ese renglón no se puede guardar. Es una decisión de diseño de una sola vez: un flag de "concepto no inventariable" en el ítem —más honesto— o productos de servicio designados.',
+              'Con esas dos, el resto es construirlo: el módulo que llama a la API, el esquema de respuesta, el reintento con escalada de modelo, y el diccionario de códigos del proveedor que aprende de cada confirmación (`producto_proveedores.codigoProveedor` ya existe y es la llave).',
+            ],
+          },
+          { t: 'ruta', texto: 'Lo que ya funciona está en Formato de Compra › "Facturas por procesar" · esta ficha es solo el diseño de la etapa que sigue' },
         ],
       },
       {
