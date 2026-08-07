@@ -316,6 +316,42 @@ export const MANUAL = [
         ],
       },
       {
+        id: 'notas-credito-debito',
+        actualizado: '2026-08-07 23:05',
+        titulo: 'Notas de crédito y de débito: siempre sobre una factura',
+        bloques: [
+          {
+            t: 'p',
+            texto: 'Una nota de crédito o de débito **nace de UNA factura**: la mercadería que se devolvió de esa entrega, el flete que el proveedor se olvidó de cobrar en ese remito. Por eso el **paso 3** del alta, cuando el tipo es NC o ND, muestra **la lista de facturas de ese proveedor** con su saldo, para elegir cuál ajusta. La **NC resta** y la **ND suma**.',
+          },
+          {
+            t: 'p',
+            texto: 'La lista muestra, por cada factura, el total, lo pagado, el **saldo de hoy** y —al elegirla— **en cuánto queda**. Ese último número es el que importa: es la consecuencia de lo que se está por registrar, a la vista antes de confirmar.',
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**Sin la referencia, la nota quedaba flotando y se le pagaba de más al proveedor.** El campo existía en la base pero ninguna pantalla lo cargaba, así que una NC de $50.000 contra una factura de $200.000 restaba de la deuda TOTAL del proveedor —la cuenta corriente cerraba bien— pero **la factura seguía ofreciendo $200.000 para pagar**. El que paga factura por factura le pagaba los $200.000 enteros. Verificado y corregido: con una NC de $38.675 sobre una factura de $41.934,75, la bandeja pasó de ofrecer $41.934,75 a ofrecer $3.259,75.',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**Elegir no es opcional, pero "ninguna" es una opción.** La lista tiene una fila final —"no corresponde a una factura en particular"— que hay que marcar a propósito. Si no se elige nada, el alta no deja registrar: por defecto la nota volvería a flotar. Sin factura, la nota mueve la cuenta del proveedor pero no cambia el saldo de ningún documento, que es lo correcto para un ajuste general (una bonificación de fin de año, un recargo financiero sobre varias facturas).',
+              '**La ND que ajusta una factura NO se paga por separado.** Su importe ya está sumado en el saldo de esa factura; pagarla aparte sería cobrar dos veces el mismo ajuste. La bandeja no la lista y la aplicación la rechaza con ese mensaje. La ND **sin** referencia sí sigue siendo un documento pagable por sí mismo.',
+              '**El total del papel no cambia nunca.** La factura sigue diciendo lo que dice. Lo que cambia es cuánto queda debiéndose por ella — y eso es lo que la bandeja de pago ofrece. El detalle de la factura muestra la tabla de sus notas con la cuenta completa: total del papel, ajuste, pagado, y lo que queda.',
+              '**Se puede pasar del saldo, y avisa.** Si la NC es mayor que lo que queda de la factura (pasa cuando ya estaba pagada y la mercadería se devolvió después), el alta lo advierte y deja registrar: el excedente queda a favor tuyo en la cuenta del proveedor.',
+              '**Una NC con recepción devuelve mercadería** y descuenta stock. No es automático por tipo, porque una NC no siempre es devolución —también ajusta un precio mal facturado o compensa un bulto roto que igual te quedaste—: lo decide el tilde de recepción.',
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'ok',
+            texto: 'Guardas al registrar: la nota solo puede ajustar una **factura** (no un remito, que no genera deuda, ni otra nota), **del mismo proveedor** y **confirmada**. Y la referencia solo la aceptan las notas: una factura con referencia se rechaza.',
+          },
+          { t: 'ruta', texto: 'Compras › Facturación › + Nuevo comprobante › (tipo Nota de crédito o de débito) › paso 3' },
+        ],
+      },
+      {
         id: 'cadena',
         actualizado: '2026-07-30',
         titulo: 'La cadena de costos',
@@ -1812,7 +1848,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-07 21:10',
+        actualizado: '2026-08-07 23:05',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -1823,6 +1859,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**7/8/2026**', '**Las notas de crédito y de débito ahora se toman de una factura.** El paso 3 del alta lista las facturas del proveedor con su saldo y muestra en cuánto queda al elegirla: la NC resta, la ND suma. **Arregla que se le pagaba de más al proveedor**: el campo de la referencia existía en la base pero ninguna pantalla lo cargaba, así que una NC restaba de la deuda TOTAL —la cuenta corriente cerraba bien— pero la factura seguía ofreciendo su importe entero en la bandeja de pago. Probado: una NC de $38.675 sobre una factura de $41.934,75 dejó la bandeja ofreciendo $3.259,75 en lugar de $41.934,75. Además la ND referenciada ya no se puede pagar por separado (sería cobrar dos veces el mismo ajuste) y el detalle de la factura muestra la tabla de sus notas. Guía nueva: Formato de Compra › "Notas de crédito y de débito"'],
               ['**7/8/2026**', '**Lectura automática de los renglones: diseñada y EN ESPERA.** Es la etapa que le falta a la bandeja. Quedó documentada entera —el circuito, qué se le pide al modelo y sobre todo **qué no** (ni el encabezado, ni identificar el producto, ni sumar: solo copiar la tabla), el control contra el total del QR con reintento escalando de modelo, el costo (~US$3 por 50 facturas al mes) y lo que no arregla— pero **no está construido**: espera una decisión que no es técnica (**la imagen de la factura sale de la máquina**) más una clave de API, y que se resuelvan antes los renglones que no son mercadería. Ficha: Pendientes › "Leer los renglones de la factura"'],
               ['**7/8/2026**', '**Facturas por procesar: subir el papel ahora y cargarlo después** (Compras › Por procesar, permiso `compras.lecturas`). La cajera fotografía la factura cuando llega el camión y el admin la procesa cuando puede — ese desacople es la mayor parte del ahorro, y no depende de ninguna magia. Lo que sí ahorra tipeo es el **QR de la RG 4892**: es un JSON, no una imagen para interpretar, y de ahí salen proveedor (por CUIT, exacto), tipo, letra, punto de venta, número, fecha, **total** y CAE. El total del papel se usa como **control**: el pie del alta compara en vivo y avisa si cierra o cuánto falta. El papel queda guardado y pegado al comprobante. Semáforo en la bandeja: rojo frena (falta proveedor / número / sucursal, o ya está cargada), amarillo avisa. **Lo que NO hace todavía**: leer los renglones — eso es la etapa siguiente. Guía nueva: Formato de Compra › "Facturas por procesar"'],
               ['**7/8/2026**', '**Tres agujeros que la bandeja destapó y quedaron tapados.** (1) `comprobantes` **no tenía índice único de número** (Ventas y Cobranzas sí): con carga manual no molestaba, con papeles entrando del celular el duplicado era cuestión de tiempo — y entraba dos veces al stock y a la deuda. (2) El **punto de venta se normaliza a cuatro dígitos** en las dos puertas: el papel imprime "00115" y el QR trae "115", así que antes eran dos puntos de venta distintos y el control de duplicados no los cruzaba. (3) Una **nota de crédito con recepción ahora descuenta stock**: la deuda ya se ajustaba pero la mercadería devuelta quedaba en el depósito. No se hizo automático por tipo porque una NC no siempre es devolución (también ajusta un precio mal facturado): lo decide el tilde de recepción'],

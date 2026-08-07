@@ -551,6 +551,13 @@ function _cleanComprobante(o) {
     cae: o.cae || undefined,
     lecturaId: o.lecturaId != null && o.lecturaId !== '' ? Number(o.lecturaId) : undefined,
     /*
+     * La factura que esta NC/ND ajusta. Sin esto la nota quedaba flotando: restaba
+     * de la deuda TOTAL del proveedor pero la factura seguía ofreciendo su importe
+     * entero para pagar, y el que paga factura por factura le pagaba de más.
+     */
+    refComprobanteId: o.refComprobanteId != null && o.refComprobanteId !== ''
+      ? Number(o.refComprobanteId) : undefined,
+    /*
      * EL PIE DE LA FACTURA. El descuento general y las percepciones que trajo el
      * papel: sin estos campos acá se perdían en silencio y el total del sistema
      * quedaba distinto del de la factura (esta función ya se tragó
@@ -611,6 +618,8 @@ function _cleanComprobante(o) {
   };
 }
 const crearComprobante = (o) => _mutate(() => httpClient.post('/comprobantes', _cleanComprobante(o)));
+/** Las facturas de este proveedor que una NC/ND puede ajustar, con su saldo real. */
+const facturasReferenciables = (proveedorId) => httpClient.get('/comprobantes/referenciables/' + proveedorId);
 
 /* ---- Pagos en sucursal (plata a cuenta de proveedores de MERCADERÍA) ---- */
 /**
@@ -718,7 +727,7 @@ export const inventoryStore = {
   guardarFormatosCompra, guardarListasProducto,
   costoNeto, costoNetoEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPresentacion,
   precioFinal, redondearPrecio,
-  crearComprobante, getComprobante, comprobantesDe, cuentaProveedor,
+  crearComprobante, getComprobante, comprobantesDe, cuentaProveedor, facturasReferenciables,
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
   urlPapelFactura,

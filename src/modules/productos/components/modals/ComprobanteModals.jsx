@@ -265,6 +265,34 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   }, [store, provId]);
   const aCuenta = pagosACuenta.reduce((a, x) => a + x.saldo, 0);
 
+  /* ---------------- La factura que ajusta una nota ---------------- */
+
+  /**
+   * UNA NC O ND NACE DE UNA FACTURA: la mercadería que se devolvió de esa
+   * entrega, el flete que no se cobró en ese remito. Atarla es lo que hace que
+   * el saldo de esa factura diga la verdad — sin la referencia, la nota restaba
+   * (o sumaba) en la deuda total del proveedor y la factura seguía ofreciendo su
+   * importe entero para pagar.
+   *
+   * `''` = todavía no eligió · `'0'` = eligió explícitamente "no corresponde".
+   */
+  const esNota = tipo === 'nota_credito' || tipo === 'nota_debito';
+  const [refId, setRefId] = useState('');
+  const [facturasRef, setFacturasRef] = useState([]);
+  useEffect(() => {
+    let vivo = true;
+    const pid = parseInt(provId, 10);
+    if (!esNota || !pid) { setFacturasRef([]); return undefined; }
+    store.facturasReferenciables(pid)
+      .then((r) => { if (vivo) setFacturasRef(Array.isArray(r) ? r : []); })
+      .catch(() => { if (vivo) setFacturasRef([]); });
+    return () => { vivo = false; };
+  }, [store, provId, esNota]);
+  // Cambiar de proveedor o de tipo invalida la factura elegida: era de otro padrón.
+  useEffect(() => { setRefId(''); }, [provId, tipo]);
+
+  const facturaRef = facturasRef.find((f) => String(f.id) === refId) || null;
+
   /* ---------------- Cómo se paga ---------------- */
 
   /** Cuánto se toma de cada pago de sucursal: { [pagoId]: '16575' } */
@@ -648,6 +676,18 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       });
     if (!parsed.length) { toast('Agregá al menos un ítem con bultos y tamaño de bulto.', 'err'); return; }
 
+    /*
+     * La nota tiene que decir a qué factura pertenece. No se elige sola: si
+     * quedara vacío por defecto, la nota volvería a flotar en la cuenta del
+     * proveedor y la factura seguiría ofreciendo su importe entero. Que no
+     * corresponda a ninguna es una decisión válida, pero explícita.
+     */
+    if (esNota && !refId) {
+      toast(`Elegí a qué factura ajusta esta ${tipo === 'nota_credito' ? 'nota de crédito' : 'nota de débito'}.`, 'err');
+      setPaso(3);
+      return;
+    }
+
     // No se puede pagar más de lo que dice la factura: sería inventar plata.
     if (generaDeuda && saldoFinal < -0.009) {
       toast(`Estás pagando ${money(Math.abs(saldoFinal))} más de lo que dice el comprobante.`, 'err');
@@ -667,6 +707,8 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       // (la API la marca como cargada en la misma transacción).
       cae: lectura?.cae || undefined,
       lecturaId: lectura?.id,
+      // La factura que esta nota ajusta ('0' = el usuario dijo que no corresponde).
+      refComprobanteId: esNota && refId && refId !== '0' ? Number(refId) : undefined,
       // El pie del papel: el descuento general y las percepciones que vinieron.
       bonificacion: Number(bonifPct) || 0,
       bonificacionImporte: bonifImporte,
@@ -1201,10 +1243,113 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
         </span>
       </div>
 
+      {/* ============ QUÉ FACTURA AJUSTA (solo NC y ND) ============
+          Una nota nace de UNA factura. Elegirla es lo que hace que el saldo de
+          esa factura diga la verdad: la NC lo baja, la ND lo sube, y la bandeja
+          de pago deja de ofrecer un importe que ya no se debe. */}
+      {esNota && (
+        <>
+          <div className={s['section-title']}>
+            {tipo === 'nota_credito' ? '¿Qué factura descuenta?' : '¿Qué factura recarga?'}
+          </div>
+
+          {facturasRef.length === 0 ? (
+            <div className={cx(s.callout, s.warn)}>
+              {provElegido?.nombre || 'Este proveedor'} no tiene ninguna factura confirmada cargada,
+              así que no hay nada que ajustar. La nota se puede registrar igual: va a mover la cuenta
+              del proveedor sin tocar el saldo de ninguna factura.
+            </div>
+          ) : (
+            <Table
+              cols={[
+                { h: '' }, { h: 'Factura' }, { h: 'Fecha' },
+                { h: 'Total', num: true }, { h: 'Pagado', num: true }, { h: 'Saldo hoy', num: true },
+                { h: tipo === 'nota_credito' ? 'Queda en' : 'Pasa a', num: true },
+              ]}
+            >
+              {facturasRef.map((f) => {
+                const elegida = String(f.id) === refId;
+                const despues = r2(f.saldo + (tipo === 'nota_debito' ? total : -total));
+                return (
+                  <tr
+                    key={f.id}
+                    className={s.clickable}
+                    style={elegida ? { background: 'var(--crm-color-surface-2, rgba(0,0,0,.03))' } : undefined}
+                    onClick={() => setRefId(String(f.id))}
+                  >
+                    <td>
+                      <input
+                        type="radio"
+                        name="refFactura"
+                        checked={elegida}
+                        onChange={() => setRefId(String(f.id))}
+                      />
+                    </td>
+                    <td>
+                      {f.etiqueta}
+                      {f.notas > 0 && (
+                        <div className={s.hint} style={{ margin: 0 }}>
+                          ya tiene {f.notas} nota{f.notas === 1 ? '' : 's'} ({money(f.ajuste)})
+                        </div>
+                      )}
+                    </td>
+                    <td>{fmtFecha(f.fecha)}</td>
+                    <td className={cx(s.num, s.mono)}>{money(f.total)}</td>
+                    <td className={cx(s.num, s.mono)}>{f.pagado > 0.009 ? money(f.pagado) : '—'}</td>
+                    <td className={cx(s.num, s.mono)}>{money(f.saldo)}</td>
+                    <td className={cx(s.num, s.mono)}>
+                      {elegida ? (
+                        <strong style={{ color: despues < -0.009 ? 'var(--crm-color-danger, #b91c1c)' : undefined }}>
+                          {money(despues)}
+                        </strong>
+                      ) : <span className={s.muted}>—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr
+                className={s.clickable}
+                style={refId === '0' ? { background: 'var(--crm-color-surface-2, rgba(0,0,0,.03))' } : undefined}
+                onClick={() => setRefId('0')}
+              >
+                <td>
+                  <input type="radio" name="refFactura" checked={refId === '0'} onChange={() => setRefId('0')} />
+                </td>
+                <td colSpan={6}>
+                  <span className={s.muted}>
+                    No corresponde a una factura en particular — ajusta la cuenta del proveedor
+                  </span>
+                </td>
+              </tr>
+            </Table>
+          )}
+
+          {facturaRef && r2(facturaRef.saldo - total) < -0.009 && tipo === 'nota_credito' && (
+            <div className={cx(s.callout, s.warn)}>
+              La nota ({money(total)}) es mayor que el saldo de {facturaRef.etiqueta}
+              {' '}({money(facturaRef.saldo)}). Se puede registrar —pasa cuando la factura ya estaba
+              pagada y la mercadería se devolvió después— y el excedente queda a tu favor en la
+              cuenta del proveedor.
+            </div>
+          )}
+
+          {refId === '0' && (
+            <div className={s.hint}>
+              Sin factura, esta nota mueve la cuenta corriente del proveedor pero <strong>no</strong>
+              {' '}cambia el saldo de ningún documento: al pagar factura por factura no va a aparecer
+              descontada. Es lo correcto para un ajuste general — una bonificación de fin de año, un
+              recargo financiero sobre varias facturas.
+            </div>
+          )}
+        </>
+      )}
+
       {!generaDeuda && (
         <div className={cx(s.callout, s.info)}>
           {TIPOS_COMPROBANTE[tipo]?.label || 'Este comprobante'} no genera deuda: no hay nada que
-          pagar. Revisá el resumen y registrá.
+          pagar
+          {tipo === 'nota_credito' && facturaRef && <> — descuenta {money(total)} de {facturaRef.etiqueta}</>}.
+          {' '}Revisá el resumen y registrá.
         </div>
       )}
 
@@ -1823,6 +1968,49 @@ export function ComprobanteDetalleModal({ id }) {
           declaran por separado. Están en el total porque hay que pagárselas al proveedor, pero no
           entran en el crédito fiscal de IVA.
         </div>
+      )}
+
+      {/* LAS DOS PUNTAS DEL VÍNCULO CON LAS NOTAS. El total del papel no cambia
+          nunca; lo que cambia es cuánto queda debiéndose por ese documento, y eso
+          hay que poder leerlo acá sin cruzar a otra pantalla. */}
+      {c.refEtiqueta && (
+        <div className={cx(s.callout, s.info)}>
+          {c.tipo === 'nota_credito' ? 'Descuenta' : 'Recarga'} <strong>{money(c.total)}</strong>
+          {' '}{c.tipo === 'nota_credito' ? 'de' : 'a'} <strong>{c.refEtiqueta}</strong>.
+        </div>
+      )}
+
+      {(c.notas || []).length > 0 && (
+        <>
+          <div className={s['section-title']}>Notas que ajustan esta factura</div>
+          <Table cols={[{ h: 'Nota' }, { h: 'Fecha' }, { h: 'Importe', num: true }]}>
+            {c.notas.map((n) => (
+              <tr key={n.id}>
+                <td>
+                  {n.tipo === 'nota_credito' ? 'NC' : 'ND'} {n.letra} {n.puntoVenta}-{n.numero ?? n.id}
+                  {n.observaciones && <div className={s.hint} style={{ margin: 0 }}>{n.observaciones}</div>}
+                </td>
+                <td>{fmtFecha(n.fecha)}</td>
+                <td className={cx(s.num, s.mono)}>
+                  <strong>{n.signo > 0 ? '+' : '−'}{money(n.total)}</strong>
+                </td>
+              </tr>
+            ))}
+          </Table>
+          <div
+            style={{
+              display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8,
+              borderTop: '1px solid var(--crm-color-border)',
+            }}
+          >
+            <span>Total del papel {money(c.total)} · ajuste de las notas {money(c.ajuste)} · pagado {money(c.pagado)}</span>
+            <strong style={{ fontSize: 16 }}>Queda debiéndose {money(c.saldo)}</strong>
+          </div>
+          <div className={s.hint}>
+            El total del papel no cambia nunca — la factura sigue diciendo {money(c.total)}. Lo que
+            cambia es cuánto queda debiéndose por ella, y es lo que la bandeja de pago ofrece.
+          </div>
+        </>
       )}
     </ModalShell>
   );
