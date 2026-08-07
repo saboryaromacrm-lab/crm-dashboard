@@ -1838,6 +1838,47 @@ export const MANUAL = [
         ],
       },
       {
+        id: 'candados-saldo',
+        actualizado: '2026-08-08 01:30',
+        titulo: 'Saldos y dos pedidos a la vez: por qué los chequeos van con candado',
+        bloques: [
+          {
+            t: 'p',
+            texto: '**La regla, corta: todo chequeo de "no le podés aplicar más que su saldo" tiene que leer la fila con candado (`FOR UPDATE`) DENTRO de la transacción.** Leerla sin candado hace que el chequeo sea una foto vieja, y el que la mira no se entera.',
+          },
+          {
+            t: 'p',
+            texto: '**Por qué.** Postgres trabaja por defecto en READ COMMITTED: un `select` común **no espera** a la transacción de al lado, lee la última versión confirmada. Así, dos pedidos simultáneos de imputar el mismo pago leían los dos `aplicado = 0`, los dos pasaban la validación, y las dos imputaciones entraban. No hace falta un ataque: un doble click en una conexión lenta alcanza.',
+          },
+          {
+            t: 'p',
+            texto: '**Demostrado, no supuesto.** Con dos conexiones sobre un pago de $500, escalonadas para que la segunda lea mientras la primera todavía no confirmó:',
+          },
+          {
+            t: 'tabla',
+            cols: ['', 'Sin candado', 'Con `FOR UPDATE`'],
+            filas: [
+              ['Qué lee la segunda', 'saldo = 500 (la foto vieja)', 'espera a que la primera confirme, y lee saldo = 0'],
+              ['Resultado', '**entran las DOS: $1.000 imputados a un pago de $500**', 'la segunda se rechaza: "el pago solo tiene 0.00 sin aplicar"'],
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**El comentario del código afirmaba que esto ya estaba cubierto** ("ni por dos pedidos simultáneos"), y eso es peor que no decir nada: una promesa falsa hace que nadie vuelva a mirar. Si un comentario garantiza una propiedad, o está demostrada o la frase se cambia.',
+          },
+          {
+            t: 'p',
+            texto: '**ORDEN DE BLOQUEO: primero el pago, después el documento.** Siempre igual, en las tres funciones que bloquean (`aplicar`, `desimputar`, `anular`). Dos caminos que tomen los mismos dos candados en orden distinto se abrazan y se quedan esperando para siempre. Hacen falta los dos: el del pago evita que se pase el MISMO pago dos veces; el del documento evita que **dos pagos distintos** sobre-paguen la misma factura entre ambos.',
+          },
+          {
+            t: 'p',
+            texto: 'Y un detalle de método: el primer intento de probar esto fue disparar dos pedidos HTTP a la vez, y **pasó igual sin el candado** — la transacción dura menos de un milisegundo y no llegaron a solaparse. Un test que pasa con y sin el arreglo no prueba nada. La carrera se reprodujo bajando al nivel donde vive (dos conexiones SQL, con la ventana agrandada a propósito).',
+          },
+          { t: 'ruta', texto: 'crm-api/src/pagos/pagos.module.ts · aplicar() / desimputar() / anular()' },
+        ],
+      },
+      {
         id: 'agentes-catalogo',
         actualizado: '2026-08-08 00:30',
         titulo: 'Agentes: los dos propios, y por qué no el catálogo de aitmpl.com',
@@ -1913,7 +1954,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-08 00:30',
+        actualizado: '2026-08-08 01:30',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -1924,6 +1965,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**8/8/2026**', '**Auditoría de seguridad de Facturas y Pagos: 11 hallazgos, tres arreglados.** (1) **La guarda que impide sobre-imputar un pago se podía pasar dos veces** — dos pedidos simultáneos leían los dos el mismo saldo y las dos imputaciones entraban. Demostrado con dos conexiones: $1.000 imputados a un pago de $500. Se puso `FOR UPDATE` en las cinco lecturas de saldo (`aplicar`, `desimputar`, `anular`), con orden de bloqueo fijo pago → documento. Ficha: Decisiones de diseño › "Saldos y dos pedidos a la vez". (2) **La sucursal del pago la decidía el pedido, no el turno de caja**: se le podía cargar un egreso al cajón de cualquier sucursal con turno abierto, y ahora la discrepancia se rechaza en vez de resolverse sola (falta la otra mitad, que el turno sea de QUIEN pide, y eso necesita autenticación). (3) **Un papel se podía enganchar al comprobante de otro proveedor**: la lectura salía de la bandeja marcada como cargada sin haberse cargado nunca, y el respaldo de un comprobante pasaba a ser la factura de otra empresa. Los otros 8 quedaron anotados en "Cosas a revisar". Verificado con 11 pruebas contra la API y la base restaurada al estado previo'],
               ['**7/8/2026**', '**Dos agentes propios escritos**, ninguno del catálogo: **auditor-seguridad** (informe de vulnerabilidades por severidad, con cómo se explota cada una; solo lectura) y **depurador-codigo** (código muerto, peso al aire y cuellos de botella, clasificado en Seguro / Requiere criterio / **No tocar y por qué**; muestra el informe antes de tocar nada). Viven en `~/.claude/agents/` para que sirvan en los tres repos. Lo que los hace útiles no es el rol sino **las trampas de acá metidas adentro**: que la falta de autenticación ya está asumida y no es un descubrimiento, que un chequeo que vive solo en el frontend no es un chequeo, que los paneles se registran por clave de texto (así que "0 usos" no prueba que esté muerto), que `_cleanComprobante` se traga los campos nuevos, y que las migraciones de `drizzle/` y los comentarios explicativos no se tocan. Detalle en Decisiones de diseño › "Agentes del catálogo de aitmpl.com"'],
               ['**7/8/2026**', '**Evaluado el catálogo de agentes de aitmpl.com** (Claude Code Templates). Un agente de ahí es un archivo `.md` con tres líneas de frontmatter y un prompt: el mecanismo de subagentes es de Claude Code, el catálogo solo ahorra escribirlo. **Recomendación: no instalar el catálogo** y escribir dos o tres propios con el criterio de este proyecto, en `~/.claude/agents/` para que sirvan en los tres repos — los genéricos de framework traen opiniones ajenas y las aplican con seguridad. Pros, contras y las advertencias (es código de terceros que se ejecuta como instrucciones; `.claude/agents/` es por proyecto; un agente no reemplaza a CLAUDE.md porque arranca sin contexto) quedaron en Decisiones de diseño › "Agentes del catálogo de aitmpl.com"'],
               ['**7/8/2026**', '**Las notas de crédito y de débito ahora se toman de una factura.** El paso 3 del alta lista las facturas del proveedor con su saldo y muestra en cuánto queda al elegirla: la NC resta, la ND suma. **Arregla que se le pagaba de más al proveedor**: el campo de la referencia existía en la base pero ninguna pantalla lo cargaba, así que una NC restaba de la deuda TOTAL —la cuenta corriente cerraba bien— pero la factura seguía ofreciendo su importe entero en la bandeja de pago. Probado: una NC de $38.675 sobre una factura de $41.934,75 dejó la bandeja ofreciendo $3.259,75 en lugar de $41.934,75. Además la ND referenciada ya no se puede pagar por separado (sería cobrar dos veces el mismo ajuste) y el detalle de la factura muestra la tabla de sus notas. Guía nueva: Formato de Compra › "Notas de crédito y de débito"'],
@@ -2083,12 +2125,18 @@ export const MANUAL = [
       },
       {
         id: 'aflojar',
-        actualizado: '2026-08-07 19:40',
+        actualizado: '2026-08-08 01:30',
         titulo: 'Cosas a revisar',
         bloques: [
           {
             t: 'lista',
             items: [
+              '**La misma carrera del saldo hay que buscarla en Cobranzas, Caja y Comprobantes.** El candado se puso en Pagos porque ahí se auditó, pero el patrón —leer un saldo y validar contra él sin candado— es de la casa: cualquier lugar que haga "no le podés aplicar más que esto" es candidato. Ver Decisiones de diseño › "Saldos y dos pedidos a la vez".',
+              '**El mime del archivo subido se le cree al cliente.** En la bandeja de facturas sale del prefijo de la data URL, no de los bytes, y se devuelve tal cual sin `nosniff` ni `Content-Disposition` (no hay helmet en el proyecto). La lista blanca (JPG/PNG/WebP/PDF) evita lo peor, pero se puede alojar contenido arbitrario rotulado como imagen, con URL estable en el dominio del sistema. Lo mismo aplica a los adjuntos de gastos y a las imágenes de la web.',
+              '**Tres endpoints de pagos reciben `any` y esquivan la validación global.** `GET /pagos-proveedor` (`@Query() q: any`) y los `@Body() body: any` de anular y destino: el `whitelist` del ValidationPipe no filtra nada ahí. Y `?desde=` sin validar tira un **500** (`new Date("abc").toISOString()` explota). Faltan DTOs.',
+              '**Topes que faltan en la bandeja de facturas**: `archivos` no tiene máximo de elementos y `agregarArchivo` no limita las páginas que se acumulan; el `total` acepta negativos (debilita el control contra el total del papel); y el tope de 8 MB por archivo es **inalcanzable** porque el límite de 4 MB del body corta antes, así que el mensaje de error promete algo que no pasa.',
+              '**El papel de cualquier factura se baja enumerando ids** (`/api/facturas/archivos/1,2,3…`), sin verificar quién pide. Es parte del bloqueante de autenticación, pero conviene tenerlo anotado como lo que es: el archivo entero de facturas de proveedores accesible caminando números.',
+              '**`cambiarDestino` valida `aplicado` fuera de la transacción.** Es la misma familia que la carrera del saldo pero no rompe el invariante de los totales (solo mueve una etiqueta), así que quedó sin tocar. Cerrarlo es meter la lectura adentro con candado, igual que las otras tres.',
               '**El comprobante #14 de Bavosi parece una carga de prueba y está inflando su deuda en $1.451.980,88.** Tiene la observación "primera carga de factura", punto de venta `777-555` y **sin número**, con 40 kg + 40,8 kg + 20 kg ingresados a Distribuidora. Si fue una prueba, hay que sacarlo — y para eso hace falta el endpoint de anular (ver "Lo próximo"), porque hoy la única salida es tocar la base.',
               '**El CUIT de la empresa sigue siendo el de prueba** (`30-71555666-7`, en Sistema › Empresa). La factura real de Bavosi está a nombre del CUIT `23-35678242-9`, así que la bandeja avisa "esta factura no es nuestra" en **todas** las facturas. Cargar el CUIT real apaga el falso aviso y deja el control sirviendo para lo que es: detectar la factura que el proveedor emitió a otra razón social.',
               '**La lectura del QR desde una foto no se pudo probar end-to-end acá.** El mapeo de códigos de ARCA sí está verificado (9 casos: factura A/B/C, notas de crédito y débito, FCE MiPyME, moneda extranjera, código desconocido, QR ajeno) y el circuito completo también, con la factura real de Bavosi. Lo que falta confirmar es el **decodificado de píxeles**, porque no se pudo generar un QR válido sin internet. Con la primera foto de una factura real se sabe: si el encabezado aparece solo, anda. Dato importante del camino: **`BarcodeDetector`, la API nativa del navegador, NO existe en Chrome para Windows** — por eso el lector usa `jsQR` (JavaScript puro, nada sale de la máquina) y deja la nativa solo como camino rápido en Android.',
