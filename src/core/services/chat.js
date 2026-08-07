@@ -11,12 +11,18 @@
  *
  * El mismo poll es el LATIDO de presencia: la API devuelve quiénes pollearon
  * hace menos de 15 segundos — eso es "en línea". Sin registro extra.
+ *
+ * RETENCIÓN: el chat es conversación, no archivo — a las 24 horas el mensaje
+ * desaparece (la API filtra y purga; acá se descarta con el mismo corte, así
+ * el panel no muestra lo que el servidor ya borró).
  */
 import { httpClient } from './httpClient.js';
 
 const INTERVALO_MS = 4000;
 const REINTENTO_MS = 15000;
 const MAX_MENSAJES = 500;
+/** Retención por defecto; la manda la API en el bootstrap y ahí queda la verdad. */
+const RETENCION_MS_DEFECTO = 24 * 60 * 60 * 1000;
 
 let _ctx = null;          // { sucursalId, usuarioId } de la sesión de ESTA pestaña
 let _habilitado = null;   // null = todavía sin respuesta del bootstrap
@@ -24,6 +30,13 @@ let _mensajes = [];
 let _lecturas = {};       // { [canalUsuarioId]: ultimoMensajeIdLeido } — 0 = grupal
 let _enLinea = [];        // [{ id, nombre }] según el último tick
 let _nombres = {};        // { [usuarioId]: nombre } — acumulado para titular privados
+let _retencionMs = RETENCION_MS_DEFECTO;
+/**
+ * Cursor del poll. Va aparte del último mensaje en memoria y SOLO CRECE: al
+ * vencer los viejos el array se vacía, y si el cursor saliera de ahí volvería
+ * a 0 y se re-pediría todo en cada tick.
+ */
+let _cursor = 0;
 let _timer = null;
 let _snap = null;
 const _listeners = new Set();
@@ -56,6 +69,7 @@ function snapshot() {
       enLinea: _enLinea,
       nombres: _nombres,
       usuarioId: _ctx?.usuarioId ?? null,
+      retencionHoras: Math.round(_retencionMs / 3600000),
       noLeidosPorCanal: porCanal,
       noLeidosTotal: Object.values(porCanal).reduce((a, n) => a + n, 0),
     };
@@ -63,8 +77,18 @@ function snapshot() {
   return _snap;
 }
 
-function ultimoId() {
-  return _mensajes.length ? _mensajes[_mensajes.length - 1].id : 0;
+/**
+ * Saca de la vista lo que ya venció. El panel no puede mostrar mensajes que la
+ * API ya no tiene: con el CRM abierto más de un día, el array los seguiría
+ * teniendo en memoria para siempre.
+ */
+function descartarVencidos() {
+  if (!_mensajes.length) return false;
+  const corte = Date.now() - _retencionMs;
+  const vivos = _mensajes.filter((m) => new Date(m.fecha).getTime() >= corte);
+  if (vivos.length === _mensajes.length) return false;
+  _mensajes = vivos;
+  return true;
 }
 
 function aprenderNombres(mensajes, enLinea) {
@@ -77,6 +101,8 @@ function aprenderNombres(mensajes, enLinea) {
 /** Mezcla sin duplicar: un tick puede traer el mensaje que este cliente ya envió. */
 function agregar(nuevos) {
   if (!nuevos?.length) return false;
+  // El cursor avanza con TODO lo recibido, incluso si ya estaba en memoria.
+  for (const m of nuevos) if (m.id > _cursor) _cursor = m.id;
   const ids = new Set(_mensajes.map((m) => m.id));
   const frescos = nuevos.filter((m) => !ids.has(m.id));
   if (!frescos.length) return false;
@@ -97,12 +123,13 @@ async function tick() {
   if (_habilitado !== true || !_ctx) return;
   try {
     const r = await httpClient.get(
-      `/chat/mensajes?sucursalId=${_ctx.sucursalId}&usuarioId=${_ctx.usuarioId}&desde=${ultimoId()}`,
+      `/chat/mensajes?sucursalId=${_ctx.sucursalId}&usuarioId=${_ctx.usuarioId}&desde=${_cursor}`,
     );
     aprenderNombres(r.mensajes, r.enLinea);
     const a = agregar(r.mensajes);
     const b = actualizarPresencia(r.enLinea);
-    if (a || b) emit();
+    const c = descartarVencidos();
+    if (a || b || c) emit();
   } catch { /* API caída: el próximo tick reintenta */ }
 }
 
@@ -111,7 +138,9 @@ async function bootstrap() {
     const r = await httpClient.get(`/chat/bootstrap?sucursalId=${_ctx.sucursalId}&usuarioId=${_ctx.usuarioId}`);
     _habilitado = !!r.habilitado;
     if (_habilitado) {
+      if (r.retencionHoras > 0) _retencionMs = r.retencionHoras * 3600000;
       _mensajes = r.mensajes ?? [];
+      _cursor = _mensajes.reduce((max, m) => (m.id > max ? m.id : max), 0);
       _lecturas = Object.fromEntries((r.lecturas ?? []).map((l) => [l.canalUsuarioId, l.ultimoMensajeId]));
       aprenderNombres(r.mensajes, r.enLinea);
       _enLinea = r.enLinea ?? [];

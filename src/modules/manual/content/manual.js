@@ -1457,7 +1457,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'chat-como-funciona',
-        actualizado: '2026-08-06 20:00',
+        actualizado: '2026-08-07 08:45',
         titulo: 'Cómo funciona',
         bloques: [
           {
@@ -1468,6 +1468,7 @@ export const MANUAL = [
             t: 'lista',
             items: [
               '**El canal grupal del local + privados 1-a-1.** El canal lo ven todos (si ya preguntaron y ya respondieron, nadie repite); el privado ordena lo otro — si tres cajeros le preguntan a la vez al administrador por el canal, las respuestas se pisan. El panel abre en una LISTA: el canal arriba y abajo el **Equipo**, con punto verde para los que están **en línea** — clic en un nombre y se abre su conversación. Un privado sin leer no desaparece porque el otro se desconectó: la fila queda con su badge.',
+              '**Los mensajes se borran a las 24 horas.** El chat es conversación, no archivo: lo que hay que decidir va a su documento (el pedido, la factura, la observación del comprobante), no al chat — ahí se pierde. La regla se avisa en el propio panel. Son DOS capas y las dos hacen falta: las consultas **filtran** por el corte (así el límite es exacto en todo momento) y una **purga borra de verdad** cada 10 minutos como máximo (así la tabla no crece). El navegador descarta con el mismo corte, así el panel no muestra lo que el servidor ya borró aunque el CRM lleve dos días abierto. La marca de "leído hasta acá" sobrevive a la purga: es un número, no una referencia al mensaje.',
               '**"En línea" sin infraestructura**: el mismo poller que trae mensajes es el latido — en línea = su sistema preguntó hace menos de 15 segundos. Se pierde al reiniciar la API y se rearma solo en el próximo tick.',
               '**Los privados son privados EN EL SERVIDOR**: la API solo le entrega cada mensaje a sus dos puntas — no es un filtro de pantalla. Cada conversación (canal o privado) tiene su propia marca de lectura.',
               '**Solo en la Distribuidora, y lo decide la API.** El gate es por TIPO de sucursal en el servidor — una sesión parada en un Express ni ve el botón ni gasta un request. Si mañana otra sucursal necesita su canal, es cambiar esa regla, no rediseñar.',
@@ -1696,7 +1697,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-06 20:00',
+        actualizado: '2026-08-07 08:45',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -1707,6 +1708,8 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**7/8/2026**', '**El chat se borra a las 24 horas**: es conversación, no archivo. Las consultas filtran por el corte (el límite es exacto siempre) y una purga borra de verdad (la tabla no crece); el panel avisa la regla y descarta con el mismo criterio. Verificado con mensajes de 25 h y 23 h inyectados en la base: el de 25 desapareció de la vista Y de la tabla, el de 23 quedó'],
+              ['**6/8/2026**', '**Info de sistema se puede ordenar por última modificación** (Orden › Reciente): cada tema muestra su fecha, el índice se reordena y salta a lo más nuevo. Las fechas salieron de los commits del repo; el campo admite hora para desempatar dentro del mismo día'],
               ['**6/8/2026**', '**Chat interno de la Distribuidora**: canal grupal del local + **privados 1-a-1** con lista de **en línea** (punto verde = su sistema pollea; clic en el nombre abre la conversación) — para que el mostrador le pregunte a administración sin dejar el puesto, y que tres preguntas a la vez no se pisen en el canal. Botón en el Topbar con badge total, panel lateral que flota sobre cualquier pantalla (incluido el POS), sonido propio, lectura por conversación y por usuario guardada en la base, y privacidad EN el servidor (la API solo entrega cada privado a sus dos puntas). Solo sesiones paradas en la Distribuidora; sin WebSockets — pollea como los demás avisos. Guía: "Chat interno"'],
               ['**6/8/2026**', '**Estados del envío a Cafetería**: el envío ganó ciclo de vida — **pedido → en tránsito → recibido** — con bandejas como Transferencias y el stock acompañando (el pedido no toca stock; despachar lo pone *en tránsito* con el costo congelado ese día; recibir lo egresa). "El flete ya salió" registra y despacha en un acto; anular deshace exactamente lo de su etapa'],
               ['**6/8/2026**', '**Cafetería (coffit), fase 1**: nueva sección **Almacén › Cafetería** — envíos y devoluciones a **costo congelado** hacia el café (documentos CAF/CAFD con remito imprimible, destino "para vender / para usar" por renglón, anulación que revierte el stock), gastos imputables al **negocio Cafetería** y resumen del período (mercadería neta + gastos = cuánto costó el café). El CRM no lleva el stock del café: lo maneja coffit. La guía "Cafetería (coffit)" documenta el circuito y el contrato para conectar coffit'],
@@ -1794,7 +1797,7 @@ export const MANUAL = [
       },
       {
         id: 'como-mantener',
-        actualizado: '2026-08-06 20:30',
+        actualizado: '2026-08-06 20:52',
         titulo: 'Cómo se mantiene esta sección',
         bloques: [
           {

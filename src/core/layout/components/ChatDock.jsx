@@ -253,6 +253,14 @@ export function ChatDock() {
                 onClick={() => setVista(u.id)}
               />
             ))}
+
+            {/* La regla se avisa donde se usa: nadie tiene que descubrir a los
+                dos días que lo que anotó en el chat ya no está. */}
+            <Divider sx={{ mt: 1 }} />
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 2, py: 1.25 }}>
+              Los mensajes se borran solos a las {snap.retencionHoras} horas. Lo que hay que
+              decidir queda en su documento (el pedido, la factura), no acá.
+            </Typography>
           </Box>
         ) : (
           /* --------------------------- CONVERSACIÓN --------------------------- */
