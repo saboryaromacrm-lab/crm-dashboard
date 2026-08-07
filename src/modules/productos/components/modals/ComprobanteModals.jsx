@@ -383,6 +383,13 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
   const [bonifManual, setBonifManual] = useState(null);
   const bonifCalc = r2(bruto * (Number(bonifPct) || 0) / 100);
   const bonifImporte = Math.min(bonifManual != null ? bonifManual : bonifCalc, r2(bruto));
+  /*
+   * ¿Hay bonificación CARGADA? No es lo mismo que "el importe da más de cero":
+   * si se carga el % antes de los ítems, el importe es 0 y la línea quedaba
+   * invisible — el usuario no la veía ni podía quitarla, y después aparecía
+   * sola al cargar el primer renglón.
+   */
+  const hayBonif = (Number(bonifPct) || 0) > 0 || (bonifManual ?? 0) > 0;
   const factorBonif = bruto > 0 ? 1 - bonifImporte / bruto : 1;
 
   // El IVA se recalcula renglón por renglón sobre el neto bonificado: con dos
@@ -420,6 +427,8 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
   });
   const percTotal = percCalculadas.reduce((a, p) => a + (p.aplicar ? p.importe : 0), 0);
   const percAplicadas = percCalculadas.filter((p) => p.aplicar).length;
+  /** Toca UNA percepción por su índice real (lo usa la × del pie). */
+  const setPerc = (i, patch) => setPercepciones((r) => r.map((p, j) => (j === i ? { ...p, ...patch } : p)));
   /** Cuál de los dos modales chicos del pie está abierto: null | 'bonificacion' | 'percepciones'. */
   const [modalPie, setModalPie] = useState(null);
 
@@ -994,7 +1003,7 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span>Subtotal de los ítems</span><strong>{money(bruto)}</strong>
         </div>
-        {bonifImporte > 0.009 && (
+        {hayBonif && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--crm-color-success)' }}>
             <span>
               Bonificación {bonifPct ? `${num(Number(bonifPct), 2)}%` : ''}
@@ -1005,7 +1014,13 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
                 cambiar
               </button>
             </span>
-            <strong>− {money(bonifImporte)}</strong>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <strong>− {money(bonifImporte)}</strong>
+              <button
+                type="button" className={s['pres-remove']} title="Quitar la bonificación"
+                onClick={() => { setBonifPct(''); setBonifManual(null); }}
+              >×</button>
+            </span>
           </div>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1014,12 +1029,28 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span>IVA</span><strong>{money(tot.iva)}</strong>
         </div>
-        {percCalculadas.filter((p) => p.aplicar).map((p, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>{p.nombre} <span className={s.muted}>· {num(p.alicuota, 2)}%</span></span>
-            <strong>{money(p.importe)}</strong>
+        {/* Se recorre TODO el array (no el filtrado) para que el índice de la
+            × sea el real: con el filtrado, quitar una borraba a la de al lado. */}
+        {percCalculadas.map((p, i) => (p.aplicar ? (
+          <div key={p.id ?? i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>
+              {p.nombre} <span className={s.muted}>· {num(p.alicuota, 2)}%</span>
+              <button
+                type="button" className={s.linkBtn} tabIndex={-1} style={{ marginLeft: 8 }}
+                onClick={() => setModalPie('percepciones')}
+              >
+                cambiar
+              </button>
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <strong>{money(p.importe)}</strong>
+              <button
+                type="button" className={s['pres-remove']} title={`Quitar ${p.nombre}`}
+                onClick={() => setPerc(i, { aplicar: false, importeManual: null })}
+              >×</button>
+            </span>
           </div>
-        ))}
+        ) : null))}
         <div
           style={{
             display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6,
@@ -1036,7 +1067,7 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
           className={cx(s.btn, s['btn-ghost'], s['btn-sm'])}
           onClick={() => setModalPie('bonificacion')}
         >
-          {bonifImporte > 0.009 ? 'Editar bonificación' : '+ Bonificación'}
+          {hayBonif ? 'Editar bonificación' : '+ Bonificación'}
         </button>
         <button
           type="button"
