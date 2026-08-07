@@ -1697,7 +1697,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-07 08:45',
+        actualizado: '2026-08-07 09:30',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -1708,6 +1708,8 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**7/8/2026**', '**Catálogo de Bavosi importado**: 94 productos (50 a granel + 44 envasados), 73 presentaciones, 94 formatos de compra con sus descuentos en cascada y flete, y 157 formatos de venta (Mostrador y Mayorista). 131 de los 157 precios quedaron **exactos** a los del sistema viejo; **26 se movieron** porque manda el costo real. **24 de esos 26 hay que revisarlos contra la factura** (ver "Cosas a revisar"): en el sistema viejo el costo de la madre y el del fraccionado no coincidían. Script: `crm-api/scripts/importar-bavosi.js` (dry-run por defecto, idempotente por código interno)'],
+              ['**7/8/2026**', '**Bug corregido en la pestaña Presentaciones**: la pantalla leía y guardaba `ganancia` cuando el campo es `recargo`, así que mostraba el recargo vacío y **al guardar lo ponía en cero y borraba los códigos de barras** de cada presentación. No se notaba porque hasta ahora todos los recargos eran 0; apareció al importar Bavosi, que los usa. Ahora además el código de barras se edita ahí mismo y el precio que muestra es el que cobra la caja (con IVA)'],
               ['**7/8/2026**', '**El chat se borra a las 24 horas**: es conversación, no archivo. Las consultas filtran por el corte (el límite es exacto siempre) y una purga borra de verdad (la tabla no crece); el panel avisa la regla y descarta con el mismo criterio. Verificado con mensajes de 25 h y 23 h inyectados en la base: el de 25 desapareció de la vista Y de la tabla, el de 23 quedó'],
               ['**6/8/2026**', '**Info de sistema se puede ordenar por última modificación** (Orden › Reciente): cada tema muestra su fecha, el índice se reordena y salta a lo más nuevo. Las fechas salieron de los commits del repo; el campo admite hora para desempatar dentro del mismo día'],
               ['**6/8/2026**', '**Chat interno de la Distribuidora**: canal grupal del local + **privados 1-a-1** con lista de **en línea** (punto verde = su sistema pollea; clic en el nombre abre la conversación) — para que el mostrador le pregunte a administración sin dejar el puesto, y que tres preguntas a la vez no se pisen en el canal. Botón en el Topbar con badge total, panel lateral que flota sobre cualquier pantalla (incluido el POS), sonido propio, lectura por conversación y por usuario guardada en la base, y privacidad EN el servidor (la API solo entrega cada privado a sus dos puntas). Solo sesiones paradas en la Distribuidora; sin WebSockets — pollea como los demás avisos. Guía: "Chat interno"'],
@@ -1752,7 +1754,7 @@ export const MANUAL = [
       },
       {
         id: 'aflojar',
-        actualizado: '2026-08-06 20:00',
+        actualizado: '2026-08-07 09:30',
         titulo: 'Cosas a revisar',
         bloques: [
           {
@@ -1766,6 +1768,9 @@ export const MANUAL = [
               '**Recepción a ciegas sin configuración global.** Hoy es un botón opcional en el modal de recepción; falta la llave en configuración para hacerla obligatoria por sucursal.',
               '**Operaciones no incluye fraccionamientos ni ventas.** El libro cubre transferencias, compras recibidas y ajustes/mermas; si hace falta el resto, se suma como fuente.',
               '**Los sueldos se cargan como un gasto más.** Hay rubro ("Sueldos y cargas sociales") pero no hay legajo ni liquidación: si algún día hace falta el detalle por empleado, es un módulo aparte.',
+              '**24 precios de Bavosi quedaron marcados para revisar contra la factura.** Al importar, el costo de la madre y el del fraccionado NO coincidían en el sistema viejo: uno de los dos estaba podrido. El precio nuevo sale del costo de la madre (el que tiene fecha de actualización), así que estos se movieron fuerte y conviene mirarlos antes de vender: **Harina de almendra sin piel** (+148%), **Coco en escamas** (−64%), **Pimienta negra en grano** (−53%), **Pimienta blanca en grano** (−51%), **Canela molida** (+38%), **Pimienta blanca molida** (−33%), **Dátiles Deglet** (−29%), **Semillas de zapallo** (+17%), **Almendras Carmel** (−17%), **Harina de coco** (−15%). Se corrigen solos al cargar la próxima factura de Bavosi (la carga ofrece actualizar el costo y muestra el precio que quedaría).',
+              '**Castañas de cajú partidas entró con costo ESTIMADO** ($13.477/kg, copiado de Castañas de cajú): el archivo de Bavosi la traía en cero. Verificar con la factura.',
+              '**Cuatro productos base se crearon en la importación** porque el archivo solo traía sus fraccionados: Lentejón, Pasas de uva sultaninas, Pistachos pelados partidos. Su costo se derivó del paquete de 1 kg y conviene confirmarlo.',
               '**El resumen de gastos no se cruza todavía con las ventas.** Muestra cuánto se gastó, no el margen del período. Ese cruce es trabajo de Gerencia › Rentabilidad.',
               '**La condición de pago del GASTO sigue siendo un selector manual.** En Compras ya se deriva del saldo (saldada = contado); en Gastos todavía puede contradecir a los importes. Unificar cuando moleste.',
               '**Los permisos `gastos.pagos_proveedor` y `compras.pagos` ahora gatean pestañas, no secciones.** Un rol que tenga SOLO ese permiso (sin `gastos.gastos` / `compras.facturacion`) no ve la bandeja: revisar los roles si se crea uno así.',

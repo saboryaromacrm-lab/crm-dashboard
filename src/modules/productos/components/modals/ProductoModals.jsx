@@ -408,7 +408,15 @@ function ResumenTab({ prod: p }) {
   );
 }
 
-/* ---- Pestaña Presentaciones (granel): tamaño + % ganancia sobre el costo neto activo ---- */
+/* ---- Pestaña Presentaciones (granel): tamaño + recargo sobre el costo neto activo ---- */
+/*
+ * El campo se llama `recargo` en la base y en la API. Esta pantalla lo llamaba
+ * `ganancia`: leía un campo que no existe (el input salía vacío aunque el
+ * recargo estuviera cargado) y al guardar mandaba `ganancia`, que la API
+ * ignora — o sea que ABRIR y GUARDAR ponía todos los recargos en cero. Lo
+ * mismo con el código de barras de cada presentación, que no viajaba y se
+ * borraba. Se ve cuando hay datos de verdad: con todo en cero no se notaba.
+ */
 function PresentacionesTab({ prod: p }) {
   const { store, isAdmin, toast } = useProductos();
   const neto = store.costoNeto(p);
@@ -417,17 +425,24 @@ function PresentacionesTab({ prod: p }) {
       id: pr.id,
       tamStr: pr.tamKg ? String(pr.tamKg < 1 ? Math.round(pr.tamKg * 1000) : pr.tamKg) : '',
       unidad: pr.tamKg && pr.tamKg < 1 ? 'g' : 'kg',
-      ganancia: String(pr.ganancia ?? ''),
+      recargo: String(pr.recargo ?? ''),
+      codigoBarras: pr.codigoBarras ?? '',
     })),
   );
   const setRow = (i, patch) => setRows((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)));
   const delRow = (i) => setRows((r) => r.filter((_, j) => j !== i));
-  const addRow = () => setRows((r) => [...r, { id: null, tamStr: '', unidad: 'g', ganancia: '' }]);
+  const addRow = () => setRows((r) => [...r, { id: null, tamStr: '', unidad: 'g', recargo: '', codigoBarras: '' }]);
 
   const tamKgDe = (r) => { const t = parseFloat(r.tamStr); if (isNaN(t) || t <= 0) return 0; return r.unidad === 'kg' ? t : t / 1000; };
 
   const guardar = async () => {
-    const presentaciones = rows.map((r) => ({ id: r.id || null, tamKg: tamKgDe(r), ganancia: Number(r.ganancia) || 0 })).filter((x) => x.tamKg > 0);
+    const presentaciones = rows
+      .map((r) => ({
+        id: r.id || null, tamKg: tamKgDe(r),
+        recargo: Number(r.recargo) || 0,
+        codigoBarras: r.codigoBarras.trim(),
+      }))
+      .filter((x) => x.tamKg > 0);
     const res = await store.guardarPresentaciones(p.id, presentaciones);
     toast(res.ok ? 'Presentaciones guardadas.' : res.error, res.ok ? 'ok' : 'err');
   };
@@ -435,30 +450,46 @@ function PresentacionesTab({ prod: p }) {
   return (
     <div className={s.form}>
       <div className={cx(s.callout, s.info)}>
-        Cada presentación se valoriza sobre el <strong>costo neto</strong> del proveedor activo
-        (<strong>{money(neto)}</strong> /kg) × tamaño × (1 + ganancia %).
+        El <strong>recargo</strong> es lo que se cobra de más por fraccionar: el paquete chico
+        deja más que el kilo suelto. El precio sale del <strong>costo neto</strong> del proveedor
+        activo (<strong>{money(neto)}</strong> /kg) × tamaño × (1 + markup de la lista) ×
+        (1 + recargo %), y es el que cobra la caja al escanear su código.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr .7fr .9fr 1fr .6fr auto', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '.8fr .6fr .8fr 1.2fr 1fr .6fr auto', gap: 8 }}>
           <div className={s['mini-label']}>Tamaño</div>
           <div className={s['mini-label']}>Unidad</div>
-          <div className={s['mini-label']}>Ganancia %</div>
-          <div className={s['mini-label']}>Precio</div>
+          <div className={s['mini-label']}>Recargo %</div>
+          <div className={s['mini-label']}>Código de barras</div>
+          <div className={s['mini-label']}>Precio (con IVA)</div>
           <div className={s['mini-label']}>En stock</div>
           <div />
         </div>
         {rows.map((r, i) => {
           const tamKg = tamKgDe(r);
-          const precio = neto * tamKg * (1 + (Number(r.ganancia) || 0) / 100);
+          // El precio que ve el cliente: el de la API (ya lleva el markup de la
+          // lista base y el redondeo de góndola). Mientras se edita, se estima.
+          const guardada = (p.presentaciones || []).find((x) => x.id === r.id);
+          const sinCambios = guardada
+            && Math.abs((guardada.tamKg || 0) - tamKg) < 1e-9
+            && Math.abs((guardada.recargo || 0) - (Number(r.recargo) || 0)) < 1e-9;
+          const precio = sinCambios && guardada.precio
+            ? store.precioFinal(guardada.precio, p.iva)
+            : store.precioFinal(neto * tamKg * (1 + (Number(r.recargo) || 0) / 100), p.iva);
           const stk = r.id ? store.suma({ productoId: p.id, presentacionId: r.id, estado: 'disponible' }) : 0;
           return (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr .7fr .9fr 1fr .6fr auto', gap: 8, alignItems: 'center' }}>
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '.8fr .6fr .8fr 1.2fr 1fr .6fr auto', gap: 8, alignItems: 'center' }}>
               <input type="number" min="0" step="1" value={r.tamStr} placeholder="500" onChange={(e) => setRow(i, { tamStr: e.target.value })} />
               <select value={r.unidad} onChange={(e) => setRow(i, { unidad: e.target.value })}>
                 <option value="g">g</option>
                 <option value="kg">kg</option>
               </select>
-              <input type="number" min="0" step="0.1" value={r.ganancia} placeholder="0" onChange={(e) => setRow(i, { ganancia: e.target.value })} />
+              <input type="number" min="0" step="0.1" value={r.recargo} placeholder="0" onChange={(e) => setRow(i, { recargo: e.target.value })} />
+              <input
+                value={r.codigoBarras}
+                placeholder="el de su etiqueta"
+                onChange={(e) => setRow(i, { codigoBarras: e.target.value })}
+              />
               <div className={s.mono} style={{ fontWeight: 700 }}>{money(precio)}</div>
               <div className={s.muted}>{num(stk, 0)} paq.</div>
               <button type="button" className={s['pres-remove']} onClick={() => delRow(i)}>×</button>
