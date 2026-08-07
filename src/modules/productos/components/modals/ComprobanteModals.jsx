@@ -370,8 +370,58 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
     const neto = bultos * costoBulto * (1 - desc / 100);
     return { cantidadTotal, costoUnitario, neto, iva: neto * (Number(it.iva) || 0) / 100 };
   };
-  const tot = items.reduce((acc, it) => { const r = calcRow(it); acc.neto += r.neto; acc.iva += r.iva; return acc; }, { neto: 0, iva: 0 });
-  const total = tot.neto + tot.iva;
+  /* ------------------------- EL PIE DE LA FACTURA -------------------------
+   * Se replica el papel, en su orden: los renglones dan el bruto, la
+   * BONIFICACIÓN general lo baja, el IVA se calcula sobre el neto ya bonificado
+   * y las PERCEPCIONES se suman al final (no son IVA: son pago a cuenta de otro
+   * impuesto). Sin esto el total del sistema no cerraba con el del proveedor.
+   */
+  const bruto = items.reduce((a, it) => a + calcRow(it).neto, 0);
+
+  /** % del papel; el importe se puede corregir porque el proveedor redondea a su modo. */
+  const [bonifPct, setBonifPct] = useState('');
+  const [bonifManual, setBonifManual] = useState(null);
+  const bonifCalc = r2(bruto * (Number(bonifPct) || 0) / 100);
+  const bonifImporte = Math.min(bonifManual != null ? bonifManual : bonifCalc, r2(bruto));
+  const factorBonif = bruto > 0 ? 1 - bonifImporte / bruto : 1;
+
+  // El IVA se recalcula renglón por renglón sobre el neto bonificado: con dos
+  // alícuotas distintas (21 y 10,5) no alcanza con prorratear el IVA total.
+  const tot = items.reduce((acc, it) => {
+    const r = calcRow(it);
+    const neto = r.neto * factorBonif;
+    acc.neto += neto;
+    acc.iva += neto * (Number(it.iva) || 0) / 100;
+    return acc;
+  }, { neto: 0, iva: 0 });
+
+  /** Percepciones del proveedor: se tildan las que trajo la factura. */
+  const [percepciones, setPercepciones] = useState([]);
+  useEffect(() => {
+    let vivo = true;
+    const pid = parseInt(provId, 10);
+    if (!pid) { setPercepciones([]); return undefined; }
+    store.percepcionesProveedor(pid)
+      .then((r) => {
+        if (!vivo) return;
+        setPercepciones((r ?? [])
+          .filter((x) => x.activa !== false)
+          .map((x) => ({ ...x, aplicar: false, importeManual: null })));
+      })
+      .catch(() => { if (vivo) setPercepciones([]); });
+    return () => { vivo = false; };
+  }, [store, provId]);
+
+  const conIva = tot.neto + tot.iva;
+  const percCalculadas = percepciones.map((p) => {
+    const base = p.base === 'total' ? conIva : tot.neto;
+    const calc = r2(base * (Number(p.alicuota) || 0) / 100);
+    return { ...p, calc, importe: p.importeManual != null ? p.importeManual : calc };
+  });
+  const percTotal = percCalculadas.reduce((a, p) => a + (p.aplicar ? p.importe : 0), 0);
+  const setPerc = (i, patch) => setPercepciones((r) => r.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+
+  const total = tot.neto + tot.iva + percTotal;
 
   /* ---------------- Cuánto queda debiéndose ---------------- */
 
@@ -562,6 +612,12 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
       tipo, letra, puntoVenta, numero, fecha, fechaCarga, proveedorId: parseInt(provId, 10),
       sucursalId: sucId ? parseInt(sucId, 10) : null, condicionPago, recepcion: permiteRecepcion && recepcion,
       vencimientoPago: venc || null, observaciones: obs.trim(), items: parsed,
+      // El pie del papel: el descuento general y las percepciones que vinieron.
+      bonificacion: Number(bonifPct) || 0,
+      bonificacionImporte: bonifImporte,
+      percepciones: percCalculadas
+        .filter((p) => p.aplicar && p.importe > 0.009)
+        .map((p) => ({ nombre: p.nombre, alicuota: Number(p.alicuota) || 0, base: p.base, importe: r2(p.importe) })),
       // Costo del bulto y tamaño del bulto viajan JUNTOS: son un solo hecho
       // ("la bolsa de 20 kg sale $40.000") y por separado el $/kg mentiría.
       actualizarCostos: costosAActualizar.map((d) => ({
@@ -926,11 +982,111 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
         </>
       )}
 
-      {/* La cuenta del paso: lo que suman los renglones cargados. */}
-      <div className={cx(s.callout, s.ok)} style={{ display: 'flex', justifyContent: 'flex-end', gap: 24 }}>
-        <span>Neto: <strong>{money(tot.neto)}</strong></span>
-        <span>IVA: <strong>{money(tot.iva)}</strong></span>
-        <span>Total: <strong>{money(total)}</strong></span>
+      {/* ==================== EL PIE DE LA FACTURA ====================
+          Mismo orden que el papel, para poder cuadrar mirando de reojo:
+          subtotal → bonificación → neto → IVA → percepciones → TOTAL. */}
+      <div className={s['section-title']}>Pie de la factura</div>
+      <div className={s.hint} style={{ marginTop: 0 }}>
+        La <strong>bonificación</strong> es el descuento general que el proveedor pone al pie,
+        además de los de cada renglón. Las <strong>percepciones</strong> son las que tenga
+        configuradas — se tildan las que trajo <em>esta</em> factura.
+      </div>
+
+      <div className={s['form-grid']}>
+        <div className={s.field}>
+          <label>Bonificación %</label>
+          <input
+            type="number" min="0" max="99.99" step="any"
+            placeholder="0"
+            value={bonifPct}
+            onChange={(e) => { setBonifPct(e.target.value); setBonifManual(null); }}
+          />
+        </div>
+        <div className={s.field}>
+          <label>Importe de la bonificación</label>
+          <input
+            type="number" min="0" step="any"
+            placeholder={money(bonifCalc)}
+            value={bonifManual != null ? bonifManual : (bonifPct ? r2(bonifCalc) : '')}
+            onChange={(e) => setBonifManual(e.target.value === '' ? null : Number(e.target.value) || 0)}
+          />
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            Se calcula solo; corregilo si el papel dice otro número (el proveedor redondea a su modo).
+          </div>
+        </div>
+      </div>
+
+      {percepciones.length > 0 ? (
+        <Table
+          cols={[{ h: 'Vino' }, { h: 'Percepción' }, { h: 'Alícuota', num: true }, { h: 'Importe', num: true }]}
+        >
+          {percCalculadas.map((p, i) => (
+            <tr key={p.id ?? i}>
+              <td style={{ width: 60 }}>
+                <input
+                  type="checkbox"
+                  checked={p.aplicar}
+                  aria-label={`Aplicar ${p.nombre}`}
+                  onChange={(e) => setPerc(i, { aplicar: e.target.checked })}
+                />
+              </td>
+              <td>
+                {p.nombre}
+                <div className={s.hint} style={{ margin: 0 }}>
+                  sobre {p.base === 'total' ? 'el total con IVA' : 'el neto gravado'}
+                </div>
+              </td>
+              <td className={s.num}>{num(p.alicuota, 2)}%</td>
+              <td className={s.num}>
+                {p.aplicar ? (
+                  <input
+                    type="number" min="0" step="any" style={{ maxWidth: 140 }}
+                    value={p.importeManual != null ? p.importeManual : r2(p.calc)}
+                    onChange={(e) => setPerc(i, { importeManual: e.target.value === '' ? null : Number(e.target.value) || 0 })}
+                  />
+                ) : <span className={s.muted}>{money(p.calc)}</span>}
+              </td>
+            </tr>
+          ))}
+        </Table>
+      ) : (
+        <div className={s.hint}>
+          {provElegido?.nombre || 'Este proveedor'} no tiene percepciones configuradas. Si sus
+          facturas traen alguna, se cargan una vez en su ficha (Proveedores › abrir el proveedor ›
+          Percepciones) y desde ahí aparecen acá.
+        </div>
+      )}
+
+      {/* La cuenta completa, como se lee en el papel. */}
+      <div className={cx(s.callout, s.ok)}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>Subtotal de los ítems</span><strong>{money(bruto)}</strong>
+        </div>
+        {bonifImporte > 0.009 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--crm-color-success)' }}>
+            <span>Bonificación {bonifPct ? `${num(Number(bonifPct), 2)}%` : ''}</span>
+            <strong>− {money(bonifImporte)}</strong>
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>Neto gravado</span><strong>{money(tot.neto)}</strong>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>IVA</span><strong>{money(tot.iva)}</strong>
+        </div>
+        {percCalculadas.filter((p) => p.aplicar).map((p, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>{p.nombre}</span><strong>{money(p.importe)}</strong>
+          </div>
+        ))}
+        <div
+          style={{
+            display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6,
+            borderTop: '1px solid var(--crm-color-border)', fontSize: 16,
+          }}
+        >
+          <strong>TOTAL</strong><strong>{money(total)}</strong>
+        </div>
       </div>
       </>
       )}
@@ -948,9 +1104,11 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
           <strong>{TIPOS_COMPROBANTE[tipo]?.label || tipo} {letra} {puntoVenta}-{numero || 'auto'}</strong>
           {' · '}{provElegido?.nombre || '—'} · {itemsValidos} ítem{itemsValidos === 1 ? '' : 's'}
         </span>
-        <span style={{ display: 'flex', gap: 18 }}>
+        <span style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+          {bonifImporte > 0.009 && <span>Bonif.: <strong>−{money(bonifImporte)}</strong></span>}
           <span>Neto: <strong>{money(tot.neto)}</strong></span>
           <span>IVA: <strong>{money(tot.iva)}</strong></span>
+          {percTotal > 0.009 && <span>Percep.: <strong>{money(percTotal)}</strong></span>}
           <span>Total: <strong style={{ fontSize: 16 }}>{money(total)}</strong></span>
         </span>
       </div>
@@ -1377,11 +1535,51 @@ export function ComprobanteDetalleModal({ id }) {
       <Table cols={[{ h: 'Producto' }, { h: 'Present.' }, { h: 'Cant.', num: true }, { h: 'Costo u.', num: true }, { h: 'Desc.', num: true }, { h: 'IVA', num: true }, { h: 'Subtotal', num: true }]}>
         {filas}
       </Table>
-      <div className={cx(s.callout, s.ok)} style={{ display: 'flex', justifyContent: 'flex-end', gap: 24, marginTop: 12 }}>
-        <span>Neto: <strong>{money(c.subtotalNeto)}</strong></span>
-        <span>IVA: <strong>{money(c.ivaTotal)}</strong></span>
-        <span>Total: <strong>{money(c.total)}</strong></span>
+      {/* El pie, como lo lee el papel: así se puede cuadrar contra la factura. */}
+      <div className={cx(s.callout, s.ok)} style={{ marginTop: 12 }}>
+        {c.bonificacionImporte > 0.009 && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Subtotal de los ítems</span>
+              <strong>{money(c.subtotalNeto + c.bonificacionImporte)}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--crm-color-success)' }}>
+              <span>Bonificación {c.bonificacion > 0 ? `${num(c.bonificacion, 2)}%` : ''}</span>
+              <strong>− {money(c.bonificacionImporte)}</strong>
+            </div>
+          </>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>Neto gravado</span><strong>{money(c.subtotalNeto)}</strong>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>IVA</span><strong>{money(c.ivaTotal)}</strong>
+        </div>
+        {(c.percepciones ?? []).map((p) => (
+          <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>
+              {p.nombre}
+              <span className={s.muted}> · {num(p.alicuota, 2)}% sobre {p.base === 'total' ? 'el total' : 'el neto'}</span>
+            </span>
+            <strong>{money(p.importe)}</strong>
+          </div>
+        ))}
+        <div
+          style={{
+            display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6,
+            borderTop: '1px solid var(--crm-color-border)', fontSize: 16,
+          }}
+        >
+          <strong>TOTAL</strong><strong>{money(c.total)}</strong>
+        </div>
       </div>
+      {c.percepcionesTotal > 0.009 && (
+        <div className={s.hint}>
+          Las percepciones <strong>no son IVA</strong>: son pago a cuenta de otro impuesto y se
+          declaran por separado. Están en el total porque hay que pagárselas al proveedor, pero no
+          entran en el crédito fiscal de IVA.
+        </div>
+      )}
     </ModalShell>
   );
 }

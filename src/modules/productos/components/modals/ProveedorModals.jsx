@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import ConstructionIcon from '@mui/icons-material/Construction';
 import { cx } from '@shared/utils/classNames.js';
@@ -113,6 +113,7 @@ export function DetalleProveedorModal({ provId }) {
     { label: 'Operaciones', C: OperacionesTab },
     { label: 'Resumen Cta.', C: ResumenCtaTab },
     { label: 'Productos y costos', C: ProveedorCostosTab },
+    { label: 'Percepciones', C: PercepcionesTab },
     { label: 'Pend. Entrega', C: PendEntregaTab },
     { label: 'Auditoría', C: AuditoriaTab },
     { label: 'Historial', C: HistorialProvTab },
@@ -141,6 +142,114 @@ export function DetalleProveedorModal({ provId }) {
       </Tabs>
       <Active prov={prov} />
     </ModalShell>
+  );
+}
+
+/* ---- Percepciones: los impuestos que ESTE proveedor cobra por adelantado ---- */
+/*
+ * Se configuran una vez acá y la carga de la factura las ofrece con un tilde:
+ * el mismo proveedor a veces las trae y a veces no, así que jamás se aplican
+ * solas. No son IVA — son pago a cuenta de otro impuesto y al cierre hay que
+ * declarar cada una por separado, así que cada una lleva su nombre.
+ */
+function PercepcionesTab({ prov }) {
+  const { store, isAdmin, toast } = useProductos();
+  const [filas, setFilas] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+
+  const cargar = useCallback(async () => {
+    try {
+      const r = await store.percepcionesProveedor(prov.id);
+      setFilas((r ?? []).map((x) => ({ ...x, alicuota: String(x.alicuota) })));
+    } catch { toast('No se pudieron cargar las percepciones.', 'err'); setFilas([]); }
+  }, [store, prov.id, toast]);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const set = (i, patch) => setFilas((r) => r.map((f, j) => (j === i ? { ...f, ...patch } : f)));
+  const quitar = (i) => setFilas((r) => r.filter((_, j) => j !== i));
+  const agregar = () => setFilas((r) => [...r, { nombre: '', alicuota: '', base: 'neto', activa: true }]);
+
+  const guardar = async () => {
+    setGuardando(true);
+    const res = await store.guardarPercepcionesProveedor(prov.id, filas.map((f) => ({
+      nombre: f.nombre, alicuota: Number(f.alicuota) || 0, base: f.base, activa: f.activa !== false,
+    })));
+    setGuardando(false);
+    if (!res.ok) { toast(res.error || 'No se pudo guardar.', 'err'); return; }
+    toast('Percepciones guardadas.', 'ok');
+    cargar();
+  };
+
+  if (filas === null) return <div className={s['empty-state']}>Cargando…</div>;
+
+  return (
+    <>
+      <div className={cx(s.callout, s.info)}>
+        Los impuestos que <strong>{prov.nombre}</strong> suma al pie de sus facturas
+        (&ldquo;Perc. IVA RG 5329&rdquo;, Ingresos Brutos…). Se cargan acá una vez y al registrar
+        una factura aparecen para <strong>tildar la que vino</strong> — nunca se aplican solas,
+        porque el mismo proveedor a veces las trae y a veces no.
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr .7fr 1fr .6fr auto', gap: 8, marginBottom: 6 }}>
+        {['Nombre (como figura en la factura)', 'Alícuota %', 'Se calcula sobre', 'Activa', ''].map((h, i) => (
+          <div key={i} className={s['mini-label']}>{h}</div>
+        ))}
+      </div>
+      {filas.map((f, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr .7fr 1fr .6fr auto', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+          <input
+            value={f.nombre}
+            placeholder="Perc. IVA RG 5329"
+            disabled={!isAdmin}
+            onChange={(e) => set(i, { nombre: e.target.value })}
+          />
+          <input
+            type="number" min="0" max="100" step="any"
+            value={f.alicuota}
+            placeholder="3"
+            disabled={!isAdmin}
+            onChange={(e) => set(i, { alicuota: e.target.value })}
+          />
+          <select value={f.base} disabled={!isAdmin} onChange={(e) => set(i, { base: e.target.value })}>
+            <option value="neto">El neto gravado</option>
+            <option value="total">El total con IVA</option>
+          </select>
+          <input
+            type="checkbox"
+            checked={f.activa !== false}
+            disabled={!isAdmin}
+            onChange={(e) => set(i, { activa: e.target.checked })}
+          />
+          {isAdmin && <button type="button" className={s['pres-remove']} onClick={() => quitar(i)}>×</button>}
+        </div>
+      ))}
+      {!filas.length && (
+        <div className={s.muted} style={{ padding: '8px 0' }}>
+          Este proveedor no tiene percepciones configuradas.
+        </div>
+      )}
+
+      {isAdmin && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <Btn variant="btn-ghost" small onClick={agregar}>+ Agregar percepción</Btn>
+          <Btn variant="btn-primary" small onClick={guardar} disabled={guardando}>
+            {guardando ? 'Guardando…' : 'Guardar'}
+          </Btn>
+        </div>
+      )}
+
+      <div className={s.hint}>
+        <strong>Sobre qué se calcula:</strong> casi todas van sobre el <strong>neto gravado</strong>{' '}
+        (el subtotal después de la bonificación, antes del IVA) — la de IVA RG 5329 y las de
+        Ingresos Brutos, por ejemplo. Alguna provincia calcula sobre el total con IVA; para esas
+        está la otra opción. El importe siempre se puede corregir al cargar la factura: el papel manda.
+      </div>
+      <div className={s.hint}>
+        <strong>Desactivar</strong> una en vez de borrarla deja de ofrecerla en las facturas nuevas
+        sin tocar las viejas, que guardan su propia copia con el nombre y la alícuota del día.
+      </div>
+    </>
   );
 }
 

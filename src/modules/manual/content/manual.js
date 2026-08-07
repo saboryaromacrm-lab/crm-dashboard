@@ -202,7 +202,7 @@ export const MANUAL = [
       },
       {
         id: 'carga-factura',
-        actualizado: '2026-08-06 18:53',
+        actualizado: '2026-08-07 11:30',
         titulo: 'Cargar la factura: asistente en tres pasos',
         bloques: [
           {
@@ -238,7 +238,20 @@ export const MANUAL = [
             tono: 'warn',
             texto: 'La compra ingresa SIEMPRE el producto base: el granel en kg, el entero en unidades. Las presentaciones (lenteja 500g, 1kg) son **producción propia** — nacen del fraccionamiento, que descuenta granel y crea presentación. Si algún día un proveedor vende un empaquetado que NO se fracciona acá, eso es un producto ENTERO nuevo, no una presentación del granel: esa es la línea que separa compra de producción.',
           },
-          { t: 'ruta', texto: 'Compras › Facturación › + Nuevo comprobante' },
+          {
+            t: 'p',
+            texto: '**El pie de la factura** (abajo del paso 2) replica el papel en su orden, para poder cuadrar de reojo: **subtotal de los ítems → bonificación → neto gravado → IVA → percepciones → TOTAL**. Si el total del sistema coincide con el de la factura, la carga está bien; si no, algo falta.',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**La bonificación es el descuento GENERAL del pie** ("Bonif. 21,38 %"), aparte de los `Desc%` de cada renglón. Se carga el porcentaje y el importe se calcula solo, pero se puede corregir: el proveedor redondea a su manera y el que manda es el papel.',
+              '**El IVA se calcula sobre el neto YA bonificado**, y renglón por renglón: con dos alícuotas distintas en la misma factura (21% y 10,5%), prorratear el IVA total daría un número que no cierra con el libro.',
+              '**Las percepciones se configuran una vez por proveedor** y al cargar la factura aparecen para **tildar la que vino** — nunca se aplican solas, porque el mismo proveedor a veces las trae y a veces no. El importe se sugiere con la alícuota y se puede corregir al del papel.',
+              '**Las percepciones NO son IVA**: son pago a cuenta de otro impuesto (IVA RG 5329, Ingresos Brutos), se declaran por separado y **no van al crédito fiscal**. Están en el total porque hay que pagárselas al proveedor. Cada una queda guardada en el comprobante con su nombre y alícuota **copiados**: si mañana cambia la alícuota del proveedor, la factura del año pasado sigue explicando su propio total.',
+            ],
+          },
+          { t: 'ruta', texto: 'Compras › Facturación › + Nuevo comprobante · las percepciones se configuran en Compras › Proveedores › (abrir uno) › Percepciones' },
         ],
       },
       {
@@ -1738,7 +1751,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-07 10:30',
+        actualizado: '2026-08-07 11:30',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -1749,6 +1762,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**7/8/2026**', '**El pie de la factura de compra: bonificación y percepciones.** Faltaban las dos y el total del sistema no cerraba con el del proveedor. Ahora el paso 2 replica el papel (subtotal → bonificación → neto → IVA → percepciones → TOTAL), el IVA se calcula sobre el neto ya bonificado y renglón por renglón (para que cierre con dos alícuotas), y las **percepciones se configuran por proveedor** (nueva pestaña en su ficha) y se **tildan** al cargar la factura porque no siempre vienen. Probado contra una factura real de Bavosi: el pie coincide al centavo salvo 1 centavo del redondeo que el proveedor hace por renglón'],
               ['**7/8/2026**', '**Botón "Importar catálogo"** en Compras › Productos: el alta masiva de un proveedor ahora se hace desde el sistema, sin pedirla. Tres pasos —archivos, proveedor y listas, **vista previa**— y la escritura es **una sola transacción** (todo o nada) e **idempotente** por código interno. Traduce lo mismo que la primera importación a mano: los fraccionados entran como presentaciones, el costo sale del formato de compra (el del maestro trae IVA adentro), el markup por paquete se convierte en recargo y el rubro se deduce del nombre. La vista previa es obligatoria y separa los cambios de precio chicos de los **grandes**, que son los que delatan un costo podrido en el archivo. Guía nueva: Formato de Compra › "Importar el catálogo de un proveedor"'],
               ['**7/8/2026**', '**Catálogo de Bavosi importado**: 94 productos (50 a granel + 44 envasados), 73 presentaciones, 94 formatos de compra con sus descuentos en cascada y flete, y 157 formatos de venta (Mostrador y Mayorista). 131 de los 157 precios quedaron **exactos** a los del sistema viejo; **26 se movieron** porque manda el costo real. **24 de esos 26 hay que revisarlos contra la factura** (ver "Cosas a revisar"): en el sistema viejo el costo de la madre y el del fraccionado no coincidían. Script: `crm-api/scripts/importar-bavosi.js` (dry-run por defecto, idempotente por código interno)'],
               ['**7/8/2026**', '**Bug corregido en la pestaña Presentaciones**: la pantalla leía y guardaba `ganancia` cuando el campo es `recargo`, así que mostraba el recargo vacío y **al guardar lo ponía en cero y borraba los códigos de barras** de cada presentación. No se notaba porque hasta ahora todos los recargos eran 0; apareció al importar Bavosi, que los usa. Ahora además el código de barras se edita ahí mismo y el precio que muestra es el que cobra la caja (con IVA)'],

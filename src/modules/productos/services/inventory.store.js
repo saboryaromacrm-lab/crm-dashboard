@@ -538,6 +538,23 @@ function _cleanComprobante(o) {
     condicionPago: o.condicionPago, recepcion: !!o.recepcion,
     vencimientoPago: _fechaLocal(o.vencimientoPago), observaciones: o.observaciones || '',
     /*
+     * EL PIE DE LA FACTURA. El descuento general y las percepciones que trajo el
+     * papel: sin estos campos acá se perdían en silencio y el total del sistema
+     * quedaba distinto del de la factura (esta función ya se tragó
+     * `usuarioId`, `cantidad` y `activarProveedor` por la misma razón —
+     * agregar un campo al modal y olvidarse de esta lista).
+     */
+    bonificacion: Number(o.bonificacion) || 0,
+    bonificacionImporte: Number(o.bonificacionImporte) || 0,
+    percepciones: (o.percepciones || [])
+      .filter((p) => (p?.nombre ?? '').trim() && Number(p.importe) > 0)
+      .map((p) => ({
+        nombre: String(p.nombre).trim(),
+        alicuota: Number(p.alicuota) || 0,
+        base: p.base === 'total' ? 'total' : 'neto',
+        importe: Number(p.importe) || 0,
+      })),
+    /*
      * Costos que el usuario aceptó actualizar desde "Impacto en precios".
      * `cantidad` es el tamaño del bulto de ESTA entrega (kg o unidades) y viaja
      * JUNTO al costo porque son un solo hecho: "la bolsa de 20 kg sale
@@ -624,6 +641,10 @@ const anularEnvioCafeteria = (id, motivo) => _mutate(() => httpClient.post(`/caf
  * La previsualización se calcula en el navegador (el store ya tiene costos y
  * márgenes), así que acá solo viajan los cambios aprobados. `historial` es
  * lectura pura; el resto refresca porque mueve todos los precios derivados. */
+/* ---- Percepciones del proveedor (las que cobra al pie de sus facturas) ---- */
+const percepcionesProveedor = (id) => httpClient.get(`/proveedores/${id}/percepciones`);
+const guardarPercepcionesProveedor = (id, percepciones) => _mutate(() => httpClient.put(`/proveedores/${id}/percepciones`, { percepciones }));
+
 /** Importación masiva: la API escribe el catálogo entero en una transacción. */
 const importarCatalogo = (proveedorId, items) => _mutate(() => httpClient.post('/productos/importar', { proveedorId, items }));
 
@@ -649,6 +670,7 @@ export const inventoryStore = {
   crearProducto, editarProducto, eliminarProducto, guardarPresentaciones, importarCatalogo,
   crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, subcategoriasDe, siguienteCodigo,
   crearProveedor, editarProveedor, eliminarProveedor,
+  percepcionesProveedor, guardarPercepcionesProveedor,
   guardarFormatosCompra, guardarListasProducto,
   costoNeto, costoNetoEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPresentacion,
   precioFinal, redondearPrecio,
