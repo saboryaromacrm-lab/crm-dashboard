@@ -1839,7 +1839,7 @@ export const MANUAL = [
       },
       {
         id: 'candados-saldo',
-        actualizado: '2026-08-08 01:30',
+        actualizado: '2026-08-08 03:00',
         titulo: 'Saldos y dos pedidos a la vez: por qué los chequeos van con candado',
         bloques: [
           {
@@ -1869,13 +1869,26 @@ export const MANUAL = [
           },
           {
             t: 'p',
-            texto: '**ORDEN DE BLOQUEO: primero el pago, después el documento.** Siempre igual, en las tres funciones que bloquean (`aplicar`, `desimputar`, `anular`). Dos caminos que tomen los mismos dos candados en orden distinto se abrazan y se quedan esperando para siempre. Hacen falta los dos: el del pago evita que se pase el MISMO pago dos veces; el del documento evita que **dos pagos distintos** sobre-paguen la misma factura entre ambos.',
+            texto: '**ORDEN DE BLOQUEO: primero el pago, después el documento.** Siempre igual, en las cuatro funciones de Pagos que bloquean (`aplicar`, `desimputar`, `anular`, `cambiarDestino`). Dos caminos que tomen los mismos dos candados en orden distinto se abrazan y se quedan esperando para siempre. Hacen falta los dos: el del pago evita que se pase el MISMO pago dos veces; el del documento evita que **dos pagos distintos** sobre-paguen la misma factura entre ambos.',
+          },
+          {
+            t: 'p',
+            texto: '**Dónde más apareció el mismo patrón** (se revisaron los tres módulos que faltaban):',
+          },
+          {
+            t: 'tabla',
+            cols: ['Dónde', 'Qué pasaba', 'Cómo quedó'],
+            filas: [
+              ['**Cobranzas** · `saldosEnTx`', 'Idéntico al de Pagos, del lado de las ventas: dos cobranzas simultáneas sobre la misma venta leían el mismo saldo, las dos pasaban el "debe $X y estás imputando $Y", y la venta terminaba **cobrada de más**.', 'La fila de la venta se lee con candado. El agregado de imputaciones no se puede bloquear (es una suma), pero al serializar la venta la suma que se lee ya es estable.'],
+              ['**Caja** · `cerrar`', 'No era un saldo sino el CIERRE, y es el peor de los tres. El cierre son tres pasos —ver que está abierta, sumar el arqueo, marcarla cerrada— y entre el segundo y el tercero entraba plata: un pago a proveedor de esa caja, o un movimiento manual. Ese egreso quedaba **adentro de un turno cerrado pero fuera de `sistemaEfectivo`**, así que la diferencia del arqueo nacía mal y quedaba **congelada en la fila**: no se detectaba nunca más.', 'El cierre es una transacción y bloquea la sesión. Las dos puertas que insertan movimientos (`caja.movimiento` y `pagos.crear`) leen la sesión con el mismo candado: o entran antes y el arqueo las cuenta, o esperan y se rechazan porque el turno ya cerró.'],
+              ['**Comprobantes**', 'Nada que arreglar. El único lugar parecido lee `total`/`pagado` para decidir una etiqueta derivada (contado vs cuenta corriente), no para autorizar plata.', 'Y el stock ya usaba el patrón correcto desde antes: `UPDATE stock SET cantidad = cantidad + delta`, que es atómico y no necesita candado.'],
+            ],
           },
           {
             t: 'p',
             texto: 'Y un detalle de método: el primer intento de probar esto fue disparar dos pedidos HTTP a la vez, y **pasó igual sin el candado** — la transacción dura menos de un milisegundo y no llegaron a solaparse. Un test que pasa con y sin el arreglo no prueba nada. La carrera se reprodujo bajando al nivel donde vive (dos conexiones SQL, con la ventana agrandada a propósito).',
           },
-          { t: 'ruta', texto: 'crm-api/src/pagos/pagos.module.ts · aplicar() / desimputar() / anular()' },
+          { t: 'ruta', texto: 'crm-api/src/pagos/pagos.module.ts · cobranzas.module.ts (saldosEnTx) · caja.module.ts (cerrar, movimiento)' },
         ],
       },
       {
@@ -1954,7 +1967,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-08 01:30',
+        actualizado: '2026-08-08 03:00',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -1965,6 +1978,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**8/8/2026**', '**Aplicado el resto de los dos informes: 8 arreglos de seguridad y 6 de limpieza, en cinco módulos.** El más importante no estaba en el informe original y apareció al buscar la carrera del saldo en los otros módulos: **el cierre de caja podía dejar plata afuera del arqueo**. Sumar el arqueo y marcar el turno cerrado eran dos pasos sueltos, y entre uno y otro entraba un egreso —un pago a proveedor de esa caja, o un movimiento manual— que quedaba **dentro de un turno cerrado pero fuera de `sistemaEfectivo`**, con la diferencia mal y congelada en la fila para siempre. También **Cobranzas tenía la carrera igual que Pagos** (dos cobranzas simultáneas cobraban de más la misma venta) y **Comprobantes no tenía nada** (su caso es una etiqueta derivada, y el stock ya usaba el `cantidad = cantidad + delta` atómico). Además: el **mime de los archivos subidos ahora se verifica contra los bytes reales** (un HTML rotulado como PNG se rechaza) y se sirven con `nosniff`; los tres endpoints de pagos que recibían `any` tienen DTO (el `?desde=abc` que tiraba 500 ahora es un 400); topes de páginas y total no negativo en la bandeja; y el `desde` del filtro de pagos parseaba la fecha como UTC mientras el `hasta` la parseaba local, o sea tres horas del día anterior colándose. De limpieza: la etiqueta del documento vive en UN lugar (`common/documentos`, no en `comprobantes`, porque `comprobantes` ya importa de `pagos` y se hacía un ciclo) así que **se dejó de ver `nota_debito 0001-123` en pantalla**; índice de `ref_comprobante_id` (con el snapshot de Drizzle corregido, que se había quedado sin el único de número); import muerto y campo que nadie leía, afuera. Verificado con **45 pruebas** contra la API y la base restaurada en las tres corridas'],
               ['**8/8/2026**', '**Auditoría de seguridad de Facturas y Pagos: 11 hallazgos, tres arreglados.** (1) **La guarda que impide sobre-imputar un pago se podía pasar dos veces** — dos pedidos simultáneos leían los dos el mismo saldo y las dos imputaciones entraban. Demostrado con dos conexiones: $1.000 imputados a un pago de $500. Se puso `FOR UPDATE` en las cinco lecturas de saldo (`aplicar`, `desimputar`, `anular`), con orden de bloqueo fijo pago → documento. Ficha: Decisiones de diseño › "Saldos y dos pedidos a la vez". (2) **La sucursal del pago la decidía el pedido, no el turno de caja**: se le podía cargar un egreso al cajón de cualquier sucursal con turno abierto, y ahora la discrepancia se rechaza en vez de resolverse sola (falta la otra mitad, que el turno sea de QUIEN pide, y eso necesita autenticación). (3) **Un papel se podía enganchar al comprobante de otro proveedor**: la lectura salía de la bandeja marcada como cargada sin haberse cargado nunca, y el respaldo de un comprobante pasaba a ser la factura de otra empresa. Los otros 8 quedaron anotados en "Cosas a revisar". Verificado con 11 pruebas contra la API y la base restaurada al estado previo'],
               ['**7/8/2026**', '**Dos agentes propios escritos**, ninguno del catálogo: **auditor-seguridad** (informe de vulnerabilidades por severidad, con cómo se explota cada una; solo lectura) y **depurador-codigo** (código muerto, peso al aire y cuellos de botella, clasificado en Seguro / Requiere criterio / **No tocar y por qué**; muestra el informe antes de tocar nada). Viven en `~/.claude/agents/` para que sirvan en los tres repos. Lo que los hace útiles no es el rol sino **las trampas de acá metidas adentro**: que la falta de autenticación ya está asumida y no es un descubrimiento, que un chequeo que vive solo en el frontend no es un chequeo, que los paneles se registran por clave de texto (así que "0 usos" no prueba que esté muerto), que `_cleanComprobante` se traga los campos nuevos, y que las migraciones de `drizzle/` y los comentarios explicativos no se tocan. Detalle en Decisiones de diseño › "Agentes del catálogo de aitmpl.com"'],
               ['**7/8/2026**', '**Evaluado el catálogo de agentes de aitmpl.com** (Claude Code Templates). Un agente de ahí es un archivo `.md` con tres líneas de frontmatter y un prompt: el mecanismo de subagentes es de Claude Code, el catálogo solo ahorra escribirlo. **Recomendación: no instalar el catálogo** y escribir dos o tres propios con el criterio de este proyecto, en `~/.claude/agents/` para que sirvan en los tres repos — los genéricos de framework traen opiniones ajenas y las aplican con seguridad. Pros, contras y las advertencias (es código de terceros que se ejecuta como instrucciones; `.claude/agents/` es por proyecto; un agente no reemplaza a CLAUDE.md porque arranca sin contexto) quedaron en Decisiones de diseño › "Agentes del catálogo de aitmpl.com"'],
@@ -2125,18 +2139,15 @@ export const MANUAL = [
       },
       {
         id: 'aflojar',
-        actualizado: '2026-08-08 01:30',
+        actualizado: '2026-08-08 03:00',
         titulo: 'Cosas a revisar',
         bloques: [
           {
             t: 'lista',
             items: [
-              '**La misma carrera del saldo hay que buscarla en Cobranzas, Caja y Comprobantes.** El candado se puso en Pagos porque ahí se auditó, pero el patrón —leer un saldo y validar contra él sin candado— es de la casa: cualquier lugar que haga "no le podés aplicar más que esto" es candidato. Ver Decisiones de diseño › "Saldos y dos pedidos a la vez".',
-              '**El mime del archivo subido se le cree al cliente.** En la bandeja de facturas sale del prefijo de la data URL, no de los bytes, y se devuelve tal cual sin `nosniff` ni `Content-Disposition` (no hay helmet en el proyecto). La lista blanca (JPG/PNG/WebP/PDF) evita lo peor, pero se puede alojar contenido arbitrario rotulado como imagen, con URL estable en el dominio del sistema. Lo mismo aplica a los adjuntos de gastos y a las imágenes de la web.',
-              '**Tres endpoints de pagos reciben `any` y esquivan la validación global.** `GET /pagos-proveedor` (`@Query() q: any`) y los `@Body() body: any` de anular y destino: el `whitelist` del ValidationPipe no filtra nada ahí. Y `?desde=` sin validar tira un **500** (`new Date("abc").toISOString()` explota). Faltan DTOs.',
-              '**Topes que faltan en la bandeja de facturas**: `archivos` no tiene máximo de elementos y `agregarArchivo` no limita las páginas que se acumulan; el `total` acepta negativos (debilita el control contra el total del papel); y el tope de 8 MB por archivo es **inalcanzable** porque el límite de 4 MB del body corta antes, así que el mensaje de error promete algo que no pasa.',
-              '**El papel de cualquier factura se baja enumerando ids** (`/api/facturas/archivos/1,2,3…`), sin verificar quién pide. Es parte del bloqueante de autenticación, pero conviene tenerlo anotado como lo que es: el archivo entero de facturas de proveedores accesible caminando números.',
-              '**`cambiarDestino` valida `aplicado` fuera de la transacción.** Es la misma familia que la carrera del saldo pero no rompe el invariante de los totales (solo mueve una etiqueta), así que quedó sin tocar. Cerrarlo es meter la lectura adentro con candado, igual que las otras tres.',
+              '**El mime del archivo subido se le cree al cliente en Gastos y en la Web.** En la bandeja de facturas ya se verifica contra los bytes reales, pero los **adjuntos de gastos** (`gasto_adjuntos`) y las **imágenes del sitio** (`web_imagenes`) siguen guardando el mime que declaró el pedido y devolviéndolo tal cual, sin `nosniff` ni `Content-Disposition`. El molde a copiar está en `facturas.module.ts` (`FIRMAS` + `mimeReal`).',
+              '**El papel de cualquier factura se baja enumerando ids** (`/api/facturas/archivos/1,2,3…`), sin verificar quién pide. Es parte del bloqueante de autenticación, pero conviene tenerlo anotado como lo que es: el archivo entero de facturas de proveedores accesible caminando números. Lo mismo con los adjuntos de gastos.',
+              '**Falta helmet (o las cabeceras a mano) en toda la API.** Se agregaron `nosniff` y `Content-Disposition` donde se sirven archivos de facturas, pero el resto de las respuestas no tiene ninguna cabecera de endurecimiento. Es una línea en `main.ts` cuando se toque el deploy.',
               '**El comprobante #14 de Bavosi parece una carga de prueba y está inflando su deuda en $1.451.980,88.** Tiene la observación "primera carga de factura", punto de venta `777-555` y **sin número**, con 40 kg + 40,8 kg + 20 kg ingresados a Distribuidora. Si fue una prueba, hay que sacarlo — y para eso hace falta el endpoint de anular (ver "Lo próximo"), porque hoy la única salida es tocar la base.',
               '**El CUIT de la empresa sigue siendo el de prueba** (`30-71555666-7`, en Sistema › Empresa). La factura real de Bavosi está a nombre del CUIT `23-35678242-9`, así que la bandeja avisa "esta factura no es nuestra" en **todas** las facturas. Cargar el CUIT real apaga el falso aviso y deja el control sirviendo para lo que es: detectar la factura que el proveedor emitió a otra razón social.',
               '**La lectura del QR desde una foto no se pudo probar end-to-end acá.** El mapeo de códigos de ARCA sí está verificado (9 casos: factura A/B/C, notas de crédito y débito, FCE MiPyME, moneda extranjera, código desconocido, QR ajeno) y el circuito completo también, con la factura real de Bavosi. Lo que falta confirmar es el **decodificado de píxeles**, porque no se pudo generar un QR válido sin internet. Con la primera foto de una factura real se sabe: si el encabezado aparece solo, anda. Dato importante del camino: **`BarcodeDetector`, la API nativa del navegador, NO existe en Chrome para Windows** — por eso el lector usa `jsQR` (JavaScript puro, nada sale de la máquina) y deja la nativa solo como camino rápido en Android.',
