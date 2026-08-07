@@ -192,7 +192,13 @@ function PasosWizard({ paso, irA }) {
   );
 }
 
-export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
+/**
+ * @param lectura  Factura que viene de la bandeja "Por procesar". Trae el
+ *   encabezado ya resuelto desde el QR del papel —tipo, letra, punto de venta,
+ *   número, fecha, CAE— y sobre todo **el total que dice la factura**, que es el
+ *   número contra el que se valida que los renglones cargados cierren.
+ */
+export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const { store, closeModal, toast, sucOperativa } = useProductos();
 
   /**
@@ -207,15 +213,29 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
   // ese proveedor — se muestra, pero no se puede cambiar.
   const provFijo = !!proveedorId;
 
-  const [tipo, setTipo] = useState(tipoInit || 'factura');
-  const [letra, setLetra] = useState('A');
-  const [puntoVenta, setPuntoVenta] = useState('0001');
-  const [numero, setNumero] = useState('');
-  const [fecha, setFecha] = useState(isoDate(new Date()));
+  /*
+   * EL ENCABEZADO NO SE TIPEA CUANDO VIENE DE LA BANDEJA. Todo esto salió del QR
+   * del papel (RG 4892), que es un JSON: es exacto, no una interpretación de la
+   * imagen. Igual queda editable — una factura hecha a mano no tiene QR.
+   */
+  const [tipo, setTipo] = useState(lectura?.tipo || tipoInit || 'factura');
+  const [letra, setLetra] = useState(lectura?.letra || 'A');
+  const [puntoVenta, setPuntoVenta] = useState(lectura?.puntoVenta || '0001');
+  const [numero, setNumero] = useState(lectura?.numero != null ? String(lectura.numero) : '');
+  const [fecha, setFecha] = useState(lectura?.fecha ? String(lectura.fecha).slice(0, 10) : isoDate(new Date()));
   const [fechaCarga, setFechaCarga] = useState(isoDate(new Date()));
   const [provId, setProvId] = useState(proveedorId || store.state.proveedores[0]?.id || '');
-  const [sucId, setSucId] = useState(sucOperativa() ?? '');
-  const [recepcion, setRecepcion] = useState(false);
+  const [sucId, setSucId] = useState(lectura?.sucursalId ?? sucOperativa() ?? '');
+  /*
+   * Desde la bandeja arranca tildado: si alguien fotografió la factura en el
+   * mostrador es porque el camión llegó con la mercadería. Sigue siendo un
+   * tilde visible, porque el caso contrario existe — la mercadería ya entró por
+   * remito y esta factura solo la documenta; ahí ingresarla otra vez duplicaría
+   * el stock.
+   */
+  const [recepcion, setRecepcion] = useState(
+    !!lectura && (lectura.tipo === 'factura' || lectura.tipo === 'remito' || !lectura.tipo),
+  );
   const [venc, setVenc] = useState('');
   const [obs, setObs] = useState('');
   // El renglón nace VACÍO: preseleccionar el primer producto del catálogo era
@@ -434,6 +454,26 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
 
   const total = tot.neto + tot.iva + percTotal;
 
+  /**
+   * ¿CIERRA CON EL PAPEL?
+   *
+   * El total del QR es el dato más útil que trae la factura: si la suma de los
+   * renglones, menos la bonificación, más el IVA, más las percepciones da ese
+   * número, la carga está DEMOSTRADA — no "parece bien", cierra.
+   *
+   * La tolerancia no es cero a propósito: el proveedor redondea cada renglón y
+   * el sistema calcula con más precisión, así que en facturas grandes queda un
+   * centavo de diferencia que no es un error. Lo que sí es un error se mide en
+   * pesos, no en centavos.
+   *
+   * OJO con lo que esto NO verifica: la plata, no las cantidades. `1 × $12.000`
+   * y `12 × $1.000` cierran igual, y el segundo mete el stock 12 veces mal.
+   */
+  const totalPapel = Number(lectura?.total) || 0;
+  const difPapel = totalPapel > 0 ? r2(total - totalPapel) : 0;
+  const tolerancia = Math.max(1, items.length * 0.05);
+  const cierraConPapel = totalPapel > 0 && Math.abs(difPapel) <= tolerancia;
+
   /* ---------------- Cuánto queda debiéndose ---------------- */
 
   /**
@@ -623,6 +663,10 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
       tipo, letra, puntoVenta, numero, fecha, fechaCarga, proveedorId: parseInt(provId, 10),
       sucursalId: sucId ? parseInt(sucId, 10) : null, condicionPago, recepcion: permiteRecepcion && recepcion,
       vencimientoPago: venc || null, observaciones: obs.trim(), items: parsed,
+      // De la bandeja: el CAE del QR y la lectura que este comprobante cierra
+      // (la API la marca como cargada en la misma transacción).
+      cae: lectura?.cae || undefined,
+      lecturaId: lectura?.id,
       // El pie del papel: el descuento general y las percepciones que vinieron.
       bonificacion: Number(bonifPct) || 0,
       bonificacionImporte: bonifImporte,
@@ -695,6 +739,28 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
         footer={footer}
       >
       <PasosWizard paso={paso} irA={setPaso} />
+
+      {/* EL PAPEL, A MANO EN LOS TRES PASOS. Es lo que se mira mientras se
+          tipean los renglones, así que el link tiene que estar siempre visible y
+          abrir en otra pestaña — no dentro del modal, donde taparía el
+          formulario que se está llenando. */}
+      {lectura?.archivos?.length > 0 && (
+        <div className={cx(s.callout)} style={{ marginBottom: 'var(--crm-space-3)' }}>
+          <strong>Esta factura vino de la bandeja.</strong> El encabezado salió del QR del papel
+          {lectura.cae && <> · CAE <span className={s.mono}>{lectura.cae}</span></>}.{' '}
+          {lectura.archivos.map((a, i) => (
+            <a
+              key={a.id}
+              href={store.urlPapelFactura(a.id)}
+              target="_blank"
+              rel="noreferrer"
+              style={{ marginRight: 10 }}
+            >
+              Ver el papel{lectura.archivos.length > 1 ? ` (${i + 1})` : ''}
+            </a>
+          ))}
+        </div>
+      )}
 
       {/* ==================== PASO 1 · DATOS DEL COMPROBANTE ==================== */}
       {paso === 1 && (
@@ -1059,6 +1125,29 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
         >
           <strong>TOTAL</strong><strong>{money(total)}</strong>
         </div>
+
+        {/* EL CONTROL QUE HACE QUE ESTO VALGA LA PENA: el total del QR contra el
+            total de lo cargado. Si cierra, los renglones están BIEN — no
+            "parecen bien". Si no cierra, falta o sobra algo y se ve cuánto. */}
+        {totalPapel > 0 && (
+          <div
+            style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--crm-color-border)',
+              color: cierraConPapel ? 'var(--crm-color-success, #15803d)' : 'var(--crm-color-danger, #b91c1c)',
+            }}
+          >
+            <span>
+              {cierraConPapel ? '✓ Coincide con el papel' : 'Total que dice el papel'}
+              <span className={s.muted} style={{ marginLeft: 6 }}>{money(totalPapel)}</span>
+            </span>
+            <strong>
+              {cierraConPapel
+                ? 'cierra'
+                : `${difPapel > 0 ? 'sobran' : 'faltan'} ${money(Math.abs(difPapel))}`}
+            </strong>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

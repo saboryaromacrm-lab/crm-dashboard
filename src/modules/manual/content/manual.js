@@ -201,8 +201,63 @@ export const MANUAL = [
         ],
       },
       {
+        id: 'facturas-por-procesar',
+        actualizado: '2026-08-07 19:40',
+        titulo: 'Facturas por procesar (subir el papel y cargarlo después)',
+        bloques: [
+          {
+            t: 'p',
+            texto: 'Separa dos cosas que hasta ahora eran una sola y no tienen por qué serlo: **recibir el papel** y **cargar la factura**. La mercadería llega el martes a la mañana con el camión; el admin carga las facturas el viernes. Entre esos dos momentos el papel se moja, se pierde o se queda en un cajón. Ahora la cajera **saca la foto cuando llega el camión** y ahí termina su trabajo: la factura queda en la bandeja, con el papel guardado, esperando que alguien la cargue.',
+          },
+          {
+            t: 'p',
+            texto: 'Ese desacople es la mayor parte del ahorro de tiempo, y no depende de ninguna magia. Lo que sí ahorra tipeo es el **QR de la factura**: toda factura electrónica argentina lo trae (RG 4892) y **es un JSON**, no una imagen para interpretar. De ahí salen CUIT del emisor, tipo, letra, punto de venta, número, fecha, **total** y CAE. Leer un QR es determinístico: o lo lee o no lo lee, no existe "lo leyó mal".',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**El proveedor se reconoce por el CUIT del papel**, no por parecido de nombre. Para que funcione, cada proveedor tiene que tener su CUIT cargado en su ficha — sin eso la factura llega a la bandeja sin proveedor y hay que elegirlo a mano (una sola vez: la próxima ya se reconoce).',
+              '**Lo que el papel NO dice, se pregunta.** Sobre todo **en qué sucursal entró la mercadería**: eso lo sabe quien la recibió y no está escrito en ninguna parte de la factura. Se propone la sucursal del que subió la foto, pero es editable.',
+              '**El detalle de renglones se carga a mano.** Argentina no tiene intercambio de factura estructurada (no hay nada como el CFDI mexicano): los ítems solo existen en el PDF del proveedor. Esa parte es la etapa que sigue.',
+              '**Del PDF no se lee el QR**, solo de las fotos: su encabezado se carga a mano. Igual se guarda el archivo.',
+              '**Una factura de varias hojas es UNA sola factura** con varias páginas: se sube la primera y las demás se agregan desde su detalle con "+ Agregar página".',
+            ],
+          },
+          {
+            t: 'p',
+            texto: 'La bandeja pinta cada factura con un **semáforo**. **Rojo frena la carga** y son siempre decisiones que el sistema no puede tomar solo: falta el proveedor, falta el número, falta la sucursal, o **la factura ya está cargada**. **Amarillo avisa** sin frenar (no se pudo leer el QR, la factura no está en pesos, falta el total del papel). Verde no se muestra: la regla es que los rojos sean pocos y verdaderos — si la bandeja pregunta quince cosas por factura, el admin tipea más rápido a mano.',
+          },
+          {
+            t: 'nota',
+            tono: 'ok',
+            texto: 'El dato más útil que trae el QR es **el total**. Al cargar los renglones, el pie compara contra ese número: si la suma de los ítems, menos la bonificación, más el IVA, más las percepciones da el total del papel, la carga está **demostrada** — no "parece bien", cierra. Y cuando falta algo, dice cuánto: probado con una factura real de Bavosi, con la bonificación cargada y sin la percepción el pie avisaba "faltan $35.128,56", que es exactamente la percepción que traía el papel.',
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: 'Ese control mira **la plata, no las cantidades**. `1 × $12.000` y `12 × $1.000` cierran idéntico, y el segundo mete el stock **doce veces mal en silencio**. Es la falla más peligrosa de todas justamente porque la factura cuadra igual, así que **el número de bultos hay que mirarlo aparte** — la tabla de impacto en precios ayuda: si el costo unitario salta por el factor del bulto, no es un aumento, es una caja cargada como unidad.',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**"Procesar"** guarda las correcciones del encabezado y abre el alta del comprobante con todo puesto (proveedor bloqueado, tipo, número, fecha, CAE) y con un link **"Ver el papel"** visible en los tres pasos: es lo que se mira mientras se tipean los renglones.',
+              '**Al confirmar, la bandeja se cierra sola** y el papel queda pegado al comprobante: se ve desde su detalle. Es lo que se busca cuando seis meses después el total no cuadra.',
+              '**Si la factura ya estaba cargada a mano**, la salida útil no es descartar el papel sino **engancharlo al comprobante que ya existe** — la bandeja ofrece el botón con el número del comprobante.',
+              '**Descartar no borra el papel**: la factura queda en la pestaña "Descartadas" y se puede recuperar.',
+              '**Se borra la página, no la factura**: si una de las hojas salió mal se quita esa; si no sirve ninguna, se descarta la factura entera.',
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'ok',
+            texto: 'De paso quedaron tapados dos agujeros que ya existían. **(1)** `comprobantes` no tenía el índice único de número que Ventas y Cobranzas sí tenían: con carga manual no molestaba porque el que cargaba se acordaba, pero con papeles entrando desde el celular el duplicado era cuestión de tiempo — y entraba dos veces al stock y a la deuda. **(2)** El punto de venta ahora se **normaliza a cuatro dígitos** en las dos puertas: el papel imprime "00115", el QR trae "115" y antes eran dos puntos de venta distintos, así que el control de duplicados no los cruzaba.',
+          },
+          { t: 'ruta', texto: 'Compras › Por procesar · el permiso es `compras.lecturas` (subir el papel lo puede hacer cualquiera con la sección; confirmar la factura sigue siendo del admin)' },
+        ],
+      },
+      {
         id: 'carga-factura',
-        actualizado: '2026-08-07 12:15',
+        actualizado: '2026-08-07 19:40',
         titulo: 'Cargar la factura: asistente en tres pasos',
         bloques: [
           {
@@ -249,7 +304,13 @@ export const MANUAL = [
               '**El IVA se calcula sobre el neto YA bonificado**, y renglón por renglón: con dos alícuotas distintas en la misma factura (21% y 10,5%), prorratear el IVA total daría un número que no cierra con el libro.',
               '**Las percepciones se configuran una vez por proveedor** y el botón "+ Percepciones" abre la lista para **tildar la que vino** — nunca se aplican solas, porque el mismo proveedor a veces las trae y a veces no. El importe se sugiere con la alícuota y se puede corregir al del papel. Si el proveedor no tiene ninguna configurada, el botón queda deshabilitado y avisa dónde cargarlas.',
               '**Las percepciones NO son IVA**: son pago a cuenta de otro impuesto (IVA RG 5329, Ingresos Brutos), se declaran por separado y **no van al crédito fiscal**. Están en el total porque hay que pagárselas al proveedor. Cada una queda guardada en el comprobante con su nombre y alícuota **copiados**: si mañana cambia la alícuota del proveedor, la factura del año pasado sigue explicando su propio total.',
+              '**Cada línea del pie se puede cambiar y quitar**: al lado de la bonificación y de cada percepción aplicada hay un "cambiar" (vuelve a abrir su modal) y una **×** que la saca. Quitar la bonificación recalcula las percepciones solas, porque su base cambió.',
             ],
+          },
+          {
+            t: 'nota',
+            tono: 'ok',
+            texto: 'Si la factura entró por la bandeja **"Por procesar"**, el pie agrega una línea más: **el total que dice el papel**, con la diferencia en vivo. Cuando cierra dice "✓ Coincide con el papel"; cuando no, dice si faltan o sobran y cuánto. La tolerancia no es cero a propósito — el proveedor redondea cada renglón y en facturas grandes queda un centavo que no es un error; lo que sí es un error se mide en pesos.',
           },
           { t: 'ruta', texto: 'Compras › Facturación › + Nuevo comprobante · las percepciones se configuran en Compras › Proveedores › (abrir uno) › Percepciones' },
         ],
@@ -1751,7 +1812,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-07 11:30',
+        actualizado: '2026-08-07 19:40',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -1762,6 +1823,8 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**7/8/2026**', '**Facturas por procesar: subir el papel ahora y cargarlo después** (Compras › Por procesar, permiso `compras.lecturas`). La cajera fotografía la factura cuando llega el camión y el admin la procesa cuando puede — ese desacople es la mayor parte del ahorro, y no depende de ninguna magia. Lo que sí ahorra tipeo es el **QR de la RG 4892**: es un JSON, no una imagen para interpretar, y de ahí salen proveedor (por CUIT, exacto), tipo, letra, punto de venta, número, fecha, **total** y CAE. El total del papel se usa como **control**: el pie del alta compara en vivo y avisa si cierra o cuánto falta. El papel queda guardado y pegado al comprobante. Semáforo en la bandeja: rojo frena (falta proveedor / número / sucursal, o ya está cargada), amarillo avisa. **Lo que NO hace todavía**: leer los renglones — eso es la etapa siguiente. Guía nueva: Formato de Compra › "Facturas por procesar"'],
+              ['**7/8/2026**', '**Tres agujeros que la bandeja destapó y quedaron tapados.** (1) `comprobantes` **no tenía índice único de número** (Ventas y Cobranzas sí): con carga manual no molestaba, con papeles entrando del celular el duplicado era cuestión de tiempo — y entraba dos veces al stock y a la deuda. (2) El **punto de venta se normaliza a cuatro dígitos** en las dos puertas: el papel imprime "00115" y el QR trae "115", así que antes eran dos puntos de venta distintos y el control de duplicados no los cruzaba. (3) Una **nota de crédito con recepción ahora descuenta stock**: la deuda ya se ajustaba pero la mercadería devuelta quedaba en el depósito. No se hizo automático por tipo porque una NC no siempre es devolución (también ajusta un precio mal facturado): lo decide el tilde de recepción'],
               ['**7/8/2026**', '**El pie de la factura de compra: bonificación y percepciones.** Faltaban las dos y el total del sistema no cerraba con el del proveedor. Ahora el paso 2 replica el papel (subtotal → bonificación → neto → IVA → percepciones → TOTAL), el IVA se calcula sobre el neto ya bonificado y renglón por renglón (para que cierre con dos alícuotas), y las **percepciones se configuran por proveedor** (nueva pestaña en su ficha) y se **tildan** al cargar la factura porque no siempre vienen. Probado contra una factura real de Bavosi: el pie coincide al centavo salvo 1 centavo del redondeo que el proveedor hace por renglón'],
               ['**7/8/2026**', '**Botón "Importar catálogo"** en Compras › Productos: el alta masiva de un proveedor ahora se hace desde el sistema, sin pedirla. Tres pasos —archivos, proveedor y listas, **vista previa**— y la escritura es **una sola transacción** (todo o nada) e **idempotente** por código interno. Traduce lo mismo que la primera importación a mano: los fraccionados entran como presentaciones, el costo sale del formato de compra (el del maestro trae IVA adentro), el markup por paquete se convierte en recargo y el rubro se deduce del nombre. La vista previa es obligatoria y separa los cambios de precio chicos de los **grandes**, que son los que delatan un costo podrido en el archivo. Guía nueva: Formato de Compra › "Importar el catálogo de un proveedor"'],
               ['**7/8/2026**', '**Catálogo de Bavosi importado**: 94 productos (50 a granel + 44 envasados), 73 presentaciones, 94 formatos de compra con sus descuentos en cascada y flete, y 157 formatos de venta (Mostrador y Mayorista). 131 de los 157 precios quedaron **exactos** a los del sistema viejo; **26 se movieron** porque manda el costo real. **24 de esos 26 hay que revisarlos contra la factura** (ver "Cosas a revisar"): en el sistema viejo el costo de la madre y el del fraccionado no coincidían. Script: `crm-api/scripts/importar-bavosi.js` (dry-run por defecto, idempotente por código interno)'],
@@ -1783,13 +1846,17 @@ export const MANUAL = [
       },
       {
         id: 'proximo',
-        actualizado: '2026-08-06 20:00',
+        actualizado: '2026-08-07 19:40',
         titulo: 'Lo próximo',
         bloques: [
           {
             t: 'tabla',
             cols: ['Qué', 'Por qué importa'],
             filas: [
+              ['**Leer los RENGLONES de la factura** (la etapa que sigue de la bandeja)', 'El encabezado ya sale del QR, exacto. Los ítems solo existen en el PDF del proveedor, así que hay que interpretar imagen — y eso exige **decidir si la factura sale de la máquina**: un modelo de visión acierta con cualquier formato pero el papel viaja a un servicio externo (centavos por factura); la alternativa offline es más frágil. Tercer camino, a veces el mejor: **pedirle el detalle en archivo al proveedor** (Bavosi ya pasó su catálogo en CSV). Cuando se haga, hacen falta dos guardas: **(1)** que el diccionario de códigos del proveedor aprenda de cada confirmación (`producto_proveedores.codigoProveedor` ya existe) para que la segunda factura salga casi sola, y **(2)** un control de **cantidad** aparte del de plata, porque el total cierra igual si una caja de 12 se carga como 1 unidad'],
+              ['**Renglones que NO son mercadería** (flete, envases retornables, redondeo)', 'Las facturas los traen y hoy **no se pueden guardar**: `comprobante_items.productoId` es obligatorio. Sin resolverlo, cada factura con flete no cierra contra el total del papel. Decisión de diseño pendiente: un flag de "concepto no inventariable" en el ítem (más honesto) o productos de servicio designados'],
+              ['**Conciliar con "Mis Comprobantes" de ARCA**', 'ARCA deja bajar en CSV todas las facturas que cualquier proveedor emitió contra el CUIT de la empresa. Sirve para **encontrar facturas que existen y nunca se cargaron** — cada una es crédito fiscal de IVA no computado y deuda que no figura en la cuenta del proveedor. Es el mismo patrón de "subir un archivo y previsualizar" que ya está construido dos veces'],
+              ['**CUIT de los proveedores y de la empresa**', 'El reconocimiento automático de la bandeja va **por CUIT**: los proveedores que no lo tengan cargado llegan sin proveedor y hay que elegirlo a mano. Y el CUIT de la empresa (Sistema › Empresa) todavía es el de prueba `30-71555666-7`: mientras siga así, **toda factura va a mostrar el aviso "no es nuestra"**, que es peor que no avisar — entrena a ignorar los avisos'],
               ['**Sesiones con token — BLOQUEANTE del deploy**', 'El login ya valida contraseña, pero la API sigue abierta: cualquiera que la alcance puede llamar cualquier endpoint. En la red local no duele; al publicar el sitio, la API queda en internet y esto pasa a ser **condición previa**: solo los 4 endpoints públicos de la tienda (catálogo, pedidos, eventos, imágenes) pueden quedar sin token — todo el resto tiene que exigir sesión autenticada ANTES de apuntar el dominio'],
               ['**Anular un comprobante de compra**', 'No hay endpoint todavía. Cuando se haga, tiene que **liberar las imputaciones**: los pagos tomados vuelven a la bandeja con su saldo — anular por arriba dejaría plata aplicada a un documento que ya no existe'],
               ['**Cafetería, fases 2 y 3 (lado coffit)**', 'La fase 1 ya funciona (Almacén › Cafetería, ver su guía). Falta el **importador de remitos en coffit** (fase 2, por archivo, sin API) y la **conexión directa** (fase 3: token con permisos acotados — activa el bloqueante de auth — más el endpoint de confirmación de recepción en el CRM, que le da dueño formal a la merma del viaje)'],
@@ -1810,12 +1877,15 @@ export const MANUAL = [
       },
       {
         id: 'aflojar',
-        actualizado: '2026-08-07 09:30',
+        actualizado: '2026-08-07 19:40',
         titulo: 'Cosas a revisar',
         bloques: [
           {
             t: 'lista',
             items: [
+              '**El comprobante #14 de Bavosi parece una carga de prueba y está inflando su deuda en $1.451.980,88.** Tiene la observación "primera carga de factura", punto de venta `777-555` y **sin número**, con 40 kg + 40,8 kg + 20 kg ingresados a Distribuidora. Si fue una prueba, hay que sacarlo — y para eso hace falta el endpoint de anular (ver "Lo próximo"), porque hoy la única salida es tocar la base.',
+              '**El CUIT de la empresa sigue siendo el de prueba** (`30-71555666-7`, en Sistema › Empresa). La factura real de Bavosi está a nombre del CUIT `23-35678242-9`, así que la bandeja avisa "esta factura no es nuestra" en **todas** las facturas. Cargar el CUIT real apaga el falso aviso y deja el control sirviendo para lo que es: detectar la factura que el proveedor emitió a otra razón social.',
+              '**La lectura del QR desde una foto no se pudo probar end-to-end acá.** El mapeo de códigos de ARCA sí está verificado (9 casos: factura A/B/C, notas de crédito y débito, FCE MiPyME, moneda extranjera, código desconocido, QR ajeno) y el circuito completo también, con la factura real de Bavosi. Lo que falta confirmar es el **decodificado de píxeles**, porque no se pudo generar un QR válido sin internet. Con la primera foto de una factura real se sabe: si el encabezado aparece solo, anda. Dato importante del camino: **`BarcodeDetector`, la API nativa del navegador, NO existe en Chrome para Windows** — por eso el lector usa `jsQR` (JavaScript puro, nada sale de la máquina) y deja la nativa solo como camino rápido en Android.',
               '**Alta masiva de formato de venta.** Cambiar markups en tanda ya está («Actualizar márgenes» sobre los filtrados, con selección por fila). Lo que falta es el ALTA masiva: habilitar una lista que el producto no tiene (tipo "poner Mayorista 1 al 30% en toda la categoría X") sin entrar producto por producto.',
               '**El código propio no se autogenera todavía.** Está el campo y la unicidad, falta el botón "crear un código" correlativo.',
               '**Alícuotas de IVA por producto sin validar contra ARCA.** Hoy es una lista cerrada nuestra; cuando entre la facturación hay que cruzarla.',

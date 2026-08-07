@@ -13,6 +13,7 @@ import {
 } from './modals/PagosSucursalModals.jsx';
 import { EnvioCafeteriaFormModal, EnvioCafeteriaDetalleModal } from './modals/CafeteriaModals.jsx';
 import { ImportarCatalogoModal } from './modals/ImportarCatalogoModal.jsx';
+import { LecturaFacturaModal } from './modals/LecturaFacturaModal.jsx';
 import { HistorialPreciosModal, MargenesMasivosModal } from './modals/PreciosModals.jsx';
 
 /* Confirmación genérica reutilizable. */
@@ -83,6 +84,7 @@ const REGISTRY = {
   detalleProveedor: DetalleProveedorModal,
   eliminarProveedor: EliminarProveedorModal,
   comprobanteForm: ComprobanteFormModal,
+  lecturaFactura: LecturaFacturaModal,
   comprobanteDetalle: ComprobanteDetalleModal,
   tomarPagosComprobante: TomarPagosComprobanteModal,
   pagoSucursalDetalle: PagoSucursalDetalleModal,

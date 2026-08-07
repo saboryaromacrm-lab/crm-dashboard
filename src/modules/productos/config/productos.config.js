@@ -14,6 +14,7 @@ import Inventory2Icon from '@mui/icons-material/Inventory2';
 import SellIcon from '@mui/icons-material/Sell';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import DocumentScannerIcon from '@mui/icons-material/DocumentScanner';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
@@ -37,6 +38,7 @@ export const COMPRAS_PANELS = [
   { id: 'productos',      label: 'Productos',      icon: Inventory2Icon,     permiso: 'compras.productos' },
   { id: 'catalogos',      label: 'Catálogos',      icon: SellIcon,           permiso: 'compras.catalogos' },
   { id: 'proveedores',    label: 'Proveedores',    icon: LocalShippingIcon,  permiso: 'compras.proveedores' },
+  { id: 'lecturas',       label: 'Por procesar',   icon: DocumentScannerIcon, permiso: 'compras.lecturas', badge: 'lecturas' },
   { id: 'facturacion',    label: 'Facturación',    icon: ReceiptLongIcon,    permiso: 'compras.facturacion' },
   { id: 'historial',      label: 'Historial',      icon: HistoryIcon,        permiso: 'compras.historial' },
 ];

@@ -13,6 +13,7 @@ import { ProductosPanel } from '../panels/ProductosPanel.jsx';
 import { CatalogosPanel } from '../panels/CatalogosPanel.jsx';
 import { ProveedoresPanel } from '../panels/ProveedoresPanel.jsx';
 import { FacturacionPanel } from '../panels/FacturacionPanel.jsx';
+import { LecturasPanel } from '../panels/LecturasPanel.jsx';
 import { ExistenciasPanel } from '../panels/ExistenciasPanel.jsx';
 import { FraccionamientoPanel } from '../panels/FraccionamientoPanel.jsx';
 import { HistorialPanel } from '../panels/HistorialPanel.jsx';
@@ -27,6 +28,7 @@ const PANEL_COMPONENTS = {
   productos: ProductosPanel,
   catalogos: CatalogosPanel,
   proveedores: ProveedoresPanel,
+  lecturas: LecturasPanel,
   facturacion: FacturacionPanel,
   existencias: ExistenciasPanel,
   fraccionamiento: FraccionamientoPanel,
@@ -50,6 +52,9 @@ export function InventoryShell({ title, subtitle }) {
   const counts = {
     incidencias: store.incidenciasAbiertas().length,
     transferencias: store.transferenciasPendientes().length,
+    // Facturas de papel esperando que alguien las cargue: sin el aviso, el papel
+    // se queda en la bandeja como se quedaba en el cajón.
+    lecturas: store.state.lecturasPendientes || 0,
   };
 
   // Solo se renderiza lo PERMITIDO: si el panel pedido no está en el menú del

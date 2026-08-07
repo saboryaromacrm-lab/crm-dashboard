@@ -13,6 +13,7 @@
  * localStorage — no hay auth todavía.
  */
 import { httpClient, HttpError } from '@core/services/httpClient.js';
+import { appConfig } from '@core/config/app.config.js';
 import { leerClave, escribirClave, leerSesion } from '@core/auth/sesion.js';
 import { num, fmtTam } from '../domain/format.js';
 
@@ -55,6 +56,9 @@ function nuevoEstado() {
     // chicos y estables: viajan enteros en el bootstrap y los desplegables del
     // modal filtran en memoria, sin una llamada por tecla.
     catalogos: { marcas: [], categorias: [], subcategorias: [], etiquetas: [] },
+    // Cuántas facturas de papel esperan que alguien las cargue (para el globito
+    // del menú). Es solo el número: la bandeja la pide su panel.
+    lecturasPendientes: 0,
     ctx: _loadCtx(),
   };
 }
@@ -347,6 +351,7 @@ function mergeState(data) {
     ...t, items: (t.items || []).map((it) => ({ ...it, presId: it.presentacionId ?? null })),
   }));
   state.incidencias = (data.incidencias || []).map((i) => ({ ...i, presId: i.presentacionId ?? null }));
+  state.lecturasPendientes = Number(data.lecturasPendientes) || 0;
 }
 
 /* ================== SECCIONES PEREZOSAS ==================
@@ -538,6 +543,14 @@ function _cleanComprobante(o) {
     condicionPago: o.condicionPago, recepcion: !!o.recepcion,
     vencimientoPago: _fechaLocal(o.vencimientoPago), observaciones: o.observaciones || '',
     /*
+     * De la bandeja de facturas subidas: el CAE que salió del QR y la lectura
+     * que este comprobante viene a cerrar. Sin `lecturaId` acá, el papel se
+     * cargaba pero la bandeja se quedaba con la factura marcada como pendiente
+     * para siempre (la lista de abajo ya se tragó cuatro campos por lo mismo).
+     */
+    cae: o.cae || undefined,
+    lecturaId: o.lecturaId != null && o.lecturaId !== '' ? Number(o.lecturaId) : undefined,
+    /*
      * EL PIE DE LA FACTURA. El descuento general y las percepciones que trajo el
      * papel: sin estos campos acá se perdían en silencio y el total del sistema
      * quedaba distinto del de la factura (esta función ya se tragó
@@ -637,6 +650,37 @@ const crearEnvioCafeteria = (o) => _mutate(() => httpClient.post('/cafeteria/env
 const avanzarEnvioCafeteria = (id, desde) => _mutate(() => httpClient.post(`/cafeteria/envios/${id}/avanzar`, { desde, usuarioId: state.ctx.usuarioId ?? undefined }));
 const anularEnvioCafeteria = (id, motivo) => _mutate(() => httpClient.post(`/cafeteria/envios/${id}/anular`, { motivo, usuarioId: state.ctx.usuarioId ?? undefined }));
 
+/* ---- Facturas por procesar (la bandeja de papeles subidos) ----
+ *
+ * Lecturas directas, sin pasar por el snapshot del store: la bandeja crece y se
+ * filtra, y el panel la pide con su filtro. Lo único que viaja en el bootstrap
+ * es el CONTADOR de pendientes, para el globito del menú.
+ *
+ * Las mutaciones tampoco pasan por `_mutate`: subir o descartar un papel no
+ * cambia nada del inventario, así que refrescar el store entero sería tirar
+ * abajo el catálogo por nada. El que sí lo hace es `crearComprobante`, y ahí el
+ * `lecturaId` cierra la bandeja del lado de la API.
+ */
+const lecturasFactura = (estado) => httpClient.get('/facturas/lecturas' + (estado ? `?estado=${estado}` : ''));
+const lecturaFactura = (id) => httpClient.get('/facturas/lecturas/' + id);
+const subirFactura = (o) => httpClient.post('/facturas/lecturas', {
+  usuarioId: state.ctx.usuarioId ?? undefined,
+  // La sucursal del que sube es la MEJOR PISTA de dónde entró la mercadería —
+  // la cajera de Express 2 fotografía lo que recibió Express 2— pero sigue
+  // siendo editable: el papel no dice la sucursal y nadie puede adivinarla.
+  sucursalId: state.ctx.sucursalId ?? undefined,
+  ...o,
+});
+const agregarPaginaFactura = (id, archivo) => httpClient.post(`/facturas/lecturas/${id}/archivos`, archivo);
+const borrarPaginaFactura = (archivoId) => httpClient.delete('/facturas/archivos/' + archivoId);
+const guardarLecturaFactura = (id, patch) => httpClient.put('/facturas/lecturas/' + id, patch);
+const descartarLecturaFactura = (id, motivo) => httpClient.post(`/facturas/lecturas/${id}/descartar`, { motivo });
+const recuperarLecturaFactura = (id) => httpClient.post(`/facturas/lecturas/${id}/recuperar`, {});
+/** "Esta factura ya la había cargado a mano": engancha el papel al comprobante. */
+const vincularLecturaFactura = (id, comprobanteId) => _mutate(() => httpClient.post(`/facturas/lecturas/${id}/vincular`, { comprobanteId }));
+/** URL directa del papel: va en un <img src> o se abre en una pestaña. */
+const urlPapelFactura = (archivoId) => `${appConfig.api.baseUrl}/facturas/archivos/${archivoId}`;
+
 /* ---- Costos y márgenes ----
  * La previsualización se calcula en el navegador (el store ya tiene costos y
  * márgenes), así que acá solo viajan los cambios aprobados. `historial` es
@@ -675,6 +719,9 @@ export const inventoryStore = {
   costoNeto, costoNetoEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPresentacion,
   precioFinal, redondearPrecio,
   crearComprobante, getComprobante, comprobantesDe, cuentaProveedor,
+  lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
+  guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
+  urlPapelFactura,
   pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
   enviosCafeteria, envioCafeteria, resumenCafeteria, crearEnvioCafeteria, avanzarEnvioCafeteria, anularEnvioCafeteria,
   imputarPago, quitarImputacionPago, anularPago, moverDestinoPago,
