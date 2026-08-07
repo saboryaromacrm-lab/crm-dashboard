@@ -202,7 +202,7 @@ export const MANUAL = [
       },
       {
         id: 'carga-factura',
-        actualizado: '2026-08-07 11:30',
+        actualizado: '2026-08-07 12:15',
         titulo: 'Cargar la factura: asistente en tres pasos',
         bloques: [
           {
@@ -240,14 +240,14 @@ export const MANUAL = [
           },
           {
             t: 'p',
-            texto: '**El pie de la factura** (abajo del paso 2) replica el papel en su orden, para poder cuadrar de reojo: **subtotal de los ítems → bonificación → neto gravado → IVA → percepciones → TOTAL**. Si el total del sistema coincide con el de la factura, la carga está bien; si no, algo falta.',
+            texto: '**El pie de la factura** (abajo del paso 2) replica el papel en su orden, para poder cuadrar de reojo: **subtotal de los ítems → bonificación → neto gravado → IVA → percepciones → TOTAL**. Si el total del sistema coincide con el de la factura, la carga está bien; si no, algo falta. El pie muestra **solo lo que esta factura trajo**: la bonificación y las percepciones se agregan con los botones **"+ Bonificación"** y **"+ Percepciones"**, porque la mayoría de las facturas no traen ninguna de las dos y no tienen por qué ocupar el formulario.',
           },
           {
             t: 'lista',
             items: [
-              '**La bonificación es el descuento GENERAL del pie** ("Bonif. 21,38 %"), aparte de los `Desc%` de cada renglón. Se carga el porcentaje y el importe se calcula solo, pero se puede corregir: el proveedor redondea a su manera y el que manda es el papel.',
+              '**La bonificación es el descuento GENERAL del pie** ("Bonif. 21,38 %"), aparte de los `Desc%` de cada renglón. Se carga en su botón: se escribe el porcentaje, el importe se calcula solo y se puede corregir — el proveedor redondea a su manera y el que manda es el papel. Una vez cargada, el pie la muestra con un "cambiar" al lado y el botón pasa a decir "Editar bonificación".',
               '**El IVA se calcula sobre el neto YA bonificado**, y renglón por renglón: con dos alícuotas distintas en la misma factura (21% y 10,5%), prorratear el IVA total daría un número que no cierra con el libro.',
-              '**Las percepciones se configuran una vez por proveedor** y al cargar la factura aparecen para **tildar la que vino** — nunca se aplican solas, porque el mismo proveedor a veces las trae y a veces no. El importe se sugiere con la alícuota y se puede corregir al del papel.',
+              '**Las percepciones se configuran una vez por proveedor** y el botón "+ Percepciones" abre la lista para **tildar la que vino** — nunca se aplican solas, porque el mismo proveedor a veces las trae y a veces no. El importe se sugiere con la alícuota y se puede corregir al del papel. Si el proveedor no tiene ninguna configurada, el botón queda deshabilitado y avisa dónde cargarlas.',
               '**Las percepciones NO son IVA**: son pago a cuenta de otro impuesto (IVA RG 5329, Ingresos Brutos), se declaran por separado y **no van al crédito fiscal**. Están en el total porque hay que pagárselas al proveedor. Cada una queda guardada en el comprobante con su nombre y alícuota **copiados**: si mañana cambia la alícuota del proveedor, la factura del año pasado sigue explicando su propio total.',
             ],
           },

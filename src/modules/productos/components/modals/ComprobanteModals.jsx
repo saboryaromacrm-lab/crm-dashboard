@@ -419,7 +419,9 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
     return { ...p, calc, importe: p.importeManual != null ? p.importeManual : calc };
   });
   const percTotal = percCalculadas.reduce((a, p) => a + (p.aplicar ? p.importe : 0), 0);
-  const setPerc = (i, patch) => setPercepciones((r) => r.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  const percAplicadas = percCalculadas.filter((p) => p.aplicar).length;
+  /** Cuál de los dos modales chicos del pie está abierto: null | 'bonificacion' | 'percepciones'. */
+  const [modalPie, setModalPie] = useState(null);
 
   const total = tot.neto + tot.iva + percTotal;
 
@@ -985,86 +987,24 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
       {/* ==================== EL PIE DE LA FACTURA ====================
           Mismo orden que el papel, para poder cuadrar mirando de reojo:
           subtotal → bonificación → neto → IVA → percepciones → TOTAL. */}
-      <div className={s['section-title']}>Pie de la factura</div>
-      <div className={s.hint} style={{ marginTop: 0 }}>
-        La <strong>bonificación</strong> es el descuento general que el proveedor pone al pie,
-        además de los de cada renglón. Las <strong>percepciones</strong> son las que tenga
-        configuradas — se tildan las que trajo <em>esta</em> factura.
-      </div>
-
-      <div className={s['form-grid']}>
-        <div className={s.field}>
-          <label>Bonificación %</label>
-          <input
-            type="number" min="0" max="99.99" step="any"
-            placeholder="0"
-            value={bonifPct}
-            onChange={(e) => { setBonifPct(e.target.value); setBonifManual(null); }}
-          />
-        </div>
-        <div className={s.field}>
-          <label>Importe de la bonificación</label>
-          <input
-            type="number" min="0" step="any"
-            placeholder={money(bonifCalc)}
-            value={bonifManual != null ? bonifManual : (bonifPct ? r2(bonifCalc) : '')}
-            onChange={(e) => setBonifManual(e.target.value === '' ? null : Number(e.target.value) || 0)}
-          />
-          <div className={s.hint} style={{ margin: '6px 0 0' }}>
-            Se calcula solo; corregilo si el papel dice otro número (el proveedor redondea a su modo).
-          </div>
-        </div>
-      </div>
-
-      {percepciones.length > 0 ? (
-        <Table
-          cols={[{ h: 'Vino' }, { h: 'Percepción' }, { h: 'Alícuota', num: true }, { h: 'Importe', num: true }]}
-        >
-          {percCalculadas.map((p, i) => (
-            <tr key={p.id ?? i}>
-              <td style={{ width: 60 }}>
-                <input
-                  type="checkbox"
-                  checked={p.aplicar}
-                  aria-label={`Aplicar ${p.nombre}`}
-                  onChange={(e) => setPerc(i, { aplicar: e.target.checked })}
-                />
-              </td>
-              <td>
-                {p.nombre}
-                <div className={s.hint} style={{ margin: 0 }}>
-                  sobre {p.base === 'total' ? 'el total con IVA' : 'el neto gravado'}
-                </div>
-              </td>
-              <td className={s.num}>{num(p.alicuota, 2)}%</td>
-              <td className={s.num}>
-                {p.aplicar ? (
-                  <input
-                    type="number" min="0" step="any" style={{ maxWidth: 140 }}
-                    value={p.importeManual != null ? p.importeManual : r2(p.calc)}
-                    onChange={(e) => setPerc(i, { importeManual: e.target.value === '' ? null : Number(e.target.value) || 0 })}
-                  />
-                ) : <span className={s.muted}>{money(p.calc)}</span>}
-              </td>
-            </tr>
-          ))}
-        </Table>
-      ) : (
-        <div className={s.hint}>
-          {provElegido?.nombre || 'Este proveedor'} no tiene percepciones configuradas. Si sus
-          facturas traen alguna, se cargan una vez en su ficha (Proveedores › abrir el proveedor ›
-          Percepciones) y desde ahí aparecen acá.
-        </div>
-      )}
-
-      {/* La cuenta completa, como se lee en el papel. */}
+      {/* El pie muestra SOLO lo que la factura trajo; el resto se agrega con
+          los botones de abajo. La mayoría de las facturas no traen ninguna de
+          las dos cosas y no tienen por qué ocupar el formulario. */}
       <div className={cx(s.callout, s.ok)}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span>Subtotal de los ítems</span><strong>{money(bruto)}</strong>
         </div>
         {bonifImporte > 0.009 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--crm-color-success)' }}>
-            <span>Bonificación {bonifPct ? `${num(Number(bonifPct), 2)}%` : ''}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--crm-color-success)' }}>
+            <span>
+              Bonificación {bonifPct ? `${num(Number(bonifPct), 2)}%` : ''}
+              <button
+                type="button" className={s.linkBtn} tabIndex={-1} style={{ marginLeft: 8 }}
+                onClick={() => setModalPie('bonificacion')}
+              >
+                cambiar
+              </button>
+            </span>
             <strong>− {money(bonifImporte)}</strong>
           </div>
         )}
@@ -1076,7 +1016,8 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
         </div>
         {percCalculadas.filter((p) => p.aplicar).map((p, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>{p.nombre}</span><strong>{money(p.importe)}</strong>
+            <span>{p.nombre} <span className={s.muted}>· {num(p.alicuota, 2)}%</span></span>
+            <strong>{money(p.importe)}</strong>
           </div>
         ))}
         <div
@@ -1087,6 +1028,33 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
         >
           <strong>TOTAL</strong><strong>{money(total)}</strong>
         </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          className={cx(s.btn, s['btn-ghost'], s['btn-sm'])}
+          onClick={() => setModalPie('bonificacion')}
+        >
+          {bonifImporte > 0.009 ? 'Editar bonificación' : '+ Bonificación'}
+        </button>
+        <button
+          type="button"
+          className={cx(s.btn, s['btn-ghost'], s['btn-sm'])}
+          disabled={!percepciones.length}
+          title={percepciones.length
+            ? 'Tildar las percepciones que trajo esta factura'
+            : `${provElegido?.nombre || 'Este proveedor'} no tiene percepciones configuradas (se cargan en su ficha)`}
+          onClick={() => setModalPie('percepciones')}
+        >
+          {percAplicadas > 0 ? `Percepciones (${percAplicadas})` : '+ Percepciones'}
+        </button>
+        {!percepciones.length && (
+          <span className={s.hint} style={{ margin: 0, alignSelf: 'center' }}>
+            Las percepciones de un proveedor se cargan una vez en su ficha (Proveedores › abrirlo ›
+            Percepciones) y desde ahí aparecen acá.
+          </span>
+        )}
       </div>
       </>
       )}
@@ -1296,12 +1264,168 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit }) {
           onClose={() => setBusquedaLote(false)}
         />
       )}
+
+      {/* Los dos del pie, encima del formulario, que sigue vivo con lo cargado. */}
+      {modalPie === 'bonificacion' && (
+        <BonificacionModal
+          bruto={bruto}
+          pct={bonifPct}
+          importeManual={bonifManual}
+          onAplicar={(p, imp) => {
+            setBonifPct(p);
+            setBonifManual(imp === null || imp === '' ? null : Number(imp) || 0);
+            setModalPie(null);
+          }}
+          onQuitar={() => { setBonifPct(''); setBonifManual(null); setModalPie(null); }}
+          onClose={() => setModalPie(null)}
+        />
+      )}
+      {modalPie === 'percepciones' && (
+        <PercepcionesModal
+          proveedorNombre={provElegido?.nombre || 'este proveedor'}
+          filas={percCalculadas}
+          onAplicar={(filas) => {
+            setPercepciones(filas.map((p) => ({
+              ...p,
+              importeManual: p.importeManual === null || p.importeManual === ''
+                ? null
+                : Number(p.importeManual) || 0,
+            })));
+            setModalPie(null);
+          }}
+          onClose={() => setModalPie(null)}
+        />
+      )}
     </>
   );
 }
 
 function nuevoItem() {
   return { productoId: '', bultos: '1', porBulto: '', costoBulto: '', descuento: '0', iva: '21', costoAuto: true };
+}
+
+/* ==================================================================== *
+ * Pie de la factura: los dos modales chicos
+ * ==================================================================== *
+ * La bonificación y las percepciones son la EXCEPCIÓN, no la regla: la mayoría
+ * de las facturas no traen ninguna. Por eso no viven ocupando el formulario —
+ * se agregan con un botón y el pie muestra solo lo que de verdad vino.
+ */
+
+/** El descuento general del pie. El % es lo que dice el papel; el importe manda. */
+function BonificacionModal({ bruto, pct, importeManual, onAplicar, onQuitar, onClose }) {
+  const [p, setP] = useState(pct ?? '');
+  const [imp, setImp] = useState(importeManual);
+  const calc = r2(bruto * (Number(p) || 0) / 100);
+  const importe = Math.min(imp != null ? Number(imp) || 0 : calc, r2(bruto));
+  const hay = (Number(pct) || 0) > 0 || (importeManual ?? 0) > 0;
+
+  return (
+    <ModalShell
+      title="Bonificación de la factura"
+      subtitle="El descuento general del pie, aparte de los de cada renglón"
+      onClose={onClose}
+      footer={[
+        ...(hay ? [{ texto: 'Quitar', clase: 'btn-delete', onClick: onQuitar }] : []),
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: onClose },
+        { texto: 'Aplicar', clase: 'btn-primary', onClick: () => onAplicar(p, imp) },
+      ]}
+    >
+      <div className={s['form-grid']}>
+        <div className={s.field}>
+          <label>Bonificación %</label>
+          <input
+            type="number" min="0" max="99.99" step="any" autoFocus
+            placeholder="0"
+            value={p}
+            onChange={(e) => { setP(e.target.value); setImp(null); }}
+          />
+        </div>
+        <div className={s.field}>
+          <label>Importe</label>
+          <input
+            type="number" min="0" step="any"
+            placeholder={money(calc)}
+            value={imp != null ? imp : (p ? r2(calc) : '')}
+            onChange={(e) => setImp(e.target.value === '' ? null : e.target.value)}
+          />
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            Se calcula solo; corregilo si el papel dice otro número — el proveedor
+            redondea a su modo y el total tiene que dar igual.
+          </div>
+        </div>
+      </div>
+      <div className={cx(s.callout, s.ok)} style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <span>Subtotal {money(bruto)} − bonificación</span>
+        <strong>{money(r2(bruto) - importe)}</strong>
+      </div>
+    </ModalShell>
+  );
+}
+
+/**
+ * Las percepciones del proveedor, para tildar las que trajo ESTA factura. Acá
+ * el check tiene sentido: son una lista corta y conocida, y la pregunta es
+ * "¿cuál de estas vino?".
+ */
+function PercepcionesModal({ proveedorNombre, filas, onAplicar, onClose }) {
+  const [borrador, setBorrador] = useState(filas);
+  const set = (i, patch) => setBorrador((r) => r.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  const total = borrador.reduce(
+    (a, p) => a + (p.aplicar ? (p.importeManual != null ? Number(p.importeManual) || 0 : p.calc) : 0),
+    0,
+  );
+
+  return (
+    <ModalShell
+      title="Percepciones de la factura"
+      subtitle={`Las que ${proveedorNombre} tiene configuradas — tildá la que vino`}
+      wide
+      onClose={onClose}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: onClose },
+        { texto: 'Aplicar', clase: 'btn-primary', onClick: () => onAplicar(borrador) },
+      ]}
+    >
+      <Table cols={[{ h: 'Vino' }, { h: 'Percepción' }, { h: 'Alícuota', num: true }, { h: 'Importe', num: true }]}>
+        {borrador.map((p, i) => (
+          <tr key={p.id ?? i}>
+            <td style={{ width: 60 }}>
+              <input
+                type="checkbox"
+                checked={p.aplicar}
+                aria-label={`Aplicar ${p.nombre}`}
+                onChange={(e) => set(i, { aplicar: e.target.checked })}
+              />
+            </td>
+            <td>
+              {p.nombre}
+              <div className={s.hint} style={{ margin: 0 }}>
+                sobre {p.base === 'total' ? 'el total con IVA' : 'el neto gravado'}
+              </div>
+            </td>
+            <td className={s.num}>{num(p.alicuota, 2)}%</td>
+            <td className={s.num}>
+              {p.aplicar ? (
+                <input
+                  type="number" min="0" step="any" style={{ maxWidth: 140 }}
+                  value={p.importeManual != null ? p.importeManual : r2(p.calc)}
+                  onChange={(e) => set(i, { importeManual: e.target.value === '' ? null : e.target.value })}
+                />
+              ) : <span className={s.muted}>{money(p.calc)}</span>}
+            </td>
+          </tr>
+        ))}
+      </Table>
+      <div className={cx(s.callout, s.ok)} style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <span>Percepciones a sumar al total</span><strong>{money(total)}</strong>
+      </div>
+      <div className={s.hint}>
+        El importe se calcula con la alícuota; corregilo si el papel dice otro. No son IVA: son
+        pago a cuenta de otro impuesto y se declaran por separado.
+      </div>
+    </ModalShell>
+  );
 }
 
 /* ==================================================================== *
