@@ -81,6 +81,7 @@ export function ProductosPanel() {
         actions={isAdmin && (
           <div style={{ display: 'flex', gap: 8 }}>
             <Btn onClick={() => openModal('margenesMasivos', { productos })}>Actualizar márgenes</Btn>
+            <Btn onClick={() => openModal('importarCatalogo', {})}>Importar catálogo</Btn>
             <Btn variant="btn-primary" onClick={() => openModal('producto', {})}>+ Nuevo producto</Btn>
           </div>
         )}

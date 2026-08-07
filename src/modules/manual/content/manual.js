@@ -160,6 +160,47 @@ export const MANUAL = [
         ],
       },
       {
+        id: 'importar-catalogo',
+        actualizado: '2026-08-07 10:30',
+        titulo: 'Importar el catálogo de un proveedor',
+        bloques: [
+          {
+            t: 'p',
+            texto: 'Para dar de alta cientos de productos de una vez: se cargan los tres listados que exporta el sistema de gestión anterior (**productos**, **formatos de compra** y **formatos de venta**) tal como salen, y el sistema los traduce a su modelo. Se reconocen **por sus columnas**, así que el orden en que se eligen no importa.',
+          },
+          { t: 'ruta', texto: 'Compras › Productos › Importar catálogo' },
+          {
+            t: 'flujo',
+            items: ['Archivos', 'Proveedor y listas', 'VISTA PREVIA', 'Se escribe todo junto'],
+          },
+          {
+            t: 'lista',
+            items: [
+              '**Los paquetes fraccionados NO entran como productos.** El archivo trae "x100g / x250g / x1kg" como si fueran productos aparte, pero son **presentaciones** de su producto madre: se atan solas por el nombre, con su código de barras y su recargo. Importarlos como productos habría dejado decenas de fantasmas que nadie le compra a nadie.',
+              '**El costo sale del formato de compra, no del maestro**: lista − descuentos en cascada + flete ÷ bulto. El costo del maestro del sistema viejo viene **con IVA adentro** y acá los costos se guardan netos — tomarlo de ahí metía un 21% de error en toda la góndola.',
+              '**El markup por paquete se traduce a recargo.** En el sistema viejo cada paquete tiene su markup (el kilo al 48%, el de 250 g al 66%); acá el markup es de la lista y la presentación lleva el **recargo por fraccionar**, que se calcula solo.',
+              '**El rubro se deduce del nombre** (el archivo trae los rubros como números sin nombre), y **"GRANEL" o "VARIOS" no se toman como marca**: describen la modalidad, no al fabricante.',
+              '**No se puede importar sin ver la vista previa.** Ahí está lo que importa: cuántos productos y presentaciones entran, qué rubros se asignaron, y sobre todo **qué precios se mueven**.',
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: 'La vista previa separa los precios que cambian en dos, y la diferencia es importante: hasta **15%** es el costo que se actualizó y el precio que venía atrasado (normal, es el trabajo del sistema). **Más de 15% casi siempre significa que en el archivo el costo del producto y el de su paquete no coinciden** — uno de los dos está mal. Esos quedan con el costo real pero conviene mirarlos con la factura del proveedor a mano antes de vender.',
+          },
+          {
+            t: 'nota',
+            tono: 'ok',
+            texto: 'Se escribe **todo junto o nada**: si algo falla, no queda medio catálogo cargado. Y es **repetible**: lo que ya existe con el mismo código interno no se toca y se informa al final, así que reimportar el mismo archivo no duplica nada. Actualizar costos de productos que ya están es trabajo de la factura, no de la importación.',
+          },
+          {
+            t: 'nota',
+            tono: 'info',
+            texto: 'El **stock arranca en cero**: entra con la primera factura de compra. Los archivos no traen existencias, y inventarlas sería peor que no tenerlas.',
+          },
+        ],
+      },
+      {
         id: 'carga-factura',
         actualizado: '2026-08-06 18:53',
         titulo: 'Cargar la factura: asistente en tres pasos',
@@ -1697,7 +1738,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-07 09:30',
+        actualizado: '2026-08-07 10:30',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -1708,6 +1749,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**7/8/2026**', '**Botón "Importar catálogo"** en Compras › Productos: el alta masiva de un proveedor ahora se hace desde el sistema, sin pedirla. Tres pasos —archivos, proveedor y listas, **vista previa**— y la escritura es **una sola transacción** (todo o nada) e **idempotente** por código interno. Traduce lo mismo que la primera importación a mano: los fraccionados entran como presentaciones, el costo sale del formato de compra (el del maestro trae IVA adentro), el markup por paquete se convierte en recargo y el rubro se deduce del nombre. La vista previa es obligatoria y separa los cambios de precio chicos de los **grandes**, que son los que delatan un costo podrido en el archivo. Guía nueva: Formato de Compra › "Importar el catálogo de un proveedor"'],
               ['**7/8/2026**', '**Catálogo de Bavosi importado**: 94 productos (50 a granel + 44 envasados), 73 presentaciones, 94 formatos de compra con sus descuentos en cascada y flete, y 157 formatos de venta (Mostrador y Mayorista). 131 de los 157 precios quedaron **exactos** a los del sistema viejo; **26 se movieron** porque manda el costo real. **24 de esos 26 hay que revisarlos contra la factura** (ver "Cosas a revisar"): en el sistema viejo el costo de la madre y el del fraccionado no coincidían. Script: `crm-api/scripts/importar-bavosi.js` (dry-run por defecto, idempotente por código interno)'],
               ['**7/8/2026**', '**Bug corregido en la pestaña Presentaciones**: la pantalla leía y guardaba `ganancia` cuando el campo es `recargo`, así que mostraba el recargo vacío y **al guardar lo ponía en cero y borraba los códigos de barras** de cada presentación. No se notaba porque hasta ahora todos los recargos eran 0; apareció al importar Bavosi, que los usa. Ahora además el código de barras se edita ahí mismo y el precio que muestra es el que cobra la caja (con IVA)'],
               ['**7/8/2026**', '**El chat se borra a las 24 horas**: es conversación, no archivo. Las consultas filtran por el corte (el límite es exacto siempre) y una purga borra de verdad (la tabla no crece); el panel avisa la regla y descarta con el mismo criterio. Verificado con mensajes de 25 h y 23 h inyectados en la base: el de 25 desapareció de la vista Y de la tabla, el de 23 quedó'],

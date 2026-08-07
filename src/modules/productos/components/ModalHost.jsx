@@ -12,6 +12,7 @@ import {
   TomarPagosComprobanteModal, PagoSucursalDetalleModal,
 } from './modals/PagosSucursalModals.jsx';
 import { EnvioCafeteriaFormModal, EnvioCafeteriaDetalleModal } from './modals/CafeteriaModals.jsx';
+import { ImportarCatalogoModal } from './modals/ImportarCatalogoModal.jsx';
 import { HistorialPreciosModal, MargenesMasivosModal } from './modals/PreciosModals.jsx';
 
 /* Confirmación genérica reutilizable. */
@@ -91,6 +92,7 @@ const REGISTRY = {
   margenesMasivos: MargenesMasivosModal,
   producto: ProductoFormModal,
   detalleProducto: DetalleProductoModal,
+  importarCatalogo: ImportarCatalogoModal,
   compra: CompraModal,
   vender: VenderModal,
   fraccionar: FraccionarModal,

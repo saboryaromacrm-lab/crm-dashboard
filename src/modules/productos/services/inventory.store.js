@@ -624,6 +624,9 @@ const anularEnvioCafeteria = (id, motivo) => _mutate(() => httpClient.post(`/caf
  * La previsualización se calcula en el navegador (el store ya tiene costos y
  * márgenes), así que acá solo viajan los cambios aprobados. `historial` es
  * lectura pura; el resto refresca porque mueve todos los precios derivados. */
+/** Importación masiva: la API escribe el catálogo entero en una transacción. */
+const importarCatalogo = (proveedorId, items) => _mutate(() => httpClient.post('/productos/importar', { proveedorId, items }));
+
 const actualizarCostos = (o) => _mutate(() => httpClient.post('/precios/costos', o));
 const actualizarMargenes = (o) => _mutate(() => httpClient.post('/precios/margenes', o));
 const historialPrecios = (q = '') => httpClient.get('/precios/historial' + q);
@@ -643,7 +646,7 @@ export const inventoryStore = {
   crearTransferencia, avanzarTransferencia, cancelarTransferencia,
   editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
-  crearProducto, editarProducto, eliminarProducto, guardarPresentaciones,
+  crearProducto, editarProducto, eliminarProducto, guardarPresentaciones, importarCatalogo,
   crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, subcategoriasDe, siguienteCodigo,
   crearProveedor, editarProveedor, eliminarProveedor,
   guardarFormatosCompra, guardarListasProducto,
