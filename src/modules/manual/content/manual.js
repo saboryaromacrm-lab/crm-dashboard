@@ -1837,6 +1837,54 @@ export const MANUAL = [
           },
         ],
       },
+      {
+        id: 'agentes-catalogo',
+        actualizado: '2026-08-07 23:40',
+        titulo: 'Agentes del catálogo de aitmpl.com: pros, contras y qué conviene',
+        bloques: [
+          {
+            t: 'p',
+            texto: '**aitmpl.com** (Claude Code Templates) es un catálogo comunitario —de Daniel Ávila, no de Anthropic— con unos 600 "agentes" para Claude Code, más comandos, hooks, MCPs y settings. Se evaluó el 7/8/2026 y quedó anotado acá para decidirlo con la cabeza fría.',
+          },
+          {
+            t: 'p',
+            texto: '**Qué es un agente, en concreto.** Un archivo Markdown con tres líneas de frontmatter YAML (`name`, `description`, `tools`) y abajo un prompt largo con la especialidad y el criterio de ese rol. Nada más. El mecanismo de subagentes es de Claude Code, no del sitio: el catálogo solo ahorra escribir el prompt. Se instala con `npx claude-code-templates@latest --agent <categoría>/<nombre>`, que deja el `.md` en `.claude/agents/` del proyecto.',
+          },
+          {
+            t: 'tabla',
+            cols: ['A favor', 'En contra'],
+            filas: [
+              ['**Cada subagente corre en su propia ventana de contexto**: puede leer veinte archivos y devolver solo la conclusión, sin llenar el contexto de la conversación principal. Es la ventaja real y no depende del catálogo.', '**Arranca en blanco**: no ve la conversación ni lo que se viene construyendo. No sabe nada del negocio salvo lo que se le pase.'],
+              ['**Sirve para paralelizar**: varias búsquedas o revisiones independientes a la vez.', '**Los agentes del catálogo traen opiniones ajenas.** El `frontend-developer` dice cosas como "no recomiendes `useMemo` manual" o "apuntá a 85% de cobertura": razonables en general, ajenas acá. Un agente con opiniones que contradicen al proyecto es **peor que ninguno**, porque las aplica con seguridad.'],
+              ['El formato es trivial de escribir a mano, así que el catálogo sirve igual como **referencia de estructura**.', '**Es código de terceros que se ejecuta como instrucciones.** El frontmatter declara qué herramientas se otorga: uno con `Bash` corre comandos. El repo es popular y de autor conocido, pero la práctica sana es la de cualquier dependencia: **leer el `.md` antes de usarlo**, sobre todo la línea `tools`. Son 100-200 líneas.'],
+              ['', '**`.claude/agents/` es POR PROYECTO**, y acá hay tres carpetas separadas (crm-dashboard, crm-api, sitio-web). Un agente puesto en una no existe en las otras: o van en `~/.claude/agents/` (siguen a todos los proyectos) o se duplican.'],
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**Un agente NO reemplaza a esta guía ni a `CLAUDE.md`.** Un subagente arranca sin contexto, así que el criterio que viva solo dentro de un agente **se pierde** cuando el trabajo se hace directo. La regla es: **el criterio va en `CLAUDE.md` y en esta guía; el agente sirve para paralelizar o aislar trabajo.**',
+          },
+          {
+            t: 'p',
+            texto: '**Recomendación: no instalar el catálogo.** Escribir dos o tres agentes propios —el formato es trivial— usando los del sitio como referencia de estructura pero con el criterio de ESTE proyecto adentro, y guardarlos en `~/.claude/agents/` para que sirvan en los tres repos. Dónde se le vio valor real:',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**Un revisor con las trampas de acá**: que `_cleanComprobante` se traga los campos nuevos sin avisar, que un `sql` correlacionado de Drizzle renderiza la columna sin calificar y se rompe en silencio, que un borrador mueve stock, que un precio mal calculado se vende 200 veces antes de que alguien lo note.',
+              '**Un buscador de lecturas amplias**: "¿en qué otros lugares se calcula `total − pagado` sin mirar las notas?" — exactamente lo que faltó cuando se ataron las NC/ND, y que se encontró de casualidad.',
+              '**Quizá uno de esquema y migraciones** que conozca el ritual de `drizzle/00NN_*.sql` + entrada en el journal + snapshot copiado.',
+              '**NO los genéricos de framework** (`frontend-developer`, `backend-architect`): este proyecto ya tiene convenciones propias y bastante peleadas, y un prompt genérico empuja contra ellas.',
+            ],
+          },
+          {
+            t: 'p',
+            texto: 'Si igual se quiere probar el catálogo, el movimiento de menor riesgo es instalar **uno solo** en crm-dashboard, leer el archivo completo, y usarlo en una tarea real de bajo riesgo antes de decidir.',
+          },
+          { t: 'ruta', texto: 'aitmpl.com/agents · docs.aitmpl.com · github.com/davila7/claude-code-templates · los agentes propios irían en ~/.claude/agents/' },
+        ],
+      },
     ],
   },
 
@@ -1848,7 +1896,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-07 23:05',
+        actualizado: '2026-08-07 23:40',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -1859,6 +1907,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**7/8/2026**', '**Evaluado el catálogo de agentes de aitmpl.com** (Claude Code Templates). Un agente de ahí es un archivo `.md` con tres líneas de frontmatter y un prompt: el mecanismo de subagentes es de Claude Code, el catálogo solo ahorra escribirlo. **Recomendación: no instalar el catálogo** y escribir dos o tres propios con el criterio de este proyecto, en `~/.claude/agents/` para que sirvan en los tres repos — los genéricos de framework traen opiniones ajenas y las aplican con seguridad. Pros, contras y las advertencias (es código de terceros que se ejecuta como instrucciones; `.claude/agents/` es por proyecto; un agente no reemplaza a CLAUDE.md porque arranca sin contexto) quedaron en Decisiones de diseño › "Agentes del catálogo de aitmpl.com"'],
               ['**7/8/2026**', '**Las notas de crédito y de débito ahora se toman de una factura.** El paso 3 del alta lista las facturas del proveedor con su saldo y muestra en cuánto queda al elegirla: la NC resta, la ND suma. **Arregla que se le pagaba de más al proveedor**: el campo de la referencia existía en la base pero ninguna pantalla lo cargaba, así que una NC restaba de la deuda TOTAL —la cuenta corriente cerraba bien— pero la factura seguía ofreciendo su importe entero en la bandeja de pago. Probado: una NC de $38.675 sobre una factura de $41.934,75 dejó la bandeja ofreciendo $3.259,75 en lugar de $41.934,75. Además la ND referenciada ya no se puede pagar por separado (sería cobrar dos veces el mismo ajuste) y el detalle de la factura muestra la tabla de sus notas. Guía nueva: Formato de Compra › "Notas de crédito y de débito"'],
               ['**7/8/2026**', '**Lectura automática de los renglones: diseñada y EN ESPERA.** Es la etapa que le falta a la bandeja. Quedó documentada entera —el circuito, qué se le pide al modelo y sobre todo **qué no** (ni el encabezado, ni identificar el producto, ni sumar: solo copiar la tabla), el control contra el total del QR con reintento escalando de modelo, el costo (~US$3 por 50 facturas al mes) y lo que no arregla— pero **no está construido**: espera una decisión que no es técnica (**la imagen de la factura sale de la máquina**) más una clave de API, y que se resuelvan antes los renglones que no son mercadería. Ficha: Pendientes › "Leer los renglones de la factura"'],
               ['**7/8/2026**', '**Facturas por procesar: subir el papel ahora y cargarlo después** (Compras › Por procesar, permiso `compras.lecturas`). La cajera fotografía la factura cuando llega el camión y el admin la procesa cuando puede — ese desacople es la mayor parte del ahorro, y no depende de ninguna magia. Lo que sí ahorra tipeo es el **QR de la RG 4892**: es un JSON, no una imagen para interpretar, y de ahí salen proveedor (por CUIT, exacto), tipo, letra, punto de venta, número, fecha, **total** y CAE. El total del papel se usa como **control**: el pie del alta compara en vivo y avisa si cierra o cuánto falta. El papel queda guardado y pegado al comprobante. Semáforo en la bandeja: rojo frena (falta proveedor / número / sucursal, o ya está cargada), amarillo avisa. **Lo que NO hace todavía**: leer los renglones — eso es la etapa siguiente. Guía nueva: Formato de Compra › "Facturas por procesar"'],
