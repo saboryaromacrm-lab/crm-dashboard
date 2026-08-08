@@ -331,6 +331,28 @@ export function PrepararTransferModal({ id }) {
     return g;
   }, [t, store]);
 
+  /** Quién puede TOCAR cada lista: el admin las dos, cada encargado la suya. */
+  const puedeLista = (tipo) => isAdmin
+    || (tipo === 'granel' && can('fraccionar'))
+    || (tipo === 'enteros' && can('preparar'));
+
+  /*
+   * QUÉ LISTAS VE ESTE USUARIO.
+   * --------------------------------------------------------------------------
+   * El fraccionador ve Fraccionados y el preparador ve Enteros: la lista del
+   * otro no le sirve para nada y le hace buscar sus renglones entre los ajenos.
+   * El admin (y cualquiera que tenga los dos permisos) ve las dos, porque
+   * necesita el pedido completo para despachar.
+   *
+   * Si alguien no puede tocar NINGUNA —un supervisor mirando— ve las dos en
+   * lectura: esconderle todo dejaría el modal vacío, que es peor.
+   */
+  const misListas = (() => {
+    const propias = ['enteros', 'granel'].filter(puedeLista);
+    return propias.length ? propias : ['enteros', 'granel'];
+  })();
+  const soloMia = misListas.length === 1;
+
   if (!t) return null;
   const enPrep = t.estado === 'preparada';
   const destino = store.getSucursal(t.destinoId);
@@ -403,9 +425,7 @@ export function PrepararTransferModal({ id }) {
   const renderLista = (tipo) => {
     const meta = LISTAS_PREP[tipo];
     const confirmada = tipo === 'granel' ? t.granelListo : t.enterosListo;
-    const puedeTocar = isAdmin
-      || (tipo === 'granel' && can('fraccionar'))
-      || (tipo === 'enteros' && can('preparar'));
+    const puedeTocar = puedeLista(tipo);
     const editable = puedeTocar && enPrep && !confirmada;
     const filas = grupos[tipo];
     const alta = altas[tipo];
@@ -413,10 +433,11 @@ export function PrepararTransferModal({ id }) {
     const prodAlta = alta ? store.getProducto(parseInt(alta.prodId, 10)) : null;
 
     return (
-      <div style={{ marginBottom: 20 }}>
+      <div key={tipo} style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
           <h3 className={s['card-title']} style={{ margin: 0 }}>{meta.titulo}</h3>
-          <span className={s.muted} style={{ fontSize: 12 }}>lista del {meta.encargado}</span>
+          {/* Con una sola lista a la vista, aclarar de quién es sobra. */}
+          {!soloMia && <span className={s.muted} style={{ fontSize: 12 }}>lista del {meta.encargado}</span>}
           <span className={cx(s.pill, confirmada ? s['st-disponible'] : s['est-pendiente'])}>
             {confirmada ? 'Confirmada · stock reservado' : 'En preparación'}
           </span>
@@ -433,7 +454,12 @@ export function PrepararTransferModal({ id }) {
             { h: 'Producto' }, { h: 'Present.' }, { h: 'Pedido', num: true }, { h: 'Preparado', num: true },
             { h: 'Motivo' }, { h: 'Disp. acá', num: true }, { h: '', cls: 'actions-col' },
           ]}
-          empty="Sin renglones en esta lista."
+          /* Con las dos listas a la vista, "sin renglones" se entiende solo. Con
+           * una sola, hay que decir que el pedido no trae nada tuyo — si no,
+           * parece que la pantalla no cargó. */
+          empty={soloMia
+            ? `Este pedido no trae ${meta.titulo.toLowerCase()}: no hay nada para preparar de tu lado.`
+            : 'Sin renglones en esta lista.'}
         >
           {filas.map(({ it, p }) => {
             const dispRow = store.cant(p.id, t.origenId, it.presentacionId || null, 'disponible');
@@ -541,19 +567,29 @@ export function PrepararTransferModal({ id }) {
       onClose={closeModal}
       footer={footer}
     >
-      <div className={cx(s.callout, s.info)}>
-        Un solo pedido, dos listas: <strong>Enteros</strong> para el preparador y{' '}
-        <strong>Fraccionados</strong> para el fraccionador. Cada uno ajusta lo <strong>preparado</strong>{' '}
-        (si no hay, va 0 con su motivo), agrega lo que llegó a último momento y <strong>confirma</strong>{' '}
-        — recién ahí se reserva el stock. Con las dos confirmadas se despacha <strong>lo preparado</strong>.
-      </div>
+      {soloMia ? (
+        <div className={cx(s.callout, s.info)}>
+          Tu lista es <strong>{LISTAS_PREP[misListas[0]].titulo}</strong>. Ajustá lo <strong>preparado</strong>{' '}
+          (si no hay, va 0 con su motivo), agregá lo que llegó a último momento y <strong>confirmá</strong>{' '}
+          — recién ahí se reserva el stock. De{' '}
+          <strong>{LISTAS_PREP[misListas[0] === 'granel' ? 'enteros' : 'granel'].titulo}</strong> se encarga el{' '}
+          {LISTAS_PREP[misListas[0] === 'granel' ? 'enteros' : 'granel'].encargado}, y el pedido no se despacha
+          hasta que estén las dos.
+        </div>
+      ) : (
+        <div className={cx(s.callout, s.info)}>
+          Un solo pedido, dos listas: <strong>Enteros</strong> para el preparador y{' '}
+          <strong>Fraccionados</strong> para el fraccionador. Cada uno ajusta lo <strong>preparado</strong>{' '}
+          (si no hay, va 0 con su motivo), agrega lo que llegó a último momento y <strong>confirma</strong>{' '}
+          — recién ahí se reserva el stock. Con las dos confirmadas se despacha <strong>lo preparado</strong>.
+        </div>
+      )}
       {!enPrep && (
         <div className={cx(s.callout, s.warn)}>
           Esta transferencia ya no está en preparación (estado: <TransferPill estado={t.estado} />).
         </div>
       )}
-      {renderLista('enteros')}
-      {renderLista('granel')}
+      {misListas.map((tipo) => renderLista(tipo))}
     </ModalShell>
   );
 }
