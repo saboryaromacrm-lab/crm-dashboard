@@ -310,8 +310,13 @@ function TabScaffold({ titulo, desc }) {
 function ResumenCtaTab({ prov }) {
   const { store, openModal } = useProductos();
   const saldo = store.cuentaProveedor(prov.id);
+  /* LISTA DE TIPOS · los movimientos de la cuenta corriente. Le faltaba la
+   * liquidación (la deuda de la mitad no facturada no figuraba como movimiento)
+   * y filtraba por `condicionPago`, criterio que el backend ya no usa: la deuda
+   * la define el documento. Mismo criterio que `cuentaProveedor` del store. */
   const chrono = store.comprobantesDe(prov.id)
-    .filter((c) => c.estado === 'confirmado' && ((c.condicionPago === 'cuenta_corriente' && (c.tipo === 'factura' || c.tipo === 'nota_debito')) || c.tipo === 'nota_credito'))
+    .filter((c) => c.estado === 'confirmado'
+      && ['factura', 'liquidacion', 'nota_debito', 'nota_credito'].includes(c.tipo))
     .sort((a, b) => a.id - b.id);
   let run = 0;
   const rows = chrono.map((c) => {

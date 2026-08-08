@@ -251,8 +251,11 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
    * remito y esta factura solo la documenta; ahí ingresarla otra vez duplicaría
    * el stock.
    */
+  // LISTA DE TIPOS · el tilde de recepción arranca puesto cuando viene de la
+  // bandeja. La liquidación va acá: su mercadería entró como cualquier otra.
   const [recepcion, setRecepcion] = useState(
-    !!lectura && (lectura.tipo === 'factura' || lectura.tipo === 'remito' || !lectura.tipo),
+    !!lectura && (lectura.tipo === 'factura' || lectura.tipo === 'liquidacion'
+      || lectura.tipo === 'remito' || !lectura.tipo),
   );
   const [venc, setVenc] = useState('');
   const [obs, setObs] = useState('');
@@ -262,7 +265,18 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const [items, setItems] = useState(() => [nuevoItem()]);
   const [busquedaLote, setBusquedaLote] = useState(false);
 
-  const permiteRecepcion = tipo === 'factura' || tipo === 'remito';
+  /*
+   * LISTA DE TIPOS · qué comprobantes pueden ingresar mercadería.
+   *
+   * La liquidación FALTABA acá, y era el agujero de la función: sin este tipo en
+   * la lista, el tilde de recepción no se dibujaba y el payload mandaba siempre
+   * `recepcion: false`, así que la mitad no facturada generaba la deuda pero
+   * **la mercadería no entraba al depósito** — en silencio, porque no había
+   * ningún tilde sin marcar a la vista. Justo el caso que motivó el tipo nuevo.
+   *
+   * Tiene que coincidir con `ingresaStock` de la API (comprobantes.module.ts).
+   */
+  const permiteRecepcion = tipo === 'factura' || tipo === 'liquidacion' || tipo === 'remito';
   const provElegido = store.getProveedor(parseInt(provId, 10));
 
   /**
@@ -529,11 +543,14 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   /* ---------------- Cuánto queda debiéndose ---------------- */
 
   /**
-   * Solo la factura y la nota de débito generan deuda; el remito y la orden de
-   * compra no se pagan, y la nota de crédito RESTA deuda. Pagar cualquiera de
-   * esos no significaría nada.
+   * LISTA DE TIPOS · genera deuda (tiene que coincidir con `generaDeuda` de la
+   * API). La factura, la LIQUIDACIÓN y la nota de débito; el remito y la orden
+   * de compra no se pagan, y la nota de crédito RESTA deuda.
+   *
+   * Sin la liquidación acá, el alta no ofrecía el paso de pago para la mitad no
+   * facturada: la deuda quedaba creada y sin forma de saldarla desde el alta.
    */
-  const generaDeuda = tipo === 'factura' || tipo === 'nota_debito';
+  const generaDeuda = tipo === 'factura' || tipo === 'liquidacion' || tipo === 'nota_debito';
   const totalTomado = useMemo(
     () => Object.values(tomados).reduce((a, v) => a + (Number(v) || 0), 0),
     [tomados],
@@ -931,7 +948,9 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
           <strong>{provElegido?.nombre || 'Este proveedor'}</strong> tiene{' '}
           <strong>{money(aCuenta)}</strong> pagados desde sucursal esperando factura
           ({pagosACuenta.length} pago{pagosACuenta.length === 1 ? '' : 's'}).
-          {tipo === 'factura' || tipo === 'nota_debito'
+          {/* Mismo criterio que `generaDeuda`: si el documento genera deuda, el
+              paso de pago existe y los pagos a cuenta se pueden tomar ahí. */}
+          {generaDeuda
             ? ' En el paso de pago vas a poder tomarlos.'
             : ' Al registrar una factura vas a poder tomarlos.'}
         </div>
@@ -1889,7 +1908,10 @@ export function ComprobanteDetalleModal({ id }) {
   const suc = c.sucursalId ? store.getSucursal(c.sucursalId) : null;
   const saldo = c.saldo ?? Math.round((c.total - (c.pagado ?? 0)) * 100) / 100;
   // Solo la factura y la ND generan deuda: son las únicas que se pagan.
-  const puedePagar = c.estado === 'confirmado' && (c.tipo === 'factura' || c.tipo === 'nota_debito');
+  /* LISTA DE TIPOS · se puede pagar desde el detalle. Sin la liquidación acá, la
+   * deuda de la mitad no facturada no tenía botón Pagar en ningún lado. */
+  const puedePagar = c.estado === 'confirmado'
+    && (c.tipo === 'factura' || c.tipo === 'liquidacion' || c.tipo === 'nota_debito');
 
   const Di = ({ label, children }) => <div className={s.di}><div className={s.l}>{label}</div><div className={s.v}>{children}</div></div>;
 

@@ -284,13 +284,30 @@ function valorEntry(s) {
 /* ---------------- Comprobantes / cuenta corriente ---------------- */
 function getComprobante(id) { return state.comprobantes.find((c) => c.id === id); }
 function comprobantesDe(proveedorId) { return state.comprobantes.filter((c) => c.proveedorId === proveedorId).sort((a, b) => b.id - a.id); }
+/**
+ * Saldo del proveedor calculado con lo que ya está en memoria.
+ *
+ * LISTA DE TIPOS · tiene que decir lo MISMO que `cuenta()` de la API
+ * (`comprobantes.module.ts`), que es la fuente de verdad. Estaba desalineada en
+ * dos cosas:
+ *
+ *   · Le faltaba la **liquidación**, así que la mitad no facturada generaba
+ *     deuda en la base y el saldo de la pantalla no la contaba: plata que se
+ *     debe, invisible.
+ *   · Filtraba por `condicionPago === 'cuenta_corriente'`, criterio que el
+ *     backend ya abandonó: una factura marcada "contado" pero sin pago
+ *     registrado desaparecía del saldo aunque no se hubiera pagado nunca. Ahora
+ *     la deuda la define el DOCUMENTO y la cancela el PAGO.
+ */
 function cuentaProveedor(proveedorId) {
-  let saldo = 0;
+  let deuda = 0;
+  let pagado = 0;
   state.comprobantes.filter((c) => c.proveedorId === proveedorId && c.estado === 'confirmado').forEach((c) => {
-    if ((c.tipo === 'factura' || c.tipo === 'nota_debito') && c.condicionPago === 'cuenta_corriente') saldo += c.total;
-    else if (c.tipo === 'nota_credito') saldo -= c.total;
+    if (c.tipo === 'factura' || c.tipo === 'liquidacion' || c.tipo === 'nota_debito') {
+      deuda += c.total; pagado += c.pagado || 0;
+    } else if (c.tipo === 'nota_credito') deuda -= c.total;
   });
-  return saldo;
+  return deuda - pagado;
 }
 
 /* ---------------- Métricas ---------------- */
