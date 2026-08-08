@@ -1978,6 +1978,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**8/8/2026**', '**Pantalla propia del fraccionado: diseñada y EN ESPERA.** Se anotó a partir de cómo lo resuelve el sistema viejo, que le da a cada fraccionado su propio producto y una pestaña "Prod.Util" con la madre de la que descuenta. Acá sería una pestaña **nueva** llamada **"Producto madre"** (no hay ninguna "Prod.Util" que renombrar) más pantalla propia para el fraccionado. **El modelo ya lo soporta entero** —`tamKg`, `recargo`, `opFraccionar`, y `stock`/`movimientos` ya llevan `presentacionId`, así que el x500g ya tiene stock, movimientos, código y precio propios— o sea que **es una vista que falta, no una migración**. Quedaron anotadas las cuatro decisiones previas (el stock queda a la vista en dos lugares y hay que evitar que se cuente mal; el costo del fraccionado tiene que ser de solo lectura o se repite la divergencia de Bavosi; si el fraccionado es fila propia el listado pasa de 94 a 167; y borrar una presentación hoy borra su stock sin avisar) y una pregunta abierta: falta el equivalente al "SOLO STOCK" del sistema viejo para el granel que no se vende suelto. Ficha: Pendientes › "Pantalla propia del fraccionado"'],
               ['**8/8/2026**', '**Aplicado el resto de los dos informes: 8 arreglos de seguridad y 6 de limpieza, en cinco módulos.** El más importante no estaba en el informe original y apareció al buscar la carrera del saldo en los otros módulos: **el cierre de caja podía dejar plata afuera del arqueo**. Sumar el arqueo y marcar el turno cerrado eran dos pasos sueltos, y entre uno y otro entraba un egreso —un pago a proveedor de esa caja, o un movimiento manual— que quedaba **dentro de un turno cerrado pero fuera de `sistemaEfectivo`**, con la diferencia mal y congelada en la fila para siempre. También **Cobranzas tenía la carrera igual que Pagos** (dos cobranzas simultáneas cobraban de más la misma venta) y **Comprobantes no tenía nada** (su caso es una etiqueta derivada, y el stock ya usaba el `cantidad = cantidad + delta` atómico). Además: el **mime de los archivos subidos ahora se verifica contra los bytes reales** (un HTML rotulado como PNG se rechaza) y se sirven con `nosniff`; los tres endpoints de pagos que recibían `any` tienen DTO (el `?desde=abc` que tiraba 500 ahora es un 400); topes de páginas y total no negativo en la bandeja; y el `desde` del filtro de pagos parseaba la fecha como UTC mientras el `hasta` la parseaba local, o sea tres horas del día anterior colándose. De limpieza: la etiqueta del documento vive en UN lugar (`common/documentos`, no en `comprobantes`, porque `comprobantes` ya importa de `pagos` y se hacía un ciclo) así que **se dejó de ver `nota_debito 0001-123` en pantalla**; índice de `ref_comprobante_id` (con el snapshot de Drizzle corregido, que se había quedado sin el único de número); import muerto y campo que nadie leía, afuera. Verificado con **45 pruebas** contra la API y la base restaurada en las tres corridas'],
               ['**8/8/2026**', '**Auditoría de seguridad de Facturas y Pagos: 11 hallazgos, tres arreglados.** (1) **La guarda que impide sobre-imputar un pago se podía pasar dos veces** — dos pedidos simultáneos leían los dos el mismo saldo y las dos imputaciones entraban. Demostrado con dos conexiones: $1.000 imputados a un pago de $500. Se puso `FOR UPDATE` en las cinco lecturas de saldo (`aplicar`, `desimputar`, `anular`), con orden de bloqueo fijo pago → documento. Ficha: Decisiones de diseño › "Saldos y dos pedidos a la vez". (2) **La sucursal del pago la decidía el pedido, no el turno de caja**: se le podía cargar un egreso al cajón de cualquier sucursal con turno abierto, y ahora la discrepancia se rechaza en vez de resolverse sola (falta la otra mitad, que el turno sea de QUIEN pide, y eso necesita autenticación). (3) **Un papel se podía enganchar al comprobante de otro proveedor**: la lectura salía de la bandeja marcada como cargada sin haberse cargado nunca, y el respaldo de un comprobante pasaba a ser la factura de otra empresa. Los otros 8 quedaron anotados en "Cosas a revisar". Verificado con 11 pruebas contra la API y la base restaurada al estado previo'],
               ['**7/8/2026**', '**Dos agentes propios escritos**, ninguno del catálogo: **auditor-seguridad** (informe de vulnerabilidades por severidad, con cómo se explota cada una; solo lectura) y **depurador-codigo** (código muerto, peso al aire y cuellos de botella, clasificado en Seguro / Requiere criterio / **No tocar y por qué**; muestra el informe antes de tocar nada). Viven en `~/.claude/agents/` para que sirvan en los tres repos. Lo que los hace útiles no es el rol sino **las trampas de acá metidas adentro**: que la falta de autenticación ya está asumida y no es un descubrimiento, que un chequeo que vive solo en el frontend no es un chequeo, que los paneles se registran por clave de texto (así que "0 usos" no prueba que esté muerto), que `_cleanComprobante` se traga los campos nuevos, y que las migraciones de `drizzle/` y los comentarios explicativos no se tocan. Detalle en Decisiones de diseño › "Agentes del catálogo de aitmpl.com"'],
@@ -2015,6 +2016,7 @@ export const MANUAL = [
             cols: ['Qué', 'Por qué importa'],
             filas: [
               ['**Leer los RENGLONES de la factura — EN ESPERA**', 'Diseñado y presupuestado, sin construir: espera una decisión del dueño (**el papel sale de la máquina**) más una clave de API. El detalle completo —qué se le pide al modelo y qué no, el control del total, el costo, lo que no arregla— está en su ficha propia: **Pendientes › "Leer los renglones de la factura"**. Un cuarto camino que no depende de nada de eso: **pedirle el detalle en archivo al proveedor** (Bavosi ya pasó su catálogo en CSV), y ahí no hay nada que interpretar'],
+              ['**Pantalla propia del fraccionado + pestaña "Producto madre" — EN ESPERA**', 'Hoy al x500g solo se llega entrando a la madre y abriendo Presentaciones. La idea es que cada fraccionado tenga **su propia pantalla** (con sus variables y sus movimientos) y una pestaña que muestre de qué madre descuenta, con cantidad y costo. **El modelo ya lo soporta entero** —`tamKg`, `recargo`, `opFraccionar`, y `stock`/`movimientos` ya llevan `presentacionId`— así que es una vista que falta, no datos. Espera cuatro decisiones que no son técnicas: su ficha propia es **Pendientes › "Pantalla propia del fraccionado"**'],
               ['**Renglones que NO son mercadería** (flete, envases retornables, redondeo)', 'Las facturas los traen y hoy **no se pueden guardar**: `comprobante_items.productoId` es obligatorio. Sin resolverlo, cada factura con flete no cierra contra el total del papel — y es **bloqueante de la lectura automática de renglones**. Decisión de diseño pendiente: un flag de "concepto no inventariable" en el ítem (más honesto) o productos de servicio designados'],
               ['**Conciliar con "Mis Comprobantes" de ARCA**', 'ARCA deja bajar en CSV todas las facturas que cualquier proveedor emitió contra el CUIT de la empresa. Sirve para **encontrar facturas que existen y nunca se cargaron** — cada una es crédito fiscal de IVA no computado y deuda que no figura en la cuenta del proveedor. Es el mismo patrón de "subir un archivo y previsualizar" que ya está construido dos veces'],
               ['**CUIT de los proveedores y de la empresa**', 'El reconocimiento automático de la bandeja va **por CUIT**: los proveedores que no lo tengan cargado llegan sin proveedor y hay que elegirlo a mano. Y el CUIT de la empresa (Sistema › Empresa) todavía es el de prueba `30-71555666-7`: mientras siga así, **toda factura va a mostrar el aviso "no es nuestra"**, que es peor que no avisar — entrena a ignorar los avisos'],
@@ -2034,6 +2036,55 @@ export const MANUAL = [
               ['**Deploy del sitio (Hostinger)**', 'Hoy corre en local (localhost:3002); falta publicarlo y apuntar el dominio real. Checklist: (1) auth con token en toda la API salvo los 4 endpoints de tienda — BLOQUEANTE; (2) Node escuchando SOLO en localhost con nginx como única puerta (el `trust proxy` ya está activo y sin esto el X-Forwarded-For es falsificable); (3) `limit_req` de nginx como refuerzo del rate limit propio'],
             ],
           },
+        ],
+      },
+      {
+        id: 'fraccionado-pantalla',
+        actualizado: '2026-08-08 04:00',
+        titulo: 'Pantalla propia del fraccionado y pestaña "Producto madre" — EN ESPERA',
+        bloques: [
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**Diseñado, NO construido.** Queda en espera. Nada de esto está en el código: hoy al fraccionado se llega entrando a la madre y abriendo la pestaña Presentaciones, y va a seguir siendo así hasta que se retome. Se anotó el 8/8/2026 a partir de cómo lo resuelve el sistema viejo (Sistel STA), que sí le da pantalla propia a cada fraccionado.',
+          },
+          {
+            t: 'p',
+            texto: '**Qué se pidió.** Que cada producto fraccionado —el AJO GRANULADO X500G, por ejemplo— tenga **su propia pantalla**, con sus variables y sus movimientos, en vez de existir solo como una fila dentro de la madre. Y que esa pantalla tenga una pestaña llamada **"Producto madre"** que muestre de qué producto principal descuenta, con la cantidad que consume y el costo. En el sistema viejo esa pestaña se llama "Prod.Util" (productos utilizados en la elaboración) y muestra: código, producto, cantidad (0,5), unidad (Kilo/s) y dos costos, **Lista** y **Total**.',
+          },
+          {
+            t: 'nota',
+            tono: 'ok',
+            texto: '**La buena noticia: el modelo ya lo hace todo.** `presentaciones.tamKg` es cuánto de la madre consume cada tamaño, `recargo` es lo que agrega el fraccionamiento (envase y mano de obra), `opFraccionar` es la operación que convierte granel en paquetes, y **`stock` y `movimientos` ya llevan `presentacionId`**. O sea que el x500g YA tiene stock propio, movimientos propios, código de barras propio y precio propio derivado. **Lo único que falta es la puerta de entrada: es una vista, no una migración.**',
+          },
+          {
+            t: 'p',
+            texto: '**Ojo con el nombre.** En nuestro sistema **no existe** ninguna pestaña "Prod.Util", así que no es renombrar: es una pestaña **nueva** llamada "Producto madre". Y va del lado del fraccionado mirando hacia arriba; la que ya existe, **Presentaciones**, es la misma relación vista desde la madre hacia abajo. Conviene que se lean como las dos caras de lo mismo.',
+          },
+          {
+            t: 'p',
+            texto: '**Por qué nuestro modelo conviene acá, y dónde el viejo es más capaz.** En el sistema viejo son **dos productos independientes** (ZZZ1023 madre "SOLO STOCK" y ZZZ1031 x500g) unidos por una lista de materiales, así que el fraccionado lleva **su propio costo** y hay que recalcularlo cuando cambia el de la madre. Cuando no se recalcula, divergen — y eso ya se pagó: al importar Bavosi, **24 de 26 precios quedaron para revisar justamente porque el costo de la madre y el del fraccionado no coincidían en el sistema viejo**. En el nuestro no puede pasar: el precio del x500g se deriva del costo de la madre cada vez. Lo que el viejo sí hace y el nuestro no es la lista de materiales **general**: un producto hecho de VARIOS otros (un mix que lleve 0,3 de ajo y 0,2 de pimentón). El nuestro solo expresa "una madre → N tamaños" con un factor en kg. Si alguna vez se arman mezclas, hace falta otra tabla.',
+          },
+          {
+            t: 'p',
+            texto: '**Las cuatro decisiones que hay que tomar antes de construirlo.** Ninguna es técnica:',
+          },
+          {
+            t: 'tabla',
+            cols: ['Decisión', 'Por qué importa'],
+            filas: [
+              ['**Cómo se muestra el stock, que va a estar en dos lugares**', 'Con pantalla propia, alguien mira "AJO X500G: 12 unidades" y aparte "AJO GRANULADO: 40 kg" y no sabe cuánto ajo hay. Son **46 kg** (40 + 12 × 0,5). La cuenta ya existe en el sistema, pero la pantalla nueva tiene que mostrar las dos cosas y decirlo, o se compra de más. El sistema viejo tapa esto llamando a la madre "SOLO STOCK".'],
+              ['**El costo del fraccionado tiene que ser de solo lectura**', 'Si tiene pantalla propia, alguien va a querer editarle el costo ahí — y permitirlo reproduce adentro del sistema nuevo exactamente la divergencia de Bavosi. Lo editable es el **`recargo`**, que es la diferencia entre las columnas Lista ($4.502,66) y Total ($4.638,61) del sistema viejo.'],
+              ['**¿El fraccionado es una fila propia en el listado de productos?**', 'Hoy Compras › Productos lista 94. Con los 73 fraccionados como filas propias serían **167**. Se busca mejor por nombre y por código de barras, pero el listado se duplica. Cambia bastante esa pantalla y es decisión del dueño.'],
+              ['**Borrar una presentación hoy borra su stock sin avisar**', '`stock.presentacionId` cascadea. Enterrado en una pestaña casi no pasa; cuando el fraccionado **parezca** un producto, alguien lo va a borrar como se borra un producto. Habría que frenarlo si tiene existencias.'],
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**Pregunta abierta: falta el equivalente a "SOLO STOCK".** Hoy `tipo: \'granel\'` no dice si el producto se puede vender suelto, así que el POS puede vender 0,5 kg de ajo a granel **y** la bolsa de 500 g. Si hay granel que no se vende suelto y existe solo para fraccionar, hace falta ese candado — y es mejor definirlo antes de construir la pantalla que después.',
+          },
+          { t: 'ruta', texto: 'schema.ts · presentaciones (tamKg, recargo) · stock/movimientos (presentacionId) · inventario opFraccionar · ProductoModals.jsx (pestaña Presentaciones, solo si tipo === granel)' },
         ],
       },
       {
