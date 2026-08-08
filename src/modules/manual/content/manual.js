@@ -316,6 +316,57 @@ export const MANUAL = [
         ],
       },
       {
+        id: 'liquidacion',
+        actualizado: '2026-08-08 05:30',
+        titulo: 'Liquidación: la mitad que el proveedor entrega sin factura',
+        bloques: [
+          {
+            t: 'p',
+            texto: 'Hay proveedores que entregan **mitad facturado y mitad sin factura**. Esa segunda mitad **entró al depósito y hay que pagarla**, así que tiene que estar cargada: si no, el stock miente (falta la mercadería que sí llegó) y la cuenta corriente miente (falta la plata que sí se debe). Para eso está el tipo **Liquidación**.',
+          },
+          {
+            t: 'p',
+            texto: 'Antes no había forma de cargarla. Los dos tipos que existían daban cada uno la mitad de lo que hacía falta:',
+          },
+          {
+            t: 'tabla',
+            cols: ['Tipo', '¿Mueve stock?', '¿Genera deuda?', '¿Es fiscal?'],
+            filas: [
+              ['**Factura**', 'sí (con recepción)', 'sí', '**SÍ** — IVA, CAE, va a ARCA'],
+              ['**Remito**', 'sí (con recepción)', '**NO**', 'no'],
+              ['**Liquidación**', 'sí (con recepción)', 'sí', '**no** ← la que faltaba'],
+            ],
+          },
+          {
+            t: 'p',
+            texto: 'Con un remito la mercadería entraba pero **la deuda no quedaba registrada**; cargar la mitad negra como factura **inflaba el IVA computado**. La liquidación hace las dos cosas bien: suma stock y suma deuda, sin ser fiscal.',
+          },
+          {
+            t: 'p',
+            texto: '**Cómo se carga.** Igual que una factura (Compras › Facturación › + Nuevo comprobante), eligiendo el tipo **Liquidación (sin factura)**. La pantalla se acomoda sola: **letra X fija** (no se elige), **sin IVA** y **sin percepciones** — ni las filas del pie ni el botón aparecen. El total es la mercadería y nada más. Se cargan las dos mitades como dos comprobantes del mismo proveedor y la misma fecha; cada uno con lo que le corresponde.',
+          },
+          {
+            t: 'nota',
+            tono: 'ok',
+            texto: '**La plata al proveedor es UNA.** Las dos mitades caen en la misma cuenta corriente y las dos aparecen en la bandeja de pago, así que se le paga junto y el saldo es el real. Facturación muestra además un indicador **"Sin factura"** aparte del "Total facturado", que es el número que se compara contra el libro de IVA: son dos cosas distintas y no hay que mezclarlas.',
+          },
+          {
+            t: 'p',
+            texto: '**Por qué es un tipo propio y no una factura con letra X ni un tilde de "no fiscal".** Lo que importa es qué pasa cuando alguien se olvida. Con un tipo aparte, toda consulta que pide "facturas" la excluye sola y hay que **optar por incluirla**. Con una letra o un tilde, todo la incluye por defecto y hay que acordarse de sacarla — y ese olvido **infla el IVA computado**, que es el lado caro del error. El costo de la decisión: el tipo nuevo hay que agregarlo en **seis listas explícitas** del código (mueve stock, genera deuda, cuenta corriente, documentos pagables, lo que se acepta imputar, y la suma del saldo); están todas marcadas con el comentario `LISTA DE TIPOS` para poder encontrarlas.',
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**Quién la ve.** Tiene **permiso propio** (`liquidaciones`), separado del de cargar facturas, y arranca **solo para admin y superadmin**. Sin ese permiso el tipo no está en el alta, no está en el filtro y las liquidaciones **no se listan**. Se puede aflojar cuando quieras en Sistema › Roles. **Pero es una comodidad de pantalla, no un candado**: la API no valida quién llama y no va a poder hasta que haya sesiones con token — es el mismo bloqueante de siempre.',
+          },
+          {
+            t: 'p',
+            texto: '**Lo que la liquidación NO hace:** no tiene CAE ni QR (no es electrónica, el papel se carga a mano), **una nota de crédito no puede ajustarla** (la NC es fiscal y no puede referenciar algo que para ARCA no existe: si vuelve mercadería de esa mitad, se corrige la liquidación), y no aparece en ninguna suma de IVA. Si el proveedor te da un papel de esa mitad, se puede subir a la bandeja de Por procesar y clasificarlo como liquidación a mano.',
+          },
+          { t: 'ruta', texto: 'Compras › Facturación › + Nuevo comprobante › tipo "Liquidación (sin factura)" · el permiso se configura en Sistema › Roles' },
+        ],
+      },
+      {
         id: 'notas-credito-debito',
         actualizado: '2026-08-07 23:05',
         titulo: 'Notas de crédito y de débito: siempre sobre una factura',
@@ -1978,6 +2029,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**8/8/2026**', '**Liquidación: ya se puede cargar la mitad que el proveedor entrega sin factura.** Antes no había forma: el **remito** entraba la mercadería pero **no registraba la deuda**, y cargarla como factura **inflaba el IVA computado**. El tipo nuevo suma stock y suma deuda **sin ser fiscal** — letra X fija, sin IVA, sin percepciones, sin CAE. Las dos mitades caen en la **misma cuenta corriente** y las dos aparecen en la bandeja de pago, así que al proveedor se le paga junto; Facturación muestra un indicador **"Sin factura"** aparte del "Total facturado", que es el que se compara contra el libro de IVA. **Es un tipo propio y no una factura con letra X ni un tilde de "no fiscal"** porque lo que importa es qué pasa cuando alguien se olvida: con un tipo aparte toda consulta que pide "facturas" la excluye sola; con una letra o un tilde, todo la incluye por defecto y el olvido infla el IVA. Tiene **permiso propio** (`liquidaciones`), separado del de cargar facturas, solo para admin y superadmin — sin él el tipo no está en el alta, no está en el filtro y las liquidaciones no se listan. Probado con **16 verificaciones** contra la API (las dos mitades del mismo remito: stock +20, deuda +$22.100, el IVA de la liquidación forzado a 0 incluso mandándole 21%, y la NC rechazada contra ella) más el candado del permiso revocado y restaurado en pantalla. Guía nueva: Formato de Compra › "Liquidación"'],
               ['**8/8/2026**', '**En preparación, cada encargado ve solo su lista.** El fraccionador abre el pedido y ve **Fraccionados**; el preparador, **Enteros**. La lista del otro no le sirve y lo obligaba a buscar sus renglones entre los ajenos. Quien tenga los dos permisos —o sea admin— sigue viendo las dos, porque necesita el pedido completo para despachar, y un supervisor que no pueda tocar ninguna las ve en lectura (esconderle todo dejaba el modal vacío). Si el pedido no trae nada de tu lado, ahora lo dice con palabras en vez de mostrar una tabla vacía. **La división ya existía en el modelo** (`enterosListo` / `granelListo` y el reparto por tipo de producto): lo único que faltaba era el filtro de visibilidad. **Es una comodidad de pantalla, no un candado**: la API no valida quién confirma qué lista y no va a poder hasta que haya sesiones con token'],
               ['**8/8/2026**', '**Pantalla propia del fraccionado: diseñada y EN ESPERA.** Se anotó a partir de cómo lo resuelve el sistema viejo, que le da a cada fraccionado su propio producto y una pestaña "Prod.Util" con la madre de la que descuenta. Acá sería una pestaña **nueva** llamada **"Producto madre"** (no hay ninguna "Prod.Util" que renombrar) más pantalla propia para el fraccionado. **El modelo ya lo soporta entero** —`tamKg`, `recargo`, `opFraccionar`, y `stock`/`movimientos` ya llevan `presentacionId`, así que el x500g ya tiene stock, movimientos, código y precio propios— o sea que **es una vista que falta, no una migración**. Quedaron anotadas las cuatro decisiones previas (el stock queda a la vista en dos lugares y hay que evitar que se cuente mal; el costo del fraccionado tiene que ser de solo lectura o se repite la divergencia de Bavosi; si el fraccionado es fila propia el listado pasa de 94 a 167; y borrar una presentación hoy borra su stock sin avisar) y una pregunta abierta: falta el equivalente al "SOLO STOCK" del sistema viejo para el granel que no se vende suelto. Ficha: Pendientes › "Pantalla propia del fraccionado"'],
               ['**8/8/2026**', '**Aplicado el resto de los dos informes: 8 arreglos de seguridad y 6 de limpieza, en cinco módulos.** El más importante no estaba en el informe original y apareció al buscar la carrera del saldo en los otros módulos: **el cierre de caja podía dejar plata afuera del arqueo**. Sumar el arqueo y marcar el turno cerrado eran dos pasos sueltos, y entre uno y otro entraba un egreso —un pago a proveedor de esa caja, o un movimiento manual— que quedaba **dentro de un turno cerrado pero fuera de `sistemaEfectivo`**, con la diferencia mal y congelada en la fila para siempre. También **Cobranzas tenía la carrera igual que Pagos** (dos cobranzas simultáneas cobraban de más la misma venta) y **Comprobantes no tenía nada** (su caso es una etiqueta derivada, y el stock ya usaba el `cantidad = cantidad + delta` atómico). Además: el **mime de los archivos subidos ahora se verifica contra los bytes reales** (un HTML rotulado como PNG se rechaza) y se sirven con `nosniff`; los tres endpoints de pagos que recibían `any` tienen DTO (el `?desde=abc` que tiraba 500 ahora es un 400); topes de páginas y total no negativo en la bandeja; y el `desde` del filtro de pagos parseaba la fecha como UTC mientras el `hasta` la parseaba local, o sea tres horas del día anterior colándose. De limpieza: la etiqueta del documento vive en UN lugar (`common/documentos`, no en `comprobantes`, porque `comprobantes` ya importa de `pagos` y se hacía un ciclo) así que **se dejó de ver `nota_debito 0001-123` en pantalla**; índice de `ref_comprobante_id` (con el snapshot de Drizzle corregido, que se había quedado sin el único de número); import muerto y campo que nadie leía, afuera. Verificado con **45 pruebas** contra la API y la base restaurada en las tres corridas'],

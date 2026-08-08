@@ -107,11 +107,23 @@ export const OPCIONES_REDONDEO_PRECIO = [
 // ---- Comprobantes de compra (Facturación) ----
 export const TIPOS_COMPROBANTE = {
   factura:      { label: 'Factura',          tag: 'tag-venta' },
+  /*
+   * LIQUIDACIÓN — la mitad que el proveedor entrega SIN factura.
+   *
+   * Mueve stock y genera deuda como una factura, pero no es fiscal: sin IVA, sin
+   * percepciones, sin CAE, letra X siempre. Se pinta con el tag de merma
+   * (`tag-baja`, el rojizo) a propósito: es el único de la lista que no va a
+   * ningún libro, y la pantalla tiene que cantarlo sin que nadie lea la ayuda.
+   */
+  liquidacion:  { label: 'Liquidación (sin factura)', tag: 'tag-baja', noFiscal: true },
   remito:       { label: 'Remito',           tag: 'tag-transf' },
   nota_credito: { label: 'Nota de crédito',  tag: 'tag-baja' },
   nota_debito:  { label: 'Nota de débito',   tag: 'tag-ingreso' },
   orden_compra: { label: 'Orden de compra',  tag: 'tag-ajuste' },
 };
+
+/** Tipos que requieren el permiso `liquidaciones` para verse y cargarse. */
+export const TIPOS_RESERVADOS = Object.keys(TIPOS_COMPROBANTE).filter((k) => TIPOS_COMPROBANTE[k].noFiscal);
 export const ESTADOS_COMPROBANTE = {
   borrador:   { label: 'Borrador',   pill: 'est-pendiente' },
   confirmado: { label: 'Confirmado', pill: 'est-recibida' },

@@ -199,7 +199,25 @@ function PasosWizard({ paso, irA }) {
  *   número contra el que se valida que los renglones cargados cierren.
  */
 export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
-  const { store, closeModal, toast, sucOperativa } = useProductos();
+  const { store, closeModal, toast, sucOperativa, can } = useProductos();
+
+  /*
+   * LA LIQUIDACIÓN SOLO APARECE CON SU PERMISO. Es la mitad que el proveedor
+   * entrega sin factura: un documento no fiscal, y quién lo carga es decisión
+   * del dueño. Sin el permiso `liquidaciones` el tipo no está ni en la lista.
+   *
+   * Ojo: esto esconde la opción, no la prohíbe — la API no valida quién llama
+   * (no puede, no hay autenticación todavía).
+   */
+  /*
+   * A propósito SIN el `isAdmin ||` que usan los otros permisos del sistema.
+   * Con él, un admin vería las liquidaciones aunque se le revocara el permiso —
+   * y todo el punto de este permiso es que la visibilidad se pueda decidir. El
+   * superadmin queda cubierto igual porque su rol tiene el comodín `*`.
+   */
+  const puedeNoFiscal = can('liquidaciones');
+  const tiposDisponibles = Object.keys(TIPOS_COMPROBANTE)
+    .filter((k) => puedeNoFiscal || !TIPOS_COMPROBANTE[k].noFiscal);
 
   /**
    * El alta es un asistente de TRES pasos: datos del comprobante → ítems →
@@ -277,6 +295,8 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
    * `''` = todavía no eligió · `'0'` = eligió explícitamente "no corresponde".
    */
   const esNota = tipo === 'nota_credito' || tipo === 'nota_debito';
+  /** Liquidación: sin IVA, sin percepciones, letra X fija (lo fuerza la API). */
+  const esNoFiscal = !!TIPOS_COMPROBANTE[tipo]?.noFiscal;
   const [refId, setRefId] = useState('');
   const [facturasRef, setFacturasRef] = useState([]);
   useEffect(() => {
@@ -442,11 +462,14 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
 
   // El IVA se recalcula renglón por renglón sobre el neto bonificado: con dos
   // alícuotas distintas (21 y 10,5) no alcanza con prorratear el IVA total.
+  /* En una liquidación el IVA es 0 acá TAMBIÉN, no solo en la API: si la pantalla
+   * sumara el 21% del renglón, el total del formulario no coincidiría con el que
+   * devuelve el backend y el usuario vería cambiar el número al guardar. */
   const tot = items.reduce((acc, it) => {
     const r = calcRow(it);
     const neto = r.neto * factorBonif;
     acc.neto += neto;
-    acc.iva += neto * (Number(it.iva) || 0) / 100;
+    acc.iva += esNoFiscal ? 0 : neto * (Number(it.iva) || 0) / 100;
     return acc;
   }, { neto: 0, iva: 0 });
 
@@ -473,7 +496,8 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
     const calc = r2(base * (Number(p.alicuota) || 0) / 100);
     return { ...p, calc, importe: p.importeManual != null ? p.importeManual : calc };
   });
-  const percTotal = percCalculadas.reduce((a, p) => a + (p.aplicar ? p.importe : 0), 0);
+  // Idem el IVA: una liquidación no lleva percepciones, y la API las descarta.
+  const percTotal = esNoFiscal ? 0 : percCalculadas.reduce((a, p) => a + (p.aplicar ? p.importe : 0), 0);
   const percAplicadas = percCalculadas.filter((p) => p.aplicar).length;
   /** Toca UNA percepción por su índice real (lo usa la × del pie). */
   const setPerc = (i, patch) => setPercepciones((r) => r.map((p, j) => (j === i ? { ...p, ...patch } : p)));
@@ -811,8 +835,14 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
         <div className={s.field}>
           <label>Tipo <span className={s.req}>*</span></label>
           <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
-            {Object.keys(TIPOS_COMPROBANTE).map((k) => <option key={k} value={k}>{TIPOS_COMPROBANTE[k].label}</option>)}
+            {tiposDisponibles.map((k) => <option key={k} value={k}>{TIPOS_COMPROBANTE[k].label}</option>)}
           </select>
+          {esNoFiscal && (
+            <div className={s.hint} style={{ margin: '6px 0 0' }}>
+              Sin IVA, sin percepciones y sin CAE. Suma stock y deuda igual que una
+              factura, pero <strong>no va a ningún libro</strong>.
+            </div>
+          )}
         </div>
         <div className={s.field}>
           <label>Proveedor <span className={s.req}>*</span></label>
@@ -832,9 +862,15 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1.2fr 1fr', gap: 8 }}>
         <div className={s.field}>
           <label>Letra</label>
-          <select value={letra} onChange={(e) => setLetra(e.target.value)}>
-            {LETRAS_COMPROBANTE.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
+          {/* La liquidación es letra X y no se elige: la A significa "discrimina
+              IVA" y este comprobante no discrimina nada. */}
+          {esNoFiscal ? (
+            <input value="X" readOnly tabIndex={-1} />
+          ) : (
+            <select value={letra} onChange={(e) => setLetra(e.target.value)}>
+              {LETRAS_COMPROBANTE.map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
+          )}
         </div>
         <div className={s.field}>
           <label>Punto de venta</label>
@@ -1131,15 +1167,21 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
             </span>
           </div>
         )}
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>Neto gravado</span><strong>{money(tot.neto)}</strong>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>IVA</span><strong>{money(tot.iva)}</strong>
-        </div>
+        {/* "Neto gravado" e "IVA" no van en una liquidación: no hay nada gravado
+            que mostrar, y una fila "IVA $0" invita a preguntarse si falta cargarlo. */}
+        {!esNoFiscal && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Neto gravado</span><strong>{money(tot.neto)}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>IVA</span><strong>{money(tot.iva)}</strong>
+            </div>
+          </>
+        )}
         {/* Se recorre TODO el array (no el filtrado) para que el índice de la
             × sea el real: con el filtrado, quitar una borraba a la de al lado. */}
-        {percCalculadas.map((p, i) => (p.aplicar ? (
+        {!esNoFiscal && percCalculadas.map((p, i) => (p.aplicar ? (
           <div key={p.id ?? i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>
               {p.nombre} <span className={s.muted}>· {num(p.alicuota, 2)}%</span>
@@ -1200,18 +1242,23 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
         >
           {hayBonif ? 'Editar bonificación' : '+ Bonificación'}
         </button>
-        <button
-          type="button"
-          className={cx(s.btn, s['btn-ghost'], s['btn-sm'])}
-          disabled={!percepciones.length}
-          title={percepciones.length
-            ? 'Tildar las percepciones que trajo esta factura'
-            : `${provElegido?.nombre || 'Este proveedor'} no tiene percepciones configuradas (se cargan en su ficha)`}
-          onClick={() => setModalPie('percepciones')}
-        >
-          {percAplicadas > 0 ? `Percepciones (${percAplicadas})` : '+ Percepciones'}
-        </button>
-        {!percepciones.length && (
+        {/* Sin percepciones en una liquidación: son pago a cuenta de un impuesto,
+            y en un comprobante que no existe para ARCA no hay nada a cuenta de qué.
+            La API las descarta igual — el botón se esconde para no prometerlas. */}
+        {!esNoFiscal && (
+          <button
+            type="button"
+            className={cx(s.btn, s['btn-ghost'], s['btn-sm'])}
+            disabled={!percepciones.length}
+            title={percepciones.length
+              ? 'Tildar las percepciones que trajo esta factura'
+              : `${provElegido?.nombre || 'Este proveedor'} no tiene percepciones configuradas (se cargan en su ficha)`}
+            onClick={() => setModalPie('percepciones')}
+          >
+            {percAplicadas > 0 ? `Percepciones (${percAplicadas})` : '+ Percepciones'}
+          </button>
+        )}
+        {!esNoFiscal && !percepciones.length && (
           <span className={s.hint} style={{ margin: 0, alignSelf: 'center' }}>
             Las percepciones de un proveedor se cargan una vez en su ficha (Proveedores › abrirlo ›
             Percepciones) y desde ahí aparecen acá.

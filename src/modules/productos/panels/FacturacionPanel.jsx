@@ -87,14 +87,35 @@ export function FacturacionPanel() {
 
   const verPagos = can('compras.pagos');
 
+  /*
+   * SIN EL PERMISO `liquidaciones`, la mitad sin factura NO SE LISTA.
+   *
+   * Van mezcladas con las facturas a propósito (al mirar un proveedor se ve de
+   * una todo lo que se le debe, que es la verdad operativa: la plata que se le
+   * paga es una sola), así que el filtro tiene que estar acá y no en una pestaña.
+   *
+   * Como todo lo de permisos del sistema, esto esconde — no prohíbe. La API no
+   * valida quién pregunta hasta que haya sesiones con token.
+   */
+  // Sin `isAdmin ||` a propósito: con él, revocarle el permiso a un admin no
+  // haría nada. El superadmin queda cubierto por el comodín `*` de su rol.
+  const verNoFiscal = can('liquidaciones');
+
   const comps = store.state.comprobantes
     .slice()
     .sort((a, b) => b.id - a.id)
-    .filter((c) => (!tipoF || c.tipo === tipoF) && (!provF || c.proveedorId === parseInt(provF, 10)) && (!estadoF || c.estado === estadoF));
+    .filter((c) => (verNoFiscal || !TIPOS_COMPROBANTE[c.tipo]?.noFiscal)
+      && (!tipoF || c.tipo === tipoF) && (!provF || c.proveedorId === parseInt(provF, 10)) && (!estadoF || c.estado === estadoF));
 
+  // "Facturado" es SOLO lo facturado: la liquidación no entra ni con el permiso
+  // puesto. Es el número que se compara contra el libro de IVA.
   const totalFacturado = comps
     .filter((c) => c.tipo === 'factura' && c.estado === 'confirmado')
     .reduce((a, c) => a + c.total, 0);
+  // Y este es el otro número que hace falta: cuánto de la compra no está facturado.
+  const totalNoFiscal = verNoFiscal
+    ? comps.filter((c) => TIPOS_COMPROBANTE[c.tipo]?.noFiscal && c.estado === 'confirmado').reduce((a, c) => a + c.total, 0)
+    : 0;
   const saldoCtaCte = provF
     ? store.cuentaProveedor(parseInt(provF, 10))
     : store.state.proveedores.reduce((a, p) => a + store.cuentaProveedor(p.id), 0);
@@ -155,6 +176,11 @@ export function FacturacionPanel() {
           <div className={s.stats}>
             <Stat label="Comprobantes" value={comps.length} />
             <Stat label="Total facturado" value={money(totalFacturado)} accent="accent-green" />
+            {/* Solo aparece si hay: la mayoría de los proveedores factura todo, y
+                un "$0 sin factura" fijo en la pantalla no informa nada. */}
+            {totalNoFiscal > 0.009 && (
+              <Stat label="Sin factura" value={money(totalNoFiscal)} accent="accent-amber" />
+            )}
             <Stat
               label={provF ? 'Saldo del proveedor' : 'Saldo cta. corriente'}
               value={money(saldoCtaCte)}
@@ -165,7 +191,9 @@ export function FacturacionPanel() {
           <div className={s.toolbar}>
             <select className={s['select-inline']} value={tipoF} onChange={(e) => setTipoF(e.target.value)}>
               <option value="">Todos los tipos</option>
-              {Object.keys(TIPOS_COMPROBANTE).map((k) => <option key={k} value={k}>{TIPOS_COMPROBANTE[k].label}</option>)}
+              {Object.keys(TIPOS_COMPROBANTE)
+                .filter((k) => verNoFiscal || !TIPOS_COMPROBANTE[k].noFiscal)
+                .map((k) => <option key={k} value={k}>{TIPOS_COMPROBANTE[k].label}</option>)}
             </select>
             <select className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)}>
               <option value="">Todos los estados</option>
