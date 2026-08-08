@@ -265,6 +265,17 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const [items, setItems] = useState(() => [nuevoItem()]);
   const [busquedaLote, setBusquedaLote] = useState(false);
 
+  /* ---- Lectura de renglones desde el PDF digital ----
+   * Si el papel de la bandeja es un PDF con capa de texto, el backend lo lee
+   * (receta por proveedor) y devuelve una PROPUESTA: renglones, pie y
+   * encabezado. Acá solo se precarga — la persona confirma. Las fotos no
+   * tienen capa de texto: para esas el endpoint contesta 400. */
+  const [propuestaPdf, setPropuestaPdf] = useState(null);
+  const [leyendoPdf, setLeyendoPdf] = useState(false);
+  /** CAE leído del PDF (cuando el QR no se leyó y la lectura no lo trae). */
+  const [caePdf, setCaePdf] = useState('');
+  const tienePdf = !!lectura?.archivos?.some((a) => a.mime === 'application/pdf');
+
   /*
    * LISTA DE TIPOS · qué comprobantes pueden ingresar mercadería.
    *
@@ -515,6 +526,75 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const percAplicadas = percCalculadas.filter((p) => p.aplicar).length;
   /** Toca UNA percepción por su índice real (lo usa la × del pie). */
   const setPerc = (i, patch) => setPercepciones((r) => r.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+
+  /* ---- Leer el PDF: pedir la propuesta y precargar el formulario ---- */
+
+  /** Aplica el encabezado leído del PDF a los campos del paso 1. Es un botón
+   * aparte y no automático: si el QR ya llenó el encabezado (o alguien lo
+   * tipeó), pisarlo sin aviso sería decidir por la persona. */
+  const usarEncabezadoPdf = () => {
+    const e = propuestaPdf?.encabezado;
+    if (!e) return;
+    if (e.tipo) setTipo(e.tipo);
+    if (e.letra) setLetra(e.letra);
+    if (e.puntoVenta) setPuntoVenta(e.puntoVenta);
+    if (e.numero) setNumero(String(e.numero));
+    if (e.fecha) setFecha(e.fecha);
+    if (e.vencimiento) setVenc(e.vencimiento);
+    if (e.cae) setCaePdf(e.cae);
+    toast('Encabezado tomado del PDF.', 'ok');
+  };
+
+  const leerPdf = async () => {
+    if (leyendoPdf || !lectura) return;
+    // Releer pisa lo cargado: si ya hay renglones armados a mano, se pregunta.
+    if (items.some((it) => it.productoId)
+      && !window.confirm('Leer el PDF reemplaza los renglones ya cargados. ¿Seguir?')) return;
+    setLeyendoPdf(true);
+    try {
+      const d = await store.leerRenglonesLectura(lectura.id);
+      setPropuestaPdf(d);
+      if (!d?.receta) {
+        toast(d?.avisos?.[0] || 'No se pudo leer el PDF.', 'err');
+        return;
+      }
+      const filas = (d.renglones || []).filter((x) => x.productoId).map((x) => ({
+        productoId: String(x.productoId),
+        bultos: String(x.cantidad),
+        porBulto: String(x.porBulto || 1),
+        costoBulto: x.costoBulto != null ? String(x.costoBulto) : '',
+        // El costo vino del papel: que el catálogo no lo pise al re-elegir.
+        descuento: String(x.dto || 0),
+        iva: String(x.iva ?? 21),
+        costoAuto: false,
+      }));
+      if (filas.length) setItems(filas);
+      if (d.pie?.bonifImporte > 0) {
+        setBonifPct(d.pie.bonifPct != null ? String(d.pie.bonifPct) : '');
+        setBonifManual(d.pie.bonifImporte);
+      }
+      if (d.pie?.percepciones?.length) {
+        // Tildar las configuradas del proveedor que el papel trajo: por nombre
+        // parecido o por la misma alícuota. El importe del papel manda.
+        const k = (v) => String(v || '').normalize('NFD').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        setPercepciones((prev) => prev.map((p) => {
+          const m = d.pie.percepciones.find((x) => {
+            const a = k(x.nombre); const b = k(p.nombre);
+            return (a && b && (a.includes(b) || b.includes(a)))
+              || (x.alicuota != null && Number(p.alicuota) === Number(x.alicuota));
+          });
+          return m ? { ...p, aplicar: true, importeManual: m.importe } : p;
+        }));
+      }
+      const conProd = filas.length;
+      toast(`${d.renglones.length} renglones leídos del PDF (${conProd} con producto).`, 'ok');
+    } catch (err) {
+      setPropuestaPdf(null);
+      toast(err?.message || 'No se pudo leer el PDF.', 'err');
+    } finally {
+      setLeyendoPdf(false);
+    }
+  };
   /** Cuál de los dos modales chicos del pie está abierto: null | 'bonificacion' | 'percepciones'. */
   const [modalPie, setModalPie] = useState(null);
 
@@ -744,9 +824,9 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       tipo, letra, puntoVenta, numero, fecha, fechaCarga, proveedorId: parseInt(provId, 10),
       sucursalId: sucId ? parseInt(sucId, 10) : null, condicionPago, recepcion: permiteRecepcion && recepcion,
       vencimientoPago: venc || null, observaciones: obs.trim(), items: parsed,
-      // De la bandeja: el CAE del QR y la lectura que este comprobante cierra
-      // (la API la marca como cargada en la misma transacción).
-      cae: lectura?.cae || undefined,
+      // De la bandeja: el CAE del QR (o el leído del PDF, si el QR no se pudo)
+      // y la lectura que este comprobante cierra en la misma transacción.
+      cae: lectura?.cae || caePdf || undefined,
       lecturaId: lectura?.id,
       // La factura que esta nota ajusta ('0' = el usuario dijo que no corresponde).
       refComprobanteId: esNota && refId && refId !== '0' ? Number(refId) : undefined,
@@ -962,6 +1042,82 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       {paso === 2 && (
       <>
       <div className={s['section-title']}>Ítems</div>
+
+      {/* El papel es un PDF digital: los renglones se LEEN, no se tipean. */}
+      {tienePdf && (
+        <div className={cx(s.callout, s.info)} style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span>
+              Este papel es un <strong>PDF digital</strong>: los renglones se pueden leer directo del archivo.
+            </span>
+            <Btn small variant="btn-primary" onClick={leerPdf} disabled={leyendoPdf}>
+              {leyendoPdf ? 'Leyendo…' : propuestaPdf ? 'Releer el PDF' : 'Leer renglones del PDF'}
+            </Btn>
+          </div>
+
+          {propuestaPdf?.receta && (
+            <div style={{ marginTop: 8 }}>
+              <div>
+                <strong>{propuestaPdf.renglones.length} renglones leídos</strong>
+                {' '}· {propuestaPdf.renglones.filter((x) => x.productoId).length} con producto propuesto
+                {propuestaPdf.cierra && <> · <strong>el total cierra con el papel</strong></>}
+              </div>
+
+              {propuestaPdf.encabezado?.numero && (
+                <div style={{ marginTop: 4 }}>
+                  El PDF dice: <strong>
+                    {TIPOS_COMPROBANTE[propuestaPdf.encabezado.tipo]?.label || propuestaPdf.encabezado.tipo}{' '}
+                    {propuestaPdf.encabezado.letra} {propuestaPdf.encabezado.puntoVenta}-{propuestaPdf.encabezado.numero}
+                  </strong>{' '}· {fmtFecha(propuestaPdf.encabezado.fecha)}
+                  {propuestaPdf.encabezado.cae && <> · CAE <span className={s.mono}>{propuestaPdf.encabezado.cae}</span></>}
+                  <button type="button" className={s.linkBtn} style={{ marginLeft: 8 }} onClick={usarEncabezadoPdf}>
+                    usar este encabezado
+                  </button>
+                </div>
+              )}
+
+              {propuestaPdf.renglones.some((x) => !x.productoId) && (
+                <div style={{ marginTop: 6 }}>
+                  <strong>Sin producto reconocido</strong> (¿artículos nuevos del proveedor?) — se agregan a mano:
+                  <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
+                    {propuestaPdf.renglones.filter((x) => !x.productoId).map((x) => (
+                      <li key={x.codigo}>
+                        <span className={s.mono}>{x.codigo}</span> {x.descripcion} — {money(x.importe)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {propuestaPdf.avisos?.length > 0 && (
+                <div style={{ marginTop: 6, color: 'var(--crm-color-warning)' }}>
+                  {propuestaPdf.avisos.map((a, i) => <div key={i}>· {a}</div>)}
+                </div>
+              )}
+
+              <details style={{ marginTop: 6 }}>
+                <summary className={s.hint} style={{ cursor: 'pointer', margin: 0 }}>Ver el texto extraído del PDF</summary>
+                <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'auto', margin: '6px 0 0' }}>
+                  {propuestaPdf.texto}
+                </pre>
+              </details>
+            </div>
+          )}
+          {propuestaPdf && !propuestaPdf.receta && (
+            <div style={{ marginTop: 8, color: 'var(--crm-color-warning)' }}>
+              {propuestaPdf.avisos?.map((a, i) => <div key={i}>· {a}</div>)}
+              {propuestaPdf.texto && (
+                <details style={{ marginTop: 6 }}>
+                  <summary className={s.hint} style={{ cursor: 'pointer', margin: 0 }}>Ver el texto extraído</summary>
+                  <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'auto', margin: '6px 0 0' }}>
+                    {propuestaPdf.texto}
+                  </pre>
+                </details>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       <div className={s.hint} style={{ marginTop: 0 }}>
         El buscador ofrece los productos de <strong>{provElegido?.nombre || 'este proveedor'}</strong> por
         nombre, código interno o código de barras. Se carga <strong>en bultos</strong>, como habla la

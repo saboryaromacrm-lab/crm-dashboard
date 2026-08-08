@@ -706,6 +706,12 @@ const recuperarLecturaFactura = (id) => httpClient.post(`/facturas/lecturas/${id
 const vincularLecturaFactura = (id, comprobanteId) => _mutate(() => httpClient.post(`/facturas/lecturas/${id}/vincular`, { comprobanteId }));
 /** URL directa del papel: va en un <img src> o se abre en una pestaña. */
 const urlPapelFactura = (archivoId) => `${appConfig.api.baseUrl}/facturas/archivos/${archivoId}`;
+/**
+ * La propuesta de carga leída del PDF digital: renglones + pie + encabezado.
+ * Solo lectura — no toca nada; el alta la usa para precargar y la persona
+ * confirma. Para fotos el endpoint contesta 400 (eso es la etapa de visión).
+ */
+const leerRenglonesLectura = (id) => httpClient.get(`/facturas/lecturas/${id}/renglones`);
 
 /* ---- Costos y márgenes ----
  * La previsualización se calcula en el navegador (el store ya tiene costos y
@@ -747,7 +753,7 @@ export const inventoryStore = {
   crearComprobante, getComprobante, comprobantesDe, cuentaProveedor, facturasReferenciables,
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
-  urlPapelFactura,
+  urlPapelFactura, leerRenglonesLectura,
   pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
   enviosCafeteria, envioCafeteria, resumenCafeteria, crearEnvioCafeteria, avanzarEnvioCafeteria, anularEnvioCafeteria,
   imputarPago, quitarImputacionPago, anularPago, moverDestinoPago,
