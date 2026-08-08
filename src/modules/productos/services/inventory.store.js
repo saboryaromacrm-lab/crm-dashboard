@@ -631,6 +631,14 @@ function _cleanComprobante(o) {
       presentacionId: it.presentacionId != null && it.presentacionId !== '' ? Number(it.presentacionId) : undefined,
       cantidad: Number(it.cantidad) || 0, costoUnitario: Number(it.costoUnitario) || 0,
       descuento: Number(it.descuento) || 0, iva: it.iva != null ? Number(it.iva) : 21,
+      /*
+       * Del renglón leído del PDF: el código del artículo como lo imprime el
+       * proveedor y la descripción del papel. Alimentan el MAPEO APRENDIDO
+       * (la próxima factura reconoce el artículo sola). Esta lista ya se tragó
+       * campos en silencio — si el ítem gana un campo, va acá también.
+       */
+      codigoProveedor: it.codigoProveedor ? String(it.codigoProveedor) : undefined,
+      descripcionPapel: it.descripcionPapel ? String(it.descripcionPapel) : undefined,
     })),
   };
 }

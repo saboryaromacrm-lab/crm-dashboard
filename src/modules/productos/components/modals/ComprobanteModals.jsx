@@ -274,6 +274,8 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const [leyendoPdf, setLeyendoPdf] = useState(false);
   /** CAE leído del PDF (cuando el QR no se leyó y la lectura no lo trae). */
   const [caePdf, setCaePdf] = useState('');
+  /** Códigos del papel ya asociados a mano en este alta: código → nombre. */
+  const [asociados, setAsociados] = useState({});
   const tienePdf = !!lectura?.archivos?.some((a) => a.mime === 'application/pdf');
 
   /*
@@ -567,7 +569,12 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
         descuento: String(x.dto || 0),
         iva: String(x.iva ?? 21),
         costoAuto: false,
+        // Para el mapeo aprendido: si el admin cambia el producto de esta fila
+        // y guarda, el código del papel queda asociado al producto NUEVO.
+        codigoProveedor: x.codigo || '',
+        descripcionPapel: x.descripcion || '',
       }));
+      setAsociados({});
       if (filas.length) setItems(filas);
       if (d.pie?.bonifImporte > 0) {
         setBonifPct(d.pie.bonifPct != null ? String(d.pie.bonifPct) : '');
@@ -594,6 +601,34 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
     } finally {
       setLeyendoPdf(false);
     }
+  };
+
+  /**
+   * ASOCIAR A MANO un renglón que la lectura no reconoció: el admin elige el
+   * producto del sistema y el renglón se agrega al alta con el código del
+   * papel adentro. Al GUARDAR, ese par (código → producto) queda aprendido y
+   * la próxima factura lo reconoce sola — el trabajo manual es solo la primera
+   * vez que aparece cada artículo.
+   */
+  const asociarRenglon = (ren, prodId) => {
+    const prod = store.getProducto(parseInt(prodId, 10));
+    if (!prod) return;
+    const entry = (prod.formatosCompra || []).find((e) => e.proveedorId === parseInt(provId, 10));
+    const fila = {
+      productoId: String(prod.id),
+      bultos: String(ren.cantidad),
+      porBulto: entry ? String(entry.cantidad || 1) : (prod.tipo === 'entero' ? String(prod.unidadesPorBulto || 1) : '1'),
+      costoBulto: ren.costoBulto != null ? String(ren.costoBulto) : '',
+      descuento: String(ren.dto || 0),
+      iva: String(ren.iva ?? 21),
+      costoAuto: false,
+      codigoProveedor: ren.codigo || '',
+      descripcionPapel: ren.descripcion || '',
+    };
+    // Las filas vacías de relleno se van; las cargadas se quedan.
+    setItems((prev) => [...prev.filter((it) => it.productoId), fila]);
+    setAsociados((a) => ({ ...a, [ren.codigo]: prod.nombre }));
+    toast(`${prod.nombre} agregado. Al guardar, el código ${ren.codigo} queda aprendido.`, 'ok');
   };
   /** Cuál de los dos modales chicos del pie está abierto: null | 'bonificacion' | 'percepciones'. */
   const [modalPie, setModalPie] = useState(null);
@@ -793,6 +828,10 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
           // El stock recibe los kg (o unidades) TOTALES; el costo viaja unitario.
           productoId: parseInt(it.productoId, 10), presentacionId: null,
           cantidad: r.cantidadTotal, costoUnitario: r.costoUnitario, descuento: it.descuento, iva: it.iva,
+          // El código del papel viaja para que el guardado APRENDA el mapeo
+          // (proveedor, código) → producto. Vacío si el ítem se cargó a mano.
+          codigoProveedor: it.codigoProveedor || undefined,
+          descripcionPapel: it.descripcionPapel || undefined,
         };
       });
     if (!parsed.length) { toast('Agregá al menos un ítem con bultos y tamaño de bulto.', 'err'); return; }
@@ -1078,11 +1117,30 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
 
               {propuestaPdf.renglones.some((x) => !x.productoId) && (
                 <div style={{ marginTop: 6 }}>
-                  <strong>Sin producto reconocido</strong> (¿artículos nuevos del proveedor?) — se agregan a mano:
+                  <strong>Sin producto reconocido.</strong> Asociá cada uno con el producto del sistema
+                  (aunque tenga otro nombre) y <strong>se aprende al guardar</strong>: la próxima factura
+                  lo reconoce sola. Si es un artículo nuevo, primero se crea en Productos.
                   <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
                     {propuestaPdf.renglones.filter((x) => !x.productoId).map((x) => (
-                      <li key={x.codigo}>
+                      <li key={x.codigo} style={{ marginBottom: 4 }}>
                         <span className={s.mono}>{x.codigo}</span> {x.descripcion} — {money(x.importe)}
+                        {asociados[x.codigo] ? (
+                          <strong style={{ marginLeft: 8, color: 'var(--crm-color-success)' }}>
+                            → {asociados[x.codigo]} ✓
+                          </strong>
+                        ) : (
+                          <select
+                            style={{ marginLeft: 8, maxWidth: 260 }}
+                            defaultValue=""
+                            onChange={(e) => { if (e.target.value) asociarRenglon(x, e.target.value); }}
+                          >
+                            <option value="">Asociar con un producto…</option>
+                            {store.state.productos
+                              .slice()
+                              .sort((a, b) => a.nombre.localeCompare(b.nombre))
+                              .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                          </select>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -1788,7 +1846,12 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
 }
 
 function nuevoItem() {
-  return { productoId: '', bultos: '1', porBulto: '', costoBulto: '', descuento: '0', iva: '21', costoAuto: true };
+  return {
+    productoId: '', bultos: '1', porBulto: '', costoBulto: '', descuento: '0', iva: '21', costoAuto: true,
+    // Del renglón leído del PDF (vacíos si el ítem se cargó a mano). Viajan al
+    // guardar y alimentan el mapeo aprendido de artículos del proveedor.
+    codigoProveedor: '', descripcionPapel: '',
+  };
 }
 
 /* ==================================================================== *
