@@ -2,7 +2,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { ModalShell } from './Modal.jsx';
 import { s } from './ui.jsx';
-import { ProductoFormModal, DetalleProductoModal } from './modals/ProductoModals.jsx';
+import { ProductoFormModal, DetalleProductoModal, FraccionadoModal } from './modals/ProductoModals.jsx';
 import { CompraModal, VenderModal, FraccionarModal, MovimientoModal } from './modals/StockModals.jsx';
 import { TransferenciaModal, DetalleTransferModal, RecibirTransferModal, PrepararTransferModal } from './modals/TransferModals.jsx';
 import { IncidenciaModal, ResolverIncidenciaModal, DetalleIncidenciaModal } from './modals/IncidenciaModals.jsx';
@@ -94,6 +94,8 @@ const REGISTRY = {
   margenesMasivos: MargenesMasivosModal,
   producto: ProductoFormModal,
   detalleProducto: DetalleProductoModal,
+  // La pantalla propia del fraccionado (el Ajo X500G): resumen + Producto madre.
+  fraccionado: FraccionadoModal,
   importarCatalogo: ImportarCatalogoModal,
   compra: CompraModal,
   vender: VenderModal,

@@ -1229,6 +1229,34 @@ export const MANUAL = [
     resumen: 'El modelo de existencias y los movimientos.',
     temas: [
       {
+        id: 'fraccionado-pantalla-propia',
+        actualizado: '2026-08-09 05:30',
+        titulo: 'El fraccionado tiene pantalla propia (y la madre dice la verdad total)',
+        bloques: [
+          {
+            t: 'p',
+            texto: 'Construido el 9/8/2026, con la lógica que definió el dueño: **el fraccionado muestra lo suyo y la madre cuenta la verdad total**. Si hay 5 kg de ajo sueltos y 10 paquetes de 500 g ya fraccionados, el Ajo X500G muestra sus 10 unidades, y la madre muestra "5 kg suelto + 5 kg fraccionado = **10 kg en total**" — que es la respuesta a "¿cuánto ajo hay?". Comprar mirando solo el suelto compra de más.',
+          },
+          {
+            t: 'tabla',
+            cols: ['Qué', 'Cómo quedó'],
+            filas: [
+              ['**Fila propia en el listado**', 'Compras › Productos lista cada fraccionado debajo de su madre ("↳ Lentejas · 500 g", badge Fraccionado) con su stock en paquetes. Se busca también por el código de barras de la etiqueta del paquete. Clic abre su pantalla propia.'],
+              ['**La pantalla propia**', 'Pestaña **Resumen**: tamaño, código de barras, recargo, costo del paquete (derivado), precio de venta, **formato de venta por lista**, stock por sucursal (paquetes y equivalente en kg) y los movimientos DE ESE fraccionado. Pestaña **Producto madre**: el "Prod.Util" del sistema viejo — de qué producto descuenta, cuánto consume por paquete (tamKg), y los dos costos (lista = sin recargo, total = con recargo). Más el desglose: suelto + este fraccionado + todas las presentaciones = TOTAL equivalente.'],
+              ['**El costo es de SOLO LECTURA**', 'Se deriva del madre (costo/kg × tamaño × recargo) y no se edita acá — si se pudiera, el costo del paquete y el de la madre divergirían: el vicio del sistema viejo que obligó a revisar 24 precios al importar Bavosi. Lo editable es el **recargo**, en la pestaña Presentaciones de la madre.'],
+              ['**"Solo para fraccionar"** (el "SOLO STOCK" del viejo)', 'Tilde en la ficha del granel que no se vende suelto (la pimienta de Jamaica: llega 1 kg y se fracciona entera en 20×50 g). El POS no lo ofrece por kg, y la venta suelta se **rechaza en la API** (hasta en borrador) — sus paquetes se venden normal.'],
+              ['**Borrar una presentación con stock se rechaza**', 'Esos paquetes existen en el depósito: borrar el renglón los haría desaparecer del sistema. Primero se venden o se ajustan.'],
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**Bug grave encontrado y corregido al construir esto**: guardar la pestaña Presentaciones hacía borrar-todo-y-reinsertar, y como el stock cascadea por `presentacionId`, CADA guardado **borraba el stock de todos los fraccionados en silencio** — aunque no se hubiera sacado ninguna presentación. Ahora actualiza por id (misma lección que los formatos de compra y su historial): los ids sobreviven al guardado y el stock queda donde estaba. Verificado: guardar con recargo nuevo conserva ids y stock intactos.',
+          },
+          { t: 'ruta', texto: 'Compras › Productos (filas ↳) · clic en el fraccionado › Resumen / Producto madre · ficha del producto › tilde "Solo para fraccionar"' },
+        ],
+      },
+      {
         id: 'modelo',
         actualizado: '2026-07-30',
         titulo: 'Modelo sin lote',
@@ -2027,6 +2055,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**9/8/2026**', '**El fraccionado tiene pantalla propia — y la madre dice la verdad total.** Con la lógica que definió el dueño: el Ajo X500G muestra sus paquetes; la madre muestra "suelto + fraccionado = TOTAL equivalente en kg" (77,04 + 8 = 85,04 en las Lentejas de prueba), que es la respuesta a "¿cuánto hay?". Cada fraccionado es **fila propia** en Compras › Productos (↳ debajo de su madre, buscable por el código de barras de su etiqueta) y su pantalla tiene **Resumen** (stock real, movimientos propios, formato de venta por lista, costo derivado de solo lectura) y **"Producto madre"** — el Prod.Util del sistema viejo: de qué descuenta, cuánto consume, costo lista y costo con recargo. Nuevo tilde **"Solo para fraccionar"** (el "SOLO STOCK"): la pimienta de Jamaica llega 1 kg y se fracciona entera — el POS no la ofrece suelta y la venta la rechaza hasta en borrador. **Bug grave corregido de paso**: guardar la pestaña Presentaciones hacía borrar-y-reinsertar y el stock de TODOS los fraccionados se borraba en silencio en cada guardado (cascadea por presentacionId); ahora actualiza por id, y borrar una presentación CON stock se rechaza. Migración 0047. Verificado con 14 pruebas de API + el circuito entero en pantalla. Guía nueva: Stock e inventario › "El fraccionado tiene pantalla propia"'],
               ['**9/8/2026**', '**Cafetería, modelo nuevo: coffit clasifica, el CRM envía — y los envíos se pueden corregir.** Tres cosas se fueron por decisión del dueño: el **destino por renglón** (venta/uso es una decisión de coffit, que ahora recibe todo en su almacén “Sabor y Aroma" y clasifica ahí; el CRM lo pedía, lo guardaba y jamás lo leía), las **etapas** (pedido→tránsito→recibido: el envío nace ENVIADO, egresa stock y congela costo en el acto) y las **devoluciones** (la corrección es EDITAR el envío: revierte-y-reaplica en una transacción, el renglón que ya estaba conserva su costo congelado y el nuevo entra al costo de hoy; si el stock no alcanza, no pasa nada ni a medias). Cada cambio sube la **versión** y toca `actualizadoEn` — el pulso de **GET /cafeteria/sync**, el endpoint con cursor para que coffit sincronice creados, editados y anulados (contrato completo con ejemplos en `crm-api/docs/contrato-coffit.md`). Cada renglón viaja con el **modo de unidad explícito** (granel/paquete/unidad + equivalente en kg: la trampa de 10 paquetes leídos como 10 kg quedó cerrada) y la clave estable para el matcheo es `productoId`+`presentacionId`, no el nombre. Pestaña nueva **Métrica** en el panel: lo enviado por artículo con filtros, agregado en SQL. Migración 0046 (recrea el enum de estado: Postgres no quita valores). Verificado con **27 pruebas** de API (incluida la del costo congelado: el catálogo subió 50% y el renglón no se movió) más el ciclo entero en pantalla con teclado real: alta v1 → edición v2 → métrica → anulación v3, stock restaurado exacto'],
               ['**8/8/2026**', '**El mapeo de artículos del proveedor se aprende solo.** La lectura del PDF ahora reconoce el producto en **tres niveles**: mapeo aprendido (el código del artículo en la factura → nuestro producto, guardado la última vez que una persona confirmó), código del catálogo (el del formato de compra, que vino del sistema viejo con corrimientos), y parecido de nombres solo para el arranque en frío. Lo que no reconoce muestra un selector **"Asociar con un producto…"**: el admin elige, el renglón se agrega, y **al guardar queda aprendido** — la próxima factura lo reconoce sola; si se cancela no se aprende nada, y una asociación equivocada se corrige en la factura siguiente (el guardado la pisa). Con la factura real de Bavosi el nivel catálogo subió el reconocimiento de 8 a **10 de 12** y además corrigió dos propuestas dudosas del parecido. Tabla nueva `proveedor_articulos` (migración 0045), campos `codigoProveedor`/`descripcionPapel` en el ítem del alta (agregados también a la lista de `_cleanComprobante`, la que se traga campos). Verificado con 14 pruebas del ciclo entero: frío → asociar → guardar → reconoce → corregir → pisa; y en pantalla, que cerrar sin guardar no aprende'],
               ['**8/8/2026**', '**Los renglones de un PDF digital ya se leen solos** — la etapa que estaba EN ESPERA, resuelta para la mitad barata sin modelo de visión, sin clave y sin costo: el PDF trae el texto adentro con su posición, se reconstruye por línea y una **receta por proveedor** lo interpreta (la primera: Bavosi, formato Tango). En el paso 2 del alta, si el papel es PDF, aparece **"Leer renglones del PDF"**: llena los renglones (con producto propuesto por similitud — lo que no reconoce queda listado para agregar a mano), la bonificación, tilda las percepciones configuradas y ofrece **el encabezado completo** con un botón — número, fecha, CAE y vencimiento también son texto, así que completa lo que el QR no pudo. Probado con la factura REAL de Bavosi que está en la bandeja: **12 de 12 renglones, el pie al centavo y el total cierra contra la lectura** (22 verificaciones de API + prueba en pantalla; la sonda previa validó la técnica y encontró dos trampas del texto de Tango: números partidos con espacios y el pie de la primera página sin importes). Las **fotos** siguen EN ESPERA (visión). Ficha actualizada: Pendientes › "Leer los renglones de la factura"'],
@@ -2071,7 +2100,6 @@ export const MANUAL = [
             cols: ['Qué', 'Por qué importa'],
             filas: [
               ['**Leer los RENGLONES de la factura — la mitad ya está**', '**PDFs digitales: HECHO** (8/8/2026, botón "Leer renglones del PDF" en el paso 2 del alta, receta Bavosi/Tango, gratis y local). Lo que queda EN ESPERA son las **fotos**, que no tienen texto adentro: para esas sigue vigente el modelo de visión, con la misma decisión pendiente del dueño (la imagen sale de la máquina) pero menos volumen y menos costo. Y sumar **recetas de otros proveedores** a medida que lleguen sus PDFs. Ficha: Pendientes › "Leer los renglones de la factura"'],
-              ['**Pantalla propia del fraccionado + pestaña "Producto madre" — EN ESPERA**', 'Hoy al x500g solo se llega entrando a la madre y abriendo Presentaciones. La idea es que cada fraccionado tenga **su propia pantalla** (con sus variables y sus movimientos) y una pestaña que muestre de qué madre descuenta, con cantidad y costo. **El modelo ya lo soporta entero** —`tamKg`, `recargo`, `opFraccionar`, y `stock`/`movimientos` ya llevan `presentacionId`— así que es una vista que falta, no datos. Espera cuatro decisiones que no son técnicas: su ficha propia es **Pendientes › "Pantalla propia del fraccionado"**'],
               ['**Renglones que NO son mercadería** (flete, envases retornables, redondeo)', 'Las facturas los traen y hoy **no se pueden guardar**: `comprobante_items.productoId` es obligatorio. Sin resolverlo, cada factura con flete no cierra contra el total del papel — y es **bloqueante de la lectura automática de renglones**. Decisión de diseño pendiente: un flag de "concepto no inventariable" en el ítem (más honesto) o productos de servicio designados'],
               ['**Conciliar con "Mis Comprobantes" de ARCA**', 'ARCA deja bajar en CSV todas las facturas que cualquier proveedor emitió contra el CUIT de la empresa. Sirve para **encontrar facturas que existen y nunca se cargaron** — cada una es crédito fiscal de IVA no computado y deuda que no figura en la cuenta del proveedor. Es el mismo patrón de "subir un archivo y previsualizar" que ya está construido dos veces'],
               ['**CUIT de los proveedores y de la empresa**', 'El reconocimiento automático de la bandeja va **por CUIT**: los proveedores que no lo tengan cargado llegan sin proveedor y hay que elegirlo a mano. Y el CUIT de la empresa (Sistema › Empresa) todavía es el de prueba `30-71555666-7`: mientras siga así, **toda factura va a mostrar el aviso "no es nuestra"**, que es peor que no avisar — entrena a ignorar los avisos'],
@@ -2095,51 +2123,13 @@ export const MANUAL = [
       },
       {
         id: 'fraccionado-pantalla',
-        actualizado: '2026-08-08 04:00',
-        titulo: 'Pantalla propia del fraccionado y pestaña "Producto madre" — EN ESPERA',
+        actualizado: '2026-08-09 05:30',
+        titulo: 'Pantalla propia del fraccionado — CONSTRUIDA (ver Stock e inventario)',
         bloques: [
           {
-            t: 'nota',
-            tono: 'warn',
-            texto: '**Diseñado, NO construido.** Queda en espera. Nada de esto está en el código: hoy al fraccionado se llega entrando a la madre y abriendo la pestaña Presentaciones, y va a seguir siendo así hasta que se retome. Se anotó el 8/8/2026 a partir de cómo lo resuelve el sistema viejo (Sistel STA), que sí le da pantalla propia a cada fraccionado.',
-          },
-          {
             t: 'p',
-            texto: '**Qué se pidió.** Que cada producto fraccionado —el AJO GRANULADO X500G, por ejemplo— tenga **su propia pantalla**, con sus variables y sus movimientos, en vez de existir solo como una fila dentro de la madre. Y que esa pantalla tenga una pestaña llamada **"Producto madre"** que muestre de qué producto principal descuenta, con la cantidad que consume y el costo. En el sistema viejo esa pestaña se llama "Prod.Util" (productos utilizados en la elaboración) y muestra: código, producto, cantidad (0,5), unidad (Kilo/s) y dos costos, **Lista** y **Total**.',
+            texto: '**Se construyó el 9/8/2026** con las respuestas del dueño a las cuatro decisiones que esperaban acá (la madre cuenta la verdad total; el costo es de solo lectura; el fraccionado es fila propia; borrar con stock se frena) y al "SOLO STOCK" (el tilde "Solo para fraccionar" — la pimienta de Jamaica existe). La guía completa está en **Stock e inventario › "El fraccionado tiene pantalla propia"**.',
           },
-          {
-            t: 'nota',
-            tono: 'ok',
-            texto: '**La buena noticia: el modelo ya lo hace todo.** `presentaciones.tamKg` es cuánto de la madre consume cada tamaño, `recargo` es lo que agrega el fraccionamiento (envase y mano de obra), `opFraccionar` es la operación que convierte granel en paquetes, y **`stock` y `movimientos` ya llevan `presentacionId`**. O sea que el x500g YA tiene stock propio, movimientos propios, código de barras propio y precio propio derivado. **Lo único que falta es la puerta de entrada: es una vista, no una migración.**',
-          },
-          {
-            t: 'p',
-            texto: '**Ojo con el nombre.** En nuestro sistema **no existe** ninguna pestaña "Prod.Util", así que no es renombrar: es una pestaña **nueva** llamada "Producto madre". Y va del lado del fraccionado mirando hacia arriba; la que ya existe, **Presentaciones**, es la misma relación vista desde la madre hacia abajo. Conviene que se lean como las dos caras de lo mismo.',
-          },
-          {
-            t: 'p',
-            texto: '**Por qué nuestro modelo conviene acá, y dónde el viejo es más capaz.** En el sistema viejo son **dos productos independientes** (ZZZ1023 madre "SOLO STOCK" y ZZZ1031 x500g) unidos por una lista de materiales, así que el fraccionado lleva **su propio costo** y hay que recalcularlo cuando cambia el de la madre. Cuando no se recalcula, divergen — y eso ya se pagó: al importar Bavosi, **24 de 26 precios quedaron para revisar justamente porque el costo de la madre y el del fraccionado no coincidían en el sistema viejo**. En el nuestro no puede pasar: el precio del x500g se deriva del costo de la madre cada vez. Lo que el viejo sí hace y el nuestro no es la lista de materiales **general**: un producto hecho de VARIOS otros (un mix que lleve 0,3 de ajo y 0,2 de pimentón). El nuestro solo expresa "una madre → N tamaños" con un factor en kg. Si alguna vez se arman mezclas, hace falta otra tabla.',
-          },
-          {
-            t: 'p',
-            texto: '**Las cuatro decisiones que hay que tomar antes de construirlo.** Ninguna es técnica:',
-          },
-          {
-            t: 'tabla',
-            cols: ['Decisión', 'Por qué importa'],
-            filas: [
-              ['**Cómo se muestra el stock, que va a estar en dos lugares**', 'Con pantalla propia, alguien mira "AJO X500G: 12 unidades" y aparte "AJO GRANULADO: 40 kg" y no sabe cuánto ajo hay. Son **46 kg** (40 + 12 × 0,5). La cuenta ya existe en el sistema, pero la pantalla nueva tiene que mostrar las dos cosas y decirlo, o se compra de más. El sistema viejo tapa esto llamando a la madre "SOLO STOCK".'],
-              ['**El costo del fraccionado tiene que ser de solo lectura**', 'Si tiene pantalla propia, alguien va a querer editarle el costo ahí — y permitirlo reproduce adentro del sistema nuevo exactamente la divergencia de Bavosi. Lo editable es el **`recargo`**, que es la diferencia entre las columnas Lista ($4.502,66) y Total ($4.638,61) del sistema viejo.'],
-              ['**¿El fraccionado es una fila propia en el listado de productos?**', 'Hoy Compras › Productos lista 94. Con los 73 fraccionados como filas propias serían **167**. Se busca mejor por nombre y por código de barras, pero el listado se duplica. Cambia bastante esa pantalla y es decisión del dueño.'],
-              ['**Borrar una presentación hoy borra su stock sin avisar**', '`stock.presentacionId` cascadea. Enterrado en una pestaña casi no pasa; cuando el fraccionado **parezca** un producto, alguien lo va a borrar como se borra un producto. Habría que frenarlo si tiene existencias.'],
-            ],
-          },
-          {
-            t: 'nota',
-            tono: 'warn',
-            texto: '**Pregunta abierta: falta el equivalente a "SOLO STOCK".** Hoy `tipo: \'granel\'` no dice si el producto se puede vender suelto, así que el POS puede vender 0,5 kg de ajo a granel **y** la bolsa de 500 g. Si hay granel que no se vende suelto y existe solo para fraccionar, hace falta ese candado — y es mejor definirlo antes de construir la pantalla que después.',
-          },
-          { t: 'ruta', texto: 'schema.ts · presentaciones (tamKg, recargo) · stock/movimientos (presentacionId) · inventario opFraccionar · ProductoModals.jsx (pestaña Presentaciones, solo si tipo === granel)' },
         ],
       },
       {

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { num } from '../domain/format.js';
 import { Table, PanelHead, TipoBadge, Btn, usePaginado, s } from '../components/ui.jsx';
@@ -35,21 +36,57 @@ export function ProductosPanel() {
       if (provId && !(p.formatosCompra || []).some((e) => e.proveedorId === provId)) return false;
       if (!ql) return true;
       return norm(p.nombre).includes(ql) || norm(p.marca).includes(ql)
-        || norm(p.categoria).includes(ql) || (p.codigoBarras || '').includes(q.trim());
+        || norm(p.categoria).includes(ql) || (p.codigoBarras || '').includes(q.trim())
+        // También por el código de barras de un fraccionado: cada tamaño lleva
+        // etiqueta propia y es lo que la balanza o la caja escanean.
+        || (p.presentaciones || []).some((pr) => pr.codigoBarras && pr.codigoBarras.includes(q.trim()));
     });
   }, [store.state.productos, q, tipo, marca, categoria, proveedorId]);
+
+  /*
+   * CADA FRACCIONADO ES UNA FILA PROPIA (decisión del dueño, 9/8/2026): el
+   * Ajo X500G se busca y se abre como un producto más, debajo de su madre.
+   * El listado pasa de ~94 a ~167 filas — a cambio, lo que se escanea existe.
+   */
+  const filasLista = useMemo(() => {
+    const out = [];
+    for (const p of productos) {
+      out.push({ clave: `p${p.id}`, p, pr: null });
+      if (p.tipo === 'granel') {
+        for (const pr of (p.presentaciones || [])) out.push({ clave: `f${pr.id}`, p, pr });
+      }
+    }
+    return out;
+  }, [productos]);
 
   const hayFiltro = !!(q || tipo || marca || categoria || proveedorId);
   const stop = (e) => e.stopPropagation();
 
-  const pag = usePaginado(productos, 'productos', `${q}|${tipo}|${marca}|${categoria}|${proveedorId}`);
+  const pag = usePaginado(filasLista, 'productos', `${q}|${tipo}|${marca}|${categoria}|${proveedorId}`);
 
-  const filas = pag.visibles.map((p) => {
+  const filas = pag.visibles.map(({ clave, p, pr }) => {
+    if (pr) {
+      const disp = store.suma({ productoId: p.id, presentacionId: pr.id, estado: 'disponible' });
+      return (
+        <tr key={clave} className={s.clickable} onClick={() => openModal('fraccionado', { prodId: p.id, presId: pr.id })}>
+          <td className={s.muted}>{p.id}</td>
+          <td>
+            <span className={s.muted}>↳ </span>{p.nombre} · {store.presLabel(p, pr.id)}
+          </td>
+          <td>{p.marca || '—'}</td>
+          <td><span className={cx(s.badge, s['badge-granel'])}>Fraccionado</span></td>
+          <td>{p.categoria}</td>
+          <td className={s.num}>{num(p.iva ?? 21, 1)}%</td>
+          <td className={s.num}>{num(disp, 0)} paq.</td>
+          <td className={s['actions-col']}><span className={s.muted}>—</span></td>
+        </tr>
+      );
+    }
     const base = p.tipo === 'granel'
       ? store.suma({ productoId: p.id, presentacionId: null, estado: 'disponible' })
       : store.suma({ productoId: p.id, estado: 'disponible' });
     return (
-      <tr key={p.id} className={s.clickable} onClick={() => openModal('detalleProducto', { prodId: p.id })}>
+      <tr key={clave} className={s.clickable} onClick={() => openModal('detalleProducto', { prodId: p.id })}>
         <td>{p.id}</td>
         <td>{p.nombre}</td>
         <td>{p.marca || '—'}</td>

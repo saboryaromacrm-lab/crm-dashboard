@@ -45,6 +45,8 @@ export function ProductoFormModal({ prodId }) {
     proveedorId: '',
     costoInicial: '',
   }));
+  /** Granel que NO se vende suelto: existe solo para fraccionarse. */
+  const [soloFraccionar, setSoloFraccionar] = useState(!!prod?.soloFraccionar);
   /** Catálogo que se está administrando encima del formulario (o null). */
   const [admin, setAdmin] = useState(null);
 
@@ -95,6 +97,7 @@ export function ProductoFormModal({ prodId }) {
       redondeo: f.redondeo === '' ? null : Number(f.redondeo),
       idExterno: f.idExterno.trim(),
       esGranel,
+      soloFraccionar: esGranel ? soloFraccionar : false,
     };
     if (!ed && f.proveedorId) {
       o.proveedorId = parseInt(f.proveedorId, 10);
@@ -125,6 +128,20 @@ export function ProductoFormModal({ prodId }) {
           </span>
         </label>
         {ed && <div className={s.hint}>El tipo no se cambia luego de crear el producto.</div>}
+
+        {esGranel && (
+          <label className={s['granel-toggle']}>
+            <input type="checkbox" checked={soloFraccionar} onChange={(e) => setSoloFraccionar(e.target.checked)} />
+            <span>
+              <span className={s['t-title']}>Solo para fraccionar — no se vende suelto</span><br />
+              <span className={s['t-sub']}>
+                Llega a granel y se fracciona entero (la pimienta de Jamaica: 1 kg → 20 paquetes de
+                50 g). El POS no lo ofrece por kg y la venta suelta se rechaza; sus paquetes se
+                venden normal.
+              </span>
+            </span>
+          </label>
+        )}
 
         {/* --- Identificación --- */}
         <Seccion>Identificación</Seccion>
@@ -384,15 +401,37 @@ function ResumenTab({ prod: p }) {
     <tr key={m.id}><td>{fmtFechaHora(m.fecha)}</td><td><MovTag tipo={m.tipo} /></td><td>{m.descripcion}</td></tr>
   ));
 
+  /* La verdad TOTAL del granel: el suelto MÁS lo ya fraccionado, en kg. "¿Cuánto
+   * ajo hay?" no se responde mirando solo el suelto — se compra de más. */
+  let fraccionadoKg = 0;
+  if (p.tipo === 'granel') {
+    for (const st of store.state.stock) {
+      if (st.productoId !== p.id || st.estado !== 'disponible' || !st.presentacionId) continue;
+      const pr = (p.presentaciones || []).find((x) => x.id === st.presentacionId);
+      fraccionadoKg += st.cantidad * (pr?.tamKg || 0);
+    }
+  }
+
   return (
     <>
       <div className={s['detalle-grid']}>
-        <Di label="Tipo"><TipoBadge prod={p} /></Di>
+        <Di label="Tipo">
+          <TipoBadge prod={p} />
+          {p.soloFraccionar && (
+            <span className={cx(s.badge, s['badge-granel'])} style={{ marginLeft: 6 }}>no se vende suelto</span>
+          )}
+        </Di>
         <Di label="Marca">{p.marca || '—'}</Di>
         <Di label="Categoría">{p.categoria}</Di>
         <Di label="IVA">{num(p.iva ?? 21, 1)}%</Di>
         <Di label="Proveedor activo">{provActNom}</Di>
         <Di label="Disponible (base)">{num(base, 2)}{p.tipo === 'granel' ? ' kg' : ' u.'}</Di>
+        {p.tipo === 'granel' && fraccionadoKg > 1e-9 && (
+          <Di label="TOTAL equivalente">
+            <strong>{num(base + fraccionadoKg, 2)} kg</strong>
+            <div className={s.hint} style={{ margin: 0 }}>{num(base, 2)} suelto + {num(fraccionadoKg, 2)} fraccionado</div>
+          </Di>
+        )}
         <Di label="Valor disp. (costo)">{money(valor)}</Di>
       </div>
 
@@ -800,5 +839,193 @@ function VentaTab({ prod: p }) {
         </div>
       )}
     </div>
+  );
+}
+
+/* ==================================================================== *
+ * PANTALLA PROPIA DEL FRACCIONADO — el Ajo X500G como protagonista
+ * ==================================================================== *
+ * Hasta acá al fraccionado solo se llegaba entrando a la madre y abriendo
+ * Presentaciones. Esta pantalla lo da vuelta: el paquete tiene su detalle
+ * propio (stock real, movimientos, formato de venta) y una pestaña "Producto
+ * madre" que muestra de qué producto descuenta — las dos caras de la misma
+ * relación que la madre muestra en Presentaciones.
+ *
+ * EL COSTO ACÁ ES DE SOLO LECTURA, a propósito: se DERIVA del costo de la
+ * madre (costo/kg × tamaño × recargo). Si fuera editable, el costo del
+ * paquete y el de la madre divergirían — exactamente el vicio del sistema
+ * viejo que obligó a revisar 24 precios al importar Bavosi. Lo editable es
+ * el RECARGO, en la pestaña Presentaciones de la madre.
+ */
+export function FraccionadoModal({ prodId, presId }) {
+  const { store, isAdmin, closeModal, openModal } = useProductos();
+  useSeccion('movimientos');
+  const [tab, setTab] = useState(0);
+  const p = store.getProducto(prodId);
+  const pr = p ? (p.presentaciones || []).find((x) => x.id === presId) : null;
+  if (!p || !pr) return null;
+
+  const etiqueta = `${p.nombre} · ${store.presLabel(p, pr.id)}`;
+  const cn = store.costoNeto(p);
+  const costoLista = cn * (pr.tamKg || 0);
+  const costoPaquete = costoLista * (1 + (Number(pr.recargo) || 0) / 100);
+
+  const footer = [];
+  if (isAdmin) {
+    footer.push({
+      texto: 'Editar (en la madre)',
+      clase: 'btn-primary',
+      onClick: () => { closeModal(); openModal('detalleProducto', { prodId: p.id }); },
+    });
+  }
+  footer.push({ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal });
+
+  return (
+    <ModalShell title={`Fraccionado — ${etiqueta}`} wide onClose={closeModal} footer={footer}>
+      <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+        <Tab label="Resumen" />
+        <Tab label="Producto madre" />
+      </Tabs>
+      {tab === 0
+        ? <FraccionadoResumen store={store} p={p} pr={pr} costoPaquete={costoPaquete} />
+        : <FraccionadoMadre store={store} p={p} pr={pr} costoLista={costoLista} costoPaquete={costoPaquete} />}
+    </ModalShell>
+  );
+}
+
+function FraccionadoResumen({ store, p, pr, costoPaquete }) {
+  const disponible = store.suma({ productoId: p.id, presentacionId: pr.id, estado: 'disponible' });
+
+  const stockRows = store.state.stock
+    .filter((st) => st.productoId === p.id && st.presentacionId === pr.id && st.cantidad > 1e-9)
+    .map((st) => (
+      <tr key={st.id}>
+        <td>{store.getSucursal(st.sucursalId).nombre}</td>
+        <td><StockPill estado={st.estado} /></td>
+        <td className={s.num}>{num(st.cantidad, 0)} paq.</td>
+        <td className={s.num}>{num(st.cantidad * (pr.tamKg || 0), 3)} kg</td>
+      </tr>
+    ));
+
+  /* SOLO los movimientos de ESTE fraccionado: es lo que la pestaña de la
+   * madre no puede mostrar sin mezclar. */
+  const movs = store.movimientosDe(p.id)
+    .filter((m) => m.presentacionId === pr.id)
+    .slice(0, 8)
+    .map((m) => (
+      <tr key={m.id}><td>{fmtFechaHora(m.fecha)}</td><td><MovTag tipo={m.tipo} /></td><td>{m.descripcion}</td></tr>
+    ));
+
+  /* El formato de venta del paquete: el precio en cada lista del producto.
+   * El markup lo pone la fila producto × lista; el paquete agrega su recargo. */
+  const listasNombre = new Map(
+    ((store.state.listasCatalogo?.listas) ?? []).map((l) => [l.id, `${l.nombre}${l.modalidad ? ` · ${l.modalidad}` : ''}`]),
+  );
+  const cn = store.costoNeto(p);
+  const ventaRows = (p.listas || []).map((l) => {
+    const markupEf = l.precio != null && cn > 0 ? ((l.precio / cn) - 1) * 100 : (Number(l.markup) || 0);
+    return (
+      <tr key={l.listaId}>
+        <td>{listasNombre.get(l.listaId) || `Lista ${l.listaId}`}</td>
+        <td className={s.num}>{num(markupEf, 1)}%</td>
+        <td className={cx(s.num, s.mono)}>{money(store.precioPresentacion(p, pr, markupEf))}</td>
+      </tr>
+    );
+  });
+
+  return (
+    <>
+      <div className={s['detalle-grid']}>
+        <Di label="Producto madre">{p.nombre}</Di>
+        <Di label="Tamaño">{store.presLabel(p, pr.id)} ({num(pr.tamKg, 3)} kg)</Di>
+        <Di label="Código de barras">{pr.codigoBarras || '—'}</Di>
+        <Di label="Recargo de fraccionamiento">{num(pr.recargo ?? 0, 1)}%</Di>
+        <Di label="Costo del paquete (derivado)">{money(costoPaquete)}</Di>
+        <Di label="Precio de venta (piso)">{money(store.precioPresentacion(p, pr))}</Di>
+        <Di label="Disponible">{num(disponible, 0)} paq. ({num(disponible * (pr.tamKg || 0), 3)} kg)</Di>
+      </div>
+      <div className={s.hint} style={{ marginTop: 4 }}>
+        El costo del paquete <strong>se deriva del producto madre</strong> (costo/kg × tamaño ×
+        recargo) y por eso acá es de solo lectura: no puede divergir. Lo editable es el
+        <strong> recargo</strong>, en la pestaña Presentaciones de la madre.
+      </div>
+
+      <h3 className={s['card-title']} style={{ marginTop: 12 }}>Formato de venta</h3>
+      <Table cols={[{ h: 'Lista' }, { h: 'Margen', num: true }, { h: 'Precio del paquete', num: true }]} empty="El producto madre no tiene listas de venta cargadas.">
+        {ventaRows}
+      </Table>
+
+      <h3 className={s['card-title']} style={{ marginTop: 12 }}>Stock por sucursal</h3>
+      <Table cols={[{ h: 'Sucursal' }, { h: 'Estado' }, { h: 'Paquetes', num: true }, { h: 'Equiv. kg', num: true }]} empty="Sin paquetes en stock. Se fabrican en Almacén › Fraccionamiento.">
+        {stockRows}
+      </Table>
+
+      <h3 className={s['card-title']} style={{ marginTop: 12 }}>Últimos movimientos de este fraccionado</h3>
+      <Table cols={[{ h: 'Fecha' }, { h: 'Tipo' }, { h: 'Detalle' }]} empty="Sin movimientos todavía.">
+        {movs}
+      </Table>
+    </>
+  );
+}
+
+/**
+ * La pestaña "Producto madre": el Prod.Util del sistema viejo, con nuestros
+ * números. Muestra de qué producto descuenta este fraccionado, cuánto consume
+ * por paquete y los dos costos (lista = sin recargo, total = con recargo —
+ * las columnas Lista/Total de la pantalla vieja).
+ */
+function FraccionadoMadre({ store, p, pr, costoLista, costoPaquete }) {
+  const suelto = store.suma({ productoId: p.id, presentacionId: null, estado: 'disponible' });
+  const misPaquetes = store.suma({ productoId: p.id, presentacionId: pr.id, estado: 'disponible' });
+
+  /* La verdad TOTAL de la madre: suelto + todo lo ya fraccionado, en kg.
+   * "Ajo: 5 kg sueltos y 10 paq de 500 g" = hay 10 kg de ajo. */
+  let fraccionadoKg = 0;
+  for (const st of store.state.stock) {
+    if (st.productoId !== p.id || st.estado !== 'disponible' || !st.presentacionId) continue;
+    const otra = (p.presentaciones || []).find((x) => x.id === st.presentacionId);
+    fraccionadoKg += st.cantidad * (otra?.tamKg || 0);
+  }
+  const totalKg = suelto + fraccionadoKg;
+
+  return (
+    <>
+      <div className={s.hint} style={{ marginTop: 0 }}>
+        Este fraccionado <strong>se produce descontando del producto madre</strong>: cada paquete
+        consume {num(pr.tamKg, 3)} kg. La relación inversa está en la madre, pestaña Presentaciones.
+      </div>
+      <Table
+        cols={[
+          { h: 'Código' }, { h: 'Producto madre' }, { h: 'Consume', num: true }, { h: 'Un.Med' },
+          { h: 'Costo (lista)', num: true }, { h: 'Costo total (c/recargo)', num: true },
+        ]}
+      >
+        <tr>
+          <td className={s.mono}>{p.codigoPropio || p.id}</td>
+          <td>
+            {p.nombre}
+            {p.soloFraccionar && (
+              <span className={cx(s.badge, s['badge-granel'])} style={{ marginLeft: 8 }}>solo fraccionar</span>
+            )}
+          </td>
+          <td className={s.num}>{num(pr.tamKg, 3)}</td>
+          <td>kg</td>
+          <td className={s.num}>{money(costoLista)}</td>
+          <td className={cx(s.num, s.mono)}>{money(costoPaquete)}</td>
+        </tr>
+      </Table>
+
+      <h3 className={s['card-title']} style={{ marginTop: 12 }}>Cuánto hay, contando todo</h3>
+      <div className={s['detalle-grid']}>
+        <Di label="Suelto en la madre">{num(suelto, 3)} kg</Di>
+        <Di label="En este fraccionado">{num(misPaquetes, 0)} paq. ({num(misPaquetes * (pr.tamKg || 0), 3)} kg)</Di>
+        <Di label="Fraccionado (todas las pres.)">{num(fraccionadoKg, 3)} kg</Di>
+        <Di label="TOTAL equivalente"><strong>{num(totalKg, 3)} kg</strong></Di>
+      </div>
+      <div className={s.hint}>
+        El <strong>total equivalente</strong> responde cuánto hay de verdad: lo suelto más lo ya
+        envasado. Comprar mirando solo el suelto compra de más.
+      </div>
+    </>
   );
 }
