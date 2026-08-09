@@ -11,7 +11,10 @@ import { ComprobanteFormModal, ComprobanteDetalleModal } from './modals/Comproba
 import {
   TomarPagosComprobanteModal, PagoSucursalDetalleModal,
 } from './modals/PagosSucursalModals.jsx';
-import { EnvioCafeteriaFormModal, EnvioCafeteriaDetalleModal } from './modals/CafeteriaModals.jsx';
+import {
+  EnvioCafeteriaFormModal, EnvioCafeteriaDetalleModal,
+  PedidoCafeteriaFormModal, PedidoCafeteriaDetalleModal,
+} from './modals/CafeteriaModals.jsx';
 import { ImportarCatalogoModal } from './modals/ImportarCatalogoModal.jsx';
 import { LecturaFacturaModal } from './modals/LecturaFacturaModal.jsx';
 import { HistorialPreciosModal, MargenesMasivosModal } from './modals/PreciosModals.jsx';
@@ -90,6 +93,9 @@ const REGISTRY = {
   pagoSucursalDetalle: PagoSucursalDetalleModal,
   envioCafeteria: EnvioCafeteriaFormModal,
   envioCafeteriaDetalle: EnvioCafeteriaDetalleModal,
+  // El pedido del café: lo arma el rol Cafetería, lo trata el admin.
+  pedidoCafeteria: PedidoCafeteriaFormModal,
+  pedidoCafeteriaDetalle: PedidoCafeteriaDetalleModal,
   historialPrecios: HistorialPreciosModal,
   margenesMasivos: MargenesMasivosModal,
   producto: ProductoFormModal,

@@ -59,6 +59,7 @@ function nuevoEstado() {
     // Cuántas facturas de papel esperan que alguien las cargue (para el globito
     // del menú). Es solo el número: la bandeja la pide su panel.
     lecturasPendientes: 0,
+    pedidosCafeteriaPendientes: 0,
     ctx: _loadCtx(),
   };
 }
@@ -369,6 +370,7 @@ function mergeState(data) {
   }));
   state.incidencias = (data.incidencias || []).map((i) => ({ ...i, presId: i.presentacionId ?? null }));
   state.lecturasPendientes = Number(data.lecturasPendientes) || 0;
+  state.pedidosCafeteriaPendientes = Number(data.pedidosCafeteriaPendientes) || 0;
 }
 
 /* ================== SECCIONES PEREZOSAS ==================
@@ -688,6 +690,13 @@ const crearEnvioCafeteria = (o) => _mutate(() => httpClient.post('/cafeteria/env
  * se pisen en silencio: la que quedó vieja recibe un error claro.
  */
 const editarEnvioCafeteria = (id, o) => _mutate(() => httpClient.put(`/cafeteria/envios/${id}`, { usuarioId: state.ctx.usuarioId ?? undefined, ...o }));
+
+/* ---- Pedidos de la cafetería (la demanda; el envío los cumple y los cierra) ---- */
+const pedidosCafeteria = (filtros) => httpClient.get('/cafeteria/pedidos' + _qsPagos(filtros || {}));
+const pedidoCafeteria = (id) => httpClient.get('/cafeteria/pedidos/' + id);
+const crearPedidoCafeteria = (o) => _mutate(() => httpClient.post('/cafeteria/pedidos', { usuarioId: state.ctx.usuarioId ?? undefined, ...o }));
+const tomarPedidoCafeteria = (id) => _mutate(() => httpClient.post(`/cafeteria/pedidos/${id}/tomar`, {}));
+const anularPedidoCafeteria = (id, motivo) => _mutate(() => httpClient.post(`/cafeteria/pedidos/${id}/anular`, { motivo, usuarioId: state.ctx.usuarioId ?? undefined }));
 /** pedido → transito → recibido. `desde` evita que un doble clic salte dos pasos. */
 const anularEnvioCafeteria = (id, motivo) => _mutate(() => httpClient.post(`/cafeteria/envios/${id}/anular`, { motivo, usuarioId: state.ctx.usuarioId ?? undefined }));
 
@@ -772,6 +781,7 @@ export const inventoryStore = {
   pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
   enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria,
   crearEnvioCafeteria, editarEnvioCafeteria, anularEnvioCafeteria,
+  pedidosCafeteria, pedidoCafeteria, crearPedidoCafeteria, tomarPedidoCafeteria, anularPedidoCafeteria,
   imputarPago, quitarImputacionPago, anularPago, moverDestinoPago,
   actualizarCostos, actualizarMargenes, historialPrecios, evolucionPrecios, revertirLotePrecios,
   stockBajo, incidenciasAbiertas, transferenciasPendientes,

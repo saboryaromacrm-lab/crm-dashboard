@@ -15,7 +15,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money, num, fmtFecha, isoDate } from '../domain/format.js';
-import { ESTADOS_ENVIO_CAFE, MODOS_ENVIO_CAFE } from '../domain/constants.js';
+import { ESTADOS_ENVIO_CAFE, ESTADOS_PEDIDO_CAFE, MODOS_ENVIO_CAFE } from '../domain/constants.js';
 import { Table, PanelHead, Stat, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
 
 const inicioDeMes = () => {
@@ -24,6 +24,7 @@ const inicioDeMes = () => {
 };
 
 const PESTANAS = [
+  { id: 'pedidos', label: 'Pedidos' },
   { id: 'envios', label: 'Envíos' },
   { id: 'metrica', label: 'Métrica' },
 ];
@@ -31,7 +32,8 @@ const PESTANAS = [
 export function CafeteriaPanel() {
   const { store, isAdmin, openModal, toast } = useProductos();
 
-  const [pestana, setPestana] = useState('envios');
+  // Arranca en Pedidos: es la cola de trabajo (el aviso del admin cae acá).
+  const [pestana, setPestana] = useState('pedidos');
   const [desde, setDesde] = useState(inicioDeMes());
   const [hasta, setHasta] = useState(isoDate(new Date()));
 
@@ -45,18 +47,23 @@ export function CafeteriaPanel() {
   const [buscar, setBuscar] = useState('');
   const [metrica, setMetrica] = useState(null);
 
+  /* ---- Pedidos (la demanda del café) ---- */
+  const [pedidos, setPedidos] = useState([]);
+
   const cargar = useCallback(async () => {
     setCargando(true);
     try {
       const filtros = { desde: desde || undefined, hasta: hasta || undefined };
-      const [lista, res, met] = await Promise.all([
+      const [lista, res, met, peds] = await Promise.all([
         store.enviosCafeteria({ ...filtros, estado: estadoF || undefined }),
         store.resumenCafeteria(filtros),
         store.metricaCafeteria({ ...filtros, buscar: buscar.trim() || undefined }),
+        store.pedidosCafeteria({ limit: 100 }),
       ]);
       setEnvios(lista);
       setResumen(res);
       setMetrica(met);
+      setPedidos(peds);
     } catch {
       toast('No se pudieron cargar los envíos.', 'err');
     } finally {
@@ -124,25 +131,70 @@ export function CafeteriaPanel() {
         )}
       />
 
-      {/* Pestañas */}
+      {/* Pestañas. El contador de Pedidos es la demanda que espera respuesta. */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {PESTANAS.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            className={cx(s.badge)}
-            style={{
-              cursor: 'pointer', padding: '7px 14px', fontSize: 13, border: '1px solid var(--crm-color-border)',
-              ...(pestana === v.id
-                ? { background: 'var(--crm-color-primary)', color: 'var(--crm-color-primary-contrast)', borderColor: 'var(--crm-color-primary)' }
-                : {}),
-            }}
-            onClick={() => setPestana(v.id)}
-          >
-            {v.label}
-          </button>
-        ))}
+        {PESTANAS.map((v) => {
+          const abiertos = v.id === 'pedidos'
+            ? pedidos.filter((p) => p.estado === 'pendiente' || p.estado === 'armando').length
+            : 0;
+          return (
+            <button
+              key={v.id}
+              type="button"
+              className={cx(s.badge)}
+              style={{
+                cursor: 'pointer', padding: '7px 14px', fontSize: 13, border: '1px solid var(--crm-color-border)',
+                ...(pestana === v.id
+                  ? { background: 'var(--crm-color-primary)', color: 'var(--crm-color-primary-contrast)', borderColor: 'var(--crm-color-primary)' }
+                  : {}),
+              }}
+              onClick={() => setPestana(v.id)}
+            >
+              {v.label}
+              {abiertos > 0 && (
+                <span style={{
+                  marginLeft: 7, padding: '0 7px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+                  background: pestana === v.id ? 'rgba(255,255,255,.25)' : 'var(--crm-color-accent-2)',
+                  color: '#fff',
+                }}>
+                  {abiertos}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
+
+      {pestana === 'pedidos' && (
+        <>
+          <Table
+            cols={[
+              { h: 'Código' }, { h: 'Fecha' }, { h: 'Pidió' }, { h: 'Estado' },
+              { h: 'Renglones', num: true }, { h: 'Envío' },
+            ]}
+            empty={cargando ? 'Cargando…' : 'Sin pedidos del café. Cuando la cafetería arme uno, aparece acá (y suena el aviso).'}
+          >
+            {pedidos.map((p) => {
+              const est = ESTADOS_PEDIDO_CAFE[p.estado] || {};
+              return (
+                <tr key={p.id} className={s.clickable} onClick={() => openModal('pedidoCafeteriaDetalle', { id: p.id })}>
+                  <td className={s.mono}>{p.codigo}</td>
+                  <td>{fmtFecha(p.fecha)}</td>
+                  <td>{p.usuarioNombre || '—'}</td>
+                  <td><Pill pill={est.pill} label={est.label || p.estado} /></td>
+                  <td className={s.num}>{p.renglones}</td>
+                  <td>{p.envioCodigo ? <span className={s.mono}>{p.envioCodigo}</span> : <span className={s.muted}>—</span>}</td>
+                </tr>
+              );
+            })}
+          </Table>
+          <div className={s.hint}>
+            La demanda del café. <strong>Tomar</strong> le avisa a la cafetería que se está armando;{' '}
+            <strong>Convertir en envío</strong> abre el alta con lo pedido precargado — corregís a lo
+            que de verdad va y el pedido queda cerrado. Lo pedido es propuesta; el envío es la verdad.
+          </div>
+        </>
+      )}
 
       {pestana === 'envios' && (
         <>

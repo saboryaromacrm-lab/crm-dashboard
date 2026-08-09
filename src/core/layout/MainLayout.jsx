@@ -4,6 +4,7 @@ import { Topbar } from './components/Topbar/Topbar.jsx';
 import { Breadcrumbs } from './components/Breadcrumbs/Breadcrumbs.jsx';
 import { MobileNavDrawer } from './components/Sidebar/MobileNavDrawer.jsx';
 import { OrdenesWebAlert } from './components/OrdenesWebAlert.jsx';
+import { PedidosCafeAlert } from './components/PedidosCafeAlert.jsx';
 import { PreciosAlert } from './components/PreciosAlert.jsx';
 import { ConsultasRapidas } from '@modules/consultas/ConsultasRapidas.jsx';
 import { useUI } from '@core/context/UIContext.jsx';
@@ -67,6 +68,7 @@ export function MainLayout() {
 
       {/* Aviso vivo de pedidos del sitio web: suena y avisa en CUALQUIER pantalla. */}
       <OrdenesWebAlert />
+      <PedidosCafeAlert />
 
       {/* Idem para los cambios de precio: el cajero tiene el catálogo en memoria
           y sin este aviso seguiría cobrando el precio viejo. */}

@@ -51,6 +51,14 @@ export const ESTADOS_ENVIO_CAFE = {
   anulado: { label: 'Anulado', pill: 'est-cancelada' },
 };
 
+/* El pedido del café: demanda, no envío. pendiente → armando → enviado · anulado. */
+export const ESTADOS_PEDIDO_CAFE = {
+  pendiente: { label: 'Pendiente', pill: 'est-pendiente' },
+  armando:   { label: 'Armando',   pill: 'est-transito' },
+  enviado:   { label: 'Enviado',   pill: 'est-recibida' },
+  anulado:   { label: 'Anulado',   pill: 'est-cancelada' },
+};
+
 /** En qué unidad habla la cantidad de cada renglón del envío. */
 export const MODOS_ENVIO_CAFE = {
   granel:  { label: 'Granel (kg)' },

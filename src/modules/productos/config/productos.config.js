@@ -50,6 +50,12 @@ export const ALMACEN_PANELS = [
   { id: 'transferencias', label: 'Transferencias', icon: SwapHorizIcon,      permiso: 'almacen.transferencias', badge: 'transferencias' },
   { id: 'operaciones',    label: 'Operaciones',    icon: ReceiptLongIcon,    permiso: 'almacen.operaciones' },
   { id: 'incidencias',    label: 'Incidencias',    icon: ReportProblemIcon,  permiso: 'almacen.incidencias', badge: 'incidencias' },
-  // Punto de SALIDA hacia coffit: el CRM no lleva el stock del café.
-  { id: 'cafeteria',      label: 'Cafetería',      icon: LocalCafeIcon,      permiso: 'almacen.cafeteria' },
+  // Punto de SALIDA hacia coffit: el CRM no lleva el stock del café. El globito
+  // avisa la demanda del café que espera (pedidos pendientes o armándose).
+  { id: 'cafeteria',      label: 'Cafetería',      icon: LocalCafeIcon,      permiso: 'almacen.cafeteria', badge: 'pedidosCafe' },
+  /*
+   * La pantalla DE la cafetería: armar el pedido a la distribuidora. Es la
+   * única sección del rol Cafetería — ese usuario entra al CRM y ve SOLO esto.
+   */
+  { id: 'cafeteria-pedidos', label: 'Pedido a la distribuidora', icon: LocalCafeIcon, permiso: 'almacen.cafeteria-pedidos' },
 ];

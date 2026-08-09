@@ -21,6 +21,7 @@ import { TransferenciasPanel } from '../panels/TransferenciasPanel.jsx';
 import { OperacionesPanel } from '../panels/OperacionesPanel.jsx';
 import { IncidenciasPanel } from '../panels/IncidenciasPanel.jsx';
 import { CafeteriaPanel } from '../panels/CafeteriaPanel.jsx';
+import { CafeteriaPedidosPanel } from '../panels/CafeteriaPedidosPanel.jsx';
 
 /** Registro de paneles disponibles. Cada módulo elige cuáles muestra (config). */
 const PANEL_COMPONENTS = {
@@ -37,6 +38,8 @@ const PANEL_COMPONENTS = {
   operaciones: OperacionesPanel,
   incidencias: IncidenciasPanel,
   cafeteria: CafeteriaPanel,
+  // La pantalla del rol Cafetería: armar el pedido a la distribuidora.
+  'cafeteria-pedidos': CafeteriaPedidosPanel,
 };
 
 /**
@@ -55,6 +58,8 @@ export function InventoryShell({ title, subtitle }) {
     // Facturas de papel esperando que alguien las cargue: sin el aviso, el papel
     // se queda en la bandeja como se quedaba en el cajón.
     lecturas: store.state.lecturasPendientes || 0,
+    // La demanda del café que espera: pedidos pendientes o armándose.
+    pedidosCafe: store.state.pedidosCafeteriaPendientes || 0,
   };
 
   // Solo se renderiza lo PERMITIDO: si el panel pedido no está en el menú del

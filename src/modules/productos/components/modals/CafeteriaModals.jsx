@@ -13,7 +13,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { imprimirDocumento } from '@core/services/imprimir.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFechaHora, isoDate } from '../../domain/format.js';
-import { ESTADOS_ENVIO_CAFE } from '../../domain/constants.js';
+import { ESTADOS_ENVIO_CAFE, ESTADOS_PEDIDO_CAFE } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
@@ -27,8 +27,9 @@ const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacrit
 /**
  * Buscador sobre TODO el catálogo (nombre, código interno o barras — también
  * el de las presentaciones fraccionadas, que llevan etiqueta propia).
+ * Exportado: también lo usa el formulario del PEDIDO de la cafetería.
  */
-function BuscadorCatalogo({ store, onElegir, autoFocus }) {
+export function BuscadorCatalogo({ store, onElegir, autoFocus }) {
   const [texto, setTexto] = useState('');
   const [abierto, setAbierto] = useState(false);
   const blurTimer = useRef(null);
@@ -234,15 +235,17 @@ function BusquedaGlobalModal({ store, yaCargados, onAgregar, onClose }) {
  * CONGELADO de cada renglón que ya estaba (la API lo conserva); un renglón
  * nuevo se muestra —y se valúa— al costo de hoy, y el formulario lo dice.
  */
-export function EnvioCafeteriaFormModal({ envio = null }) {
+export function EnvioCafeteriaFormModal({ envio = null, pedido = null }) {
   const { store, closeModal, toast, sucOperativa } = useProductos();
   const esEdicion = !!envio;
 
   const [sucId, setSucId] = useState(() => String(envio?.sucursalId ?? sucOperativa() ?? store.distribuidora()?.id ?? ''));
   const [fecha, setFecha] = useState(() => isoDate(envio ? new Date(envio.fecha) : new Date()));
-  const [obs, setObs] = useState(envio?.observaciones ?? '');
-  /** { prodId, presId, cantidad } — el costo lo maneja la API (congelado/hoy). */
-  const [items, setItems] = useState(() => (envio?.items ?? []).map((it) => ({
+  const [obs, setObs] = useState(envio?.observaciones ?? pedido?.observaciones ?? '');
+  /** { prodId, presId, cantidad } — el costo lo maneja la API (congelado/hoy).
+   * El detalle inicial sale del envío (edición) o del PEDIDO que se convierte:
+   * lo pedido es la propuesta, y el que arma corrige a lo que de verdad va. */
+  const [items, setItems] = useState(() => ((envio?.items ?? pedido?.items) ?? []).map((it) => ({
     prodId: it.productoId, presId: it.presentacionId ?? null, cantidad: String(it.cantidad),
   })));
   const [busquedaLote, setBusquedaLote] = useState(false);
@@ -292,12 +295,16 @@ export function EnvioCafeteriaFormModal({ envio = null }) {
       : await store.crearEnvioCafeteria({
         sucursalId: parseInt(sucId, 10) || undefined, fecha,
         observaciones: obs.trim(), items: parsed,
+        // El pedido que este envío cumple: la API lo cierra en el mismo acto.
+        pedidoId: pedido?.id ?? undefined,
       });
     if (!res.ok) { toast(res.error || 'No se pudo registrar.', 'err'); return; }
     toast(
       esEdicion
         ? `${res.codigo} corregido (versión ${res.version}) · nuevo total ${money(res.totalCosto)}. Coffit lo ve en su próxima sincronización.`
-        : `${res.codigo} enviado · ${money(res.totalCosto)} a costo. La mercadería ya egresó del stock.`,
+        : pedido
+          ? `${res.codigo} enviado · cumple el pedido ${pedido.codigo}, que quedó cerrado.`
+          : `${res.codigo} enviado · ${money(res.totalCosto)} a costo. La mercadería ya egresó del stock.`,
       'ok',
     );
     closeModal();
@@ -306,10 +313,12 @@ export function EnvioCafeteriaFormModal({ envio = null }) {
   return (
     <>
     <ModalShell
-      title={esEdicion ? `Editar ${envio.codigo}` : 'Nuevo envío a Cafetería'}
+      title={esEdicion ? `Editar ${envio.codigo}` : (pedido ? `Armar envío — pedido ${pedido.codigo}` : 'Nuevo envío a Cafetería')}
       subtitle={esEdicion
         ? `Versión actual: ${envio.version}. La corrección revierte el envío anterior y aplica este detalle — el stock acompaña.`
-        : 'El envío egresa el stock y congela el costo en el mismo acto: con esto ya se da por hecho que el café lo recibió'}
+        : pedido
+          ? 'Lo pedido es la propuesta: corregí a lo que de verdad va. Al enviar, el pedido queda cerrado.'
+          : 'El envío egresa el stock y congela el costo en el mismo acto: con esto ya se da por hecho que el café lo recibió'}
       wide
       onClose={closeModal}
       footer={[
@@ -540,6 +549,188 @@ export function EnvioCafeteriaDetalleModal({ id }) {
           <div className={s.hint} style={{ margin: '8px 0 0' }}>
             Anular revierte TODO: la mercadería reingresa al stock y coffit tiene que deshacer su
             ingreso (le llega por sincronización). Para corregir cantidades, usá <strong>Editar</strong>.
+          </div>
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+/* ==================================================================== *
+ * EL PEDIDO DE LA CAFETERÍA — la demanda, no el envío
+ * ==================================================================== *
+ * Lo arma el usuario del rol Cafetería (su única pantalla del CRM) contra el
+ * catálogo completo, con la disponibilidad a la vista. NO toca stock ni habla
+ * de plata: es "esto necesito" — el que arma el envío corrige a lo que de
+ * verdad va, y el envío cierra el pedido.
+ */
+export function PedidoCafeteriaFormModal() {
+  const { store, closeModal, toast } = useProductos();
+  const [obs, setObs] = useState('');
+  /** { prodId, presId, cantidad } */
+  const [items, setItems] = useState([]);
+
+  const setItem = (i, patch) => setItems((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)));
+  const delItem = (i) => setItems((r) => r.filter((_, j) => j !== i));
+  const agregar = (prod, presId) => setItems((r) => [...r, { prodId: prod.id, presId: presId ?? null, cantidad: '' }]);
+
+  const guardar = async () => {
+    const parsed = items
+      .filter((it) => Number(it.cantidad) > 0)
+      .map((it) => ({
+        productoId: it.prodId,
+        presentacionId: it.presId || undefined,
+        cantidad: Number(it.cantidad),
+      }));
+    if (!parsed.length) { toast('Agregá al menos un renglón con cantidad.', 'err'); return; }
+    const res = await store.crearPedidoCafeteria({ observaciones: obs.trim(), items: parsed });
+    if (!res.ok) { toast(res.error || 'No se pudo enviar el pedido.', 'err'); return; }
+    toast(`${res.codigo} enviado a la distribuidora. Te avisa el estado en esta pantalla.`, 'ok');
+    closeModal();
+  };
+
+  return (
+    <ModalShell
+      title="Pedido a la distribuidora"
+      subtitle="Elegí qué necesitás y en qué cantidad. La distribuidora lo arma y te lo manda — el detalle final es el del envío."
+      wide
+      onClose={closeModal}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+        { texto: 'Enviar pedido', clase: 'btn-primary', onClick: guardar },
+      ]}
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr .8fr auto', gap: 8, marginBottom: 6 }}>
+        {['Producto', 'Presentación', 'Cantidad', ''].map((h, i) => (
+          <div key={i} className={s['mini-label']}>{h}</div>
+        ))}
+      </div>
+      {items.map((it, i) => {
+        const prod = store.getProducto(it.prodId);
+        if (!prod) return null;
+        const u = store.unidadDe(prod, it.presId);
+        const disp = store.suma({ productoId: prod.id, presentacionId: it.presId ?? null, estado: 'disponible' });
+        return (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr .8fr auto', gap: 8, marginBottom: 8, alignItems: 'start' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 600 }}>{prod.nombre}</div>
+              <div className={s.hint} style={{ margin: 0 }}>
+                disponible en la distribuidora: {store.fmtCant(prod, it.presId, disp)}
+              </div>
+            </div>
+            <select
+              value={it.presId ?? ''}
+              onChange={(e) => setItem(i, { presId: e.target.value ? parseInt(e.target.value, 10) : null })}
+            >
+              <option value="">{prod.tipo === 'granel' ? 'Granel (kg)' : 'Unidad'}</option>
+              {(prod.presentaciones || []).map((p) => (
+                <option key={p.id} value={p.id}>{store.presLabel(prod, p.id)}</option>
+              ))}
+            </select>
+            <input
+              type="number" min="0" step="any" value={it.cantidad}
+              title={u === 'kg' ? 'Kilos' : 'Unidades / paquetes'}
+              onChange={(e) => setItem(i, { cantidad: e.target.value })}
+            />
+            <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>
+          </div>
+        );
+      })}
+      <BuscadorCatalogo store={store} onElegir={agregar} autoFocus={items.length === 0} />
+
+      <div className={cx(s.callout, s.ok)} style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12 }}>
+        <span>{items.length} renglón(es)</span>
+        <span>El pedido no mueve stock: es la demanda del café.</span>
+      </div>
+
+      <div className={s.field}>
+        <label>Observaciones</label>
+        <input value={obs} placeholder="Opcional — lo lee el que arma el envío" onChange={(e) => setObs(e.target.value)} />
+      </div>
+    </ModalShell>
+  );
+}
+
+/** El detalle del pedido: lo ven las dos puntas, las acciones dependen del rol. */
+export function PedidoCafeteriaDetalleModal({ id }) {
+  const { store, act, closeModal, openModal, toast, isAdmin } = useProductos();
+  const [pedido, setPedido] = useState(null);
+  const [motivoAnular, setMotivoAnular] = useState('');
+
+  const cargar = useCallback(async () => {
+    try { setPedido(await store.pedidoCafeteria(id)); }
+    catch { toast('No se pudo cargar el pedido.', 'err'); }
+  }, [store, id, toast]);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const footerBase = [{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }];
+  if (!pedido) {
+    return <ModalShell title="Pedido de Cafetería" onClose={closeModal} footer={footerBase}>
+      <div className={s['empty-state']}>Cargando…</div>
+    </ModalShell>;
+  }
+
+  const est = ESTADOS_PEDIDO_CAFE[pedido.estado] || {};
+  const abierto = pedido.estado === 'pendiente' || pedido.estado === 'armando';
+  // La cafetería puede anular lo que todavía nadie tomó; el admin, todo lo abierto.
+  const puedeAnular = abierto && (isAdmin || pedido.estado === 'pendiente');
+
+  const anular = async () => {
+    if (!motivoAnular.trim()) { toast('Escribí por qué se anula.', 'err'); return; }
+    await act(store.anularPedidoCafeteria(id, motivoAnular.trim()), 'Pedido anulado.');
+  };
+
+  return (
+    <ModalShell
+      title={`${pedido.codigo} · Pedido de la cafetería`}
+      subtitle={pedido.observaciones || undefined}
+      wide
+      onClose={closeModal}
+      footer={[
+        ...(isAdmin && pedido.estado === 'pendiente'
+          ? [{ texto: 'Tomar (lo estoy armando)', clase: 'btn-ghost', onClick: () => act(store.tomarPedidoCafeteria(id), 'Tomado: el café lo ve como "armando".') }]
+          : []),
+        ...(isAdmin && abierto
+          ? [{ texto: 'Convertir en envío', clase: 'btn-primary', onClick: () => { closeModal(); openModal('envioCafeteria', { pedido }); } }]
+          : []),
+        ...footerBase,
+      ]}
+    >
+      <div className={s['detalle-grid']}>
+        <Di label="Estado"><Pill pill={est.pill} label={est.label || pedido.estado} /></Di>
+        <Di label="Pedido">{fmtFechaHora(pedido.fecha)}</Di>
+        <Di label="Quién">{pedido.usuarioNombre || '—'}</Di>
+        {pedido.envioCodigo && <Di label="Cumplido por"><span className={s.mono}>{pedido.envioCodigo}</span></Di>}
+      </div>
+      {pedido.estado === 'anulado' && pedido.motivoAnulacion && (
+        <div className={cx(s.callout, s.warn)}>Anulado: {pedido.motivoAnulacion}</div>
+      )}
+
+      <Table cols={[{ h: 'Producto' }, { h: 'Cantidad pedida', num: true }]}>
+        {(pedido.items || []).map((it) => (
+          <tr key={it.id}>
+            <td>{it.nombre}</td>
+            <td className={s.num}>{num(it.cantidad, 3)} {it.unidad}</td>
+          </tr>
+        ))}
+      </Table>
+
+      <div className={s.hint}>
+        El pedido es la <strong>demanda</strong>: no movió stock ni tiene precios. El detalle que
+        vale es el del <strong>envío</strong> que lo cumple — puede diferir de lo pedido (faltantes,
+        reemplazos), y el café lo recibe por su sincronización.
+      </div>
+
+      {puedeAnular && (
+        <div className={s.callout}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              style={{ flex: 1, minWidth: 220 }}
+              placeholder="Motivo de anulación (obligatorio)"
+              value={motivoAnular}
+              onChange={(e) => setMotivoAnular(e.target.value)}
+            />
+            <Btn variant="btn-delete" small onClick={anular}>Anular pedido</Btn>
           </div>
         </div>
       )}
