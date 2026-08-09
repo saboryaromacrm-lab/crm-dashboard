@@ -2,11 +2,11 @@
  * CAFETERÍA — modales del envío a coffit.
  * ============================================================================
  * El envío es un PUNTO DE SALIDA a costo, no una transferencia: la cafetería
- * vive en otro sistema (coffit, dueño de su stock) y el CRM nunca muestra sus
- * existencias. Cada renglón viaja con su destino — PARA VENDER (reventa tal
- * cual) o PARA USAR (insumo de receta) — que es el dato que le dice a coffit
- * cómo importarlo. El costo lo congela la API al confirmar; lo que se ve acá
- * es el estimado con el costo de hoy.
+ * vive en otro sistema (coffit, dueño de su stock). Del otro lado, coffit lo
+ * ingresa en su almacén "Sabor y Aroma" y ELLA clasifica qué es cada cosa —
+ * por eso acá no se pregunta ningún destino. El envío nace ENVIADO (egresa
+ * stock y congela costo en el acto) y la corrección es EDITARLO: este mismo
+ * formulario sirve para las dos cosas.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
@@ -23,11 +23,6 @@ function Di({ label, children }) {
 }
 
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
-
-export const DESTINOS_CAFE = {
-  venta: { label: 'Para vender', pill: 'est-recibida' },
-  uso: { label: 'Para usar', pill: 'est-pendiente' },
-};
 
 /**
  * Buscador sobre TODO el catálogo (nombre, código interno o barras — también
@@ -231,45 +226,54 @@ function BusquedaGlobalModal({ store, yaCargados, onAgregar, onClose }) {
   );
 }
 
-/* ============================== NUEVO ENVÍO / DEVOLUCIÓN ============================== */
+/* ============================== NUEVO ENVÍO / EDICIÓN ============================== */
 
-export function EnvioCafeteriaFormModal({ tipo = 'envio' }) {
+/**
+ * El MISMO formulario para las dos cosas: `envio` en null = alta; con valor =
+ * edición de un envío ya enviado. En la edición, el costo que se muestra es el
+ * CONGELADO de cada renglón que ya estaba (la API lo conserva); un renglón
+ * nuevo se muestra —y se valúa— al costo de hoy, y el formulario lo dice.
+ */
+export function EnvioCafeteriaFormModal({ envio = null }) {
   const { store, closeModal, toast, sucOperativa } = useProductos();
-  const esDevolucion = tipo === 'devolucion';
+  const esEdicion = !!envio;
 
-  const [sucId, setSucId] = useState(() => String(sucOperativa() ?? store.distribuidora()?.id ?? ''));
-  const [fecha, setFecha] = useState(isoDate(new Date()));
-  const [obs, setObs] = useState('');
-  /** true = el flete ya salió: nace despachado (en tránsito), no como pedido. */
-  const [yaSalio, setYaSalio] = useState(false);
-  /** { prodId, presId, destino, cantidad } — el costo lo congela la API. */
-  const [items, setItems] = useState([]);
+  const [sucId, setSucId] = useState(() => String(envio?.sucursalId ?? sucOperativa() ?? store.distribuidora()?.id ?? ''));
+  const [fecha, setFecha] = useState(() => isoDate(envio ? new Date(envio.fecha) : new Date()));
+  const [obs, setObs] = useState(envio?.observaciones ?? '');
+  /** { prodId, presId, cantidad } — el costo lo maneja la API (congelado/hoy). */
+  const [items, setItems] = useState(() => (envio?.items ?? []).map((it) => ({
+    prodId: it.productoId, presId: it.presentacionId ?? null, cantidad: String(it.cantidad),
+  })));
   const [busquedaLote, setBusquedaLote] = useState(false);
+
+  /** Costo congelado por renglón que ya estaba: clave prod-pres. */
+  const congelados = useMemo(() => new Map(
+    (envio?.items ?? []).map((it) => [`${it.productoId}-${it.presentacionId ?? 0}`, it.costoUnitario]),
+  ), [envio]);
 
   const setItem = (i, patch) => setItems((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)));
   const delItem = (i) => setItems((r) => r.filter((_, j) => j !== i));
-  const agregar = (prod, presId) => setItems((r) => [...r, {
-    prodId: prod.id, presId: presId ?? null, destino: 'venta', cantidad: '',
-  }]);
+  const agregar = (prod, presId) => setItems((r) => [...r, { prodId: prod.id, presId: presId ?? null, cantidad: '' }]);
 
   /** Ingreso en lote desde el buscador global: un renglón por producto tildado. */
   const agregarLote = (elegidos) => {
-    setItems((r) => [...r, ...elegidos.map((p) => ({
-      prodId: p.id, presId: null, destino: 'venta', cantidad: '',
-    }))]);
+    setItems((r) => [...r, ...elegidos.map((p) => ({ prodId: p.id, presId: null, cantidad: '' }))]);
     setBusquedaLote(false);
     toast(`${elegidos.length} producto(s) agregados al envío.`, 'ok');
   };
 
-  /** Costo estimado del renglón con el costo de HOY ($/kg × tamaño si es paquete). */
+  /** El costo del renglón: congelado si ya estaba en el envío; el de hoy si es nuevo. */
   const costoDe = (it) => {
+    const clave = `${it.prodId}-${it.presId ?? 0}`;
+    if (congelados.has(clave)) return { costo: congelados.get(clave), congelado: true };
     const prod = store.getProducto(it.prodId);
-    if (!prod) return 0;
+    if (!prod) return { costo: 0, congelado: false };
     const cn = store.costoNeto(prod);
     const pres = it.presId ? store.presDe(prod, it.presId) : null;
-    return pres ? cn * (pres.tamKg || 1) : cn;
+    return { costo: pres ? cn * (pres.tamKg || 1) : cn, congelado: false };
   };
-  const total = items.reduce((a, it) => a + costoDe(it) * (Number(it.cantidad) || 0), 0);
+  const total = items.reduce((a, it) => a + costoDe(it).costo * (Number(it.cantidad) || 0), 0);
 
   const guardar = async () => {
     const parsed = items
@@ -277,22 +281,23 @@ export function EnvioCafeteriaFormModal({ tipo = 'envio' }) {
       .map((it) => ({
         productoId: it.prodId,
         presentacionId: it.presId || undefined,
-        destino: it.destino,
         cantidad: Number(it.cantidad),
       }));
     if (!parsed.length) { toast('Agregá al menos un renglón con cantidad.', 'err'); return; }
-    const res = await store.crearEnvioCafeteria({
-      tipo, sucursalId: parseInt(sucId, 10) || undefined, fecha,
-      observaciones: obs.trim(), items: parsed,
-      despachar: !esDevolucion && yaSalio ? true : undefined,
-    });
+
+    const res = esEdicion
+      ? await store.editarEnvioCafeteria(envio.id, {
+        version: envio.version, fecha, observaciones: obs.trim(), items: parsed,
+      })
+      : await store.crearEnvioCafeteria({
+        sucursalId: parseInt(sucId, 10) || undefined, fecha,
+        observaciones: obs.trim(), items: parsed,
+      });
     if (!res.ok) { toast(res.error || 'No se pudo registrar.', 'err'); return; }
     toast(
-      esDevolucion
-        ? `${res.codigo} registrado · ${money(res.totalCosto)} reingresados a costo.`
-        : res.estado === 'transito'
-          ? `${res.codigo} despachado · ${money(res.totalCosto)} en tránsito hacia el café.`
-          : `${res.codigo} registrado como pedido · ${money(res.totalCosto)} estimados. Despachalo cuando salga el flete.`,
+      esEdicion
+        ? `${res.codigo} corregido (versión ${res.version}) · nuevo total ${money(res.totalCosto)}. Coffit lo ve en su próxima sincronización.`
+        : `${res.codigo} enviado · ${money(res.totalCosto)} a costo. La mercadería ya egresó del stock.`,
       'ok',
     );
     closeModal();
@@ -301,25 +306,24 @@ export function EnvioCafeteriaFormModal({ tipo = 'envio' }) {
   return (
     <>
     <ModalShell
-      title={esDevolucion ? 'Devolución desde Cafetería' : 'Nuevo envío a Cafetería'}
-      subtitle={esDevolucion
-        ? 'La mercadería vuelve al stock, valorizada a costo'
-        : 'Nace como PEDIDO (sin tocar stock); al despachar viaja "en tránsito" y al recibirse egresa'}
+      title={esEdicion ? `Editar ${envio.codigo}` : 'Nuevo envío a Cafetería'}
+      subtitle={esEdicion
+        ? `Versión actual: ${envio.version}. La corrección revierte el envío anterior y aplica este detalle — el stock acompaña.`
+        : 'El envío egresa el stock y congela el costo en el mismo acto: con esto ya se da por hecho que el café lo recibió'}
       wide
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        {
-          texto: esDevolucion ? 'Registrar devolución' : (yaSalio ? 'Registrar y despachar' : 'Registrar pedido'),
-          clase: 'btn-primary',
-          onClick: guardar,
-        },
+        { texto: esEdicion ? 'Guardar corrección' : 'Enviar', clase: 'btn-primary', onClick: guardar },
       ]}
     >
       <div className={s['form-grid']}>
         <div className={s.field}>
-          <label>{esDevolucion ? 'Vuelve a la sucursal' : 'Sale de la sucursal'} <span className={s.req}>*</span></label>
-          <select value={sucId} onChange={(e) => setSucId(e.target.value)}>{sucursalOptions(store, false)}</select>
+          <label>Sale de la sucursal <span className={s.req}>*</span></label>
+          {/* En la edición la sucursal no se cambia: el stock ya salió de UNA. */}
+          <select value={sucId} disabled={esEdicion} onChange={(e) => setSucId(e.target.value)}>
+            {sucursalOptions(store, false)}
+          </select>
         </div>
         <div className={s.field}>
           <label>Fecha</label>
@@ -329,13 +333,15 @@ export function EnvioCafeteriaFormModal({ tipo = 'envio' }) {
 
       <div className={s['section-title']}>Renglones</div>
       <div className={s.hint} style={{ marginTop: 0 }}>
-        <strong>Para vender</strong> = coffit lo revende tal cual (la gaseosa, el alfajor).{' '}
-        <strong>Para usar</strong> = insumo de sus recetas (la leche, el café en grano). Ese dato
-        le dice a coffit cómo cargarlo. El costo se congela al confirmar, con el costo de hoy.
+        Qué es cada cosa (góndola o insumo) <strong>lo decide coffit al recibir</strong> en su
+        almacén “Sabor y Aroma” — acá solo viaja el detalle completo.{' '}
+        {esEdicion
+          ? <>El costo congelado de cada renglón <strong>se conserva</strong>; un renglón nuevo entra al costo de hoy.</>
+          : <>El costo se congela al enviar, con el costo de hoy.</>}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr .8fr 1fr 1fr auto', gap: 8, marginBottom: 6 }}>
-        {['Producto', 'Presentación', 'Destino', 'Cantidad', 'Costo unit.', 'Subtotal', ''].map((h, i) => (
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr .8fr 1fr 1fr auto', gap: 8, marginBottom: 6 }}>
+        {['Producto', 'Presentación', 'Cantidad', 'Costo unit.', 'Subtotal', ''].map((h, i) => (
           <div key={i} className={s['mini-label']}>{h}</div>
         ))}
       </div>
@@ -344,9 +350,9 @@ export function EnvioCafeteriaFormModal({ tipo = 'envio' }) {
         if (!prod) return null;
         const u = store.unidadDe(prod, it.presId);
         const disp = store.cant(prod.id, parseInt(sucId, 10), it.presId, 'disponible');
-        const costoU = costoDe(it);
+        const { costo: costoU, congelado } = costoDe(it);
         return (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr .8fr 1fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'start' }}>
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr .8fr 1fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'start' }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 600 }}>{prod.nombre}</div>
               <div className={s.hint} style={{ margin: 0 }}>
@@ -362,15 +368,17 @@ export function EnvioCafeteriaFormModal({ tipo = 'envio' }) {
                 <option key={p.id} value={p.id}>{store.presLabel(prod, p.id)}</option>
               ))}
             </select>
-            <select value={it.destino} onChange={(e) => setItem(i, { destino: e.target.value })}>
-              {Object.entries(DESTINOS_CAFE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
             <input
               type="number" min="0" step="any" value={it.cantidad}
               title={u === 'kg' ? 'Kilos' : 'Unidades / paquetes'}
               onChange={(e) => setItem(i, { cantidad: e.target.value })}
             />
-            <div className={cx(s.mono, s.num)} style={{ alignSelf: 'center' }}>{money(costoU)}</div>
+            <div style={{ alignSelf: 'center' }}>
+              <span className={cx(s.mono)}>{money(costoU)}</span>
+              {esEdicion && (
+                <div className={s.hint} style={{ margin: 0 }}>{congelado ? 'congelado' : 'costo de hoy'}</div>
+              )}
+            </div>
             <div className={cx(s.mono, s.num)} style={{ fontWeight: 700, alignSelf: 'center' }}>
               {money(costoU * (Number(it.cantidad) || 0))}
             </div>
@@ -389,26 +397,13 @@ export function EnvioCafeteriaFormModal({ tipo = 'envio' }) {
 
       <div className={cx(s.callout, s.ok)} style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12 }}>
         <span>{items.length} renglón(es)</span>
-        <span>Total estimado a costo: <strong>{money(total)}</strong></span>
+        <span>Total a costo: <strong>{money(total)}</strong></span>
       </div>
 
       <div className={s.field}>
         <label>Observaciones</label>
         <input value={obs} placeholder="Opcional — viaja en el remito" onChange={(e) => setObs(e.target.value)} />
       </div>
-
-      {!esDevolucion && (
-        <label className={s['granel-toggle']}>
-          <input type="checkbox" checked={yaSalio} onChange={(e) => setYaSalio(e.target.checked)} />
-          <span>
-            <span className={s['t-title']}>El flete ya salió — despachar ahora</span><br />
-            <span className={s['t-sub']}>
-              Sin tildar queda como pedido (armándose, sin tocar stock). Tildado sale ya:
-              la mercadería pasa a "en tránsito" y el costo se congela.
-            </span>
-          </span>
-        </label>
-      )}
     </ModalShell>
 
     {/* Montado ENCIMA del formulario, que sigue vivo con lo ya cargado. */}
@@ -431,18 +426,18 @@ function imprimirRemito(envio) {
     <tr>
       <td>${it.nombre}</td>
       <td class="chica">${it.codigoBarras || it.codigoPropio || '—'}</td>
-      <td class="chica">${DESTINOS_CAFE[it.destino]?.label || it.destino}</td>
       <td class="n">${num(it.cantidad, 3)} ${it.unidad}</td>
+      <td class="chica">${it.totalKg != null ? `${num(it.totalKg, 3)} kg` : '—'}</td>
       <td class="n">${money(it.costoUnitario)}</td>
       <td class="n">${money(it.costoUnitario * it.cantidad)}</td>
     </tr>`).join('');
   imprimirDocumento('remitoCafeteria', {
-    titulo: `${envio.codigo} — ${envio.tipo === 'devolucion' ? 'Devolución desde Cafetería' : 'Remito a Cafetería'}`,
+    titulo: `${envio.codigo} — Remito a Cafetería`,
     cuerpo: `
-      <h1>${envio.codigo} · ${envio.tipo === 'devolucion' ? 'Devolución desde Cafetería' : 'Remito a Cafetería'}</h1>
-      <div class="sub">${new Date(envio.fecha).toLocaleString('es-AR')} · ${envio.tipo === 'devolucion' ? 'vuelve a' : 'sale de'} ${envio.sucursalNombre || ''}${envio.usuarioNombre ? ` · ${envio.usuarioNombre}` : ''}</div>
+      <h1>${envio.codigo} · Remito a Cafetería${envio.version > 1 ? ` (versión ${envio.version})` : ''}</h1>
+      <div class="sub">${new Date(envio.fecha).toLocaleString('es-AR')} · sale de ${envio.sucursalNombre || ''}${envio.usuarioNombre ? ` · ${envio.usuarioNombre}` : ''}</div>
       <table>
-        <thead><tr><th>Producto</th><th>Código</th><th>Destino</th><th>Cantidad</th><th>Costo unit.</th><th>Subtotal</th></tr></thead>
+        <thead><tr><th>Producto</th><th>Código</th><th>Cantidad</th><th>Equiv. kg</th><th>Costo unit.</th><th>Subtotal</th></tr></thead>
         <tbody>${filas}</tbody>
       </table>
       <div class="tot"><strong>Total a costo: ${money(envio.totalCosto)}</strong></div>
@@ -452,7 +447,7 @@ function imprimirRemito(envio) {
 }
 
 export function EnvioCafeteriaDetalleModal({ id }) {
-  const { store, act, closeModal, toast } = useProductos();
+  const { store, act, closeModal, openModal, toast, isAdmin } = useProductos();
   const [envio, setEnvio] = useState(null);
   const [motivoAnular, setMotivoAnular] = useState('');
 
@@ -464,14 +459,8 @@ export function EnvioCafeteriaDetalleModal({ id }) {
 
   const anular = async () => {
     if (!motivoAnular.trim()) { toast('Escribí por qué se anula.', 'err'); return; }
-    await act(store.anularEnvioCafeteria(id, motivoAnular.trim()), 'Anulado — el stock volvió a su lugar.');
+    await act(store.anularEnvioCafeteria(id, motivoAnular.trim()), 'Anulado — todo el stock volvió a su lugar. Coffit lo ve en su próxima sincronización.');
   };
-  const avanzar = (desde) => act(
-    store.avanzarEnvioCafeteria(id, desde),
-    desde === 'pedido'
-      ? 'Despachado — la mercadería viaja como "en tránsito", con el costo congelado.'
-      : 'Recibido — la mercadería egresó del sistema: ya es del café.',
-  );
 
   const footerBase = [{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }];
   if (!envio) {
@@ -481,20 +470,16 @@ export function EnvioCafeteriaDetalleModal({ id }) {
   }
 
   const est = ESTADOS_ENVIO_CAFE[envio.estado] || {};
-  const esPedido = envio.estado === 'pedido';
   const vivo = envio.estado !== 'anulado';
   return (
     <ModalShell
-      title={`${envio.codigo} · ${envio.tipo === 'devolucion' ? 'Devolución desde Cafetería' : 'Envío a Cafetería'}`}
+      title={`${envio.codigo} · Envío a Cafetería`}
       subtitle={envio.observaciones || undefined}
       wide
       onClose={closeModal}
       footer={[
-        ...(envio.tipo === 'envio' && envio.estado === 'pedido'
-          ? [{ texto: 'Despachar', clase: 'btn-primary', onClick: () => avanzar('pedido') }]
-          : []),
-        ...(envio.tipo === 'envio' && envio.estado === 'transito'
-          ? [{ texto: 'Marcar recibido', clase: 'btn-primary', onClick: () => avanzar('transito') }]
+        ...(isAdmin && vivo
+          ? [{ texto: 'Editar', clase: 'btn-primary', onClick: () => { closeModal(); openModal('envioCafeteria', { envio }); } }]
           : []),
         { texto: 'Imprimir remito', clase: 'btn-ghost', onClick: () => imprimirRemito(envio) },
         ...footerBase,
@@ -503,9 +488,13 @@ export function EnvioCafeteriaDetalleModal({ id }) {
       <div className={s['detalle-grid']}>
         <Di label="Estado"><Pill pill={est.pill} label={est.label || envio.estado} /></Di>
         <Di label="Fecha">{fmtFechaHora(envio.fecha)}</Di>
-        <Di label={envio.tipo === 'devolucion' ? 'Volvió a' : 'Salió de'}>{envio.sucursalNombre || '—'}</Di>
+        <Di label="Salió de">{envio.sucursalNombre || '—'}</Di>
         <Di label="Quién">{envio.usuarioNombre || '—'}</Di>
-        <Di label={esPedido ? 'Total estimado' : 'Total a costo'}><strong>{money(envio.totalCosto)}</strong></Di>
+        <Di label="Versión">
+          v{envio.version}
+          {envio.version > 1 && <div className={s.hint} style={{ margin: 0 }}>corregido {fmtFechaHora(envio.actualizadoEn)}</div>}
+        </Di>
+        <Di label="Total a costo"><strong>{money(envio.totalCosto)}</strong></Di>
       </div>
       {!vivo && envio.motivoAnulacion && (
         <div className={cx(s.callout, s.warn)}>Anulado: {envio.motivoAnulacion}</div>
@@ -513,16 +502,17 @@ export function EnvioCafeteriaDetalleModal({ id }) {
 
       <Table
         cols={[
-          { h: 'Producto' }, { h: 'Código' }, { h: 'Destino' },
-          { h: 'Cantidad', num: true }, { h: 'Costo unit.', num: true }, { h: 'Subtotal', num: true },
+          { h: 'Producto' }, { h: 'Código' },
+          { h: 'Cantidad', num: true }, { h: 'Equiv. kg', num: true },
+          { h: 'Costo unit.', num: true }, { h: 'Subtotal', num: true },
         ]}
       >
         {(envio.items || []).map((it) => (
           <tr key={it.id}>
             <td>{it.nombre}</td>
             <td className={s.mono}>{it.codigoBarras || it.codigoPropio || '—'}</td>
-            <td><Pill pill={DESTINOS_CAFE[it.destino]?.pill} label={DESTINOS_CAFE[it.destino]?.label || it.destino} /></td>
             <td className={s.num}>{num(it.cantidad, 3)} {it.unidad}</td>
+            <td className={s.num}>{it.totalKg != null ? `${num(it.totalKg, 3)} kg` : '—'}</td>
             <td className={s.num}>{money(it.costoUnitario)}</td>
             <td className={cx(s.num, s.mono)}>{money(it.costoUnitario * it.cantidad)}</td>
           </tr>
@@ -530,9 +520,10 @@ export function EnvioCafeteriaDetalleModal({ id }) {
       </Table>
 
       <div className={s.hint}>
-        {esPedido
-          ? <>Es un <strong>pedido</strong>: todavía no tocó stock y los costos son los estimados de hoy — se congelan al despachar.</>
-          : <>Los costos quedaron <strong>congelados al despachar</strong>: este remito dice lo mismo aunque después cambien los proveedores. El código es la clave para cargarlo en coffit.</>}
+        Los costos quedaron <strong>congelados al enviar</strong>: este remito dice lo mismo aunque
+        después cambien los proveedores. Qué es cada cosa lo decide coffit al recibirlo en su
+        almacén “Sabor y Aroma” — la clave del mapeo es el código.
+        {envio.version > 1 && <> Esta es la <strong>versión {envio.version}</strong>: hubo correcciones después del envío original.</>}
       </div>
 
       {vivo && (
@@ -547,8 +538,8 @@ export function EnvioCafeteriaDetalleModal({ id }) {
             <Btn variant="btn-delete" small onClick={anular}>Anular</Btn>
           </div>
           <div className={s.hint} style={{ margin: '8px 0 0' }}>
-            Anular deshace lo de su etapa: un pedido no tocó stock; lo en tránsito vuelve a
-            disponible; lo recibido reingresa (y la devolución vuelve a salir).
+            Anular revierte TODO: la mercadería reingresa al stock y coffit tiene que deshacer su
+            ingreso (le llega por sincronización). Para corregir cantidades, usá <strong>Editar</strong>.
           </div>
         </div>
       )}

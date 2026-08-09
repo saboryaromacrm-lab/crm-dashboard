@@ -44,11 +44,18 @@ export const ESTADOS_TRANSFER = {
 };
 
 // ---- Estados del envío a Cafetería (el stock acompaña cada uno) ----
+/* Dos estados: con el envío ya se da por hecho que coffit recibió — el "viaje"
+ * es cruzar la calle. La corrección es EDITAR el envío, no una etapa más. */
 export const ESTADOS_ENVIO_CAFE = {
-  pedido:   { label: 'Pedido',      pill: 'est-pendiente' },
-  transito: { label: 'En tránsito', pill: 'est-transito' },
-  recibido: { label: 'Recibido',    pill: 'est-recibida' },
-  anulado:  { label: 'Anulado',     pill: 'est-cancelada' },
+  enviado: { label: 'Enviado', pill: 'est-recibida' },
+  anulado: { label: 'Anulado', pill: 'est-cancelada' },
+};
+
+/** En qué unidad habla la cantidad de cada renglón del envío. */
+export const MODOS_ENVIO_CAFE = {
+  granel:  { label: 'Granel (kg)' },
+  paquete: { label: 'Paquetes' },
+  unidad:  { label: 'Unidades' },
 };
 
 /* ---- Estados de una factura de papel subida a la bandeja ----
