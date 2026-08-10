@@ -866,9 +866,20 @@ function TabMermas() {
   const delMes = movs.filter((m) => mesDe(m.fecha) === mesActual);
   const plataMes = delMes.reduce((a, m) => a + (Number(m.costoUnitario) || 0) * m.cantidad, 0);
 
+  /* De dónde nació la baja. Las dos que vienen de un circuito se muestran como
+   * chip (con el código en el tooltip) en vez de repetir el texto crudo: una
+   * baja de incidencia aparecía como una merma anónima, aunque el vínculo
+   * estuviera guardado. */
+  const origenDe = (motivo) => {
+    if (/^Vencimiento #/.test(motivo)) return { pill: 'est-transito', label: 'De vencimiento' };
+    if (/^Incidencia /.test(motivo)) return { pill: 'est-revision', label: 'De incidencia' };
+    return null;
+  };
+
   const filas = pag.visibles.map((m) => {
     const p = store.getProducto(m.productoId);
-    const deVencimiento = /^Vencimiento #/.test(m.motivo || '');
+    const motivo = m.motivo || '';
+    const origen = origenDe(motivo);
     return (
       <tr key={m.id}>
         <td>{fmtFechaHora(m.fecha)}</td>
@@ -877,7 +888,11 @@ function TabMermas() {
         <td>{store.getSucursal(m.sucursalId)?.nombre ?? '—'}</td>
         <td className={s.num}>{num(m.cantidad)} {m.unidad}</td>
         <td className={s.num}>{Number(m.costoUnitario) > 0 ? money(m.costoUnitario * m.cantidad) : '—'}</td>
-        <td>{deVencimiento ? <Pill pill="est-transito" label="De vencimiento" /> : (m.motivo || '—')}</td>
+        <td>
+          {origen
+            ? <span title={motivo}><Pill pill={origen.pill} label={origen.label} /></span>
+            : (motivo || '—')}
+        </td>
       </tr>
     );
   });
