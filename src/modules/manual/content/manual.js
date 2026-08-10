@@ -1093,7 +1093,7 @@ export const MANUAL = [
       },
       {
         id: 'impresion',
-        actualizado: '2026-08-01',
+        actualizado: '2026-08-10',
         titulo: 'Impresión y módulo Sistema',
         bloques: [
           {
@@ -1107,8 +1107,14 @@ export const MANUAL = [
               ['**Sistema › Empresa**', 'Nombre, CUIT, dirección, teléfono, **logo** (imagen hasta 400 KB) y color de marca. Es el membrete de todos los documentos; el color aplica solo a A4/Carta — los rollos térmicos son B/N'],
               ['**Sistema › Impresión**', 'Formato por documento: **rollo 80 mm** (recomendado: más texto por línea), **rollo 58 mm** (posnet/portátil), **A4** o **Carta**. Con **vista previa en vivo** (el mismo HTML que va a la impresora) e impresión de prueba'],
               ['**Ticket del POS**', 'Se imprime **solo al cobrar** (se apaga en Sistema › Impresión). "Reimprimir" en la registradora saca de nuevo el último ticket del puesto. Leyenda "DOCUMENTO NO FISCAL" configurable hasta que llegue ARCA'],
+              ['**Etiquetas del fraccionado**', 'El único documento que NO es papel: va a la **impresora térmica de etiquetas** en su medida (50 × 30 mm por defecto, más 50 × 25, 40 × 25 y 60 × 40) y **sin membrete** — en 30 mm de alto el logo se come el precio. Una etiqueta = una página del rollo. Se eligen en Almacén › Fraccionamiento › Etiquetas'],
               ['**La impresora física**', 'La elige cada puesto en el diálogo del navegador (decisión: diálogo está bien por ahora). En la caja: Chrome con `--kiosk-printing` imprime DIRECTO a la predeterminada, sin diálogo'],
             ],
+          },
+          {
+            t: 'nota',
+            tono: 'info',
+            texto: 'Cada documento ofrece **solo los formatos que le sirven**: a los de papel no se les puede elegir una medida de etiqueta, y a la etiqueta no se le puede elegir A4. Elegir mal ahí solo podía terminar en papel tirado.',
           },
           { t: 'ruta', texto: 'Sistema › Empresa · Sistema › Impresión (permiso config)' },
         ],
@@ -1472,12 +1478,45 @@ export const MANUAL = [
       },
       {
         id: 'fraccionamiento',
-        actualizado: '2026-07-30',
-        titulo: 'Fraccionamiento',
+        actualizado: '2026-08-10',
+        titulo: 'Fraccionamiento (y las etiquetas de los paquetes)',
         bloques: [
           {
             t: 'p',
-            texto: 'Convierte granel en presentaciones: baja kilos y sube paquetes, en un solo movimiento. Vive en Almacén porque es una operación de depósito, no de compra.',
+            texto: 'La pantalla tiene **dos pestañas, y la separación es a propósito**: **Fraccionar** convierte granel en presentaciones (baja kilos, sube paquetes, en un solo movimiento) y **Etiquetas** solamente imprime. Vive en Almacén porque es una operación de depósito, no de compra.',
+          },
+          {
+            t: 'nota',
+            tono: 'ok',
+            texto: '**Sacar etiquetas NO mueve stock** (10/8/2026, decisión del dueño). Se imprimen las que se necesiten, todas las veces que hagan falta: la que sale corrida se tira y no pasó nada. Si imprimir descontara, cada etiqueta arruinada, cada prueba y cada rollo mal cargado dejarían el inventario mintiendo — y el inventario es lo único que no se puede recuperar mirando el depósito.',
+          },
+          {
+            t: 'p',
+            texto: 'Cómo es el trabajo de verdad: los chicos reciben el pedido (la lista **Fraccionados** del envío), fraccionan, **sacan las etiquetas**, las pegan, y recién ahí se asienta en el sistema y se despacha. Los días sin pedidos se fracciona para la Distribuidora o para stockear. Las dos pestañas acompañan eso sin obligar a ningún orden: la etiqueta no espera al asiento y el asiento no espera a la etiqueta.',
+          },
+          {
+            t: 'tabla',
+            cols: ['En Etiquetas', 'Qué hace'],
+            filas: [
+              ['**Buscador**', 'Lista los **fraccionados** del catálogo (cada presentación de un granel activo), buscables por nombre, marca o código de barras. Un granel sin presentaciones no aparece: no hay etiqueta que sacarle'],
+              ['**Cantidad**', 'Cuántas etiquetas salen, una por paquete armado. Hasta 500 por impresión: un cero de más no puede vaciar el rollo'],
+              ['**Fecha de vencimiento**', 'Sale impresa como "Vto 15/09/2026". Vacía, la etiqueta sale sin fecha (hay productos que no la llevan)'],
+              ['**Precio**', 'NO se tipea: sale del catálogo, de la **lista base** (Mostrador) y con **IVA incluido** — el mismo número que cobra la caja. Un precio escrito a mano en la etiqueta es un precio que en dos semanas discute con el POS'],
+              ['**Vista previa**', 'El **mismo HTML** que va a la impresora, en el tamaño real de la etiqueta. Lo que se ve es lo que sale'],
+            ],
+          },
+          {
+            t: 'p',
+            texto: 'La etiqueta lleva **nombre, peso, precio, código de barras y vencimiento**. Es interna (precio y código para la caja), no un rótulo legal: si algún día tiene que cumplir el rótulo del fraccionado, faltan **lote, RNE/RNPA y razón social**, y eso es otra vuelta.',
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: 'El código de barras se dibuja **EAN-13** cuando el código de la presentación tiene 13 dígitos y el verificador cierra; cualquier otro (7, 9 u 11 dígitos, con letras, o de 13 con el dígito mal) se dibuja en **Code 39**, que escanea los mismos caracteres pero ocupa mucho más ancho y algunos lectores baratos lo traen apagado. La pantalla lo avisa en los dos casos, y también **avisa si el código quedó demasiado fino** para la etiqueta configurada (abajo de 0,25 mm por barra una térmica empieza a fallar): ahí conviene una etiqueta más ancha o corregir el código a EAN-13 en el producto madre. Antes de tirar una tanda larga, pasale el lector a UNA etiqueta.',
+          },
+          {
+            t: 'ruta',
+            texto: 'Almacén › Fraccionamiento › pestañas Fraccionar / Etiquetas · el tamaño de la etiqueta se elige una vez en Sistema › Impresión',
           },
         ],
       },
@@ -2295,6 +2334,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**10/8/2026**', '**Las etiquetas de los paquetes fraccionados — y sacarlas NO mueve stock.** Faltaba el paso que en el depósito existe desde siempre: fraccionar, **sacar las etiquetas** y pegarlas. Ahora Almacén › Fraccionamiento tiene **dos pestañas**: *Fraccionar* (la de siempre, que mueve stock) y *Etiquetas*, que es una impresora y nada más. La separación la pidió el dueño y es la decisión importante: si imprimir descontara, cada etiqueta arruinada, cada prueba y cada rollo mal cargado dejarían el inventario mintiendo. Se busca el **fraccionado** (solo los granel con presentaciones, por nombre, marca o código de barras), se pone **cuántas etiquetas** y la **fecha de vencimiento**, y sale: nombre, peso, precio, código de barras y "Vto". El **precio no se tipea** — sale del catálogo, lista base, IVA incluido: el mismo número que cobra la caja. El motor de impresión ganó los formatos de **etiqueta autoadhesiva** (50 × 30 por defecto, 50 × 25, 40 × 25, 60 × 40) que van **sin membrete** y con una etiqueta por página del rollo, y en Sistema › Impresión cada documento ofrece solo los formatos que le sirven. El **código de barras se dibuja acá, sin librerías**: EAN-13 cuando el código cierra el verificador, **Code 39** para todo lo demás, y la pantalla avisa los dos casos flojos — código que no es EAN-13 y código **demasiado fino para la etiqueta** (abajo de 0,25 mm por barra una térmica no lee). Ese aviso no es teórico: de las 238 presentaciones del catálogo, **163 tienen EAN-13 válido, 13 tienen 13 dígitos con el verificador mal, 58 no llegan a 13 dígitos y 4 no tienen código**, y un código de 9 dígitos en Code 39 sobre una etiqueta de 40 mm queda en 0,195 mm por barra. Verificado con **30 pruebas** del generador (las tablas contra la construcción documentada de cada simbología, el ida y vuelta dibujo → barras → dígitos, y el verificador contra los códigos REALES del catálogo) más las medidas de la etiqueta en el navegador (50 × 30 mm exactos, sin desborde, código de 8 mm de alto). De paso: los documentos impresos no declaraban su codificación y un "sin código" salía "sin cÃ³digo" según cómo se abrieran — ahora todos llevan `<meta charset>`'],
               ['**10/8/2026**', '**La oferta por vencer se arma en el motor de ofertas, no en un formulario aparte — y el sistema avisa si termina descontando algo vencido.** El botón "Oferta" de un registro por vencer ya no abre un mini-formulario propio: **lleva a Ventas › Ofertas con "Nueva oferta" abierta y llena** — el producto en el alcance, la fecha de fin = el día que vence, la sucursal del lote, 25% propuesto — más una ficha arriba que dice cuántas unidades hay, dónde y **cuánta plata se pierde** si no se venden. Ahí están las siete mecánicas y la vista previa que corre el motor real: un 3×2 o un pack para rematar un lote antes eran imposibles. Al crearla **queda atada al registro**, y si el alcance se cambió de modo que ya no llegue a ese producto, el vínculo se **rechaza** con el motivo: "en oferta" en pantalla y cero descuento en la caja es una mentira que no se asienta. Pestaña nueva **Ofertas** con la lista de qué mercadería vigilada está en oferta — resolviendo el alcance REAL de cada promo (producto, marca, categoría, etiqueta, componentes de combo), así aparece también la que alguien armó en Ventas sobre algo que además está por vencer. De ahí salen los avisos, y el grave es uno: **mercadería VENCIDA con la oferta corriendo**, o sea la caja vendiendo con descuento algo que ya pasó su fecha; se ve arriba del Panel con la plata en góndola, con globito en la pestaña, y **también en Ventas › Ofertas**, que es donde se apaga. Los otros avisan lo contrario: la oferta que se armó para ese lote está apagada, ya terminó, arranca después de que venza, corre en otra sucursal o le cambiaron el alcance. De paso el formulario de ofertas ganó el **selector de sucursales** que le faltaba (el dato existía y se mostraba, pero no se podía elegir: toda oferta nacía "en todas"). Verificado con **40 pruebas de API** (el borrador y sus tres candados, el vínculo que no miente, los cuatro caminos del alcance + combo + ticket, cada aviso, la plata que no se cuenta dos veces, el orden por gravedad) más el circuito entero en pantalla con clics reales'],
               ['**10/8/2026**', '**El ciclo del producto se cierra solo, pero para el lado correcto.** La pregunta era si un discontinuado se archiva automáticamente al venderse la última unidad. La respuesta es una **asimetría deliberada**: archivar CIERRA puertas → el sistema lo **sugiere** ("2 productos discontinuados se agotaron — archivarlos", con botón que los archiva de una y revalida cada uno, porque entre el aviso y el clic una devolución pudo cambiar todo); reabrir las ABRE → **es automático**. Si reaparece stock de un archivado (una devolución, la anulación de un ticket, un ajuste), vuelve solo a *discontinuado* con el motivo anotado: "archivado con stock" es un estado imposible, mercadería que existe y que el sistema no deja vender. Vuelve a discontinuado y no a activo porque que aparezca una unidad no es haberlo vuelto a comprar. Por qué no archivar en el acto: el catálogo del POS se carga **al abrir la caja**, así que un cajero con el ticket armado vería "está archivado" sobre algo que tenía en pantalla — y el cierre de caja no toca stock, el stock baja al confirmar cada venta. La sugerencia espera **30 días sin movimiento** (recién agotado, una devolución es probable), ignora el stock **en tránsito** y sí propone los que solo tienen stock vencido. El reabrir vive en `addDelta`, el único lugar por donde pasa todo aumento de stock, así ningún camino nuevo se lo olvida. Verificado con 18 pruebas de API más el circuito en pantalla (el aviso, el archivado en lote con su omitido explicado, y la devolución que reabre)'],
               ['**10/8/2026**', '**El producto que ya no se trae se DA DE BAJA, no se borra — y volver es un clic.** El producto era la única entidad importante que no cumplía el principio del sistema ("lo que está en uso se desactiva, no se borra"): solo tenía Eliminar, y era borrado real. Ahora tiene ciclo de vida con **dos decisiones distintas**: *discontinuado* (no se compra más pero **se sigue vendiendo hasta agotar** — el caso común cuando el proveedor lo baja) y *archivado* (fuera de catálogo, exige que no quede stock; si queda, dice cuánto y dónde y ofrece dejarlo discontinuado). **Reactivar conserva todo**: códigos, historial de precios, presentaciones, formatos de compra por proveedor — y avisa la fecha del último costo, porque el precio de venta se calcula con ese número hasta la primera compra nueva. Los filtros se aplicaron en TODOS los puntos: POS y tienda no listan archivados; compras y reposición por stock mínimo no ofrecen lo dado de baja; pedidos de cafetería y control de vencimientos tampoco. Y los candados viven en la API, no solo en la pantalla (la venta rechaza lo archivado incluso en un borrador viejo, porque el catálogo del POS se cachea al abrir la caja). **Eliminar** quedó como excepción: solo sin ninguna huella, y cuando no se puede dice **cuál es la huella** en vez del error crudo de la base. Además, tres claves foráneas dejaron de ser `cascade`: borrar un producto ya no puede hacer desaparecer existencias ni mutilar remitos e incidencias viejas. Migración 0051, verificado con **23 pruebas de API** (el discontinuado se vende y no se compra, el archivado no entra a ningún lado, archivar con stock se frena, reactivar vuelve entero, la FK bloquea el DELETE directo, el importador no revive nada) más el circuito en pantalla. Guía nueva: Stock e inventario › "El producto que ya no se trae"'],
@@ -2342,13 +2382,20 @@ export const MANUAL = [
       },
       {
         id: 'proximo',
-        actualizado: '2026-08-07 19:40',
+        actualizado: '2026-08-10 21:00',
         titulo: 'Lo próximo',
         bloques: [
           {
             t: 'tabla',
             cols: ['Qué', 'Por qué importa'],
             filas: [
+              ['**El fraccionado como DOCUMENTO** (tabla propia)', 'Hoy una tanda de fraccionado es **una línea de texto** en movimientos ("Fraccionó 10 kg en 20×500 g"). De ahí salen cuatro cosas que no se pueden hacer: **reimprimir las etiquetas de esa tanda**, **anular** el fraccionado (un 200 en vez de 20 se arregla con dos ajustes a mano y el rastro se pierde), saber **quién** lo hizo, y cargar **varios productos en una sola sesión** (un día de fraccionado son 12 productos = 12 modales). Con tabla propia (`fraccionamientos` + items, el patrón de transferencias) aparece además el número **FR0012**, que es el candidato natural a LOTE si la etiqueta algún día tiene que ser rótulo legal'],
+              ['**El rendimiento del fraccionado no existe**', 'El sistema descuenta exactamente `paquetes × tamaño`: la cuenta es perfecta por definición. En la realidad de 10 kg salen 19 paquetes y queda resto en la balanza, en el envase y en el piso. Hoy esa diferencia hay que cargarla como merma en otra pantalla, o sea que no se carga. Propuesta: un campo **"granel consumido"** (con el teórico puesto) y la diferencia se registra sola como merma con motivo "diferencia de fraccionado FR0012" — y queda la métrica de rendimiento por producto y por persona, que es la que dice si la bolsa vino corta o si alguien trabaja sucio'],
+              ['**Fraccionar no le avisa a Vencimientos** (roto hoy)', 'Si el granel tiene registro en el vigía de fechas y se fracciona, el registro sigue apuntando al granel **que ya no está**: al procesarlo, la API corta con "Stock disponible insuficiente" y el vencimiento queda trabado sin explicación. Y del otro lado, los paquetes salen sin fecha. Al fraccionar habría que ofrecer **trasladar la fecha del granel a los paquetes** (proporcional), y de ahí la toma la etiqueta'],
+              ['**Los movimientos del Almacén no guardan quién**', 'El fraccionamiento, las mermas y los ajustes cargados desde las pantallas de Almacén viajan **sin `usuarioId`** (los 2 fraccionamientos que hay en la base tienen autor NULL): el modal no lo manda y el store solo lo inyecta en algunas llamadas. Con las mermas valuadas a costo congelado, una baja sin autor es plata que se perdió y nadie firmó'],
+              ['**Fraccionar desde el pedido, y el sugerido de los días sin pedido**', 'Desde la lista **Fraccionados** de un envío, el link "Fraccionar" abre el modal con todas las presentaciones en cero: el chico tiene que releer el papel y tipear. Debería llegar con **lo que falta de esa lista** (pedido − stock) y volver ahí al terminar. Y para los días sin pedidos, `stockMin` ya alimenta el sugerido de transferencias: la misma cuenta sobre las presentaciones diría "faltan 30 paquetes de 500 g en Express 2" en vez de que el fraccionador elija de memoria'],
+              ['**Sanear los códigos de barras de las presentaciones**', 'Medido sobre las 238 del catálogo: **163** tienen EAN-13 válido, **13** tienen 13 dígitos con el **verificador mal** (no los lee ningún lector si se imprimen como EAN-13), **58** no llegan a 13 dígitos (hay de 2, 3 y 4 caracteres) y **4** no tienen nada. Los cortos son peor que inválidos: el POS busca por **sufijo**, así que un código de 3 dígitos puede resolver a otro producto al escanear. Falta un **generador de serie interna** para los que no tienen — y tiene que esquivar el prefijo de la **balanza** (configurable, hoy 20), o el POS los va a leer como peso variable y cargar 500 g de otra cosa'],
+              ['**Rótulo legal del fraccionado** (si hace falta)', 'La etiqueta de hoy es **interna**: nombre, peso, precio, código y vencimiento. Si alguna vez tiene que cumplir el rótulo del fraccionado, faltan **lote** (sale del documento del punto 1), **RNE/RNPA** —que no existen como campo en Sistema › Empresa— y la razón social en la etiqueta. Decisión del dueño pendiente'],
               ['**Leer los RENGLONES de la factura — la mitad ya está**', '**PDFs digitales: HECHO** (8/8/2026, botón "Leer renglones del PDF" en el paso 2 del alta, receta Bavosi/Tango, gratis y local). Lo que queda EN ESPERA son las **fotos**, que no tienen texto adentro: para esas sigue vigente el modelo de visión, con la misma decisión pendiente del dueño (la imagen sale de la máquina) pero menos volumen y menos costo. Y sumar **recetas de otros proveedores** a medida que lleguen sus PDFs. Ficha: Pendientes › "Leer los renglones de la factura"'],
               ['**Renglones que NO son mercadería** (flete, envases retornables, redondeo)', 'Las facturas los traen y hoy **no se pueden guardar**: `comprobante_items.productoId` es obligatorio. Sin resolverlo, cada factura con flete no cierra contra el total del papel — y es **bloqueante de la lectura automática de renglones**. Decisión de diseño pendiente: un flag de "concepto no inventariable" en el ítem (más honesto) o productos de servicio designados'],
               ['**Conciliar con "Mis Comprobantes" de ARCA**', 'ARCA deja bajar en CSV todas las facturas que cualquier proveedor emitió contra el CUIT de la empresa. Sirve para **encontrar facturas que existen y nunca se cargaron** — cada una es crédito fiscal de IVA no computado y deuda que no figura en la cuenta del proveedor. Es el mismo patrón de "subir un archivo y previsualizar" que ya está construido dos veces'],

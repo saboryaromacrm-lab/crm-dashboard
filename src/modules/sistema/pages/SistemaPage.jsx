@@ -15,22 +15,42 @@ import { httpClient } from '@core/services/httpClient.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import {
-  FORMATOS_LABEL, htmlDocumento, imprimirDocumento, invalidarConfigImpresion,
+  FORMATOS_LABEL, cuerpoEtiquetas, esFormatoEtiqueta, formatoPorDefecto,
+  htmlDocumento, imprimirDocumento, invalidarConfigImpresion,
 } from '@core/services/imprimir.js';
 import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 import { SISTEMA_SECCIONES } from '../config/sistema.config.js';
 
+/**
+ * Los documentos configurables. `etiqueta: true` marca los que van a la
+ * impresora TÉRMICA DE ETIQUETAS: solo se les ofrecen medidas de etiqueta, y a
+ * los de papel no se les ofrece ninguna — elegir "50 × 30 mm" para el ticket o
+ * "A4" para una etiqueta solo puede terminar en papel tirado.
+ */
 const DOCUMENTOS = [
   { clave: 'ticketPos', label: 'Ticket de venta (POS)', hint: 'Rollo 80 mm recomendado: más texto por línea. 58 mm para posnet/portátil.' },
   { clave: 'presupuesto', label: 'Presupuesto (cliente)', hint: 'La hoja formal que se le manda al cliente.' },
   { clave: 'hojaArmado', label: 'Hoja de armado (presupuestos)', hint: 'Sin precios, con columna en blanco para el lápiz.' },
   { clave: 'listaPreparacion', label: 'Listas de preparación (envíos)', hint: 'Enteros y Fraccionados de las transferencias.' },
+  {
+    clave: 'etiquetaFraccionado',
+    label: 'Etiquetas del fraccionado (autoadhesivas)',
+    hint: 'Impresora térmica de etiquetas: una etiqueta por página, sin membrete. Se sacan en Almacén › Fraccionamiento › Etiquetas.',
+    etiqueta: true,
+  },
 ];
 
 const MAX_LOGO_KB = 400;
 
 /** Documento de muestra para la vista previa (no toca datos reales). */
 function cuerpoMuestra(clave) {
+  if (clave === 'etiquetaFraccionado') {
+    // Dos etiquetas para que se vea cómo queda una al lado de la otra en el rollo.
+    return cuerpoEtiquetas({
+      nombre: 'Lentejas', peso: '500 g', precio: '$1.850,00',
+      codigo: '6850000001491', vencimiento: '15/09/2026', cantidad: 2,
+    });
+  }
   if (clave === 'ticketPos') {
     return `
       <h1>Ticket 0001-00000042</h1>
@@ -124,7 +144,7 @@ export function SistemaPage() {
     if (!empresa || !impresion) return '';
     return htmlDocumento({
       empresa,
-      formato: impresion[previewDoc] || 'a4',
+      formato: impresion[previewDoc] || formatoPorDefecto(previewDoc),
       titulo: 'Vista previa',
       cuerpo: cuerpoMuestra(previewDoc),
       pie: previewDoc === 'ticketPos' ? impresion.pieTicket : '',
@@ -247,8 +267,10 @@ export function SistemaPage() {
                   {DOCUMENTOS.map((d) => (
                     <div key={d.clave} className={s.field} style={{ marginBottom: 0 }}>
                       <label>{d.label}</label>
-                      <select value={impresion[d.clave] || 'a4'} onChange={(e) => setImpresion((x) => ({ ...x, [d.clave]: e.target.value }))}>
-                        {Object.entries(FORMATOS_LABEL).map(([id, l]) => <option key={id} value={id}>{l}</option>)}
+                      <select value={impresion[d.clave] || formatoPorDefecto(d.clave)} onChange={(e) => setImpresion((x) => ({ ...x, [d.clave]: e.target.value }))}>
+                        {Object.entries(FORMATOS_LABEL)
+                          .filter(([id]) => esFormatoEtiqueta(id) === !!d.etiqueta)
+                          .map(([id, l]) => <option key={id} value={id}>{l}</option>)}
                       </select>
                       <div className={s.hint} style={{ margin: '4px 0 0' }}>{d.hint}</div>
                     </div>
@@ -297,7 +319,9 @@ export function SistemaPage() {
                     title="Vista previa de impresión"
                     srcDoc={previewHtml}
                     style={{
-                      width: (impresion[previewDoc] || 'a4').startsWith('rollo') ? 320 : '100%',
+                      // La etiqueta y el rollo se ven en su ancho real; el papel, a lo que dé.
+                      width: esFormatoEtiqueta(impresion[previewDoc]) ? 260
+                        : (impresion[previewDoc] || 'a4').startsWith('rollo') ? 320 : '100%',
                       height: 460, border: '1px solid var(--crm-color-border)',
                       borderRadius: 'var(--crm-radius-sm)', background: '#fff',
                     }}

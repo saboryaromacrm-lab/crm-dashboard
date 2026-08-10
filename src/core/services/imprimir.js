@@ -15,12 +15,28 @@
  * PC de la caja, Chrome con `--kiosk-printing` imprime directo sin diálogo.
  */
 import { httpClient } from './httpClient.js';
+import { barcodeSvg } from './barcode.js';
 
 const FORMATOS = {
   rollo80: { page: '80mm auto', margen: '3mm', font: '11px', chica: '9.5px', rollo: true },
   rollo58: { page: '58mm auto', margen: '2mm', font: '10px', chica: '9px', rollo: true },
   a4: { page: 'A4', margen: '14mm', font: '13px', chica: '12px', rollo: false },
   carta: { page: 'letter', margen: '14mm', font: '13px', chica: '12px', rollo: false },
+
+  /*
+   * ETIQUETAS AUTOADHESIVAS — impresora térmica de etiquetas.
+   *
+   * Una etiqueta ES una página: la térmica avanza el rollo por página, así que
+   * el `@page` tiene que medir lo que mide la etiqueta y el margen es el borde
+   * blanco que la impresora no puede pisar. No llevan membrete ni pie: en 30 mm
+   * de alto, el logo se come el precio. `bcMm` es cuánto alto se le da al
+   * código de barras; `anchoMm`/`margen` los usa la pantalla para avisar si el
+   * código quedó demasiado fino para el lector.
+   */
+  etiqueta50x30: { page: '50mm 30mm', anchoMm: 50, altoMm: 30, margen: '1.5mm', bcMm: 8, font: '8.5px', chica: '7px', etiqueta: true },
+  etiqueta50x25: { page: '50mm 25mm', anchoMm: 50, altoMm: 25, margen: '1.5mm', bcMm: 7, font: '8px', chica: '6.5px', etiqueta: true },
+  etiqueta40x25: { page: '40mm 25mm', anchoMm: 40, altoMm: 25, margen: '1mm', bcMm: 6.5, font: '7.5px', chica: '6px', etiqueta: true },
+  etiqueta60x40: { page: '60mm 40mm', anchoMm: 60, altoMm: 40, margen: '2mm', bcMm: 12, font: '10px', chica: '8px', etiqueta: true },
 };
 
 export const FORMATOS_LABEL = {
@@ -28,7 +44,38 @@ export const FORMATOS_LABEL = {
   rollo58: 'Rollo 58 mm (posnet / portátil)',
   a4: 'Hoja A4',
   carta: 'Hoja Carta',
+  etiqueta50x30: 'Etiqueta 50 × 30 mm (recomendada)',
+  etiqueta50x25: 'Etiqueta 50 × 25 mm',
+  etiqueta40x25: 'Etiqueta 40 × 25 mm (chica)',
+  etiqueta60x40: 'Etiqueta 60 × 40 mm (grande)',
 };
+
+/** Formato de etiqueta o de papel: decide qué opciones ofrece cada documento. */
+export function esFormatoEtiqueta(formato) {
+  return !!FORMATOS[formato]?.etiqueta;
+}
+
+/**
+ * Medidas de una etiqueta en milímetros, para quien necesite calcular sobre el
+ * papel (hoy: cuán fino queda el código de barras). `null` si no es etiqueta.
+ */
+export function medidaEtiqueta(formato) {
+  const f = FORMATOS[formato];
+  if (!f?.etiqueta) return null;
+  const margen = parseFloat(f.margen) || 0;
+  return { anchoMm: f.anchoMm, altoMm: f.altoMm, margenMm: margen, anchoUtilMm: f.anchoMm - margen * 2 };
+}
+
+/**
+ * Con qué formato sale un documento si la configuración todavía no lo tiene
+ * (config vieja, o un documento nuevo). Para el papel es A4; para las etiquetas
+ * NO puede ser A4 —saldría una etiqueta gigante con membrete— así que cada
+ * documento de etiqueta declara acá su tamaño de arranque.
+ */
+const DEFECTO_DOC = { etiquetaFraccionado: 'etiqueta50x30' };
+export function formatoPorDefecto(tipoDoc) {
+  return DEFECTO_DOC[tipoDoc] || 'a4';
+}
 
 /* La config se pide una vez por minuto: cambiarla en Sistema impacta al toque. */
 let _cache = null;
@@ -52,13 +99,16 @@ export function invalidarConfigImpresion() { _cache = null; }
  */
 export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTicket = false }) {
   const f = FORMATOS[formato] || FORMATOS.a4;
+  // La etiqueta no es un documento chico: no lleva membrete, ni pie, ni bordes,
+  // y cada una es una página del rollo. Sale por su propio camino.
+  if (f.etiqueta) return htmlEtiquetas({ f, titulo, cuerpo });
   const color = f.rollo ? '#111' : (empresa.colorMarca || '#166534');
   const datos = [empresa.cuit && `CUIT ${empresa.cuit}`, empresa.direccion, empresa.telefono]
     .filter(Boolean).join(' · ');
   const logo = empresa.logo
     ? `<img class="logo" src="${empresa.logo}" alt="" />`
     : '';
-  return `<!doctype html><html><head><title>${titulo}</title><style>
+  return `<!doctype html><html><head><meta charset="utf-8" /><title>${titulo}</title><style>
     @page { size: ${f.page}; margin: ${f.margen}; }
     * { box-sizing: border-box; }
     body { font: ${f.font}/1.45 ${f.rollo ? "'Courier New', monospace" : 'system-ui, sans-serif'}; margin: 0; color: #111; }
@@ -87,6 +137,69 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
 }
 
 /**
+ * La hoja de etiquetas: N bloques `.et`, uno por etiqueta, cada uno del tamaño
+ * exacto del adhesivo.
+ *
+ * El salto va con `break-before` en la etiqueta SIGUIENTE y no con
+ * `break-after` en cada una: con `break-after` la última deja una página vacía
+ * detrás y en un rollo eso es un adhesivo desperdiciado por cada impresión.
+ */
+function htmlEtiquetas({ f, titulo, cuerpo }) {
+  return `<!doctype html><html><head><meta charset="utf-8" /><title>${titulo}</title><style>
+    @page { size: ${f.page}; margin: 0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: ${f.font}/1.15 system-ui, sans-serif; color: #000; }
+    .et {
+      width: ${f.anchoMm}mm; height: ${f.altoMm}mm; padding: ${f.margen};
+      display: flex; flex-direction: column; justify-content: space-between;
+      overflow: hidden; text-align: center;
+    }
+    .et + .et { break-before: page; page-break-before: always; }
+    /* Dos líneas para el nombre, y si no entra se corta CON puntos suspensivos:
+       un nombre cortado en seco parece el nombre completo del producto. */
+    .nom {
+      font-weight: 800; font-size: 1.15em; line-height: 1.05;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .fila { display: flex; align-items: baseline; justify-content: space-between; gap: 1mm; }
+    .peso { font-weight: 700; }
+    .precio { font-weight: 800; font-size: 1.35em; white-space: nowrap; }
+    .bc { height: ${f.bcMm}mm; }
+    .cod { font-family: 'Courier New', monospace; font-size: ${f.chica}; letter-spacing: 0.08em; }
+    .sincod { font-size: ${f.chica}; color: #444; padding: 1mm 0; }
+    .vto { font-size: ${f.chica}; font-weight: 700; }
+  </style></head><body>${cuerpo}</body></html>`;
+}
+
+/** El texto viene del catálogo (lo tipea una persona): un `<` no puede romper la etiqueta. */
+const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/** Tope de una tanda: un error de tipeo no puede vaciar el rollo entero. */
+export const MAX_ETIQUETAS = 500;
+
+/**
+ * ETIQUETAS de un fraccionado, `cantidad` veces.
+ *
+ * Es la MISMA función que alimenta la vista previa y la impresora: una etiqueta
+ * que se ve distinta de la que sale del rollo es peor que no tener vista previa.
+ * Recibe todo ya formateado (precio con separadores, fecha DD/MM/AAAA): acá no
+ * se decide ni precio ni redondeo, eso es del catálogo.
+ */
+export function cuerpoEtiquetas({ nombre, peso, precio, codigo, vencimiento, cantidad = 1 }) {
+  const svg = barcodeSvg(codigo, { alto: 30 });
+  const una = `<div class="et">`
+    + `<div class="nom">${esc(nombre)}</div>`
+    + `<div class="fila"><span class="peso">${esc(peso)}</span><span class="precio">${esc(precio)}</span></div>`
+    + (svg
+      ? `<div class="bc">${svg}</div><div class="cod">${esc(codigo)}</div>`
+      : '<div class="sincod">sin código de barras</div>')
+    + (vencimiento ? `<div class="vto">Vto ${esc(vencimiento)}</div>` : '')
+    + '</div>';
+  const n = Math.min(MAX_ETIQUETAS, Math.max(1, Math.round(Number(cantidad) || 1)));
+  return una.repeat(n);
+}
+
+/**
  * Abre la ventana e imprime. `tipoDoc` = clave de la config de impresión.
  *
  * Devuelve `false` si el navegador BLOQUEÓ la ventana emergente: sin eso la
@@ -95,7 +208,7 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
  */
 export async function imprimirDocumento(tipoDoc, { titulo, cuerpo, pie, esTicket = false }) {
   const { empresa, impresion } = await configImpresion();
-  const formato = impresion[tipoDoc] || 'a4';
+  const formato = impresion[tipoDoc] || formatoPorDefecto(tipoDoc);
   const html = htmlDocumento({
     empresa, formato, titulo, cuerpo, esTicket,
     pie: pie ?? (esTicket ? impresion.pieTicket : ''),
