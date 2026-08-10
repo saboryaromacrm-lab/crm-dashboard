@@ -10,6 +10,7 @@ import { ModalHost } from '../components/ModalHost.jsx';
 import { Btn, s } from '../components/ui.jsx';
 
 import { PosPanel } from '../panels/PosPanel.jsx';
+import { ListadoVentasPanel } from '../panels/ListadoVentasPanel.jsx';
 import { OrdenesPanel } from '../panels/OrdenesPanel.jsx';
 import { PresupuestosPanel } from '../panels/PresupuestosPanel.jsx';
 import { ClientesPanel } from '../panels/ClientesPanel.jsx';
@@ -23,6 +24,7 @@ import { ConfiguracionPanel } from '../panels/ConfiguracionPanel.jsx';
 /** Los `id` coinciden con `VENTAS_PANELS` (config/ventas.config.js). */
 const PANEL_COMPONENTS = {
   pos: PosPanel,
+  listado: ListadoVentasPanel,
   ordenes: OrdenesPanel,
   presupuestos: PresupuestosPanel,
   clientes: ClientesPanel,

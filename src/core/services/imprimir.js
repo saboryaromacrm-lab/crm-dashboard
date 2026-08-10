@@ -86,7 +86,13 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
   </body></html>`;
 }
 
-/** Abre la ventana e imprime. `tipoDoc` = clave de la config de impresión. */
+/**
+ * Abre la ventana e imprime. `tipoDoc` = clave de la config de impresión.
+ *
+ * Devuelve `false` si el navegador BLOQUEÓ la ventana emergente: sin eso la
+ * impresión fallaba en silencio y quedaba la duda de si el ticket salió. Quien
+ * llama avisa (es lo único que se puede hacer: el permiso lo da el usuario).
+ */
 export async function imprimirDocumento(tipoDoc, { titulo, cuerpo, pie, esTicket = false }) {
   const { empresa, impresion } = await configImpresion();
   const formato = impresion[tipoDoc] || 'a4';
@@ -95,11 +101,12 @@ export async function imprimirDocumento(tipoDoc, { titulo, cuerpo, pie, esTicket
     pie: pie ?? (esTicket ? impresion.pieTicket : ''),
   });
   const w = window.open('', '_blank', 'width=760,height=900');
-  if (!w) return;
+  if (!w) return false;
   w.document.write(html);
   w.document.close();
   w.focus();
   setTimeout(() => w.print(), 250);
+  return true;
 }
 
 /** El ticket del POS como cuerpo de documento (lo usan cobro y reimpresión). */

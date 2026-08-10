@@ -129,6 +129,17 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
 
   const getCliente = useCallback((id) => data.clientes.find((c) => c.id === id) || null, [data.clientes]);
 
+  /**
+   * ¿Es administración? Admin y superadmin operan sobre TODO el negocio: pueden
+   * pararse en otra sucursal (menú del perfil) y ver la facturación de todas.
+   * El resto está atado a su puesto. Se usa para eso, no para permisos de
+   * pantalla — esos son las secciones del rol.
+   */
+  const esJefe = useMemo(() => {
+    const u = data.usuarios.find((x) => x.id === ctx.usuarioId);
+    return u?.rolClave === 'admin' || u?.rolClave === 'superadmin';
+  }, [data.usuarios, ctx.usuarioId]);
+
   /** Catálogo del formato de venta que llega con el bootstrap. */
   const listasCatalogo = useMemo(
     () => data.listasCatalogo ?? { modalidades: [], listas: [], reglasMarca: [] },
@@ -142,10 +153,10 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
       panels, panel, panelParams, goPanel,
       modal, openModal, closeModal,
       toast, toastState, closeToast, act,
-      getCliente, listasCatalogo,
+      getCliente, listasCatalogo, esJefe,
     }),
     [data, loaded, loadError, cargar, ctx, setCtx, panels, panel, panelParams, goPanel, modal,
-      openModal, closeModal, toast, toastState, closeToast, act, getCliente, listasCatalogo],
+      openModal, closeModal, toast, toastState, closeToast, act, getCliente, listasCatalogo, esJefe],
   );
 
   return <VentasContext.Provider value={value}>{children}</VentasContext.Provider>;

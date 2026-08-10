@@ -46,6 +46,12 @@ export const ventasApi = {
 
   /* Ventas / cuenta corriente */
   ventas: (filtros) => httpClient.get(`/ventas${qs(filtros)}`),
+  /**
+   * El LISTADO de la pantalla Ventas: paginado de servidor (`offset`/`limit`) y
+   * totales del filtro completo. Aparte de `ventas` a propósito — ese es el
+   * primitivo que usan el POS y la ficha del cliente, y devuelve un array.
+   */
+  listadoVentas: (filtros) => httpClient.get(`/ventas/listado${qs(filtros)}`),
   venta: (id) => httpClient.get(`/ventas/${id}`),
   crearVenta: (data) => httpClient.post('/ventas', data),
   anularVenta: (id) => httpClient.post(`/ventas/${id}/anular`, {}),

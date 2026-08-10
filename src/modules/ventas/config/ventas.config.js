@@ -11,6 +11,7 @@
  * —clientes, cobranzas— y al final lo que se configura y casi no se toca.
  */
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import PublicIcon from '@mui/icons-material/Public';
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
@@ -30,6 +31,9 @@ import SettingsIcon from '@mui/icons-material/Settings';
  */
 export const VENTAS_PANELS = [
   { id: 'pos', label: 'Punto de venta', icon: PointOfSaleIcon, permiso: 'ventas.pos' },
+  /* Se vende, se mira lo vendido, se cierra el turno: el listado va entre el
+     mostrador y la caja porque es la pregunta del medio ("¿qué se vendió?"). */
+  { id: 'listado', label: 'Ventas', icon: ReceiptLongIcon, permiso: 'ventas.listado' },
   { id: 'caja', label: 'Caja', icon: AccountBalanceWalletIcon, permiso: 'ventas.caja' },
   { id: 'ordenes', label: 'Órdenes web', icon: PublicIcon, permiso: 'ventas.ordenes', badge: 'ordenes' },
   { id: 'presupuestos', label: 'Presupuestos', icon: RequestQuoteIcon, permiso: 'ventas.presupuestos' },

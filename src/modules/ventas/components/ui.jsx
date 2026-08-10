@@ -14,7 +14,9 @@ import {
   CONDICIONES_IVA, ESTADOS_COBRANZA, ESTADOS_VENTA, TIPOS_VENTA,
 } from '../domain/constants.js';
 
-export { Table, PanelHead, Stat, Pill, Btn, usePaginado, Paginador, s } from '@modules/productos/components/ui.jsx';
+export {
+  Table, PanelHead, Stat, Pill, Btn, usePaginado, usePaginadoServidor, Paginador, s,
+} from '@modules/productos/components/ui.jsx';
 export { ModalShell } from '@modules/productos/components/Modal.jsx';
 export { money, num, fmtFecha, fmtFechaHora, isoDate } from '@modules/productos/domain/format.js';
 

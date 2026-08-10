@@ -20,9 +20,18 @@ export function addDays(base, n) {
 export function iso(d) {
   return new Date(d).toISOString();
 }
-/** yyyy-mm-dd (para inputs type="date"). */
+/**
+ * yyyy-mm-dd LOCAL (para inputs type="date").
+ *
+ * Con `toISOString()` esto daba MAÑANA a partir de las 21:00 de Argentina
+ * (UTC−3): la factura que se cargaba a la noche nacía con la fecha del día
+ * siguiente, la cobranza igual, y "este mes" arrancaba el 31 del mes anterior
+ * porque el 1° a medianoche local es el último día del mes anterior en UTC.
+ * Un input date habla de días del calendario de acá, no de instantes UTC.
+ */
 export function isoDate(d) {
-  return new Date(d).toISOString().slice(0, 10);
+  const f = new Date(d);
+  return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
 }
 export function fmtFecha(v) {
   if (!v) return '—';

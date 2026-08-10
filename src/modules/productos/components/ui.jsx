@@ -57,6 +57,38 @@ export function usePaginado(items, clave, reinicio = '') {
   return { visibles, total, tam, paginas, actual, setPagina, cambiarTam };
 }
 
+/**
+ * Paginación cuando las filas las corta el SERVIDOR. Misma barra, misma
+ * memoria del tamaño elegido; la diferencia es que acá no hay `visibles` (las
+ * filas ya llegan cortadas) y sí hay `offset`/`limit` para pedirlas.
+ *
+ * Existe porque hay listados que NO se pueden traer enteros para paginar en
+ * memoria: las ventas crecen para siempre, y bajar 40.000 tickets para mostrar
+ * 20 es tráfico y memoria tirados. `total` viene en la respuesta.
+ */
+export function usePaginadoServidor(total, clave, reinicio = '') {
+  const [tam, setTam] = useState(() => tamGuardado(clave));
+  const [pagina, setPagina] = useState(1);
+
+  useEffect(() => { setPagina(1); }, [reinicio]);
+
+  const paginas = Math.max(1, Math.ceil((Number(total) || 0) / tam));
+  // Si el filtro dejó menos páginas que la que se estaba mirando, se ajusta
+  // sola: pedir la página 7 de un resultado de 2 devolvería vacío.
+  const actual = Math.min(pagina, paginas);
+
+  const cambiarTam = (n) => {
+    try { localStorage.setItem(`crm.filasPorPagina.${clave}`, String(n)); } catch { /* privado */ }
+    setTam(n);
+    setPagina(1);
+  };
+
+  return {
+    total: Number(total) || 0, tam, paginas, actual, setPagina, cambiarTam,
+    offset: (actual - 1) * tam, limit: tam,
+  };
+}
+
 /** Barra de paginación. No aparece si el listado entra en la página más chica. */
 export function Paginador({ pag }) {
   const { total, tam, paginas, actual, setPagina, cambiarTam } = pag;

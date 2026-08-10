@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import { cx } from '@shared/utils/classNames.js';
+import { descargarCsv } from '@shared/utils/csv.js';
 /* El motor de ofertas vive en Ventas y es UNO SOLO: de ahí sale también la
  * frase de cada mecánica, para que «3×2» se lea igual en las dos pantallas. */
 import { describirOferta } from '@modules/ventas/domain/ofertas.js';
@@ -58,20 +59,6 @@ const hoyIso = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-/** CSV con BOM (Excel en Windows) y ; como separador (coma decimal argentina). */
-function descargarCsv(nombre, encabezados, filas) {
-  const esc = (v) => {
-    const t = String(v ?? '');
-    return /[";\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-  };
-  const cuerpo = [encabezados, ...filas].map((f) => f.map(esc).join(';')).join('\r\n');
-  const blob = new Blob(['﻿' + cuerpo], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = nombre;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
 
 function RangoPill({ dias }) {
   const r = RANGOS_VENC[rangoVenc(dias)];
