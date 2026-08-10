@@ -1,15 +1,16 @@
 /**
  * VENCIMIENTOS — modales del vigía de fechas.
  * ============================================================================
- * Tres actos sobre un registro (que NO es stock, es lista de control):
+ * Dos actos sobre un registro (que NO es stock, es lista de control):
  *   · EDITAR lo abierto (cantidad / fecha / observaciones — el costo congelado
  *     no se recalcula: es la foto del día en que se anotó).
- *   · ARMAR OFERTA real (Ventas › Ofertas, aplica en caja): porcentaje sobre
- *     el producto, vigente hasta el día del vencimiento, por defecto solo en
- *     la sucursal del registro.
  *   · PROCESAR lo vencido: cuántas se salvaron vendiéndose y cuántas se
  *     tiran. Opcionalmente baja el stock real (movimiento 'vencido') en el
  *     mismo acto — atómico del lado de la API.
+ *
+ * La OFERTA no tiene modal propio acá: el botón lleva al motor de ofertas de
+ * Ventas con el formulario ya lleno. Un solo lugar para crear ofertas en todo
+ * el sistema, con su vista previa y sus siete mecánicas.
  */
 import { useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
@@ -136,55 +137,6 @@ export function VencimientoProcesarModal({ registro }) {
           <div className={s.hint}>La baja de stock la registra alguien con permiso de inventario; el registro queda asentado igual.</div>
         )
       )}
-    </ModalShell>
-  );
-}
-
-/* ============================== ARMAR OFERTA ============================== */
-export function VencimientoOfertaModal({ registro }) {
-  const { store, act, closeModal } = useProductos();
-  const [pct, setPct] = useState('25');
-  const [todas, setTodas] = useState(false);
-  const suc = store.getSucursal(registro.sucursalId)?.nombre ?? '—';
-  const p = Number(pct) || 0;
-  const invalido = !(p > 0 && p < 100);
-
-  const armar = () => act(
-    store.armarOfertaVencimiento(registro.id, {
-      porcentaje: p,
-      sucursales: todas ? '' : undefined,
-    }),
-    'Oferta armada — vive en Ventas › Ofertas y aplica en caja.',
-  );
-
-  return (
-    <ModalShell
-      title={'Armar oferta — ' + registro.nombre}
-      onClose={closeModal}
-      footer={[
-        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Armar oferta', clase: 'btn-primary', onClick: () => { if (!invalido) armar(); } },
-      ]}
-    >
-      <div className={s.field}>
-        <label>Descuento (%) <span className={s.req}>*</span></label>
-        <input type="number" min="1" max="99" step="1" value={pct} autoFocus onChange={(e) => setPct(e.target.value)} />
-      </div>
-      <label className={s.field} style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-        <input type="checkbox" checked={todas} onChange={(e) => setTodas(e.target.checked)} style={{ width: 'auto' }} />
-        <span>En todas las sucursales (si no, solo en {suc} — donde está el lote por vencer)</span>
-      </label>
-      <div className={cx(s.callout, invalido ? s.warn : s.ok)}>
-        {invalido
-          ? '⚠ El porcentaje va entre 1 y 99.'
-          : <>Oferta REAL «Por vencer · {registro.nombre}»: <strong>{p}% de descuento</strong>, vigente
-            hasta el <strong>{fmtFechaVenc(registro.fechaVencimiento)}</strong> inclusive. Aplica en la caja como
-            cualquier oferta y se administra desde Ventas › Ofertas.</>}
-      </div>
-      <div className={s.hint}>
-        El alcance es el PRODUCTO completo (así matchea el motor del POS): si tiene otras
-        presentaciones a la venta, también entran mientras dure.
-      </div>
     </ModalShell>
   );
 }

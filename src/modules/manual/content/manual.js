@@ -727,14 +727,14 @@ export const MANUAL = [
       },
       {
         id: 'alcance',
-        actualizado: '2026-08-01',
+        actualizado: '2026-08-10 17:30',
         titulo: 'Alcance y condiciones',
         bloques: [
           {
             t: 'lista',
             items: [
               '**Alcance**: producto, marca, categoría o etiqueta — y se pueden mezclar; la unión habilita.',
-              '**Vigencia**: desde/hasta, días de la semana, sucursales.',
+              '**Vigencia**: desde/hasta, días de la semana, **sucursales** (se tildan en el formulario; todas tildadas = corre en todas).',
               '**Medio de pago**: solo la de ticket puede exigirlo ("10% pagando en efectivo"); se valida al confirmar la venta, que es cuando el medio existe.',
               '**Solo precio de mostrador** (por defecto): un renglón que ya está en lista mayorista no recibe además la promo — evita el doble beneficio.',
             ],
@@ -743,6 +743,11 @@ export const MANUAL = [
             t: 'nota',
             tono: 'info',
             texto: 'Una oferta vencida figura **Vencida** sola: el estado se calcula con el reloj, nadie tiene que acordarse de apagarla. Y si ya se usó en ventas, borrar la **desactiva** — el ticket viejo la referencia.',
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**Esta pantalla avisa cuando una oferta está descontando mercadería que YA venció** (10/8/2026): el dato viene del vigía de fechas (Almacén › Vencimientos), y el aviso vive acá porque acá está el remedio — editar la oferta para apagarla o recortarle el alcance. La fila de esa oferta además queda marcada "⚠ mercadería vencida". Desde Vencimientos también se llega al alta con el formulario ya lleno (producto, fecha de fin y sucursal del lote); ver Stock e inventario › "Vencimientos: el vigía de fechas".',
           },
         ],
       },
@@ -1289,7 +1294,7 @@ export const MANUAL = [
       },
       {
         id: 'vencimientos-vigia',
-        actualizado: '2026-08-10 10:05',
+        actualizado: '2026-08-10 17:30',
         titulo: 'Vencimientos: el vigía de fechas (la app externa se volvió módulo)',
         bloques: [
           {
@@ -1302,7 +1307,8 @@ export const MANUAL = [
             filas: [
               ['**Panel**', 'Las alertas por rango **EXCLUYENTE** — vencidos sin procesar / 0-7 / 8-15 / 16-30 días — con plata al costo congelado. Un registro vive en UNA tarjeta, jamás en dos. Clic en la tarjeta = ir filtrado a Registros. Los días se calculan SIEMPRE contra el calendario argentino, nunca contra el reloj UTC del server (a la noche UTC ya es "mañana" y adelantaría los vencidos un día).'],
               ['**Control**', 'La sesión de góndola, en el ORDEN FÍSICO del acto: **1· el producto** (botón 📷 **Escanear** con la cámara del celular, lector USB, o buscándolo por nombre/código/barras — también el de las presentaciones fraccionadas) → **2· la fecha** impresa en el paquete → **3· cuántos hay** → Agregar. El producto elegido queda a la vista ("en la mano") con su código de barras, y **la fecha y la cantidad se conservan** al agregar: cuando toda una tanda vence igual, el siguiente es escanear y agregar, nada más. Enter en fecha, cantidad u observaciones también agrega. Todo cae a una lista editable que se guarda de un saque; mismo producto + misma fecha se suman. La fecha pasada avisa pero DEJA: es la forma de asentar lo encontrado tarde. Cada control queda en el historial con usuario y sucursal.'],
-              ['**Registros**', 'Todo lo anotado con chips por rango, filtros y exportación CSV. El **costo viaja CONGELADO** al registrar (lección de cafetería): la pérdida de marzo no cambia en julio porque subió el catálogo. Editar no re-valúa.'],
+              ['**Registros**', 'Todo lo anotado con chips por rango, filtros y exportación CSV. El **costo viaja CONGELADO** al registrar (lección de cafetería): la pérdida de marzo no cambia en julio porque subió el catálogo. Editar no re-valúa. El botón **"Oferta"** lleva al motor de ofertas de Ventas con el formulario ya lleno (ver abajo).'],
+              ['**Ofertas**', 'El **cruce con Ventas**: qué mercadería vigilada está —o debería estar— en oferta, y qué se desalineó. No mira solo las ofertas nacidas acá: resuelve el alcance REAL de cada oferta (producto, marca, categoría, etiqueta, componentes de un combo) contra los registros abiertos, así también aparece la promo que alguien armó en Ventas sobre algo que además está por vencer. Filtros por aviso y por sucursal, exportación CSV, y el globito rojo de la pestaña cuenta lo URGENTE.'],
               ['**Vencidos**', 'El cierre del ciclo: procesar = contar cuántas se **vendieron antes de vencer** y cuántas se tiran. Separa pérdida ESTIMADA (todo lo registrado) de pérdida **REAL** (lo que de verdad se perdió). Con "bajar del stock" tildado genera el movimiento «vencido» (disponible → estado vencido) EN LA MISMA transacción: o pasa todo, o no pasó nada — sin stock suficiente, no procesa ni a medias. Dos personas procesando lo mismo: una sola gana (FOR UPDATE). Lo procesado no se edita ni se borra: es pérdida asentada.'],
               ['**Mermas**', 'La baja de siempre (merma / vencido / defectuoso) **se mudó acá**: registrar abre el modal de movimiento con el producto precargado, y el listado muestra todas las bajas con su costo congelado y su origen ("De vencimiento" si nació de procesar). El modal existía registrado pero SIN botón que lo abriera — quedó huérfano en alguna refactor; ahora tiene casa.'],
               ['**Reportes**', 'General (estimada + real + mermas), por sucursal, por categoría, **los que MÁS vencen** (la señal para comprar distinto), historial mensual y controles hechos con usuario. Períodos semana/mes/trimestre/año. Los movimientos nacidos de procesar NO cuentan como merma suelta: sumarían la misma pérdida dos veces.'],
@@ -1310,7 +1316,27 @@ export const MANUAL = [
           },
           {
             t: 'p',
-            texto: '**La oferta por vencer es una oferta REAL.** Desde un registro que todavía no venció, "Oferta" arma una oferta de Ventas (tipo porcentaje, alcance = el producto, vigente **hasta el día del vencimiento inclusive**, por defecto solo en la sucursal del registro) que aplica en la caja como cualquier otra y se administra en Ventas › Ofertas. El registro queda vinculado y muestra "🏷 En oferta"; un registro arma UNA sola. Ojo: el alcance es el producto COMPLETO — si tiene otras presentaciones a la venta, entran mientras dure.',
+            texto: '**"Oferta" NO abre un mini-formulario propio: lleva al MOTOR de ofertas con todo cargado** (10/8/2026). En el sistema hay **un solo lugar para crear una oferta** —Ventas › Ofertas, con sus siete mecánicas y su vista previa que corre el motor real sobre un ticket de ejemplo— y el vencimiento aporta el CONTEXTO, no un motor paralelo. El botón abre "Nueva oferta" ya con: el **producto** en el alcance, la **fecha de fin = el día que vence** (así el descuento nunca sobrevive a la mercadería), la **sucursal del lote** (rematar donde no está el lote es regalar margen), 25% propuesto y una ficha arriba que dice cuántas unidades son, dónde y **cuánta plata se pierde** si no se venden. Todo se puede cambiar antes de crear. Al crearla, la oferta **queda atada al registro** ("🏷 En oferta"); un registro se ata a UNA sola. Ojo: el alcance es el producto COMPLETO — si tiene presentaciones fraccionadas a la venta, entran mientras dure.',
+          },
+          {
+            t: 'p',
+            texto: '**El vínculo no puede mentir.** Si la oferta que se creó no alcanza al producto del registro (porque se le cambió el alcance en el formulario), la API **rechaza el vínculo** y lo dice: la oferta se creó igual —es válida— pero el registro no va a figurar "en oferta" cuando en la caja no descuenta nada. Y de paso, el formulario de ofertas ganó el **selector de sucursales** que le faltaba: el dato existía y se mostraba en la tabla, pero no había forma de elegirlo, así que toda oferta nacía "en todas".',
+          },
+          {
+            t: 'tabla',
+            cols: ['Aviso del cruce', 'Qué pasó y qué hacer'],
+            filas: [
+              ['🔴 **Mercadería vencida con la oferta corriendo**', 'Lo más caro que puede estar pasando: la caja vende con **descuento** algo que **ya venció**. Aparece arriba del Panel con la plata en góndola, con globito en la pestaña, y **también en Ventas › Ofertas** — que es donde se apaga. Apagar la oferta + procesar el registro.'],
+              ['🟡 **La oferta ya no alcanza al producto**', 'Estaba atada y alguien le cambió el alcance: el registro dice "en oferta" y la caja no descuenta. Corregir el alcance o desatar.'],
+              ['🟡 **La oferta no corre en esa sucursal**', 'La promo está viva pero no en el local donde está el lote.'],
+              ['🟡 **Apagada / terminada / arranca después**', 'La oferta que se armó para este lote ya no está descontando y la mercadería todavía no venció: hay tiempo, pero sin descuento no se va a ir.'],
+              ['🔵 **La oferta corta antes de la fecha**', 'Termina antes de que venza el paquete: quedan días de mercadería a precio lleno.'],
+              ['🟡 **Venció y la oferta ya no descuenta**', 'Se apagó o terminó a tiempo, así que no hay nada regalándose — pero el registro sigue abierto: retirar y procesar. (Decir "todo en orden" al lado de "venció hace 3 días" sería absurdo.)'],
+            ],
+          },
+          {
+            t: 'nota',
+            texto: 'La lista de la pestaña Ofertas es honesta a propósito: una fila existe solo si la oferta está **atada** al registro (ahí cualquier desajuste es la noticia) o si está **descontando de verdad** ese lote (vigente + alcanza + cubre la sucursal). Una promo apagada, o que corre solo en otro local, no es "el producto en oferta" — mostrarla llenaría la pantalla de filas «todo en orden» que no descuentan nada. Y lo **procesado** sale de la lista: ya es historia.',
           },
           {
             t: 'p',
@@ -1326,7 +1352,7 @@ export const MANUAL = [
             tono: 'warn',
             texto: 'Lo que se decidió al importar la app y NO se rediscute: el catálogo es SOLO el del sistema (de la app vieja no vino ni un dato — arrancó de cero); no hay productos manuales; el endpoint de BI externo no se replicó; la sección es permiso propio (`almacen.vencimientos`, migración 0050 a admin/superadmin) así se le puede dar a un empleado por local sin abrirle el resto del Almacén. El globito del menú cuenta lo que APURA: vencidos sin procesar + vence en ≤7 días.',
           },
-          { t: 'ruta', texto: 'Almacén › Vencimientos (permiso almacen.vencimientos) · pestañas Panel / Control / Registros / Vencidos / Mermas / Reportes · migración 0050 (tablas, Fontana, costo congelado en movimientos) · cámara: npm run dev:https en la red local' },
+          { t: 'ruta', texto: 'Almacén › Vencimientos (permiso almacen.vencimientos) · pestañas Panel / Control / Registros / Ofertas / Vencidos / Mermas / Reportes · la oferta se crea en Ventas › Ofertas (permiso ventas.ofertas: sin él el botón no aparece) · migración 0050 (tablas, Fontana, costo congelado en movimientos) · cámara: npm run dev:https en la red local' },
         ],
       },
       {
@@ -2178,7 +2204,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-08 03:00',
+        actualizado: '2026-08-10 17:30',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -2189,6 +2215,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**10/8/2026**', '**La oferta por vencer se arma en el motor de ofertas, no en un formulario aparte — y el sistema avisa si termina descontando algo vencido.** El botón "Oferta" de un registro por vencer ya no abre un mini-formulario propio: **lleva a Ventas › Ofertas con "Nueva oferta" abierta y llena** — el producto en el alcance, la fecha de fin = el día que vence, la sucursal del lote, 25% propuesto — más una ficha arriba que dice cuántas unidades hay, dónde y **cuánta plata se pierde** si no se venden. Ahí están las siete mecánicas y la vista previa que corre el motor real: un 3×2 o un pack para rematar un lote antes eran imposibles. Al crearla **queda atada al registro**, y si el alcance se cambió de modo que ya no llegue a ese producto, el vínculo se **rechaza** con el motivo: "en oferta" en pantalla y cero descuento en la caja es una mentira que no se asienta. Pestaña nueva **Ofertas** con la lista de qué mercadería vigilada está en oferta — resolviendo el alcance REAL de cada promo (producto, marca, categoría, etiqueta, componentes de combo), así aparece también la que alguien armó en Ventas sobre algo que además está por vencer. De ahí salen los avisos, y el grave es uno: **mercadería VENCIDA con la oferta corriendo**, o sea la caja vendiendo con descuento algo que ya pasó su fecha; se ve arriba del Panel con la plata en góndola, con globito en la pestaña, y **también en Ventas › Ofertas**, que es donde se apaga. Los otros avisan lo contrario: la oferta que se armó para ese lote está apagada, ya terminó, arranca después de que venza, corre en otra sucursal o le cambiaron el alcance. De paso el formulario de ofertas ganó el **selector de sucursales** que le faltaba (el dato existía y se mostraba, pero no se podía elegir: toda oferta nacía "en todas"). Verificado con **40 pruebas de API** (el borrador y sus tres candados, el vínculo que no miente, los cuatro caminos del alcance + combo + ticket, cada aviso, la plata que no se cuenta dos veces, el orden por gravedad) más el circuito entero en pantalla con clics reales'],
               ['**10/8/2026**', '**El ciclo del producto se cierra solo, pero para el lado correcto.** La pregunta era si un discontinuado se archiva automáticamente al venderse la última unidad. La respuesta es una **asimetría deliberada**: archivar CIERRA puertas → el sistema lo **sugiere** ("2 productos discontinuados se agotaron — archivarlos", con botón que los archiva de una y revalida cada uno, porque entre el aviso y el clic una devolución pudo cambiar todo); reabrir las ABRE → **es automático**. Si reaparece stock de un archivado (una devolución, la anulación de un ticket, un ajuste), vuelve solo a *discontinuado* con el motivo anotado: "archivado con stock" es un estado imposible, mercadería que existe y que el sistema no deja vender. Vuelve a discontinuado y no a activo porque que aparezca una unidad no es haberlo vuelto a comprar. Por qué no archivar en el acto: el catálogo del POS se carga **al abrir la caja**, así que un cajero con el ticket armado vería "está archivado" sobre algo que tenía en pantalla — y el cierre de caja no toca stock, el stock baja al confirmar cada venta. La sugerencia espera **30 días sin movimiento** (recién agotado, una devolución es probable), ignora el stock **en tránsito** y sí propone los que solo tienen stock vencido. El reabrir vive en `addDelta`, el único lugar por donde pasa todo aumento de stock, así ningún camino nuevo se lo olvida. Verificado con 18 pruebas de API más el circuito en pantalla (el aviso, el archivado en lote con su omitido explicado, y la devolución que reabre)'],
               ['**10/8/2026**', '**El producto que ya no se trae se DA DE BAJA, no se borra — y volver es un clic.** El producto era la única entidad importante que no cumplía el principio del sistema ("lo que está en uso se desactiva, no se borra"): solo tenía Eliminar, y era borrado real. Ahora tiene ciclo de vida con **dos decisiones distintas**: *discontinuado* (no se compra más pero **se sigue vendiendo hasta agotar** — el caso común cuando el proveedor lo baja) y *archivado* (fuera de catálogo, exige que no quede stock; si queda, dice cuánto y dónde y ofrece dejarlo discontinuado). **Reactivar conserva todo**: códigos, historial de precios, presentaciones, formatos de compra por proveedor — y avisa la fecha del último costo, porque el precio de venta se calcula con ese número hasta la primera compra nueva. Los filtros se aplicaron en TODOS los puntos: POS y tienda no listan archivados; compras y reposición por stock mínimo no ofrecen lo dado de baja; pedidos de cafetería y control de vencimientos tampoco. Y los candados viven en la API, no solo en la pantalla (la venta rechaza lo archivado incluso en un borrador viejo, porque el catálogo del POS se cachea al abrir la caja). **Eliminar** quedó como excepción: solo sin ninguna huella, y cuando no se puede dice **cuál es la huella** en vez del error crudo de la base. Además, tres claves foráneas dejaron de ser `cascade`: borrar un producto ya no puede hacer desaparecer existencias ni mutilar remitos e incidencias viejas. Migración 0051, verificado con **23 pruebas de API** (el discontinuado se vende y no se compra, el archivado no entra a ningún lado, archivar con stock se frena, reactivar vuelve entero, la FK bloquea el DELETE directo, el importador no revive nada) más el circuito en pantalla. Guía nueva: Stock e inventario › "El producto que ya no se trae"'],
               ['**10/8/2026**', '**Escanear el paquete con la cámara del celular, y el Control en el orden real del acto.** El formulario de Control se reordenó como se trabaja de verdad: **1· el producto** (📷 cámara, lector USB o buscándolo) → **2· la fecha impresa** → **3· cuántos**. El producto queda a la vista con su código y fecha/cantidad se conservan al agregar: la tanda que vence igual se anota escaneando y apretando Agregar. El botón de cámara usa la API nativa del navegador cuando está (Chrome de Android) y si no baja **ZXing por import dinámico** — 450 KB que se descargan solo al abrir la cámara, el arranque de la app no cambia. Lee EAN-13/EAN-8/UPC/Code-128/Code-39/ITF, con bip y vibración al leer, un frame cada ~120 ms y la cámara apagada al primer acierto. **Aviso importante**: los navegadores solo dan la cámara en HTTPS o localhost, así que para usarla desde el celular en la red local hay que levantar el front con `npm run dev:https` (nuevo, imprime la dirección a la que entrar); en producción con dominio HTTPS no hace falta nada, y el lector USB anda siempre. El decodificador se verificó de verdad: cuatro EAN-13 dibujados a mano leídos correctamente (y un canvas en blanco que no inventa nada) — ahí se descubrió que `decodeFromCanvas` no existe en ZXing 0.23 y el camino correcto es `MultiFormatReader` con la luminancia del canvas'],

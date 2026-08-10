@@ -19,7 +19,7 @@ import {
   PedidoCafeteriaFormModal, PedidoCafeteriaDetalleModal,
 } from './modals/CafeteriaModals.jsx';
 import {
-  VencimientoEditarModal, VencimientoProcesarModal, VencimientoOfertaModal,
+  VencimientoEditarModal, VencimientoProcesarModal,
 } from './modals/VencimientosModals.jsx';
 import { ImportarCatalogoModal } from './modals/ImportarCatalogoModal.jsx';
 import { LecturaFacturaModal } from './modals/LecturaFacturaModal.jsx';
@@ -221,7 +221,6 @@ const REGISTRY = {
   // Vencimientos: editar lo abierto, procesar lo vencido, armar la oferta real.
   vencimientoEditar: VencimientoEditarModal,
   vencimientoProcesar: VencimientoProcesarModal,
-  vencimientoOferta: VencimientoOfertaModal,
   pedidoCafeteriaDetalle: PedidoCafeteriaDetalleModal,
   historialPrecios: HistorialPreciosModal,
   margenesMasivos: MargenesMasivosModal,

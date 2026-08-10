@@ -9,7 +9,7 @@
 import { useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../../context/VentasContext.jsx';
-import { ventasApi } from '../../services/ventas.api.js';
+import { ventasApi, errorMsg } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO, TIPOS_OFERTA, norm } from '../../domain/constants.js';
 import { resolverOfertas, describirOferta } from '../../domain/ofertas.js';
 import { ModalShell, Btn, money, s } from '../ui.jsx';
@@ -188,8 +188,30 @@ function VistaPrevia({ oferta, items, alcances }) {
  * Formulario
  * ------------------------------------------------------------------ */
 
-export function OfertaFormModal({ oferta, items = [], universo = [], onListo }) {
-  const { closeModal, act, config } = useVentas();
+/**
+ * De dónde viene esta oferta cuando la manda el vigía de fechas: la ficha que
+ * justifica el descuento. Sin esto habría que decidir el porcentaje a ciegas —
+ * lo que está en juego es la plata que se pierde si no se vende.
+ */
+function FichaVencimiento({ v }) {
+  const dias = v.diasParaVencer;
+  return (
+    <div className={cx(s.callout, s.info)} style={{ margin: '0 0 12px' }}>
+      📅 Viene del <strong>control de vencimientos</strong>: {v.cantidad} {v.unidad} de{' '}
+      <strong>{v.nombre}</strong> en {v.sucursalNombre} vencen el{' '}
+      <strong>{v.fechaVencimiento.split('-').reverse().join('/')}</strong>{' '}
+      ({dias === 0 ? 'HOY' : `en ${dias} día${dias === 1 ? '' : 's'}`}) — si no se venden se
+      pierden <strong>{money(v.perdidaPotencial)}</strong>.
+      <div className={s.hint} style={{ marginTop: 4 }}>
+        Ya viene cargado el producto, la fecha de fin (el día que vence) y la sucursal del lote.
+        Cambiá lo que quieras: es una oferta como cualquier otra. Al crearla queda atada a este registro.
+      </div>
+    </div>
+  );
+}
+
+export function OfertaFormModal({ oferta, items = [], universo = [], onListo, vencimiento = null }) {
+  const { closeModal, act, toast, sucursales } = useVentas();
   const editando = !!oferta?.id;
 
   const [f, setF] = useState(() => ({
@@ -210,7 +232,10 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo }) 
   }));
   const [alcances, setAlcances] = useState(() => (oferta?.alcances ?? []).map((a) => ({
     ...a,
-    nombre: universo.find((u) => u.tipo === a.tipo && u.refId === a.refId)?.nombre ?? `#${a.refId}`,
+    // El catálogo del POS primero; si el producto todavía no tiene precio de
+    // mostrador no está ahí, y entonces vale el nombre que trajo el borrador.
+    nombre: universo.find((u) => u.tipo === a.tipo && u.refId === a.refId)?.nombre
+      ?? a.nombre ?? `#${a.refId}`,
   })));
   const [componentes, setComponentes] = useState(() => (oferta?.componentes ?? []).map((c) => ({
     productoId: c.productoId,
@@ -260,7 +285,15 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo }) 
       .slice(0, 6);
   }, [qComp, items, componentes]);
 
-  const guardar = () => {
+  const toggleSucursal = (id) => {
+    const ya = f.sucursales.split(',').map((x) => x.trim()).filter(Boolean);
+    const next = ya.includes(String(id)) ? ya.filter((x) => x !== String(id)) : [...ya, String(id)];
+    // Todas tildadas es lo mismo que ninguna: se guarda vacío (= todas).
+    set({ sucursales: next.length === sucursales.length ? '' : next.join(',') });
+  };
+  const sucActiva = (id) => !f.sucursales || f.sucursales.split(',').map((x) => x.trim()).includes(String(id));
+
+  const guardar = async () => {
     const dto = {
       nombre: f.nombre.trim(),
       tipo: f.tipo,
@@ -280,8 +313,24 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo }) 
       componentes: componentes.map((c) => ({ productoId: c.productoId, cantidad: Number(c.cantidad) || 1 })),
     };
     const promesa = editando ? ventasApi.editarOferta(oferta.id, dto) : ventasApi.crearOferta(dto);
-    act(promesa, editando ? 'Oferta actualizada.' : 'Oferta creada.', { recargar: false })
-      .then((ok) => { if (ok) onListo?.(); });
+    const res = await act(promesa, editando ? 'Oferta actualizada.' : 'Oferta creada.', { recargar: false });
+    if (!res) return;
+
+    /*
+     * El vínculo con el registro de vencimiento: es lo que hace que el vigía
+     * sepa que ese lote ya tiene su oferta y pueda avisar después si algo se
+     * desalinea. Si falla, la oferta YA está creada y sigue siendo válida — se
+     * dice lo que pasó en vez de fingir que no pasó nada.
+     */
+    if (vencimiento?.id && res?.id) {
+      try {
+        await ventasApi.vincularOfertaVencimiento(vencimiento.id, res.id);
+        toast('Oferta creada y atada al vencimiento: el registro ya figura «en oferta».', 'ok');
+      } catch (e) {
+        toast(`La oferta se creó, pero NO quedó atada al vencimiento: ${errorMsg(e)}`, 'err');
+      }
+    }
+    onListo?.();
   };
 
   return (
@@ -295,6 +344,7 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo }) 
       ]}
     >
       <div className={s.form}>
+        {vencimiento && <FichaVencimiento v={vencimiento} />}
         <div className={s['form-grid']}>
           <div className={s.field}>
             <label>Nombre <span className={s.req}>*</span></label>
@@ -415,6 +465,28 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo }) 
                 {d}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Dónde corre. Existía en el dato y en la tabla, pero no había forma de
+            elegirlo: una promo para rematar un lote de UNA sucursal no tiene por
+            qué regalar margen en las otras cuatro. */}
+        <div className={s.field}>
+          <label>Sucursales</label>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {sucursales.map((x) => (
+              <button
+                key={x.id} type="button"
+                className={cx(s.badge)}
+                style={{ cursor: 'pointer', opacity: sucActiva(x.id) ? 1 : 0.35, userSelect: 'none' }}
+                onClick={() => toggleSucursal(x.id)}
+              >
+                {x.nombre}
+              </button>
+            ))}
+          </div>
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            {f.sucursales ? 'Solo en las tildadas.' : 'Todas tildadas = corre en todas.'}
           </div>
         </div>
 

@@ -732,7 +732,10 @@ const crearSesionVencimientos = (o) => _mutate(() => httpClient.post('/vencimien
 const editarVencimiento = (id, o) => _mutate(() => httpClient.put(`/vencimientos/${id}`, o));
 const eliminarVencimiento = (id) => _mutate(() => httpClient.delete(`/vencimientos/${id}`));
 const procesarVencimiento = (id, o) => _mutate(() => httpClient.post(`/vencimientos/${id}/procesar`, { usuarioId: state.ctx.usuarioId ?? undefined, ...o }));
-const armarOfertaVencimiento = (id, o) => _mutate(() => httpClient.post(`/vencimientos/${id}/armar-oferta`, { usuarioId: state.ctx.usuarioId ?? undefined, ...o }));
+/* El cruce oferta ↔ mercadería vigilada. La oferta NO se crea acá: se arma en el
+ * motor de Ventas (un solo lugar para crear ofertas en todo el sistema) y el
+ * registro queda atado a ella. Esto es la lectura de ese cruce. */
+const ofertasVencimientos = () => httpClient.get('/vencimientos/ofertas');
 
 /* ---- Facturas por procesar (la bandeja de papeles subidos) ----
  *
@@ -819,7 +822,7 @@ export const inventoryStore = {
   crearEnvioCafeteria, editarEnvioCafeteria, anularEnvioCafeteria,
   pedidosCafeteria, pedidoCafeteria, crearPedidoCafeteria, tomarPedidoCafeteria, anularPedidoCafeteria,
   vencimientos, resumenVencimientos, reportesVencimientos, crearSesionVencimientos,
-  editarVencimiento, eliminarVencimiento, procesarVencimiento, armarOfertaVencimiento,
+  editarVencimiento, eliminarVencimiento, procesarVencimiento, ofertasVencimientos,
   imputarPago, quitarImputacionPago, anularPago, moverDestinoPago,
   actualizarCostos, actualizarMargenes, historialPrecios, evolucionPrecios, revertirLotePrecios,
   stockBajo, incidenciasAbiertas, transferenciasPendientes,

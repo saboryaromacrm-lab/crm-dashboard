@@ -77,6 +77,17 @@ export const ventasApi = {
   /* ---- Ofertas ---- */
   ofertas: () => httpClient.get('/ofertas'),
   crearOferta: (o) => httpClient.post('/ofertas', o),
+  /*
+   * Puente con el vigía de fechas (Almacén › Vencimientos). Vive acá porque el
+   * MOTOR de ofertas es uno solo y está en este módulo: el vencimiento manda el
+   * borrador, se crea la oferta como cualquier otra y después queda atada al
+   * registro. `enOferta` es el cruce al revés — qué mercadería vigilada está
+   * bajo una oferta y qué se desalineó — y se muestra acá porque acá se apaga
+   * una oferta que está descontando algo ya vencido.
+   */
+  borradorOfertaVencimiento: (id) => httpClient.get(`/vencimientos/${id}/borrador-oferta`),
+  vincularOfertaVencimiento: (id, ofertaId) => httpClient.post(`/vencimientos/${id}/vincular-oferta`, { ofertaId }),
+  vencimientosEnOferta: () => httpClient.get('/vencimientos/ofertas'),
   editarOferta: (id, o) => httpClient.patch('/ofertas/' + id, o),
   borrarOferta: (id) => httpClient.delete('/ofertas/' + id),
 

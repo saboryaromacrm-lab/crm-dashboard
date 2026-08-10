@@ -6,17 +6,22 @@
  * stock — es una lista de control con el costo congelado del día — y el stock
  * se toca recién al PROCESAR lo vencido (baja real, movimiento 'vencido').
  *
- * Seis pestañas = los seis momentos del circuito:
+ * Siete pestañas = los siete momentos del circuito:
  *   Panel     las alertas por rango EXCLUYENTE (vencido / 0-7 / 8-15 / 16-30)
  *   Control   caminar la góndola: lector USB o buscador, lista, guardar todo
  *   Registros todo lo anotado: filtros, editar, oferta, exportar
+ *   Ofertas   el cruce con Ventas: qué está en oferta y qué se desalineó
  *   Vencidos  cerrar el ciclo: vendidas vs perdidas → pérdida REAL
  *   Mermas    la baja de stock de siempre (se mudó acá: es la misma historia)
  *   Reportes  el análisis: por sucursal, categoría, frecuentes, historial
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import { cx } from '@shared/utils/classNames.js';
+/* El motor de ofertas vive en Ventas y es UNO SOLO: de ahí sale también la
+ * frase de cada mecánica, para que «3×2» se lea igual en las dos pantallas. */
+import { describirOferta } from '@modules/ventas/domain/ofertas.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { useSeccion } from '../hooks/useSeccion.js';
 import { money, num, fmtFechaHora, fmtFechaVenc } from '../domain/format.js';
@@ -31,10 +36,22 @@ const PESTANAS = [
   { id: 'panel', label: 'Panel' },
   { id: 'control', label: 'Control' },
   { id: 'registros', label: 'Registros' },
+  { id: 'ofertas', label: 'Ofertas' },
   { id: 'vencidos', label: 'Vencidos' },
   { id: 'mermas', label: 'Mermas' },
   { id: 'reportes', label: 'Reportes' },
 ];
+
+/** Estado de la oferta → color, igual que en Ventas › Ofertas. */
+const PILL_OFERTA = {
+  vigente: { pill: 'est-recibida', label: 'Vigente' },
+  programada: { pill: 'est-pendiente', label: 'Programada' },
+  vencida: { pill: 'est-revision', label: 'Terminada' },
+  inactiva: { pill: 'est-cancelada', label: 'Apagada' },
+};
+
+/** El camino al motor de ofertas con el formulario ya lleno. */
+const RUTA_NUEVA_OFERTA = (vencimientoId) => `/ventas?panel=ofertas&nuevaOferta=${vencimientoId}`;
 
 const hoyIso = () => {
   const d = new Date();
@@ -63,9 +80,10 @@ function RangoPill({ dias }) {
 }
 
 /* ============================== PANEL (resumen) ============================== */
-function TabPanel({ resumen, irA }) {
+function TabPanel({ resumen, irA, cruce, irAOfertas }) {
   const { store } = useProductos();
   if (!resumen) return <div className={s.hint}>Cargando…</div>;
+  const graves = cruce?.resumen?.graves ?? 0;
   const T = ({ rango, titulo, sub }) => {
     const d = resumen[rango] || { n: 0, unidades: 0, plata: 0 };
     const r = RANGOS_VENC[rango === 'vencidos' ? 'vencido' : rango] || {};
@@ -95,6 +113,20 @@ function TabPanel({ resumen, irA }) {
   ));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Lo más caro que puede estar pasando ahora mismo: descuento puesto
+          sobre mercadería que ya venció. Va arriba de todo. */}
+      {graves > 0 && (
+        <div className={cx(s.callout, s.warn)} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>
+            <strong>
+              ⚠ {graves === 1 ? 'Una oferta está descontando' : `${graves} ofertas están descontando`} mercadería VENCIDA
+            </strong>
+            {cruce.resumen.plataGrave > 0 ? <> — {money(cruce.resumen.plataGrave)} en góndola.</> : '.'}{' '}
+            Se vende con descuento algo que ya pasó su fecha.
+          </span>
+          <Btn variant="btn-primary" small onClick={irAOfertas}>Ver el cruce</Btn>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <T rango="vencidos" titulo="VENCIDOS SIN PROCESAR" sub="retirar y procesar" />
         <T rango="d7" titulo="VENCEN EN 0-7 DÍAS" sub="promoción ya" />
@@ -419,7 +451,11 @@ function TabControl({ sesion, setSesion, alGuardar }) {
 
 /* ============================== REGISTROS ============================== */
 function TabRegistros({ registros, filtroRango, setFiltroRango }) {
-  const { store, openModal, act } = useProductos();
+  const { store, openModal, act, can } = useProductos();
+  const navigate = useNavigate();
+  /* Sin la sección de ofertas de Ventas el botón llevaría a una pantalla que el
+   * rol no puede ver: mejor no ofrecerlo. */
+  const puedeOfertar = can('ventas.ofertas');
   const [buscar, setBuscar] = useState('');
   const [sucF, setSucF] = useState('');
   const [soloOferta, setSoloOferta] = useState(false);
@@ -466,8 +502,10 @@ function TabRegistros({ registros, filtroRango, setFiltroRango }) {
         <td>{v.ofertaId ? <Pill pill="est-preparada" label="🏷 En oferta" /> : '—'}</td>
         <td>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {abierto && !vencido && !v.ofertaId && (
-              <Btn small onClick={() => openModal('vencimientoOferta', { registro: v })}>Oferta</Btn>
+            {abierto && !vencido && !v.ofertaId && puedeOfertar && (
+              <Btn small onClick={() => navigate(RUTA_NUEVA_OFERTA(v.id))} title="Abre el motor de ofertas con este producto ya cargado">
+                Oferta
+              </Btn>
             )}
             {abierto && vencido && (
               <Btn variant="btn-primary" small onClick={() => openModal('vencimientoProcesar', { registro: v })}>Procesar</Btn>
@@ -529,12 +567,191 @@ function TabRegistros({ registros, filtroRango, setFiltroRango }) {
         {filas}
       </Table>
       <div className={s.hint}>
-        La pérdida potencial usa el costo CONGELADO al registrar. «Oferta» arma una oferta real
-        (Ventas › Ofertas) que aplica en caja hasta el día del vencimiento. «Procesar» aparece
-        cuando ya venció: ahí se define la pérdida real.
+        La pérdida potencial usa el costo CONGELADO al registrar. «Oferta» abre el motor de
+        ofertas de Ventas con el producto, la fecha y la sucursal ya cargados — se crea ahí,
+        como cualquier oferta, y queda atada a este registro. «Procesar» aparece cuando ya
+        venció: ahí se define la pérdida real.
       </div>
     </div>
   );
+}
+
+/* ============================== OFERTAS (el cruce con Ventas) ============================== */
+/**
+ * Qué mercadería vigilada está —o debería estar— en oferta.
+ *
+ * No mira solo las ofertas nacidas acá: la API resuelve el alcance REAL de cada
+ * oferta (producto, marca, categoría, etiqueta, componentes de combo) contra los
+ * registros abiertos. Así aparece también la oferta que alguien armó en Ventas
+ * sobre algo que además está por vencer, que es justo lo que uno quiere saber.
+ *
+ * El aviso que importa es uno: mercadería VENCIDA con la oferta corriendo — la
+ * caja vendiendo con descuento algo que ya venció.
+ */
+function TabOfertas({ cruce, registros, recargar }) {
+  const { store, openModal, can } = useProductos();
+  const navigate = useNavigate();
+  const [filtro, setFiltro] = useState('');
+  const [sucF, setSucF] = useState('');
+
+  const filas = cruce?.filas ?? [];
+  const r = cruce?.resumen;
+
+  const visibles = useMemo(() => filas.filter((f) => {
+    if (filtro === 'aviso' && !f.alarma) return false;
+    if (filtro === 'grave' && f.alarma?.severidad !== 'grave') return false;
+    if (filtro === 'corriendo' && !f.corriendo) return false;
+    if (sucF && f.sucursalId !== Number(sucF)) return false;
+    return true;
+  }), [filas, filtro, sucF]);
+
+  const graves = filas.filter((f) => f.alarma?.severidad === 'grave');
+
+  const exportar = () => descargarCsv(
+    `productos-en-oferta-${hoyIso()}.csv`,
+    ['Producto', 'Sucursal', 'Vence', 'Días', 'Cantidad', 'Unidad', 'En juego', 'Oferta', 'Mecánica', 'Estado oferta', 'Corriendo', 'Atada al registro', 'Aviso'],
+    visibles.map((f) => [
+      f.nombre, store.getSucursal(f.sucursalId)?.nombre ?? '', fmtFechaVenc(f.fechaVencimiento),
+      f.diasParaVencer, String(f.cantidad).replace('.', ','), f.unidad,
+      String(f.enJuego.toFixed(2)).replace('.', ','),
+      f.ofertaNombre, describirOferta(ofertaDe(f)), PILL_OFERTA[f.ofertaEstado]?.label ?? f.ofertaEstado,
+      f.corriendo ? 'sí' : '', f.vinculada ? 'sí' : '', f.alarma?.texto ?? '',
+    ]),
+  );
+
+  if (!cruce) return <div className={s.hint}>Cargando…</div>;
+
+  const CHIPS = [['', 'Todos'], ['aviso', 'Con aviso'], ['grave', 'Urgentes'], ['corriendo', 'Corriendo ahora']];
+
+  const cuerpo = visibles.map((f) => {
+    const reg = registros.find((x) => x.id === f.vencimientoId);
+    const est = PILL_OFERTA[f.ofertaEstado] ?? { label: f.ofertaEstado };
+    const sev = f.alarma?.severidad;
+    return (
+      <tr key={`${f.vencimientoId}-${f.ofertaId}`} style={sev === 'grave' ? { background: 'color-mix(in srgb, var(--crm-color-danger) 8%, transparent)' } : undefined}>
+        <td>
+          {f.nombre}
+          <div className={s.hint}>{store.getSucursal(f.sucursalId)?.nombre ?? '—'}</div>
+        </td>
+        <td>
+          {f.ofertaNombre}
+          <div className={s.hint}>
+            {describirOferta(ofertaDe(f))}
+            {f.vinculada ? ' · atada a este registro' : ' · la alcanza por su alcance'}
+          </div>
+        </td>
+        <td><Pill pill={est.pill} label={est.label} />{!f.corriendo && f.ofertaEstado === 'vigente' ? <div className={s.hint}>no llega a este lote</div> : null}</td>
+        <td>{fmtFechaVenc(f.fechaVencimiento)}</td>
+        <td><RangoPill dias={f.diasParaVencer} /></td>
+        <td className={s.num}>{num(f.cantidad)} {f.unidad}</td>
+        <td className={s.num}>{money(f.enJuego)}</td>
+        <td style={{ maxWidth: 300 }}>
+          {f.alarma
+            ? <span style={sev === 'grave' ? { color: 'var(--crm-color-danger)', fontWeight: 600 } : undefined}>{f.alarma.texto}</span>
+            : <span className={s.muted}>Todo en orden</span>}
+        </td>
+        <td>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {can('ventas.ofertas') && (
+              <Btn small onClick={() => navigate('/ventas?panel=ofertas')}>Ver la oferta</Btn>
+            )}
+            {reg && f.diasParaVencer < 0 && (
+              <Btn variant="btn-primary" small onClick={() => openModal('vencimientoProcesar', { registro: reg })}>
+                Procesar
+              </Btn>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {graves.length > 0 && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>
+            ⚠ {graves.length === 1
+              ? 'Hay una oferta corriendo sobre mercadería que YA venció'
+              : `Hay ${graves.length} ofertas corriendo sobre mercadería que YA venció`}
+            {r.plataGrave > 0 ? ` — ${money(r.plataGrave)} en góndola` : ''}
+          </strong>
+          <div className={s.hint} style={{ marginTop: 4 }}>
+            Es lo más urgente de esta pantalla: se está vendiendo con descuento algo vencido.
+            Apagá la oferta en Ventas › Ofertas y procesá el registro acá.
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 160px' }}>
+          <span className={s['mini-label']}>PRODUCTOS EN OFERTA</span>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>{r.productos}</div>
+          <div className={s.hint}>{r.ofertas} oferta{r.ofertas === 1 ? '' : 's'} involucrada{r.ofertas === 1 ? '' : 's'}</div>
+        </div>
+        <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 160px' }}>
+          <span className={s['mini-label']}>DESCONTANDO AHORA</span>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--crm-color-success)' }}>{r.corriendo}</div>
+          <div className={s.hint}>cruces con la oferta vigente y en la sucursal del lote</div>
+        </div>
+        <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 160px' }}>
+          <span className={s['mini-label']}>AVISOS</span>
+          <div style={{ fontSize: 18, fontWeight: 700, color: r.graves ? 'var(--crm-color-danger)' : undefined }}>
+            {r.graves + r.medias + r.bajas}
+          </div>
+          <div className={s.hint}>{r.graves} urgente{r.graves === 1 ? '' : 's'} · {r.medias} para revisar · {r.bajas} menor{r.bajas === 1 ? '' : 'es'}</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {CHIPS.map(([id, label]) => (
+          <button
+            key={id || 'todos'} type="button" className={s.badge}
+            style={{
+              cursor: 'pointer', padding: '5px 12px', fontSize: 12, borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--crm-color-border)',
+              ...(filtro === id ? { background: 'var(--crm-color-primary)', color: 'var(--crm-color-primary-contrast)', borderColor: 'var(--crm-color-primary)' } : {}),
+            }}
+            onClick={() => setFiltro(id)}
+          >
+            {label}
+          </button>
+        ))}
+        <select value={sucF} onChange={(e) => setSucF(e.target.value)} style={{ flex: '0 1 180px' }}>
+          {sucursalOptions(store, true)}
+        </select>
+        <span style={{ flex: 1 }} />
+        <Btn small onClick={recargar}>Actualizar</Btn>
+        <Btn small onClick={exportar}>Exportar CSV</Btn>
+      </div>
+
+      <Table
+        cols={[
+          { h: 'Producto' }, { h: 'Oferta' }, { h: 'Estado oferta' }, { h: 'Vence' }, { h: 'Mercadería' },
+          { h: 'Cantidad', num: true }, { h: 'En juego', num: true }, { h: 'Aviso' }, { h: 'Acciones' },
+        ]}
+        empty={filas.length
+          ? 'Nada con esos filtros.'
+          : 'Ninguna mercadería vigilada está en oferta. Desde Registros, «Oferta» abre el motor con todo cargado.'}
+      >
+        {cuerpo}
+      </Table>
+
+      <div className={s.hint}>
+        Se listan los registros ABIERTOS que alguna oferta alcanza — por producto, marca, categoría,
+        etiqueta o como componente de un combo — y también las ofertas atadas a un registro aunque
+        hoy ya no lo alcancen (ese desajuste es justamente el aviso). Los procesados salen de la
+        lista: ya son historia.
+      </div>
+    </div>
+  );
+}
+
+/** La oferta como la espera `describirOferta`, armada con lo que manda la API. */
+function ofertaDe(f) {
+  return {
+    tipo: f.ofertaTipo, porcentaje: f.porcentaje, precio: f.precio,
+    lleva: f.lleva, paga: f.paga, montoMinimo: f.montoMinimo,
+  };
 }
 
 /* ============================== VENCIDOS ============================== */
@@ -883,6 +1100,8 @@ export function VencimientosPanel() {
   const [pestana, setPestana] = useState('panel');
   const [registros, setRegistros] = useState([]);
   const [resumen, setResumen] = useState(null);
+  /** El cruce con las ofertas de Ventas (lista + avisos). */
+  const [cruce, setCruce] = useState(null);
   const [filtroRango, setFiltroRango] = useState('');
   // La sesión de control vive ACÁ para sobrevivir el cambio de pestaña: una
   // lista a medio armar no se pierde por ir a mirar los registros.
@@ -890,9 +1109,12 @@ export function VencimientosPanel() {
 
   const cargar = useCallback(async () => {
     try {
-      const [regs, res] = await Promise.all([store.vencimientos(), store.resumenVencimientos()]);
+      const [regs, res, cru] = await Promise.all([
+        store.vencimientos(), store.resumenVencimientos(), store.ofertasVencimientos(),
+      ]);
       setRegistros(Array.isArray(regs) ? regs : []);
       setResumen(res);
+      setCruce(cru);
     } catch { /* el shell ya muestra el error de conexión general */ }
   }, [store]);
 
@@ -913,7 +1135,9 @@ export function VencimientosPanel() {
       />
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {PESTANAS.map((v) => {
-          const globo = v.id === 'vencidos' ? abiertosVencidos : 0;
+          const globo = v.id === 'vencidos' ? abiertosVencidos
+            : v.id === 'ofertas' ? (cruce?.resumen?.graves ?? 0)
+              : 0;
           return (
             <button
               key={v.id}
@@ -938,9 +1162,10 @@ export function VencimientosPanel() {
         })}
       </div>
 
-      {pestana === 'panel' && <TabPanel resumen={resumen} irA={irA} />}
+      {pestana === 'panel' && <TabPanel resumen={resumen} irA={irA} cruce={cruce} irAOfertas={() => setPestana('ofertas')} />}
       {pestana === 'control' && <TabControl sesion={sesion} setSesion={setSesion} alGuardar={() => { setFiltroRango(''); setPestana('registros'); }} />}
       {pestana === 'registros' && <TabRegistros registros={registros} filtroRango={filtroRango} setFiltroRango={setFiltroRango} />}
+      {pestana === 'ofertas' && <TabOfertas cruce={cruce} registros={registros} recargar={cargar} />}
       {pestana === 'vencidos' && <TabVencidos registros={registros} />}
       {pestana === 'mermas' && <TabMermas />}
       {pestana === 'reportes' && <TabReportes />}
