@@ -15,11 +15,14 @@
  *   Reportes  el análisis: por sucursal, categoría, frecuentes, historial
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { useSeccion } from '../hooks/useSeccion.js';
 import { money, num, fmtFechaHora, fmtFechaVenc } from '../domain/format.js';
 import { RANGOS_VENC, rangoVenc } from '../domain/constants.js';
+import { motivoSinCamara } from '../domain/leerCodigoBarras.js';
+import { EscanerCamara } from '../components/EscanerCamara.jsx';
 import { BuscadorCatalogo } from '../components/modals/CafeteriaModals.jsx';
 import { sucursalOptions } from '../components/selectOptions.jsx';
 import { Table, PanelHead, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
@@ -126,45 +129,87 @@ function TabPanel({ resumen, irA }) {
 }
 
 /* ============================== CONTROL (la sesión) ============================== */
+/**
+ * El orden de los campos sigue el ORDEN FÍSICO del acto: primero agarrás el
+ * paquete y lo identificás (escaneo con la cámara, con el lector USB, o lo
+ * buscás), después leés la fecha impresa y la tipeás, después contás cuántos
+ * hay. Producto → fecha → cantidad → Agregar.
+ *
+ * Fecha y cantidad se CONSERVAN al agregar: cuando toda una tanda vence igual,
+ * el segundo producto es solo escanear y agregar.
+ */
 function TabControl({ sesion, setSesion, alGuardar }) {
   const { store, toast, sucOperativa } = useProductos();
   const [sucElegida, setSucElegida] = useState(() => String(sucOperativa() || ''));
+  const [elegido, setElegido] = useState(null); // el paquete en la mano
   const [fecha, setFecha] = useState('');
   const [cantidad, setCantidad] = useState('1');
   const [obs, setObs] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [camara, setCamara] = useState(false);
   const fechaRef = useRef(null);
 
   const activa = !!sesion.sucursalId;
+  const sinCamara = motivoSinCamara();
 
-  const agregar = useCallback((prod, presId) => {
-    if (!fecha) {
-      toast('Primero poné la fecha de vencimiento del paquete.', 'err');
-      fechaRef.current?.focus();
-      return false;
-    }
-    const c = Number(cantidad) || 0;
-    if (!(c > 0)) { toast('La cantidad debe ser mayor a 0.', 'err'); return false; }
+  /** Paso 1: identificar el paquete. No agrega nada todavía. */
+  const elegirProducto = useCallback((prod, presId) => {
     const pres = presId ? (prod.presentaciones || []).find((x) => x.id === presId) : null;
     const nombre = pres
       ? `${prod.nombre} · ${pres.tamKg < 1 ? `${Math.round(pres.tamKg * 1000)} g` : `${pres.tamKg} kg`}`
       : prod.nombre;
-    const unidad = pres ? 'paq.' : (prod.tipo === 'granel' ? 'kg' : 'u.');
+    setElegido({
+      productoId: prod.id,
+      presentacionId: presId ?? null,
+      nombre,
+      unidad: pres ? 'paq.' : (prod.tipo === 'granel' ? 'kg' : 'u.'),
+      codigoBarras: pres?.codigoBarras || prod.codigoBarras || '',
+    });
+    // El foco va a la fecha: es lo próximo que hay que mirar en el paquete.
+    setTimeout(() => fechaRef.current?.focus(), 0);
+    return true;
+  }, []);
+
+  /** Busca un código EXACTO en el catálogo (producto o presentación). */
+  const porCodigo = useCallback((codigo) => {
+    for (const p of store.state.productos) {
+      if (p.codigoBarras === codigo) return { prod: p, presId: null };
+      const pres = (p.presentaciones || []).find((x) => x.codigoBarras === codigo);
+      if (pres) return { prod: p, presId: pres.id };
+    }
+    return null;
+  }, [store]);
+
+  const desdeCodigo = useCallback((codigo) => {
+    const hit = porCodigo(codigo);
+    if (hit) { elegirProducto(hit.prod, hit.presId); return true; }
+    toast(`El código ${codigo} no está en el catálogo.`, 'err');
+    return false;
+  }, [porCodigo, elegirProducto, toast]);
+
+  /** Paso 3: sumar el renglón a la lista del control. */
+  const agregarALista = useCallback(() => {
+    if (!elegido) { toast('Primero elegí el producto (escaneá o buscá).', 'err'); return; }
+    if (!fecha) { toast('Falta la fecha de vencimiento del paquete.', 'err'); fechaRef.current?.focus(); return; }
+    const c = Number(cantidad) || 0;
+    if (!(c > 0)) { toast('La cantidad debe ser mayor a 0.', 'err'); return; }
     setSesion((sn) => {
       const filas = [...sn.filas];
-      const i = filas.findIndex((f) => f.productoId === prod.id && (f.presentacionId ?? null) === (presId ?? null) && f.fechaVencimiento === fecha);
+      const i = filas.findIndex((f) => f.productoId === elegido.productoId
+        && (f.presentacionId ?? null) === elegido.presentacionId && f.fechaVencimiento === fecha);
       if (i >= 0) filas[i] = { ...filas[i], cantidad: filas[i].cantidad + c };
-      else filas.push({ productoId: prod.id, presentacionId: presId ?? null, nombre, unidad, cantidad: c, fechaVencimiento: fecha, observaciones: obs.trim() });
+      else filas.push({ ...elegido, cantidad: c, fechaVencimiento: fecha, observaciones: obs.trim() });
       return { ...sn, filas };
     });
-    setCantidad('1'); setObs('');
-    toast(`${nombre} anotado (${num(c)} ${unidad}).`, 'ok');
-    return true;
-  }, [fecha, cantidad, obs, setSesion, toast]);
+    toast(`${elegido.nombre} anotado (${num(c)} ${elegido.unidad}).`, 'ok');
+    // Se limpia el producto y las observaciones; la FECHA y la cantidad quedan
+    // (la tanda que vence igual se anota escaneando y agregando, nada más).
+    setElegido(null); setObs('');
+  }, [elegido, fecha, cantidad, obs, setSesion, toast]);
 
   /* Lector USB (teclado cuña): escribe rápido y termina con Enter. El buffer
    * junta lo tecleado cuando el foco NO está en un input; con Enter y 6+
-   * caracteres se busca el código EXACTO y se anota directo. */
+   * caracteres se busca el código EXACTO y queda elegido. */
   useEffect(() => {
     if (!activa) return undefined;
     let buffer = ''; let timer = null;
@@ -173,18 +218,7 @@ function TabControl({ sesion, setSesion, alGuardar }) {
       if (enInput) return;
       clearTimeout(timer);
       if (e.key === 'Enter') {
-        if (buffer.length >= 6) {
-          const codigo = buffer;
-          buffer = '';
-          let hit = null;
-          for (const p of store.state.productos) {
-            if (p.codigoBarras === codigo) { hit = { prod: p, presId: null }; break; }
-            const pres = (p.presentaciones || []).find((x) => x.codigoBarras === codigo);
-            if (pres) { hit = { prod: p, presId: pres.id }; break; }
-          }
-          if (hit) agregar(hit.prod, hit.presId);
-          else toast(`El código ${codigo} no está en el catálogo.`, 'err');
-        }
+        if (buffer.length >= 6) desdeCodigo(buffer);
         buffer = '';
       } else if (e.key.length === 1) {
         buffer += e.key;
@@ -193,7 +227,7 @@ function TabControl({ sesion, setSesion, alGuardar }) {
     };
     document.addEventListener('keypress', onKey);
     return () => { document.removeEventListener('keypress', onKey); clearTimeout(timer); };
-  }, [activa, agregar, store, toast]);
+  }, [activa, desdeCodigo]);
 
   const totalU = sesion.filas.reduce((a, f) => a + f.cantidad, 0);
 
@@ -221,9 +255,9 @@ function TabControl({ sesion, setSesion, alGuardar }) {
         <div style={{ fontSize: 40 }}>📅</div>
         <h3 className={s['card-title']}>Nuevo control de vencimientos</h3>
         <p className={s.hint} style={{ margin: '6px 0 14px' }}>
-          Elegí la sucursal que vas a caminar. Después: escaneá con el lector o buscá por
-          nombre, poné la fecha del paquete y la cantidad — todo se junta en una lista y
-          se guarda de un saque.
+          Elegí la sucursal que vas a caminar. Después, por cada paquete: lo identificás
+          (cámara del celular, lector USB o buscándolo), leés la fecha impresa y contás
+          cuántos hay — todo se junta en una lista y se guarda de un saque.
         </p>
         <div className={s.field} style={{ maxWidth: 260, margin: '0 auto' }}>
           <label>Sucursal del control</label>
@@ -275,32 +309,93 @@ function TabControl({ sesion, setSesion, alGuardar }) {
 
       <div className={s.card} style={{ padding: '12px 14px' }}>
         <div className={s['mini-label']} style={{ marginBottom: 6 }}>
-          FECHA Y CANTIDAD PRIMERO — después escaneá (lector USB) o buscá y elegí
+          1· EL PRODUCTO (cámara, lector USB o buscándolo) → 2· LA FECHA DEL PAQUETE → 3· CUÁNTOS
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div className={s.field} style={{ flex: '1 1 140px', minWidth: 140 }}>
-            <label>Fecha de vencimiento</label>
-            <input type="date" ref={fechaRef} value={fecha} min="2000-01-01" onChange={(e) => setFecha(e.target.value)} />
-          </div>
-          <div className={s.field} style={{ flex: '0 1 90px', minWidth: 80 }}>
-            <label>Cantidad</label>
-            <input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
-          </div>
-          <div className={s.field} style={{ flex: '2 1 220px', minWidth: 200 }}>
+
+        {/* Paso 1: identificar el paquete que tenés en la mano. */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className={s.field} style={{ flex: '3 1 240px', minWidth: 200 }}>
             <label>Producto (nombre, código o barras)</label>
-            <BuscadorCatalogo store={store} onElegir={agregar} />
+            <BuscadorCatalogo store={store} onElegir={elegirProducto} />
+          </div>
+          <div style={{ flex: '0 0 auto', paddingBottom: 2 }}>
+            <Btn
+              variant="btn-primary"
+              onClick={() => (sinCamara ? toast(sinCamara, 'err') : setCamara(true))}
+              title={sinCamara || 'Escanear el código con la cámara'}
+            >
+              <PhotoCameraIcon style={{ fontSize: 18, marginRight: 6, verticalAlign: '-4px' }} />
+              Escanear
+            </Btn>
+          </div>
+        </div>
+
+        {elegido ? (
+          <div className={cx(s.callout, s.ok)} style={{ marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>
+              📦 <strong>{elegido.nombre}</strong> · se anota en {elegido.unidad}
+              {elegido.codigoBarras ? <span className={s.hint}> · {elegido.codigoBarras}</span> : null}
+            </span>
+            <Btn small onClick={() => setElegido(null)}>Cambiar producto</Btn>
+          </div>
+        ) : (
+          <div className={s.hint} style={{ marginTop: 8 }}>
+            Ningún producto elegido todavía. Escaneá el código o buscalo por nombre.
+          </div>
+        )}
+
+        {/* Pasos 2 y 3: la fecha impresa y cuántos hay. */}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 10 }}>
+          <div className={s.field} style={{ flex: '1 1 150px', minWidth: 140 }}>
+            <label>Fecha de vencimiento {elegido && !fecha && <span className={s.req}>*</span>}</label>
+            <input
+              type="date" ref={fechaRef} value={fecha} min="2000-01-01"
+              onChange={(e) => setFecha(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') agregarALista(); }}
+            />
+          </div>
+          <div className={s.field} style={{ flex: '0 1 100px', minWidth: 90 }}>
+            <label>Cantidad ({elegido?.unidad ?? 'u.'})</label>
+            <input
+              type="number" min="0" step={elegido?.unidad === 'kg' ? '0.001' : '1'} value={cantidad}
+              onChange={(e) => setCantidad(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') agregarALista(); }}
+            />
           </div>
           <div className={s.field} style={{ flex: '1 1 160px', minWidth: 150 }}>
             <label>Observaciones</label>
-            <input value={obs} placeholder="Góndola, detalle…" onChange={(e) => setObs(e.target.value)} />
+            <input
+              value={obs} placeholder="Góndola, detalle…"
+              onChange={(e) => setObs(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') agregarALista(); }}
+            />
+          </div>
+          <div style={{ flex: '0 0 auto', paddingBottom: 2 }}>
+            <Btn variant={elegido && fecha ? 'btn-ingreso' : 'btn-ghost'} onClick={agregarALista}>
+              + Agregar a la lista
+            </Btn>
           </div>
         </div>
+
         {fecha && new Date(`${fecha}T00:00:00`) < new Date(new Date().setHours(0, 0, 0, 0)) && (
           <div className={cx(s.callout, s.warn)} style={{ marginTop: 8 }}>
             ⚠ Esa fecha ya pasó: lo que anotes entra directo como VENCIDO (vale — es la forma de asentar lo encontrado tarde).
           </div>
         )}
+        {sinCamara && (
+          <div className={s.hint} style={{ marginTop: 8 }}>
+            📷 La cámara no está disponible acá: {sinCamara}
+          </div>
+        )}
       </div>
+
+      {camara && (
+        <EscanerCamara
+          titulo="Escanear el paquete"
+          onCerrar={() => setCamara(false)}
+          onLeido={(codigo) => { setCamara(false); desdeCodigo(codigo); }}
+        />
+      )}
 
       <Table
         cols={[{ h: 'Producto' }, { h: 'Vence' }, { h: 'Cantidad', num: true }, { h: 'Unidad' }, { h: '' }]}

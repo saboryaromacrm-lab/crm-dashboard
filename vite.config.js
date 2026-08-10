@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import { fileURLToPath, URL } from 'node:url';
 
 /**
@@ -9,8 +10,22 @@ import { fileURLToPath, URL } from 'node:url';
  * absolute and refactor-safe (e.g. `import { MainLayout } from '@core/layout'`).
  * These aliases are duplicated in `jsconfig.json` so the editor resolves them too.
  */
+/**
+ * HTTPS en desarrollo, solo cuando se pide (`npm run dev:https`).
+ *
+ * Por qué existe: los navegadores solo dan acceso a la CÁMARA en un "contexto
+ * seguro" — HTTPS o localhost. Entrando desde el celular por
+ * `http://192.168.0.x:3000` la cámara no arranca y el navegador no explica nada.
+ * Con HTTPS (certificado autofirmado; el teléfono pide aceptarlo una vez) el
+ * escáner de códigos de barras de Vencimientos funciona en la red local.
+ *
+ * Queda APAGADO por defecto: en la PC, `http://localhost` ya es contexto seguro
+ * y un certificado autofirmado solo agregaría advertencias.
+ */
+const HTTPS = process.env.VITE_DEV_HTTPS === '1';
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), ...(HTTPS ? [basicSsl()] : [])],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -24,6 +39,9 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
+    // Con HTTPS el servidor escucha en toda la red: el celular entra por la IP
+    // de la máquina y ahí la cámara SÍ funciona (contexto seguro).
+    host: HTTPS ? true : undefined,
   },
   build: {
     outDir: 'dist',
