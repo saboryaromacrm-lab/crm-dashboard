@@ -502,6 +502,12 @@ const eliminarProducto = (id) => _mutate(() => httpClient.delete('/productos/' +
 const cambiarEstadoProducto = (id, estado, motivo) => _mutate(
   () => httpClient.post(`/productos/${id}/estado`, { estado, motivo: motivo || undefined }),
 );
+/* Los discontinuados que ya se agotaron. Lectura directa (no vive en el
+ * snapshot: es una consulta con gracia de días que el panel pide cuando entra). */
+const sugerenciasArchivado = () => httpClient.get('/productos/sugerencias/archivado');
+const archivarLote = (ids, motivo) => _mutate(
+  () => httpClient.post('/productos/archivar-lote', { ids, motivo: motivo || undefined }),
+);
 const guardarPresentaciones = (prodId, presentaciones) => _mutate(() => httpClient.put('/productos/' + prodId + '/presentaciones', { presentaciones }));
 const guardarFormatosCompra = (prodId, formatos) => _mutate(() => httpClient.put('/productos/' + prodId + '/formatos-compra', { formatos }));
 const guardarListasProducto = (prodId, o) => _mutate(() => httpClient.put('/productos/' + prodId + '/listas', o));
@@ -796,6 +802,7 @@ export const inventoryStore = {
   editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
+  sugerenciasArchivado, archivarLote,
   guardarPresentaciones, importarCatalogo,
   crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, subcategoriasDe, siguienteCodigo,
   crearProveedor, editarProveedor, eliminarProveedor,

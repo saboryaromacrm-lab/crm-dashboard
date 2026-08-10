@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { num } from '../domain/format.js';
@@ -8,6 +8,55 @@ import {
 
 /** Texto comparable: sin mayúsculas ni acentos. */
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+
+/**
+ * Los discontinuados que ya se agotaron: el sistema los DETECTA y los propone,
+ * no los archiva solo. Archivar en el acto de vender la última unidad rompería
+ * al cajero (el catálogo del POS se carga al abrir la caja) y una devolución o
+ * la anulación de ese mismo ticket devolvería el stock. El camino de vuelta sí
+ * es automático: si reaparece stock, el producto se reabre solo.
+ */
+function AvisoParaArchivar() {
+  const { store, act } = useProductos();
+  const [datos, setDatos] = useState(null);
+  const version = store.getVersion?.() ?? 0;
+
+  useEffect(() => {
+    let vivo = true;
+    store.sugerenciasArchivado()
+      .then((r) => { if (vivo) setDatos(r); })
+      .catch(() => { if (vivo) setDatos(null); });
+    return () => { vivo = false; };
+  }, [store, version]);
+
+  const lista = datos?.productos ?? [];
+  if (!lista.length) return null;
+
+  const archivar = () => act(
+    store.archivarLote(lista.map((p) => p.id)),
+    `${lista.length === 1 ? 'Producto archivado' : `${lista.length} productos archivados`}.`,
+  );
+
+  return (
+    <div className={cx(s.callout, s.info)} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+      <span>
+        <strong>
+          {lista.length === 1
+            ? 'Un producto discontinuado se agotó'
+            : `${lista.length} productos discontinuados se agotaron`}
+        </strong>{' '}
+        y {lista.length === 1 ? 'no tuvo' : 'no tuvieron'} movimiento en {datos.diasGracia} días:{' '}
+        {lista.slice(0, 4).map((p) => p.nombre).join(', ')}
+        {lista.length > 4 ? ` y ${lista.length - 4} más` : ''}.{' '}
+        {lista.length === 1 ? 'Archivarlo lo saca' : 'Archivarlos los saca'} del catálogo
+        (se {lista.length === 1 ? 'puede' : 'pueden'} reactivar).
+      </span>
+      <Btn variant="btn-primary" small onClick={archivar}>
+        Archivar {lista.length === 1 ? 'el producto' : `los ${lista.length}`}
+      </Btn>
+    </div>
+  );
+}
 
 export function ProductosPanel() {
   const { store, isAdmin, openModal } = useProductos();
@@ -144,6 +193,7 @@ export function ProductosPanel() {
           </div>
         )}
       />
+      {isAdmin && <AvisoParaArchivar />}
       <div className={s.toolbar}>
         <input type="search" placeholder="Buscar por nombre, marca o código..." value={q} onChange={(e) => setQ(e.target.value)} />
         <select className={s['select-inline']} value={categoria} onChange={(e) => setCategoria(e.target.value)}>
