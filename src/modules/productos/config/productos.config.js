@@ -15,13 +15,13 @@ import SellIcon from '@mui/icons-material/Sell';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import DocumentScannerIcon from '@mui/icons-material/DocumentScanner';
-import PaymentsIcon from '@mui/icons-material/Payments';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
 import HistoryIcon from '@mui/icons-material/History';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import LocalCafeIcon from '@mui/icons-material/LocalCafe';
+import EventBusyIcon from '@mui/icons-material/EventBusy';
 
 /**
  * Menú interno del módulo COMPRAS.
@@ -50,6 +50,12 @@ export const ALMACEN_PANELS = [
   { id: 'transferencias', label: 'Transferencias', icon: SwapHorizIcon,      permiso: 'almacen.transferencias', badge: 'transferencias' },
   { id: 'operaciones',    label: 'Operaciones',    icon: ReceiptLongIcon,    permiso: 'almacen.operaciones' },
   { id: 'incidencias',    label: 'Incidencias',    icon: ReportProblemIcon,  permiso: 'almacen.incidencias', badge: 'incidencias' },
+  /*
+   * El vigía de fechas (lógica de la app externa, datos 100% del sistema):
+   * control por sucursal, alertas 7/15/30, procesar vencidos, ofertas y mermas.
+   * El globito son los que APURAN: vencidos sin procesar + vencen en ≤7 días.
+   */
+  { id: 'vencimientos',   label: 'Vencimientos',   icon: EventBusyIcon,      permiso: 'almacen.vencimientos', badge: 'vencimientos' },
   // Punto de SALIDA hacia coffit: el CRM no lleva el stock del café. El globito
   // avisa la demanda del café que espera (pedidos pendientes o armándose).
   { id: 'cafeteria',      label: 'Cafetería',      icon: LocalCafeIcon,      permiso: 'almacen.cafeteria', badge: 'pedidosCafe' },

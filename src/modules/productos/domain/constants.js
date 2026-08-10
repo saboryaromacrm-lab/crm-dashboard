@@ -59,6 +59,20 @@ export const ESTADOS_PEDIDO_CAFE = {
   anulado:   { label: 'Anulado',   pill: 'est-cancelada' },
 };
 
+/* Rangos del vigía de vencimientos — EXCLUYENTES (lógica de la app original):
+ * un registro vive en UNA sola tarjeta, jamás en dos. Los días vienen SIEMPRE
+ * calculados por la API contra el calendario argentino — acá no se recalculan. */
+export const RANGOS_VENC = {
+  vencido: { label: 'Vencido',        pill: 'tag-baja' },
+  d7:      { label: 'Urgente (0-7)',  pill: 'est-pendiente' },
+  d15:     { label: 'Próximo (8-15)', pill: 'est-preparada' },
+  d30:     { label: 'Alerta (16-30)', pill: 'est-transito' },
+  vigente: { label: 'Vigente (+30)',  pill: 'est-recibida' },
+};
+export const rangoVenc = (dias) => (
+  dias < 0 ? 'vencido' : dias <= 7 ? 'd7' : dias <= 15 ? 'd15' : dias <= 30 ? 'd30' : 'vigente'
+);
+
 /** En qué unidad habla la cantidad de cada renglón del envío. */
 export const MODOS_ENVIO_CAFE = {
   granel:  { label: 'Granel (kg)' },

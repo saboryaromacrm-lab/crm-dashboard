@@ -22,6 +22,7 @@ import { OperacionesPanel } from '../panels/OperacionesPanel.jsx';
 import { IncidenciasPanel } from '../panels/IncidenciasPanel.jsx';
 import { CafeteriaPanel } from '../panels/CafeteriaPanel.jsx';
 import { CafeteriaPedidosPanel } from '../panels/CafeteriaPedidosPanel.jsx';
+import { VencimientosPanel } from '../panels/VencimientosPanel.jsx';
 
 /** Registro de paneles disponibles. Cada módulo elige cuáles muestra (config). */
 const PANEL_COMPONENTS = {
@@ -40,6 +41,8 @@ const PANEL_COMPONENTS = {
   cafeteria: CafeteriaPanel,
   // La pantalla del rol Cafetería: armar el pedido a la distribuidora.
   'cafeteria-pedidos': CafeteriaPedidosPanel,
+  // El vigía de fechas: lógica de la app externa, datos 100% del sistema.
+  vencimientos: VencimientosPanel,
 };
 
 /**
@@ -60,6 +63,8 @@ export function InventoryShell({ title, subtitle }) {
     lecturas: store.state.lecturasPendientes || 0,
     // La demanda del café que espera: pedidos pendientes o armándose.
     pedidosCafe: store.state.pedidosCafeteriaPendientes || 0,
+    // Lo que apura del vigía de fechas: vencidos sin procesar + vencen en ≤7 días.
+    vencimientos: store.state.vencimientosUrgentes || 0,
   };
 
   // Solo se renderiza lo PERMITIDO: si el panel pedido no está en el menú del

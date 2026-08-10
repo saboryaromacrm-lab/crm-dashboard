@@ -60,6 +60,8 @@ function nuevoEstado() {
     // del menú). Es solo el número: la bandeja la pide su panel.
     lecturasPendientes: 0,
     pedidosCafeteriaPendientes: 0,
+    // Lo que apura del vigía de fechas (vencidos sin procesar + vence en ≤7 días).
+    vencimientosUrgentes: 0,
     ctx: _loadCtx(),
   };
 }
@@ -371,6 +373,7 @@ function mergeState(data) {
   state.incidencias = (data.incidencias || []).map((i) => ({ ...i, presId: i.presentacionId ?? null }));
   state.lecturasPendientes = Number(data.lecturasPendientes) || 0;
   state.pedidosCafeteriaPendientes = Number(data.pedidosCafeteriaPendientes) || 0;
+  state.vencimientosUrgentes = Number(data.vencimientosUrgentes) || 0;
 }
 
 /* ================== SECCIONES PEREZOSAS ==================
@@ -700,6 +703,21 @@ const anularPedidoCafeteria = (id, motivo) => _mutate(() => httpClient.post(`/ca
 /** pedido → transito → recibido. `desde` evita que un doble clic salte dos pasos. */
 const anularEnvioCafeteria = (id, motivo) => _mutate(() => httpClient.post(`/cafeteria/envios/${id}/anular`, { motivo, usuarioId: state.ctx.usuarioId ?? undefined }));
 
+/* ---- Vencimientos (el vigía de fechas, sin lote) ----
+ *
+ * Los registros NO son stock: lecturas directas, fuera del snapshot (crecen
+ * con cada control). En el bootstrap viaja solo el CONTADOR de urgentes para
+ * el globito. Las mutaciones SÍ pasan por `_mutate`: procesar puede bajar
+ * stock de verdad (movimiento 'vencido') y el contador del globito cambia. */
+const vencimientos = () => httpClient.get('/vencimientos');
+const resumenVencimientos = () => httpClient.get('/vencimientos/resumen');
+const reportesVencimientos = (periodo) => httpClient.get('/vencimientos/reportes?periodo=' + encodeURIComponent(periodo || 'mes'));
+const crearSesionVencimientos = (o) => _mutate(() => httpClient.post('/vencimientos/sesiones', { usuarioId: state.ctx.usuarioId ?? undefined, ...o }));
+const editarVencimiento = (id, o) => _mutate(() => httpClient.put(`/vencimientos/${id}`, o));
+const eliminarVencimiento = (id) => _mutate(() => httpClient.delete(`/vencimientos/${id}`));
+const procesarVencimiento = (id, o) => _mutate(() => httpClient.post(`/vencimientos/${id}/procesar`, { usuarioId: state.ctx.usuarioId ?? undefined, ...o }));
+const armarOfertaVencimiento = (id, o) => _mutate(() => httpClient.post(`/vencimientos/${id}/armar-oferta`, { usuarioId: state.ctx.usuarioId ?? undefined, ...o }));
+
 /* ---- Facturas por procesar (la bandeja de papeles subidos) ----
  *
  * Lecturas directas, sin pasar por el snapshot del store: la bandeja crece y se
@@ -782,6 +800,8 @@ export const inventoryStore = {
   enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria,
   crearEnvioCafeteria, editarEnvioCafeteria, anularEnvioCafeteria,
   pedidosCafeteria, pedidoCafeteria, crearPedidoCafeteria, tomarPedidoCafeteria, anularPedidoCafeteria,
+  vencimientos, resumenVencimientos, reportesVencimientos, crearSesionVencimientos,
+  editarVencimiento, eliminarVencimiento, procesarVencimiento, armarOfertaVencimiento,
   imputarPago, quitarImputacionPago, anularPago, moverDestinoPago,
   actualizarCostos, actualizarMargenes, historialPrecios, evolucionPrecios, revertirLotePrecios,
   stockBajo, incidenciasAbiertas, transferenciasPendientes,

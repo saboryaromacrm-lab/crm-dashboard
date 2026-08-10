@@ -62,3 +62,8 @@ export function num(n, dec) {
 export function fmtTam(kg) {
   return kg < 1 ? num(kg * 1000, 0) + ' g' : num(kg, 3) + ' kg';
 }
+
+/** 'AAAA-MM-DD' → 'DD/MM/AAAA' sin pasar por Date (esquiva el corrimiento UTC). */
+export function fmtFechaVenc(iso) {
+  return iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '—';
+}
