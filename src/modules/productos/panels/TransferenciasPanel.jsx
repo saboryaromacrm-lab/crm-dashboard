@@ -74,7 +74,9 @@ export function TransferenciasPanel() {
     const dist = store.distribuidora();
     if (!dist || dist.id === miId) return [];  // la Distribuidora repone comprando
     return store.state.productos
-      .filter((p) => p.stockMin > 0)
+      // Solo lo que se sigue reponiendo: pedir lo que ya no se trae es trabajo
+      // al aire (y el archivado no se puede ni mover).
+      .filter((p) => p.stockMin > 0 && (p.estado || 'activo') === 'activo')
       .map((p) => {
         const disp = store.cant(p.id, miId, null, 'disponible');
         return disp < p.stockMin

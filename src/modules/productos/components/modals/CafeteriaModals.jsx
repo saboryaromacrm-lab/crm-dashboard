@@ -37,7 +37,10 @@ export function BuscadorCatalogo({ store, onElegir, autoFocus }) {
   const matches = useMemo(() => {
     const ql = norm(texto);
     const digitos = texto.replace(/\D/g, '');
-    const todos = store.state.productos;
+    /* Sin ARCHIVADOS: no se piden, no se envían al café y no se les controla el
+     * vencimiento (la API además los rechaza). El discontinuado SÍ aparece:
+     * mientras quede stock, sigue circulando. */
+    const todos = store.state.productos.filter((p) => (p.estado || 'activo') !== 'archivado');
     if (!ql) return todos.slice(0, 12).map((p) => ({ prod: p, presId: null }));
     const out = [];
     for (const p of todos) {

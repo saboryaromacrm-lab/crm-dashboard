@@ -317,6 +317,9 @@ function cuentaProveedor(proveedorId) {
 function stockBajo() {
   return state.productos.filter((p) => {
     if (!p.stockMin) return false;
+    /* Lo que ya no se trae NO se repone: un discontinuado con stock mínimo
+     * pediría reposición para siempre, y el archivado ni existe. */
+    if ((p.estado || 'activo') !== 'activo') return false;
     const base = p.tipo === 'granel' ? suma({ productoId: p.id, presentacionId: null, estado: 'disponible' })
       : suma({ productoId: p.id, estado: 'disponible' });
     return base < p.stockMin;
@@ -492,6 +495,13 @@ async function _mutate(fn) {
 const crearProducto = (o) => _mutate(() => httpClient.post('/productos', o));
 const editarProducto = (id, o) => _mutate(() => httpClient.patch('/productos/' + id, o));
 const eliminarProducto = (id) => _mutate(() => httpClient.delete('/productos/' + id));
+/**
+ * Ciclo de vida: activo | discontinuado | archivado. Un solo endpoint para dar
+ * de baja y para reactivar — es el mismo movimiento en las dos direcciones.
+ */
+const cambiarEstadoProducto = (id, estado, motivo) => _mutate(
+  () => httpClient.post(`/productos/${id}/estado`, { estado, motivo: motivo || undefined }),
+);
 const guardarPresentaciones = (prodId, presentaciones) => _mutate(() => httpClient.put('/productos/' + prodId + '/presentaciones', { presentaciones }));
 const guardarFormatosCompra = (prodId, formatos) => _mutate(() => httpClient.put('/productos/' + prodId + '/formatos-compra', { formatos }));
 const guardarListasProducto = (prodId, o) => _mutate(() => httpClient.put('/productos/' + prodId + '/listas', o));
@@ -785,7 +795,8 @@ export const inventoryStore = {
   crearTransferencia, avanzarTransferencia, cancelarTransferencia,
   editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
-  crearProducto, editarProducto, eliminarProducto, guardarPresentaciones, importarCatalogo,
+  crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
+  guardarPresentaciones, importarCatalogo,
   crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, subcategoriasDe, siguienteCodigo,
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,

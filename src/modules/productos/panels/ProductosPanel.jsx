@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { num } from '../domain/format.js';
-import { Table, PanelHead, TipoBadge, Btn, usePaginado, s } from '../components/ui.jsx';
+import {
+  Table, PanelHead, TipoBadge, EstadoProductoBadge, Btn, usePaginado, s,
+} from '../components/ui.jsx';
 
 /** Texto comparable: sin mayúsculas ni acentos. */
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
@@ -14,6 +16,13 @@ export function ProductosPanel() {
   const [marca, setMarca] = useState('');
   const [categoria, setCategoria] = useState('');
   const [proveedorId, setProveedorId] = useState('');
+  /**
+   * Por defecto el listado muestra lo que ESTÁ EN JUEGO (activo +
+   * discontinuado): el archivado ya no se compra ni se vende, y tenerlo
+   * mezclado obliga a leer un catálogo lleno de cosas que no existen. Se ve
+   * eligiéndolo en el filtro — que es también el camino para reactivarlo.
+   */
+  const [estadoF, setEstadoF] = useState('vigentes');
 
   /** Opciones de los filtros, derivadas del catálogo ya cargado (sin red). */
   const opciones = useMemo(() => {
@@ -30,6 +39,9 @@ export function ProductosPanel() {
     const ql = norm(q);
     const provId = proveedorId ? Number(proveedorId) : null;
     return store.state.productos.filter((p) => {
+      const est = p.estado || 'activo';
+      if (estadoF === 'vigentes' && est === 'archivado') return false;
+      if (estadoF !== 'vigentes' && estadoF !== '' && est !== estadoF) return false;
       if (tipo && p.tipo !== tipo) return false;
       if (marca && p.marca !== marca) return false;
       if (categoria && p.categoria !== categoria) return false;
@@ -41,7 +53,7 @@ export function ProductosPanel() {
         // etiqueta propia y es lo que la balanza o la caja escanean.
         || (p.presentaciones || []).some((pr) => pr.codigoBarras && pr.codigoBarras.includes(q.trim()));
     });
-  }, [store.state.productos, q, tipo, marca, categoria, proveedorId]);
+  }, [store.state.productos, q, tipo, marca, categoria, proveedorId, estadoF]);
 
   /*
    * CADA FRACCIONADO ES UNA FILA PROPIA (decisión del dueño, 9/8/2026): el
@@ -59,10 +71,10 @@ export function ProductosPanel() {
     return out;
   }, [productos]);
 
-  const hayFiltro = !!(q || tipo || marca || categoria || proveedorId);
+  const hayFiltro = !!(q || tipo || marca || categoria || proveedorId || estadoF !== 'vigentes');
   const stop = (e) => e.stopPropagation();
 
-  const pag = usePaginado(filasLista, 'productos', `${q}|${tipo}|${marca}|${categoria}|${proveedorId}`);
+  const pag = usePaginado(filasLista, 'productos', `${q}|${tipo}|${marca}|${categoria}|${proveedorId}|${estadoF}`);
 
   const filas = pag.visibles.map(({ clave, p, pr }) => {
     if (pr) {
@@ -88,7 +100,10 @@ export function ProductosPanel() {
     return (
       <tr key={clave} className={s.clickable} onClick={() => openModal('detalleProducto', { prodId: p.id })}>
         <td>{p.id}</td>
-        <td>{p.nombre}</td>
+        <td>
+          {p.nombre}
+          <EstadoProductoBadge estado={p.estado} />
+        </td>
         <td>{p.marca || '—'}</td>
         <td><TipoBadge prod={p} /></td>
         <td>{p.categoria}</td>
@@ -99,7 +114,13 @@ export function ProductosPanel() {
             {isAdmin ? (
               <>
                 <Btn variant="btn-edit" small onClick={() => openModal('producto', { prodId: p.id })}>Editar</Btn>
-                <Btn variant="btn-delete" small onClick={() => openModal('eliminarProducto', { prodId: p.id })}>Eliminar</Btn>
+                {(p.estado || 'activo') === 'activo' ? (
+                  <Btn small onClick={() => openModal('bajaProducto', { prodId: p.id })}>Dar de baja</Btn>
+                ) : (
+                  <Btn variant="btn-ingreso" small onClick={() => openModal('bajaProducto', { prodId: p.id })}>
+                    Reactivar
+                  </Btn>
+                )}
               </>
             ) : (
               <span className={s.muted}>—</span>
@@ -138,6 +159,15 @@ export function ProductosPanel() {
           {store.state.proveedores
             .filter((p) => p.proveeMercaderia !== false)
             .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+        </select>
+        {/* El estado: por defecto lo que está en juego. Acá se llega a los
+            archivados, que es el camino para reactivar uno. */}
+        <select className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)}>
+          <option value="vigentes">En juego (activos + discontinuados)</option>
+          <option value="activo">Solo activos</option>
+          <option value="discontinuado">Solo discontinuados</option>
+          <option value="archivado">Solo archivados</option>
+          <option value="">Todos, incluso archivados</option>
         </select>
         <select className={s['select-inline']} value={tipo} onChange={(e) => setTipo(e.target.value)}>
           <option value="">Todos los tipos</option>

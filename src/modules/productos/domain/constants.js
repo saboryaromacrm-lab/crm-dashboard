@@ -59,6 +59,31 @@ export const ESTADOS_PEDIDO_CAFE = {
   anulado:   { label: 'Anulado',   pill: 'est-cancelada' },
 };
 
+/**
+ * Estados de stock con mercadería VIVA: la que se puede vender o está por
+ * moverse. Espejo de `ESTADOS_STOCK_VIVO` de la API — se usa para decidir si un
+ * producto se puede archivar, y las dos puntas tienen que mirar lo mismo.
+ */
+export const ESTADOS_STOCK_VIVO = ['disponible', 'comprometido', 'retenido', 'en_transito'];
+
+/* CICLO DE VIDA DEL PRODUCTO. Dos decisiones distintas, no un interruptor:
+ * discontinuado = no se compra más pero SE SIGUE VENDIENDO hasta agotar;
+ * archivado = fuera de catálogo (no se compra ni se vende). Ver la 0051. */
+export const ESTADOS_PRODUCTO = {
+  activo: {
+    label: 'Activo', pill: 'est-recibida',
+    ayuda: 'Se compra y se vende con normalidad.',
+  },
+  discontinuado: {
+    label: 'Discontinuado', pill: 'est-pendiente',
+    ayuda: 'No se trae más, pero se sigue vendiendo hasta agotar el stock. No aparece en las compras ni en la reposición.',
+  },
+  archivado: {
+    label: 'Archivado', pill: 'st-vencido',
+    ayuda: 'Fuera de catálogo: no se compra ni se vende. Exige que no quede stock.',
+  },
+};
+
 /* Rangos del vigía de vencimientos — EXCLUYENTES (lógica de la app original):
  * un registro vive en UNA sola tarjeta, jamás en dos. Los días vienen SIEMPRE
  * calculados por la API contra el calendario argentino — acá no se recalculan. */

@@ -1229,6 +1229,48 @@ export const MANUAL = [
     resumen: 'El modelo de existencias y los movimientos.',
     temas: [
       {
+        id: 'producto-ciclo-vida',
+        actualizado: '2026-08-10 11:20',
+        titulo: 'El producto que ya no se trae: dar de baja, no borrar',
+        bloques: [
+          {
+            t: 'p',
+            texto: 'Hasta el 10/8/2026 el producto solo tenía **Eliminar**, y era borrado real: el sistema cumplía su propio principio ("lo que está en uso se desactiva, no se borra") con las marcas, las categorías, las listas, las ofertas, los clientes y los usuarios — pero no con el producto, que es el que más historia acumula. Ahora tiene ciclo de vida, y son **DOS decisiones distintas**, no un interruptor.',
+          },
+          {
+            t: 'tabla',
+            cols: ['Estado', 'Compras', 'POS y web', 'Para qué es'],
+            filas: [
+              ['**Activo**', 'Aparece', 'Aparece', 'Todo normal.'],
+              ['**Discontinuado**', '**No aparece** (ni en la carga de facturas ni en la reposición por stock mínimo)', '**Sigue vendiéndose**', 'El caso más común: el proveedor lo bajó o se decidió no reponerlo, pero lo que quedó en góndola se termina de vender. Apagar todo de golpe sería tirar esa plata.'],
+              ['**Archivado**', 'No', '**No** (tampoco pedidos de cafetería ni control de vencimientos)', 'Fuera de catálogo. Exige que NO quede stock: si queda, el sistema dice cuánto y dónde, y ofrece dejarlo discontinuado.'],
+            ],
+          },
+          {
+            t: 'p',
+            texto: '**Volver es un clic.** "Reactivar" conserva TODO: los códigos, el historial de precios, las presentaciones, los formatos de compra de cada proveedor, cuántas veces venció. Con el borrado viejo, volver a traer un producto significaba crearlo de nuevo a mano y **perder la historia que justamente sirve para decidir si conviene traerlo**. Al reactivar, el modal avisa de cuándo es el último costo cargado: el precio de venta se calcula con ese número hasta que entre la primera compra nueva.',
+          },
+          {
+            t: 'pasos',
+            items: [
+              '**Dar de baja.** En Compras › Productos, botón **Dar de baja** en la fila. El modal explica las dos opciones (no hay que adivinar la diferencia), pide un motivo que queda anotado, y muestra el stock que todavía hay y en qué sucursal.',
+              '**Verlos y reactivarlos.** El listado muestra por defecto lo que **está en juego** (activos + discontinuados) con un chip en los que no están activos; el filtro de estado llega a los archivados, que es el camino para reactivar uno.',
+              '**Eliminar de verdad** quedó como excepción: solo si el producto NO dejó ninguna huella (un duplicado del importador, un alta con el dedo). Si ya se compró, vendió o movió, el sistema dice **cuál es la huella** ("2 ventas, 1 movimiento de stock") en lugar del error crudo de la base, y ofrece la baja.',
+            ],
+          },
+          {
+            t: 'nota',
+            texto: 'Tres claves foráneas dejaron de ser `cascade` y pasaron a `restrict` (migración 0051): **stock, renglones de transferencias e incidencias**. Antes, borrar un producto hacía desaparecer en silencio sus existencias y mutilaba remitos viejos; ahora la base misma lo impide. El borrado legítimo limpia solo las filas de stock en CERO, que no son información.',
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: 'Los candados están en la API, no solo en las pantallas: la venta rechaza lo archivado incluso en un borrador armado antes (el catálogo del POS se cachea al abrir la caja), la factura de compra rechaza lo discontinuado y lo archivado, y el importador de catálogo **no revive un archivado en silencio** — lo saltea avisando "hay que reactivarlo". El estado NO se cambia editando el producto: tiene su propia acción, así no se modifica de costado sin que nadie lo decida.',
+          },
+          { t: 'ruta', texto: 'Compras › Productos › Dar de baja / Reactivar · filtro de estado · migración 0051' },
+        ],
+      },
+      {
         id: 'vencimientos-vigia',
         actualizado: '2026-08-10 10:05',
         titulo: 'Vencimientos: el vigía de fechas (la app externa se volvió módulo)',
@@ -1945,7 +1987,7 @@ export const MANUAL = [
             filas: [
               ['Lo que se mide en cantidades se automatiza; lo que se mide en pesos se sugiere', 'Puertas del formato de venta'],
               ['Una sola fuente de verdad, aunque cueste una migración', 'Se eliminó "proveedor activo" en favor del formato marcado'],
-              ['Lo que está en uso se desactiva, no se borra', 'Listas, marcas, categorías, etiquetas'],
+              ['Lo que está en uso se desactiva, no se borra', 'Listas, marcas, categorías, etiquetas — y desde el 10/8/2026 también el PRODUCTO, que era la única excepción (ver "El producto que ya no se trae")'],
               ['Los modos se cambian con un interruptor, nunca con un valor mágico', 'Modo de carga del costo'],
               ['Lo que crece sin techo no viaja en la carga inicial', 'Movimientos y comprobantes'],
               ['La fila existe = está habilitado', 'Formato de venta y de compra'],
@@ -2130,6 +2172,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**10/8/2026**', '**El producto que ya no se trae se DA DE BAJA, no se borra — y volver es un clic.** El producto era la única entidad importante que no cumplía el principio del sistema ("lo que está en uso se desactiva, no se borra"): solo tenía Eliminar, y era borrado real. Ahora tiene ciclo de vida con **dos decisiones distintas**: *discontinuado* (no se compra más pero **se sigue vendiendo hasta agotar** — el caso común cuando el proveedor lo baja) y *archivado* (fuera de catálogo, exige que no quede stock; si queda, dice cuánto y dónde y ofrece dejarlo discontinuado). **Reactivar conserva todo**: códigos, historial de precios, presentaciones, formatos de compra por proveedor — y avisa la fecha del último costo, porque el precio de venta se calcula con ese número hasta la primera compra nueva. Los filtros se aplicaron en TODOS los puntos: POS y tienda no listan archivados; compras y reposición por stock mínimo no ofrecen lo dado de baja; pedidos de cafetería y control de vencimientos tampoco. Y los candados viven en la API, no solo en la pantalla (la venta rechaza lo archivado incluso en un borrador viejo, porque el catálogo del POS se cachea al abrir la caja). **Eliminar** quedó como excepción: solo sin ninguna huella, y cuando no se puede dice **cuál es la huella** en vez del error crudo de la base. Además, tres claves foráneas dejaron de ser `cascade`: borrar un producto ya no puede hacer desaparecer existencias ni mutilar remitos e incidencias viejas. Migración 0051, verificado con **23 pruebas de API** (el discontinuado se vende y no se compra, el archivado no entra a ningún lado, archivar con stock se frena, reactivar vuelve entero, la FK bloquea el DELETE directo, el importador no revive nada) más el circuito en pantalla. Guía nueva: Stock e inventario › "El producto que ya no se trae"'],
               ['**10/8/2026**', '**Escanear el paquete con la cámara del celular, y el Control en el orden real del acto.** El formulario de Control se reordenó como se trabaja de verdad: **1· el producto** (📷 cámara, lector USB o buscándolo) → **2· la fecha impresa** → **3· cuántos**. El producto queda a la vista con su código y fecha/cantidad se conservan al agregar: la tanda que vence igual se anota escaneando y apretando Agregar. El botón de cámara usa la API nativa del navegador cuando está (Chrome de Android) y si no baja **ZXing por import dinámico** — 450 KB que se descargan solo al abrir la cámara, el arranque de la app no cambia. Lee EAN-13/EAN-8/UPC/Code-128/Code-39/ITF, con bip y vibración al leer, un frame cada ~120 ms y la cámara apagada al primer acierto. **Aviso importante**: los navegadores solo dan la cámara en HTTPS o localhost, así que para usarla desde el celular en la red local hay que levantar el front con `npm run dev:https` (nuevo, imprime la dirección a la que entrar); en producción con dominio HTTPS no hace falta nada, y el lector USB anda siempre. El decodificador se verificó de verdad: cuatro EAN-13 dibujados a mano leídos correctamente (y un canvas en blanco que no inventa nada) — ahí se descubrió que `decodeFromCanvas` no existe en ZXing 0.23 y el camino correcto es `MultiFormatReader` con la luminancia del canvas'],
               ['**10/8/2026**', '**Vencimientos: la app externa se volvió módulo — el vigía de fechas vive en Almacén.** La app PHP de Hostinger se reconstruyó adentro del sistema con TODA su lógica y NADA de sus datos (arrancó de cero; el catálogo es solo el del CRM). El registro NO es stock: se anota caminando la góndola (sesión por sucursal con lector USB o buscador, fecha y cantidad primero, lista que se guarda de un saque), el costo queda **CONGELADO** al anotar, y las alertas van por rangos **EXCLUYENTES** (vencido / 0-7 / 8-15 / 16-30) calculados contra el calendario argentino, no el UTC del server. Lo por vencer arma una **oferta REAL** de Ventas (porcentaje, hasta el día del vencimiento, solo su sucursal) que aplica en caja y queda vinculada. Lo vencido se **procesa**: vendidas antes vs perdidas → pérdida REAL, con la baja de stock (movimiento «vencido») en la MISMA transacción y reclamo atómico. La **merma de siempre se mudó** a la pestaña Mermas (el modal existía huérfano, sin botón que lo abriera) y ahora congela su costo también. Reportes por sucursal/categoría/frecuentes/historial/controles, exportación CSV, globito con lo que apura, y **Fontana** dada de alta como quinta sucursal. Permiso propio `almacen.vencimientos` (dárselo a un empleado por local no le abre el resto del Almacén). Migración 0050. Verificado con **33 pruebas de API** (costo congelado, rangos, atomicidad sin stock, doble procesar, oferta vinculada con compensación, sin doble conteo de mermas, badge) + el circuito entero en pantalla + celular (375px sin desborde). Guía nueva: Stock e inventario › "Vencimientos: el vigía de fechas"'],
               ['**9/8/2026**', '**"Pedido a la distribuidora" quedó SOLO para el rol Cafetería.** Recién construida, la sección se les había otorgado también a admin y superadmin por el reflejo de siempre (sección nueva → dársela al admin, como `compras.lecturas` en su momento). Estaba mal: esa pantalla es el café pidiéndole mercadería a la distribuidora, y tenerla en el menú de Almacén invitaba a que administración cargue un pedido que nadie pidió. La **migración 0049** se la quita a todo rol que no sea `cafeteria`; el candado no es cosmético (entrar por URL cae en la primera sección permitida). Administración no pierde nada: para mandar mercadería **sin pedido detrás** está "+ Nuevo envío" en Almacén › Cafetería (el envío nace con `pedidoId` en null), y la bandeja de pedidos con Tomar, Convertir y Anular sigue en su lugar. La clave sigue en el catálogo de Gerencia › Usuarios y roles, ahora listada como "SOLO para el rol Cafetería" — es la que arma ese rol'],

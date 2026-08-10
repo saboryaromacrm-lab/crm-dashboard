@@ -379,6 +379,9 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
     const pid = parseInt(provId, 10);
     if (!pid) return [];
     return store.state.productos
+      /* Lo dado de baja no se carga en una factura de compra: si volvió a
+       * entrar, primero se reactiva (la API también lo rechaza). */
+      .filter((p) => (p.estado || 'activo') === 'activo')
       .filter((p) => (p.formatosCompra || []).some((e) => e.proveedorId === pid))
       .map((p) => {
         const activo = store.formatoActivo(p);
@@ -1136,6 +1139,7 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
                           >
                             <option value="">Asociar con un producto…</option>
                             {store.state.productos
+                              .filter((p) => (p.estado || 'activo') === 'activo')
                               .slice()
                               .sort((a, b) => a.nombre.localeCompare(b.nombre))
                               .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}

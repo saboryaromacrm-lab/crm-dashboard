@@ -8,6 +8,7 @@ import {
   ESTADOS_STOCK,
   ESTADOS_TRANSFER,
   ESTADOS_INCIDENCIA,
+  ESTADOS_PRODUCTO,
   TIPOS_MOV,
 } from '../domain/constants.js';
 import styles from '../styles/Productos.module.css';
@@ -168,6 +169,17 @@ export function TipoBadge({ prod }) {
   ) : (
     <span className={cx(styles.badge, styles['badge-entero'])}>Entero</span>
   );
+}
+
+/**
+ * El estado del producto, solo cuando NO es "activo": marcar lo normal con un
+ * cartel llena el listado de ruido y esconde lo que de verdad hay que ver.
+ */
+export function EstadoProductoBadge({ estado }) {
+  if (!estado || estado === 'activo') return null;
+  const m = ESTADOS_PRODUCTO[estado];
+  if (!m) return null;
+  return <span style={{ marginLeft: 6 }}><Pill pill={m.pill} label={m.label} /></span>;
 }
 
 export function MovTag({ tipo }) {
