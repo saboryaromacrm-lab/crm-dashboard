@@ -91,6 +91,14 @@ export function TransferenciasPanel() {
     observaciones: 'Reposición por stock mínimo',
   });
 
+  /**
+   * Los pedidos que este local dejó a medio armar. Van ARRIBA de las bandejas y
+   * no como una quinta pestaña: es lo primero que el cajero necesita ver cuando
+   * vuelve al sistema —"¿dónde quedó lo que estaba armando?"— y son pocos (uno
+   * por ruta, ver la migración 0056).
+   */
+  const borradores = store.misBorradores(miId);
+
   const acciones = (t) => {
     const out = [];
     const soyOrigen = t.origenId === miId;
@@ -180,6 +188,46 @@ export function TransferenciasPanel() {
           <Btn variant="btn-primary" onClick={() => openModal('transferencia', {})}>+ Nuevo pedido</Btn>
         )}
       />
+
+      {/* "¿Dónde quedó el pedido que estaba armando?" — la primera pregunta del
+          cajero cuando vuelve al puesto. Es lo primero de la pantalla. */}
+      {(isAdmin || store.can('pedidos')) && borradores.length > 0 && (
+        <div className={cx(s.callout)} style={{ margin: 0 }}>
+          <strong>
+            {borradores.length === 1 ? 'Tenés un pedido a medio armar' : `Tenés ${borradores.length} pedidos a medio armar`}
+          </strong>{' '}
+          — todavía no se los pidió a nadie.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+            {borradores.map((b) => {
+              const o = store.getSucursal(b.origenId);
+              const u = store.getUsuario(b.usuarioId);
+              const conCant = (b.items || []).filter((it) => it.cantidad > 0).length;
+              return (
+                <div
+                  key={b.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}
+                >
+                  <span style={{ flex: 1, minWidth: 200, fontSize: 13 }}>
+                    A <strong>{o?.nombre ?? '—'}</strong> · {conCant} renglón(es)
+                    {u && <span className={s.muted}> · lo dejó {u.nombre}</span>}
+                  </span>
+                  <Btn small variant="btn-primary" onClick={() => openModal('transferencia', { borradorId: b.id })}>
+                    Seguir armando
+                  </Btn>
+                  <Btn small variant="btn-delete" onClick={() => openModal('confirm', {
+                    title: 'Descartar el pedido',
+                    texto: `Se borra el pedido que estaba armándose para ${o?.nombre ?? 'esa sucursal'} con sus ${conCant} renglón(es). No queda registro: nunca se envió.`,
+                    claseOk: 'btn-delete',
+                    onOk: () => act(store.descartarBorradorPedido(b.id), 'Pedido descartado.'),
+                  })}>
+                    Descartar
+                  </Btn>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {reposicion.length > 0 && (
         <div className={cx(s.callout, s.warn)} style={{ margin: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>

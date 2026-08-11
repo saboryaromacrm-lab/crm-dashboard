@@ -274,6 +274,13 @@
 .st-retenido { background: color-mix(in srgb, var(--crm-color-primary) 16%, transparent); color: var(--crm-color-primary); }
 .st-defectuoso { background: color-mix(in srgb, var(--crm-color-danger) 14%, transparent); color: var(--crm-color-danger); }
 .st-vencido { background: color-mix(in srgb, var(--crm-color-text-secondary) 18%, transparent); color: var(--crm-color-text-secondary); }
+/* El pedido que se está armando: gris y con borde punteado, para que se lea
+   "todavía no es un documento" antes que el texto. */
+.est-borrador {
+  background: transparent;
+  color: var(--crm-color-text-secondary);
+  border: 1px dashed var(--crm-color-border);
+}
 .est-pendiente { background: color-mix(in srgb, var(--crm-color-warning) 20%, transparent); color: var(--crm-color-warning); }
 .est-preparada { background: color-mix(in srgb, var(--crm-color-accent) 18%, transparent); color: var(--crm-color-accent); }
 .est-transito { background: color-mix(in srgb, var(--crm-color-info) 18%, transparent); color: var(--crm-color-info); }

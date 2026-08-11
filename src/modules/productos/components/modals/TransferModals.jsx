@@ -6,7 +6,7 @@
  * prepara. La recepción es el paso con plata en juego: se cuenta lo que llegó
  * y la diferencia genera una incidencia sola.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { fmtFechaHora, money, num } from '../../domain/format.js';
 import { cx } from '@shared/utils/classNames.js';
@@ -58,24 +58,100 @@ const GRUPOS_PEDIDO = [
   { id: 'granel', label: 'Prod. a granel' },
 ];
 
+const PASOS_PEDIDO = ['A quién y para dónde', 'Qué se pide', 'Revisar y enviar'];
+
 /**
- * El pedido se arma con un BUSCADOR (como el legacy): se tipea, se agrega y el
- * último queda arriba. Cada renglón muestra el stock de las DOS puntas — lo
- * que tiene el origen (¿puede mandarme?) y lo que me queda a mí (¿necesito
- * pedir?). "Ver solo sin stock" lista lo que se me acabó, para reponer.
+ * Indicador de pasos. Solo se puede volver a los ya recorridos: saltar para
+ * adelante por acá se comería las validaciones de "Continuar".
  */
-export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }) {
-  const { store, act, closeModal } = useProductos();
+function PasosPedido({ paso, irA }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+      {PASOS_PEDIDO.map((label, i) => {
+        const n = i + 1;
+        const activo = n === paso;
+        const hecho = n < paso;
+        return (
+          <button
+            key={n}
+            type="button"
+            disabled={!hecho}
+            onClick={hecho ? () => irA(n) : undefined}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+              border: '1px solid ' + (activo ? 'var(--crm-color-primary)' : 'var(--crm-color-border)'),
+              borderRadius: 8, background: activo ? 'var(--crm-color-primary-soft)' : 'var(--crm-color-surface)',
+              cursor: hecho ? 'pointer' : 'default', textAlign: 'left', minWidth: 0,
+            }}
+          >
+            <span
+              style={{
+                width: 22, height: 22, borderRadius: '50%', display: 'inline-flex', alignItems: 'center',
+                justifyContent: 'center', fontSize: 12, fontWeight: 700, flex: 'none',
+                background: activo || hecho ? 'var(--crm-color-primary)' : 'var(--crm-color-border)',
+                color: activo || hecho ? 'var(--crm-color-primary-contrast)' : 'var(--crm-color-text-secondary)',
+              }}
+            >
+              {hecho ? '✓' : n}
+            </span>
+            <span
+              style={{
+                fontSize: 12.5, fontWeight: activo ? 700 : 500, minWidth: 0,
+                color: activo ? 'var(--crm-color-text)' : 'var(--crm-color-text-secondary)',
+              }}
+            >
+              {label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Cartelito del guardado automático: el cajero tiene que poder confiar en él. */
+function AvisoGuardado({ estado }) {
+  const m = {
+    pendiente: { txt: 'Cambios sin guardar…', color: 'var(--crm-color-text-secondary)' },
+    guardando: { txt: 'Guardando…', color: 'var(--crm-color-text-secondary)' },
+    guardado: { txt: '✓ Guardado — podés cerrar y seguir después', color: 'var(--crm-color-success)' },
+    error: { txt: '⚠ No se pudo guardar. Revisá la conexión antes de cerrar.', color: 'var(--crm-color-accent-2)' },
+  }[estado];
+  if (!m) return null;
+  return <span style={{ fontSize: 12, fontWeight: 600, color: m.color, whiteSpace: 'nowrap' }}>{m.txt}</span>;
+}
+
+/**
+ * EL PEDIDO SE ARMA EN TRES PASOS, Y DURANTE EL DÍA.
+ * ============================================================================
+ * Cómo se usa de verdad: el cajero atiende clientes y arma el pedido en los
+ * ratos libres. Así que el pedido NO vive en esta pantalla: vive en la base
+ * como `borrador` desde que se elige la ruta (0055). Todo lo que se toca acá
+ * se guarda solo; cerrar el modal es "sigo después", no "perdí el día".
+ *
+ * El borrador es UNO POR RUTA (origen → destino), no por cajero: el pedido es
+ * del local, y el que entra al turno sigue la lista que dejó el anterior.
+ *
+ * Los tres pasos:
+ *   1. a quién le pido y para dónde  → al continuar, abre o RETOMA el borrador
+ *   2. qué pido                      → buscador + dos pestañas, guardado solo
+ *   3. revisar y enviar              → resumen, avisos y recién ahí es demanda
+ */
+export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, borradorId }) {
+  const { store, act, toast, closeModal } = useProductos();
   const dist = store.distribuidora();
   // Los defaults salen de la SESIÓN: quien pide es el que se logueó, para SU
   // sucursal. (Un admin parado en otra sucursal puede cambiarlos igual.)
   const sesion = leerSesion();
   const miId = (sesion?.sucursal?.id != null && store.getSucursal(sesion.sucursal.id) ? sesion.sucursal.id : null)
     ?? store.state.ctx.sucursalId;
+  // Al retomar, la ruta la manda el borrador: es la que lo identifica.
+  const retomado = borradorId ? store.state.transferencias.find((t) => t.id === borradorId) : null;
   // Pull: el destino soy YO; el origen arranca en la Distribuidora, que es el
   // depósito central — pero puede ser cualquier otra sucursal.
-  const [destinoId, setDestinoId] = useState(miId ?? dist?.id);
+  const [destinoId, setDestinoId] = useState(retomado?.destinoId ?? miId ?? dist?.id);
   const [origenId, setOrigenId] = useState(() => {
+    if (retomado) return retomado.origenId;
     const candidato = dist && dist.id !== miId ? dist.id : store.state.sucursales.find((su) => su.id !== miId)?.id;
     return candidato ?? '';
   });
@@ -84,9 +160,13 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
       ?? store.state.ctx.usuarioId,
   );
   const [obs, setObs] = useState(obsInicial ?? '');
-  const [items, setItems] = useState(() => (itemsIniciales?.length ? itemsIniciales : []));
+  const [items, setItems] = useState([]);
   const [q, setQ] = useState('');
   const [soloSinStock, setSoloSinStock] = useState(false);
+  /** Se abre en el paso 2 cuando se viene a RETOMAR un borrador ya elegido. */
+  const [paso, setPaso] = useState(borradorId ? 2 : 1);
+  const [abriendo, setAbriendo] = useState(false);
+  const [guardado, setGuardado] = useState(null);
   /**
    * En qué grupo se está trabajando MIENTRAS se arma la lista. El pedido que
    * sale es UNO solo: esto no lo parte, solo separa la vista — las cajeras
@@ -97,11 +177,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
    * cargadas (el sugerido por stock bajo): si no, abriría en una pestaña vacía
    * teniendo renglones en la otra.
    */
-  const [grupo, setGrupo] = useState(() => {
-    const primero = itemsIniciales?.[0];
-    const prod = primero ? store.getProducto(parseInt(primero.prodId, 10)) : null;
-    return prod ? listaDeProducto(prod) : 'enteros';
-  });
+  const [grupo, setGrupo] = useState('enteros');
   const otroGrupo = GRUPOS_PEDIDO.find((g) => g.id !== grupo);
 
   const origenNum = parseInt(origenId, 10) || null;
@@ -180,6 +256,122 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, store.state.productos]);
 
+  /* ==================== EL BORRADOR Y SU GUARDADO SOLO ====================
+   * El estado que importa vive en refs y no en `useState`: el guardado corre
+   * con retardo (después de que el cajero deja de tipear) y al desmontar, o
+   * sea FUERA del render que lo programó. Leer de `items` ahí guardaría la
+   * lista vieja — el error clásico de un autosave con clausura vieja.
+   */
+  const bId = useRef(borradorId ?? null);
+  const itemsRef = useRef(items);
+  const obsRef = useRef(obs);
+  const sucio = useRef(false);
+  const timer = useRef(null);
+  const vivo = useRef(true);
+  itemsRef.current = items;
+  obsRef.current = obs;
+
+  const guardarYa = useCallback(async () => {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    if (!bId.current || !sucio.current) return true;
+    sucio.current = false;
+    if (vivo.current) setGuardado('guardando');
+    const r = await store.guardarBorradorPedido(bId.current, {
+      observaciones: obsRef.current,
+      items: itemsRef.current.map((it) => ({
+        productoId: parseInt(it.prodId, 10),
+        presId: it.presId ? parseInt(it.presId, 10) : null,
+        cantidad: parseFloat(it.cant) || 0,
+      })).filter((it) => it.productoId),
+    });
+    if (!r.ok) sucio.current = true;   // que el próximo intento lo reintente
+    if (vivo.current) setGuardado(r.ok ? 'guardado' : 'error');
+    return r.ok;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Cada cambio programa el guardado; tipear seguido no manda una llamada por tecla. */
+  const marcarSucio = useCallback(() => {
+    if (!bId.current) return;
+    sucio.current = true;
+    setGuardado('pendiente');
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(guardarYa, 900);
+  }, [guardarYa]);
+
+  /*
+   * Al desmontar se guarda lo que quedó pendiente. Es la red de seguridad del
+   * caso real: el cajero cierra el modal (o la pestaña) apurado porque entró
+   * un cliente, medio segundo después de tipear la última cantidad.
+   */
+  useEffect(() => {
+    vivo.current = true;   // se re-arma: en desarrollo React monta dos veces
+    return () => {
+      vivo.current = false;
+      if (sucio.current) guardarYa();
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [guardarYa]);
+
+  /** Retomar: trae los renglones del borrador a la pantalla. */
+  const cargarDelBorrador = (b) => {
+    setItems((b.items || []).map((it) => ({
+      prodId: String(it.productoId),
+      presId: it.presentacionId ? String(it.presentacionId) : '',
+      cant: String(it.cantidad ?? 0),
+    })));
+    if (b.observaciones) setObs(b.observaciones);
+    // Abre en la pestaña donde HAY algo: si no, se ve vacía teniendo renglones.
+    const prim = (b.items || [])[0];
+    const prod = prim ? store.getProducto(prim.productoId) : null;
+    setGrupo(prod ? listaDeProducto(prod) : 'enteros');
+  };
+
+  /** Al montar sobre un borrador ya elegido (botón "Seguir armando"). */
+  useEffect(() => {
+    if (retomado) cargarDelBorrador(retomado);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Paso 1 → 2: abre o RETOMA el borrador de esa ruta. Si el modal venía con
+   * renglones sugeridos (la reposición por stock mínimo), se suman a lo que ya
+   * había en vez de reemplazarlo.
+   */
+  const abrirYSeguir = async () => {
+    if (!origenNum || !destinoNum || origenNum === destinoNum) {
+      toast('Elegí un origen y un destino distintos.', 'err');
+      return;
+    }
+    setAbriendo(true);
+    const r = await store.abrirBorradorPedido(origenNum, destinoNum);
+    setAbriendo(false);
+    if (!r.ok) { toast(r.error || 'No se pudo abrir el pedido.', 'err'); return; }
+    bId.current = r.id;
+    const previos = (r.items || []).map((it) => ({
+      prodId: String(it.productoId),
+      presId: it.presentacionId ? String(it.presentacionId) : '',
+      cant: String(it.cantidad ?? 0),
+    }));
+    const sugeridos = itemsIniciales || [];
+    const juntos = [...previos];
+    for (const sug of sugeridos) {
+      const i = juntos.findIndex((x) => x.prodId === String(sug.prodId) && (x.presId || '') === (sug.presId || ''));
+      if (i >= 0) juntos[i] = { ...juntos[i], cant: String((parseFloat(juntos[i].cant) || 0) + (parseFloat(sug.cant) || 0)) };
+      else juntos.push({ prodId: String(sug.prodId), presId: sug.presId || '', cant: String(sug.cant ?? 1) });
+    }
+    setItems(juntos);
+    if (r.observaciones && !obsInicial) setObs(r.observaciones);
+    const prim = juntos[0];
+    const prod = prim ? store.getProducto(parseInt(prim.prodId, 10)) : null;
+    setGrupo(prod ? listaDeProducto(prod) : 'enteros');
+    setPaso(2);
+    if (sugeridos.length) marcarSucio();   // lo sugerido hay que persistirlo
+    if (previos.length) {
+      toast(`Retomaste el pedido que estaba armado: ${previos.length} renglón(es).`, 'ok');
+    }
+  };
+
   /** Agrega arriba de todo; si ya está (misma presentación base), suma 1. */
   const agregar = (p) => {
     if (!p) return;
@@ -189,35 +381,121 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
       return [{ prodId: String(p.id), presId: '', cant: '1' }, ...rows];
     });
     setQ('');
+    marcarSucio();
     // No hace falta saltar de pestaña: el buscador de cada una solo ofrece lo
     // suyo, así que el renglón cae siempre en la que está a la vista.
   };
 
-  const setItem = (i, patch) => setItems((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const delItem = (i) => setItems((rows) => rows.filter((_, j) => j !== i));
-
-  const crear = () => {
-    const parsed = items.map((it) => ({
-      productoId: parseInt(it.prodId, 10),
-      presId: it.presId ? parseInt(it.presId, 10) : null,
-      cantidad: parseFloat(it.cant) || 0,
-    })).filter((it) => it.productoId && it.cantidad > 0);
-    act(store.crearTransferencia({
-      origenId: origenNum, destinoId: destinoNum,
-      usuarioId: parseInt(userId, 10), observaciones: obs, items: parsed,
-    }), 'Pedido creado (Pendiente). El origen lo ve en su bandeja de envíos.');
+  const setItem = (i, patch) => {
+    setItems((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+    marcarSucio();
   };
+  const delItem = (i) => {
+    setItems((rows) => rows.filter((_, j) => j !== i));
+    marcarSucio();
+  };
+  const editarObs = (v) => { setObs(v); marcarSucio(); };
+
+  /**
+   * Cierra dejando el pedido a medio armar. Guarda lo pendiente y **recarga el
+   * estado una vez**: el guardado automático no lo hace a propósito (traería el
+   * inventario entero cada dos segundos), así que sin esta recarga el panel
+   * quedaba mostrando la foto de cuando se abrió el borrador y decía
+   * "0 renglones" justo después de que el cajero agregó cinco.
+   */
+  const cerrarYSeguirDespues = async () => {
+    await guardarYa();
+    closeModal();
+    store.refetch();
+  };
+
+  /** Envía: recién acá el pedido es demanda y el origen lo ve. */
+  const enviar = async () => {
+    const ok = await guardarYa();
+    if (!ok) { toast('No se pudo guardar el pedido — revisá la conexión.', 'err'); return; }
+    act(
+      store.enviarBorradorPedido(bId.current),
+      'Pedido enviado (Pendiente). El origen lo ve en su bandeja de envíos.',
+    );
+  };
+
+  /** Descarta el borrador entero. No se cancela: nunca fue un documento. */
+  const descartar = () => {
+    if (!bId.current) { closeModal(); return; }
+    sucio.current = false;   // que el guardado del desmontaje no lo resucite
+    act(store.descartarBorradorPedido(bId.current), 'Pedido descartado.');
+  };
+
+  /**
+   * Lo que hay que mirar antes de mandar: cuántos renglones van, cuántos kilos
+   * tiene que fraccionar el origen, y —lo que más sirve— qué renglones el
+   * origen NO puede cubrir hoy. Es la única pantalla donde eso se ve junto:
+   * pedir 20 kg de algo que allá tienen 3 no es un error, pero conviene
+   * saberlo antes y no cuando llega el envío cortado.
+   */
+  const resumen = useMemo(() => {
+    let enteros = 0; let granel = 0; let kgAFraccionar = 0;
+    const sinCantidad = [];
+    const cortos = [];
+    for (const it of items) {
+      const prod = store.getProducto(parseInt(it.prodId, 10));
+      if (!prod) continue;
+      const cant = parseFloat(it.cant) || 0;
+      if (!(cant > 0)) { sinCantidad.push(prod.nombre); continue; }
+      const esGranel = prod.tipo === 'granel';
+      if (esGranel) granel += 1; else enteros += 1;
+      const presNum = it.presId ? parseInt(it.presId, 10) : null;
+      const pres = presNum ? (prod.presentaciones || []).find((x) => x.id === presNum) : null;
+      const pide = esGranel ? cant * (pres ? pres.tamKg : 1) : cant;
+      if (esGranel) kgAFraccionar += pres ? pide : 0;
+      const hay = dispParaEnviar(prod, origenNum);
+      if (pide > hay + 1e-9) {
+        cortos.push({
+          nombre: prod.nombre,
+          detalle: esGranel
+            ? `pide ${num(pide, 3)} kg y hay ${num(hay, 3)} kg de granel`
+            : `pide ${num(cant, 3)} y hay ${num(hay, 3)}`,
+        });
+      }
+    }
+    return { enteros, granel, kgAFraccionar, sinCantidad, cortos, conCantidad: enteros + granel };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, store.state.productos, store.state.stock, origenNum]);
+
+  const footer = paso === 1
+    ? [
+      { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+      { texto: abriendo ? 'Abriendo…' : 'Continuar', clase: 'btn-primary', onClick: abrirYSeguir },
+    ]
+    : paso === 2
+      ? [
+        { texto: 'Cerrar y seguir después', clase: 'btn-ghost', onClick: cerrarYSeguirDespues },
+        { texto: 'Volver', clase: 'btn-ghost', onClick: () => setPaso(1) },
+        { texto: 'Continuar', clase: 'btn-primary', onClick: () => setPaso(3) },
+      ]
+      : [
+        { texto: 'Descartar el pedido', clase: 'btn-delete', onClick: descartar },
+        { texto: 'Volver', clase: 'btn-ghost', onClick: () => setPaso(2) },
+        {
+          texto: resumen.conCantidad ? `Enviar pedido (${resumen.conCantidad})` : 'Enviar pedido',
+          clase: 'btn-primary',
+          onClick: enviar,
+        },
+      ];
 
   return (
     <ModalShell
-      title="Nuevo pedido de mercadería"
+      title="Pedido de mercadería"
+      subtitle={`Paso ${paso} de 3 · ${PASOS_PEDIDO[paso - 1]}`}
       wide
-      onClose={closeModal}
-      footer={[
-        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: items.length ? `Crear pedido (${items.length})` : 'Crear pedido', clase: 'btn-primary', onClick: crear },
-      ]}
+      onClose={cerrarYSeguirDespues}
+      footer={footer}
     >
+      <PasosPedido paso={paso} irA={setPaso} />
+
+      {/* ==================== PASO 1 · A QUIÉN Y PARA DÓNDE ==================== */}
+      {paso === 1 && (
+      <>
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Pedir a (origen) <span className={s.req}>*</span></label>
@@ -233,10 +511,41 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
           <label>Responsable</label>
           <select value={userId} onChange={(e) => setUserId(parseInt(e.target.value, 10))}>{usuarioOptions(store)}</select>
         </div>
-        <div className={s.field}>
-          <label>Observaciones</label>
-          <input value={obs} placeholder="Reposición semanal, urgente…" onChange={(e) => setObs(e.target.value)} />
+      </div>
+
+      {/* El aviso que evita el susto de "¿y esto de dónde salió?": si esa ruta
+          ya tiene un pedido a medio armar, al continuar se RETOMA ese. */}
+      {(() => {
+        const yaHay = origenNum && destinoNum ? store.borradorDeRuta(origenNum, destinoNum) : null;
+        if (!yaHay) {
+          return (
+            <div className={s.hint}>
+              El pedido se guarda solo desde el primer renglón: podés armarlo de a poco durante el día
+              y volver cuando puedas. Recién se le avisa al origen cuando lo <strong>envías</strong>.
+            </div>
+          );
+        }
+        const u = store.getUsuario(yaHay.usuarioId);
+        return (
+          <div className={cx(s.callout)} style={{ marginTop: 4 }}>
+            <strong>Ya hay un pedido armándose para esta ruta</strong> con{' '}
+            {yaHay.items?.length ?? 0} renglón(es){u ? `, lo dejó ${u.nombre}` : ''}. Al continuar lo
+            vas a <strong>retomar</strong> — el pedido es del local, no de cada cajero, así que no se
+            arman dos por separado.
+          </div>
+        );
+      })()}
+      </>
+      )}
+
+      {/* ==================== PASO 2 · QUÉ SE PIDE ==================== */}
+      {paso === 2 && (
+      <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div className={s.muted} style={{ fontSize: 13 }}>
+          <strong>{origen?.nombre ?? 'origen'}</strong> → <strong>{destino?.nombre ?? 'destino'}</strong>
         </div>
+        <AvisoGuardado estado={guardado} />
       </div>
 
       {/* Dos grupos SOLO para armar: el pedido que sale es uno. Es el recorrido
@@ -423,6 +732,77 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
         <strong> granel suelto</strong>: los paquetes se fraccionan del madre al preparar, y los que ya
         están armados allá son su góndola.
       </div>
+      </>
+      )}
+
+      {/* ==================== PASO 3 · REVISAR Y ENVIAR ==================== */}
+      {paso === 3 && (
+      <>
+      <div className={s.card} style={{ marginBottom: 'var(--crm-space-3)' }}>
+        <div className={s['detalle-info']}>
+          <div className={s.di}><div className={s.l}>Le pido a</div><div className={s.v}>{origen?.nombre ?? '—'}</div></div>
+          <div className={s.di}><div className={s.l}>Entregar en</div><div className={s.v}>{destino?.nombre ?? '—'}</div></div>
+          <div className={s.di}><div className={s.l}>Responsable</div><div className={s.v}>{store.getUsuario(parseInt(userId, 10))?.nombre ?? '—'}</div></div>
+          <div className={s.di}>
+            <div className={s.l}>Renglones</div>
+            <div className={s.v}>
+              {resumen.conCantidad} — {resumen.enteros} entero(s) y {resumen.granel} a granel
+            </div>
+          </div>
+          {resumen.kgAFraccionar > 0 && (
+            <div className={s.di}>
+              <div className={s.l}>Van a fraccionar</div>
+              <div className={s.v}>{num(resumen.kgAFraccionar, 3)} kg del producto madre</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Los renglones que el origen no puede cubrir HOY. No frena el pedido —es
+          demanda, y mañana puede haber— pero pedir 20 kg de algo que allá tienen
+          3 conviene saberlo acá y no cuando llega el envío cortado. */}
+      {resumen.cortos.length > 0 && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>{origen?.nombre ?? 'El origen'} hoy no llega con {resumen.cortos.length} renglón(es):</strong>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+            {resumen.cortos.slice(0, 6).map((c, i) => (
+              <li key={i} style={{ fontSize: 13 }}>{c.nombre} — {c.detalle}</li>
+            ))}
+          </ul>
+          {resumen.cortos.length > 6 && <div className={s.hint} style={{ margin: 0 }}>y {resumen.cortos.length - 6} más.</div>}
+          <div className={s.hint} style={{ marginBottom: 0 }}>
+            Se puede pedir igual: el origen ajusta lo que prepara y vos lo ves al recibir.
+          </div>
+        </div>
+      )}
+
+      {resumen.sinCantidad.length > 0 && (
+        <div className={cx(s.callout)}>
+          <strong>{resumen.sinCantidad.length} renglón(es) quedaron sin cantidad</strong> y no se van a
+          enviar: {resumen.sinCantidad.slice(0, 4).join(', ')}{resumen.sinCantidad.length > 4 ? '…' : ''}.
+          Volvé al paso anterior si querés completarlos.
+        </div>
+      )}
+
+      <div className={s.field}>
+        <label>Observaciones para el que prepara</label>
+        <input
+          value={obs}
+          placeholder="Reposición semanal, urgente, mandar con el flete del jueves…"
+          onChange={(e) => editarObs(e.target.value)}
+        />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><AvisoGuardado estado={guardado} /></div>
+
+      <div className={s.hint}>
+        Al enviarlo, el pedido toma su número de la serie TR y le aparece al origen en{' '}
+        <strong>Pedidos de envío</strong>. Hasta entonces nadie lo ve más que ustedes.
+        <strong> Descartar</strong> lo borra: no queda un pedido cancelado en el historial, porque
+        nunca fue un documento.
+      </div>
+      </>
+      )}
     </ModalShell>
   );
 }

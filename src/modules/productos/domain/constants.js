@@ -36,6 +36,8 @@ export const ESTADOS_STOCK = {
 
 // ---- Estados de transferencia ----
 export const ESTADOS_TRANSFER = {
+  // El que pide lo está armando: no es demanda todavía y el origen no lo ve.
+  borrador:  { label: 'Armando',     pill: 'est-borrador',  orden: -1 },
   pendiente: { label: 'Pendiente',   pill: 'est-pendiente', orden: 0 },
   preparada: { label: 'En preparación', pill: 'est-preparada', orden: 1 },
   transito:  { label: 'En tránsito', pill: 'est-transito',  orden: 2 },

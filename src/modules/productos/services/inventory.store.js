@@ -328,7 +328,25 @@ function stockBajo() {
   });
 }
 function incidenciasAbiertas() { return state.incidencias.filter((i) => i.estado !== 'resuelta'); }
-function transferenciasPendientes() { return state.transferencias.filter((t) => t.estado !== 'recibida' && t.estado !== 'cancelada'); }
+/**
+ * Lo que cuenta el globito del menú: trabajo que alguien tiene que atender.
+ * El `borrador` NO entra — es el pedido que se está escribiendo, no le llegó a
+ * nadie, y el contador no filtra por sucursal: sumaría los borradores de todos
+ * los locales al globito de cada uno.
+ */
+function transferenciasPendientes() {
+  return state.transferencias.filter((t) => t.estado !== 'borrador' && t.estado !== 'recibida' && t.estado !== 'cancelada');
+}
+/** El borrador de esa ruta si existe (uno por ruta: ver la migración 0056). */
+function borradorDeRuta(origenId, destinoId) {
+  return state.transferencias.find(
+    (t) => t.estado === 'borrador' && t.origenId === origenId && t.destinoId === destinoId,
+  ) || null;
+}
+/** Los pedidos que MI sucursal dejó a medio armar, para retomarlos. */
+function misBorradores(sucursalId) {
+  return state.transferencias.filter((t) => t.estado === 'borrador' && t.destinoId === sucursalId);
+}
 
 /* ---------------- Permisos (dinámicos: viajan con el usuario en el bootstrap) ---------------- */
 function rolActual() {
@@ -570,9 +588,35 @@ const opCorregirFraccionado = (o) => _mutate(() => httpClient.post('/operaciones
 }));
 const opSimple = (o) => _mutate(() => httpClient.post('/operaciones/movimiento', o));
 
-const crearTransferencia = (o) => _mutate(() => httpClient.post('/transferencias', o));
 const avanzarTransferencia = (id, desde) => _mutate(() => httpClient.post('/transferencias/' + id + '/avanzar', { usuarioId: state.ctx.usuarioId, desde }));
 const cancelarTransferencia = (id) => _mutate(() => httpClient.post('/transferencias/' + id + '/cancelar'));
+
+/* ---------------- El pedido que se arma durante el día ----------------
+ * Abre o retoma el borrador de esa ruta (uno por ruta), lo guarda solo
+ * mientras se arma, y lo envía cuando está listo.
+ */
+const abrirBorradorPedido = (origenId, destinoId) => _mutate(
+  () => httpClient.post('/transferencias/borrador', { origenId, destinoId, usuarioId: state.ctx.usuarioId }),
+);
+/**
+ * GUARDADO AUTOMÁTICO: **no pasa por `_mutate` a propósito**. `_mutate`
+ * recarga el bootstrap completo (productos, stock, listas, todo) y esto se
+ * dispara cada vez que el cajero deja de tipear — sería traerse el inventario
+ * entero cada dos segundos. La pantalla se refresca una sola vez, cuando el
+ * pedido se envía o se descarta.
+ */
+const guardarBorradorPedido = async (id, o) => {
+  try {
+    const data = await httpClient.put(`/transferencias/${id}/borrador`, { usuarioId: state.ctx.usuarioId, ...o });
+    return Object.assign({ ok: true }, data && typeof data === 'object' ? data : {});
+  } catch (e) {
+    return { ok: false, error: _errMsg(e) };
+  }
+};
+const enviarBorradorPedido = (id) => _mutate(
+  () => httpClient.post(`/transferencias/${id}/enviar`, { usuarioId: state.ctx.usuarioId }),
+);
+const descartarBorradorPedido = (id) => _mutate(() => httpClient.delete(`/transferencias/${id}/borrador`));
 
 /* Preparación en dos listas: editar renglones, agregar/quitar y confirmar con reserva. */
 const editarItemTransferencia = (id, itemId, o) => _mutate(() => httpClient.patch(`/transferencias/${id}/items/${itemId}`, o));
@@ -828,7 +872,8 @@ export const inventoryStore = {
   unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry,
   rolActual, can, tiposMovPermitidos, setCtx,
   opCompra, opFraccionar, opCorregirFraccionado, opVenta, opSimple,
-  crearTransferencia, avanzarTransferencia, cancelarTransferencia,
+  avanzarTransferencia, cancelarTransferencia,
+  abrirBorradorPedido, guardarBorradorPedido, enviarBorradorPedido, descartarBorradorPedido,
   editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
@@ -852,6 +897,6 @@ export const inventoryStore = {
   editarVencimiento, eliminarVencimiento, procesarVencimiento, ofertasVencimientos,
   imputarPago, quitarImputacionPago, anularPago, moverDestinoPago,
   actualizarCostos, actualizarMargenes, historialPrecios, evolucionPrecios, revertirLotePrecios,
-  stockBajo, incidenciasAbiertas, transferenciasPendientes,
+  stockBajo, incidenciasAbiertas, transferenciasPendientes, borradorDeRuta, misBorradores,
   recibirTransferencia, operacionesAlmacen,
 };
