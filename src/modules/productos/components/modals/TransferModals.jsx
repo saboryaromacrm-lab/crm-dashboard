@@ -15,16 +15,10 @@ import { leerSesion } from '@core/auth/sesion.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions, presentacionOptions, usuarioOptions } from '../selectOptions.jsx';
 import { Table, TransferPill, Btn, s } from '../ui.jsx';
+import { LISTAS_PREP, GRUPOS_PEDIDO, listaDeProducto, puedeMandar, disponibleTotal } from '../../domain/pedido.js';
+import { ExplorarProductosModal } from './ExplorarProductosModal.jsx';
 
 /* ---------------- Preparación: helpers compartidos ---------------- */
-
-export const LISTAS_PREP = {
-  enteros: { titulo: 'Enteros', encargado: 'preparador' },
-  granel: { titulo: 'Fraccionados', encargado: 'fraccionador' },
-};
-
-/** A qué lista de preparación pertenece un producto (misma regla que la API). */
-export const listaDeProducto = (prod) => (prod?.tipo === 'granel' ? 'granel' : 'enteros');
 
 /** Todas las listas PRESENTES del pedido están confirmadas → se puede despachar. */
 export function listasCompletas(t, store) {
@@ -47,18 +41,7 @@ export function difiereDelPedido(t) {
 /** Texto comparable: sin mayúsculas ni acentos. */
 const normTxt = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
-/**
- * Las dos pestañas con las que se ARMA el pedido, en el orden en que las
- * recorren las cajeras. Usan las mismas claves que las listas de preparación
- * (`listaDeProducto`), así que la vista de la cajera y el trabajo del origen
- * hablan de los mismos dos grupos.
- */
-const GRUPOS_PEDIDO = [
-  { id: 'enteros', label: 'Prod. Enteros' },
-  { id: 'granel', label: 'Prod. a granel' },
-];
-
-const PASOS_PEDIDO = ['A quién y para dónde', 'Qué se pide', 'Revisar y enviar'];
+const PASOS_PEDIDO =['A quién y para dónde', 'Qué se pide', 'Revisar y enviar'];
 
 /**
  * Indicador de pasos. Solo se puede volver a los ya recorridos: saltar para
@@ -167,6 +150,8 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
   const [paso, setPaso] = useState(borradorId ? 2 : 1);
   const [abriendo, setAbriendo] = useState(false);
   const [guardado, setGuardado] = useState(null);
+  /** El explorador del catálogo, para armar el pedido recorriendo en vez de tipear. */
+  const [explorando, setExplorando] = useState(false);
   /**
    * En qué grupo se está trabajando MIENTRAS se arma la lista. El pedido que
    * sale es UNO solo: esto no lo parte, solo separa la vista — las cajeras
@@ -185,40 +170,11 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
   const origen = store.getSucursal(origenNum);
   const destino = store.getSucursal(destinoNum);
 
-  /**
-   * Total disponible en una sucursal. Para granel se convierte a KG
-   * equivalentes (suelto + paquetes × tamaño): sumar "45 kg + 2 paquetes"
-   * como 47 dice algo; sumarlo crudo no.
-   *
-   * Es la medida del DESTINO: lo que la sucursal tiene para vender, en
-   * cualquier forma. Para el ORIGEN se usa `dispParaEnviar`.
-   */
-  const dispTotal = (p, sucId) => {
-    if (!sucId) return 0;
-    if (p.tipo !== 'granel') return store.suma({ productoId: p.id, sucursalId: sucId, estado: 'disponible' });
-    return store.state.stock.reduce((a, st) => {
-      if (st.productoId !== p.id || st.sucursalId !== sucId || st.estado !== 'disponible') return a;
-      const pres = st.presentacionId ? (p.presentaciones || []).find((x) => x.id === st.presentacionId) : null;
-      return a + st.cantidad * (pres ? pres.tamKg : 1);
-    }, 0);
-  };
-
-  /**
-   * LO QUE EL ORIGEN PUEDE MANDAR, que no es lo mismo que lo que tiene.
-   *
-   * Regla del dueño: **todo lo que se pide para una sucursal se fracciona del
-   * producto madre**. Los paquetes que ya están armados en la Distribuidora son
-   * su góndola —se venden ahí— y no viajan. Así que para un granel lo que
-   * respalda el pedido es el **granel suelto en kg**, no los paquetes.
-   *
-   * Mostrar los paquetes acá era peor que no mostrar nada: "10 paq." al lado de
-   * un pedido de 8 daba tranquilidad sobre mercadería que no se iba a mandar.
-   */
-  const dispParaEnviar = (p, sucId) => {
-    if (!sucId) return 0;
-    if (p.tipo !== 'granel') return store.suma({ productoId: p.id, sucursalId: sucId, estado: 'disponible' });
-    return store.cant(p.id, sucId, null, 'disponible');
-  };
+  /* Las dos medidas del stock, con su regla en domain/pedido.js: el DESTINO
+     vale por lo que tiene (en cualquier forma) y el ORIGEN por lo que puede
+     mandar (el granel suelto). Son distintas a propósito. */
+  const dispTotal = (p, sucId) => disponibleTotal(store, p, sucId);
+  const dispParaEnviar = (p, sucId) => puedeMandar(store, p, sucId);
 
   /**
    * Cada pestaña busca SOLO lo suyo: parado en "Prod. Enteros" no aparece un
@@ -372,13 +328,21 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
     }
   };
 
-  /** Agrega arriba de todo; si ya está (misma presentación base), suma 1. */
-  const agregar = (p) => {
+  /**
+   * Agrega arriba de todo; si el MISMO artículo ya está (mismo producto y misma
+   * presentación), suma 1 en vez de duplicar el renglón.
+   *
+   * `presId` viene del explorador del catálogo, que lista cada tamaño como una
+   * fila propia: desde ahí se pide "Ajo en Polvo · 500 g" derecho, sin agregar
+   * la madre y después cambiar el selector.
+   */
+  const agregar = (p, presId = '') => {
     if (!p) return;
+    const pres = presId ? String(presId) : '';
     setItems((rows) => {
-      const i = rows.findIndex((r) => parseInt(r.prodId, 10) === p.id && !r.presId);
+      const i = rows.findIndex((r) => parseInt(r.prodId, 10) === p.id && (r.presId || '') === pres);
       if (i >= 0) return rows.map((r, j) => (j === i ? { ...r, cant: String((parseFloat(r.cant) || 0) + 1) } : r));
-      return [{ prodId: String(p.id), presId: '', cant: '1' }, ...rows];
+      return [{ prodId: String(p.id), presId: pres, cant: '1' }, ...rows];
     });
     setQ('');
     marcarSucio();
@@ -484,13 +448,14 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
       ];
 
   return (
-    <ModalShell
-      title="Pedido de mercadería"
-      subtitle={`Paso ${paso} de 3 · ${PASOS_PEDIDO[paso - 1]}`}
-      wide
-      onClose={cerrarYSeguirDespues}
-      footer={footer}
-    >
+    <>
+      <ModalShell
+        title="Pedido de mercadería"
+        subtitle={`Paso ${paso} de 3 · ${PASOS_PEDIDO[paso - 1]}`}
+        wide
+        onClose={cerrarYSeguirDespues}
+        footer={footer}
+      >
       <PasosPedido paso={paso} irA={setPaso} />
 
       {/* ==================== PASO 1 · A QUIÉN Y PARA DÓNDE ==================== */}
@@ -584,6 +549,10 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
             <input type="checkbox" checked={soloSinStock} onChange={(e) => setSoloSinStock(e.target.checked)} />
             Ver solo sin stock en {destino?.nombre ?? 'mi sucursal'}
           </label>
+          {/* El buscador de arriba sirve si ya sabés qué querés. Esto es para
+              RECORRER el catálogo por proveedor, categoría o marca — que es
+              como se arma el pedido semanal mirando la góndola. */}
+          <Btn variant="btn-edit" onClick={() => setExplorando(true)}>Buscar en el catálogo</Btn>
         </div>
 
         {resultados.length > 0 && (
@@ -803,7 +772,25 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
       </div>
       </>
       )}
-    </ModalShell>
+      </ModalShell>
+
+      {/* El explorador del catálogo, arriba del pedido. Comparte el `agregar`
+          del pedido, así lo que se elige acá también se guarda solo. */}
+      {explorando && (
+        <ExplorarProductosModal
+          grupo={grupo}
+          origenId={origenNum}
+          destinoId={destinoNum}
+          yaEnPedido={(prodId, presId) => {
+            const it = items.find((r) => parseInt(r.prodId, 10) === prodId
+              && (r.presId ? parseInt(r.presId, 10) : null) === (presId || null));
+            return it ? (parseFloat(it.cant) || 0) : 0;
+          }}
+          onAgregar={agregar}
+          onClose={() => setExplorando(false)}
+        />
+      )}
+    </>
   );
 }
 
