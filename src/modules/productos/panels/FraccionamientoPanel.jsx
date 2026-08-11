@@ -186,7 +186,7 @@ function TabFraccionar({ puede }) {
       <div className={s.toolbar}>
         <input
           type="search"
-          placeholder="Buscar producto a granel por nombre o marca..."
+          placeholder="Buscar por nombre o marca (filtra el granel y sus paquetes)..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -199,11 +199,100 @@ function TabFraccionar({ puede }) {
       >
         {filas}
       </Table>
+
+      <TablaPaquetes q={q} puede={puede} />
+
       <h3 className={s['card-title']} style={{ marginTop: 12 }}>Fraccionamientos recientes</h3>
       <Table cols={[{ h: 'Fecha' }, { h: 'Producto' }, { h: 'Sucursal' }, { h: 'Detalle' }]} empty="Sin fraccionamientos aún.">
         {hist}
       </Table>
     </div>
+  );
+}
+
+/* ===================== LOS PAQUETES Y SU STOCK ===================== *
+ *
+ * Debajo del granel, lo que salió de él: SOLO los fraccionados, con una columna
+ * por sucursal. La madre ya está arriba y su kilaje suelto no se repite acá — lo
+ * que se lee en esta tabla es "cuántos paquetes hay y dónde".
+ *
+ * Desde acá se corrige una tanda mal cargada, que es el único lugar donde tiene
+ * sentido: se ve el número que está mal.
+ */
+function TablaPaquetes({ q, puede }) {
+  const { store, openModal } = useProductos();
+  const sucursales = store.state.sucursales;
+
+  const ql = norm(q);
+  const paquetes = [];
+  for (const p of store.state.productos) {
+    if (p.tipo !== 'granel' || !(p.presentaciones || []).length) continue;
+    if (ql && !norm(p.nombre).includes(ql) && !norm(p.marca).includes(ql)) continue;
+    for (const pr of p.presentaciones) paquetes.push({ p, pr });
+  }
+  paquetes.sort((a, b) => a.p.nombre.localeCompare(b.p.nombre) || b.pr.tamKg - a.pr.tamKg);
+
+  const pag = usePaginado(paquetes, 'paquetesFraccionados', q);
+
+  return (
+    <>
+      <h3 className={s['card-title']} style={{ marginTop: 12 }}>Paquetes fraccionados y su stock</h3>
+      <Table
+        grupos={[
+          { h: 'Paquete', span: 2 },
+          { h: 'Stock por sucursal (paquetes)', span: sucursales.length + 1 },
+          { h: '', span: 1 },
+        ]}
+        cols={[
+          { h: 'Código' }, { h: 'Producto' },
+          ...sucursales.map((su) => ({ h: su.nombre, num: true })),
+          { h: 'Total', num: true },
+          { h: '', cls: 'actions-col' },
+        ]}
+        empty="No hay fraccionados en el catálogo: primero cargale presentaciones al producto a granel."
+        pag={pag}
+      >
+        {pag.visibles.map(({ p, pr }) => {
+          const porSuc = sucursales.map((su) => store.cant(p.id, su.id, pr.id, 'disponible'));
+          const total = porSuc.reduce((a, x) => a + x, 0);
+          return (
+            <tr key={`${p.id}-${pr.id}`}>
+              <td className={s.mono} style={{ fontSize: 12 }}>{pr.codigoBarras || '—'}</td>
+              <td>
+                <div>{p.nombre}</div>
+                <div className={s.muted} style={{ fontSize: 12 }}>
+                  {store.presLabel(p, pr.id)} · {p.marca || 'Sin marca'}
+                </div>
+              </td>
+              {porSuc.map((cantidad, i) => (
+                // El cero se atenúa: lo que HAY tiene que saltar a la vista.
+                <td
+                  key={sucursales[i].id}
+                  className={cx(s.num, s.mono)}
+                  style={cantidad > 1e-9 ? undefined : { opacity: 0.35 }}
+                >
+                  {num(cantidad, 0)}
+                </td>
+              ))}
+              <td className={cx(s.num, s.mono)}><strong>{num(total, 0)}</strong></td>
+              <td className={s['actions-col']}>
+                {puede
+                  ? (
+                    <Btn
+                      small
+                      title="Corregir una tanda mal cargada: ajusta los paquetes y devuelve los kilos al granel"
+                      onClick={() => openModal('corregirFraccionado', { prodId: p.id, presId: pr.id })}
+                    >
+                      Corregir
+                    </Btn>
+                  )
+                  : <span className={s.muted}>sin permiso</span>}
+              </td>
+            </tr>
+          );
+        })}
+      </Table>
+    </>
   );
 }
 

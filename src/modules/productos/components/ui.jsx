@@ -119,14 +119,27 @@ export function Paginador({ pag }) {
  * Tabla de datos con estado vacío. `cols`: [{ h, num }]. `children`: filas <tr>.
  * Con `pag` (lo que devuelve usePaginado) pinta la barra de paginación al pie;
  * el llamador pagina los DATOS (mapea pag.visibles), no las filas ya pintadas.
+ *
+ * `grupos` ([{ h, span }]) agrega una fila de encabezado ARRIBA de las columnas,
+ * para las tablas anchas donde varias columnas son la misma cosa (una por
+ * sucursal, por ejemplo) y el título de arriba dice de qué son.
  */
-export function Table({ cols, children, empty = 'Sin datos.', pag }) {
+export function Table({ cols, children, empty = 'Sin datos.', pag, grupos }) {
   const rows = Array.isArray(children) ? children.filter(Boolean) : children;
   const isEmpty = !rows || (Array.isArray(rows) && rows.length === 0);
   const tabla = (
     <div className={cx(styles.card, styles.tableCard, styles.tblScroll)}>
       <table className={styles.table}>
         <thead>
+          {grupos && (
+            <tr>
+              {grupos.map((g, i) => (
+                <th key={i} colSpan={g.span} style={{ textAlign: g.span > 1 ? 'center' : undefined }}>
+                  {g.h}
+                </th>
+              ))}
+            </tr>
+          )}
           <tr>
             {cols.map((c, i) => (
               <th key={i} className={cx(c.num && styles.num, c.cls && styles[c.cls])}>

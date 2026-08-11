@@ -193,6 +193,114 @@ export function FraccionarModal({ prodId, sucId: sucInit }) {
   );
 }
 
+/* ========================= CORREGIR UN FRACCIONADO ========================= *
+ *
+ * "Puse 20 paquetes de 500 g y son 19." La corrección mueve las DOS puntas —los
+ * paquetes y el granel del que salieron— porque el fraccionamiento no crea ni
+ * destruye mercadería: la convierte. Si solo se editaran los paquetes, los kilos
+ * totales del producto cambiarían de la nada y el inventario mentiría.
+ *
+ * Es para el ERROR DE CARGA. Un paquete roto o perdido es una merma: ahí la
+ * mercadería no volvió al granel y tiene que quedar registrada como pérdida.
+ */
+export function CorregirFraccionadoModal({ prodId, presId, sucId: sucInit }) {
+  const { store, act, closeModal } = useProductos();
+  const prod = store.getProducto(prodId);
+  const pres = prod ? (prod.presentaciones || []).find((x) => x.id === presId) : null;
+
+  const [sucId, setSucId] = useState(String(sucInit || store.distribuidora()?.id || ''));
+  const suc = parseInt(sucId, 10);
+  const actual = store.cant(prodId, suc, presId, 'disponible');
+  const [real, setReal] = useState(String(Math.round(actual)));
+  const [motivo, setMotivo] = useState('');
+
+  // Al cambiar de sucursal, el "hay" es otro: el campo lo sigue.
+  const cambiarSuc = (v) => {
+    setSucId(v);
+    setReal(String(Math.round(store.cant(prodId, parseInt(v, 10), presId, 'disponible'))));
+  };
+
+  if (!prod || !pres) return null;
+
+  const comprometido = store.cant(prodId, suc, presId, 'comprometido');
+  const granel = store.cant(prodId, suc, null, 'disponible');
+  const n = Math.round(Number(real));
+  const valido = Number.isFinite(n) && n >= 0;
+  const delta = valido ? n - Math.round(actual) : 0;
+  const kg = Math.abs(delta) * (pres.tamKg || 0);
+  const faltaGranel = delta > 0 && kg > granel + 1e-9;
+
+  const guardar = () => {
+    act(
+      store.opCorregirFraccionado({ productoId: prodId, presId, sucursalId: suc, cantidadReal: n, motivo }),
+      delta === 0 ? 'No había nada que corregir.' : 'Corrección registrada.',
+    );
+  };
+
+  return (
+    <ModalShell
+      title={`Corregir fraccionado — ${prod.nombre} · ${store.presLabel(prod, presId)}`}
+      onClose={closeModal}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+        {
+          texto: 'Corregir',
+          clase: valido && !faltaGranel && delta !== 0 ? 'btn-primary' : 'btn-ghost',
+          onClick: guardar,
+        },
+      ]}
+    >
+      <div className={s.field}>
+        <label>Sucursal</label>
+        <select value={sucId} onChange={(e) => cambiarSuc(e.target.value)}>{sucursalOptions(store, false)}</select>
+      </div>
+      <div className={s.field}>
+        <label>Paquetes que hay de verdad <span className={s.req}>*</span></label>
+        <input type="number" min="0" step="1" value={real} onChange={(e) => setReal(e.target.value)} />
+        <div className={s.hint}>
+          El sistema tiene <strong>{num(actual, 0)}</strong> disponibles
+          {comprometido > 0 && <> (y {num(comprometido, 0)} comprometidos en un envío, que no se tocan)</>}.
+        </div>
+      </div>
+      <div className={s.field}>
+        <label>Motivo</label>
+        <input value={motivo} placeholder="se cargó de más, salieron 19 y no 20…" onChange={(e) => setMotivo(e.target.value)} />
+      </div>
+
+      {/* La ecuación, en vivo: es lo que evita que esto se sienta magia. */}
+      <div className={cx(s.callout, faltaGranel ? s.warn : delta === 0 ? s.info : s.ok)}>
+        {!valido && 'Poné cuántos paquetes hay (0 o más).'}
+        {valido && delta === 0 && <>Ya están cargados <strong>{num(actual, 0)}</strong>: no hay nada que corregir.</>}
+        {valido && delta < 0 && (
+          <>
+            Se dan de baja <strong>{num(-delta, 0)} paquete(s)</strong> y{' '}
+            <strong>{num(kg, 3)} kg</strong> vuelven al granel — que quedaría en{' '}
+            <strong>{num(granel + kg, 3)} kg</strong>. Los kilos totales del producto no cambian.
+          </>
+        )}
+        {valido && delta > 0 && !faltaGranel && (
+          <>
+            Se agregan <strong>{num(delta, 0)} paquete(s)</strong> y se descuentan{' '}
+            <strong>{num(kg, 3)} kg</strong> del granel — que quedaría en{' '}
+            <strong>{num(granel - kg, 3)} kg</strong>.
+          </>
+        )}
+        {faltaGranel && (
+          <>
+            ⚠ Para llegar a {num(n, 0)} paquetes hacen falta <strong>{num(kg, 3)} kg</strong> de granel y
+            hay <strong>{num(granel, 3)} kg</strong>.
+          </>
+        )}
+      </div>
+      <div className={s.hint}>
+        Esto es para un <strong>error de carga</strong>. Si el paquete se rompió o se perdió, cargalo como
+        <strong> merma</strong> (Almacén › Operaciones) o abrí una <strong>incidencia</strong>: ahí la
+        mercadería no volvió al granel y la pérdida tiene que quedar con su costo.
+      </div>
+    </ModalShell>
+  );
+}
+
 /* ============================== MOVIMIENTO SIMPLE ============================== */
 export function MovimientoModal({ prodId, sucId: sucInit, pre = {} }) {
   const { store, act, closeModal, sucOperativa } = useProductos();

@@ -6,7 +6,9 @@ import { fmtFechaHora } from '../domain/format.js';
 import { ModalShell } from './Modal.jsx';
 import { s } from './ui.jsx';
 import { ProductoFormModal, DetalleProductoModal, FraccionadoModal } from './modals/ProductoModals.jsx';
-import { CompraModal, VenderModal, FraccionarModal, MovimientoModal } from './modals/StockModals.jsx';
+import {
+  CompraModal, VenderModal, FraccionarModal, CorregirFraccionadoModal, MovimientoModal,
+} from './modals/StockModals.jsx';
 import { TransferenciaModal, DetalleTransferModal, RecibirTransferModal, PrepararTransferModal } from './modals/TransferModals.jsx';
 import { IncidenciaModal, ResolverIncidenciaModal, DetalleIncidenciaModal } from './modals/IncidenciaModals.jsx';
 import { ProveedorFormModal, DetalleProveedorModal } from './modals/ProveedorModals.jsx';
@@ -232,6 +234,8 @@ const REGISTRY = {
   compra: CompraModal,
   vender: VenderModal,
   fraccionar: FraccionarModal,
+  /** "Puse 20 paquetes y son 19": ajusta los paquetes Y el granel de una vez. */
+  corregirFraccionado: CorregirFraccionadoModal,
   movimiento: MovimientoModal,
   transferencia: TransferenciaModal,
   detalleTransfer: DetalleTransferModal,

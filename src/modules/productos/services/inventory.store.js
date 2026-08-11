@@ -559,6 +559,15 @@ const eliminarProveedor = (id) => _mutate(() => httpClient.delete('/proveedores/
 const opCompra = (o) => _mutate(() => httpClient.post('/operaciones/compra', o));
 const opVenta = (o) => _mutate(() => httpClient.post('/operaciones/venta', o));
 const opFraccionar = (o) => _mutate(() => httpClient.post('/operaciones/fraccionar', o));
+
+/**
+ * Corregir una tanda mal cargada. Manda el usuario: una corrección de stock sin
+ * autor es justo la que uno quiere poder preguntar después.
+ */
+const opCorregirFraccionado = (o) => _mutate(() => httpClient.post('/operaciones/corregir-fraccionado', {
+  usuarioId: state.ctx.usuarioId ?? undefined,
+  ...o,
+}));
 const opSimple = (o) => _mutate(() => httpClient.post('/operaciones/movimiento', o));
 
 const crearTransferencia = (o) => _mutate(() => httpClient.post('/transferencias', o));
@@ -818,7 +827,7 @@ export const inventoryStore = {
   getProducto, getSucursal, getProveedor, getUsuario, presDe, distribuidora,
   unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry,
   rolActual, can, tiposMovPermitidos, setCtx,
-  opCompra, opFraccionar, opVenta, opSimple,
+  opCompra, opFraccionar, opCorregirFraccionado, opVenta, opSimple,
   crearTransferencia, avanzarTransferencia, cancelarTransferencia,
   editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
