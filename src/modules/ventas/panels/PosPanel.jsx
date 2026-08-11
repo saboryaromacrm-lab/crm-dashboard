@@ -791,7 +791,12 @@ export function PosPanel() {
     }
     const precioEfectivo = listaFija?.precio ?? item.precio;
     if (precioEfectivo <= 0) {
-      toast(`${item.nombre} no tiene precio cargado. Definilo en Compras › Productos.`, 'err');
+      /* El paquete fraccionado se cotiza solo (0053): si no tiene formato de
+       * venta, el precio se carga en SU ficha y no en la de la madre. Decirlo
+       * mal manda al cajero a una pantalla donde no está el campo. */
+      toast(item.presentacionId
+        ? `${item.nombre} · ${item.detalle} todavía no tiene precio: cargale su formato de venta en la ficha del fraccionado (Compras › Productos).`
+        : `${item.nombre} no tiene precio cargado. Definilo en Compras › Productos.`, 'err');
       return;
     }
     dispatch({ tipo: 'agregar', item, cantidad, listaFija, descuentoCliente: clienteActual?.descuento || 0 });

@@ -26,7 +26,7 @@ const ORIGENES = {
  * pisar en silencio un cambio más nuevo.
  */
 export function HistorialPreciosModal({ proveedorId, productoId }) {
-  const { store, isAdmin, closeModal, toast, act } = useProductos();
+  const { store, isAdmin, closeModal, toast } = useProductos();
   const [filas, setFilas] = useState(null);
   const [error, setError] = useState(null);
 
@@ -141,7 +141,6 @@ function aplicarRegla(actual, modo, valor) {
  */
 export function MargenesMasivosModal({ productos }) {
   const { store, closeModal, toast, act } = useProductos();
-  const [tipo, setTipo] = useState('markup_lista');
   const [lista, setLista] = useState('');
   const [modo, setModo] = useState('monto');
   const [valor, setValor] = useState('');
@@ -149,20 +148,20 @@ export function MargenesMasivosModal({ productos }) {
 
   /**
    * Filas DESTILDADAS de la vista previa: no siempre todos suben. Se guarda lo
-   * excluido para que el default sea "todos tildados". Cambiar de tipo de margen
-   * cambia de entidades, así que ahí la selección arranca de cero.
+   * excluido para que el default sea "todos tildados".
    */
   const [excluidos, setExcluidos] = useState(() => new Set());
-  useEffect(() => { setExcluidos(new Set()); }, [tipo]);
 
   const claveDe = (c) => `${c.id}-${c.detalle}`;
 
-  /** Solo listas donde algún producto trabaja por markup (precio definido no se pisa con un %). */
+  /** Solo listas donde algo trabaja por markup (precio definido no se pisa con un %). */
   const listas = useMemo(() => {
     const set = new Set();
-    productos.forEach((p) => (p.listas || []).forEach((l) => {
-      if (l.modoPrecio !== 'precio') set.add(l.etiqueta);
-    }));
+    const sumar = (ls) => (ls || []).forEach((l) => { if (l.modoPrecio !== 'precio') set.add(l.etiqueta); });
+    productos.forEach((p) => {
+      sumar(p.listas);
+      (p.presentaciones || []).forEach((pr) => sumar(pr.listas));
+    });
     return [...set].sort();
   }, [productos]);
 
@@ -170,41 +169,37 @@ export function MargenesMasivosModal({ productos }) {
    * Filas objetivo con su precio actual y el resultante — todo en memoria.
    * El precio mostrado es el FINAL con IVA (el de la etiqueta), derivado con el
    * mismo helper que la ficha y el POS.
+   *
+   * Entran las filas del producto Y las de cada PAQUETE fraccionado: desde la
+   * 0053 son la misma clase de fila (`producto_listas`), así que una sola masiva
+   * mueve las dos cosas. Antes había un segundo modo para el `recargo` de
+   * fraccionamiento, que ya no existe.
    */
   const cambios = useMemo(() => {
     if (valor === '' || Number.isNaN(Number(valor))) return [];
     const out = [];
-    for (const p of productos) {
+    const agregar = (p, l, prefijo, costo) => {
+      if (!l.id || l.modoPrecio === 'precio') return;
+      if (lista && l.etiqueta !== lista) return;
+      const nuevo = Math.max(0, aplicarRegla(l.markup, modo, valor));
+      if (Math.abs(nuevo - l.markup) < 0.005) return;
       const conIva = 1 + (Number(p.iva) || 0) / 100;
-      if (tipo === 'markup_lista') {
-        for (const l of p.listas || []) {
-          if (!l.id || l.modoPrecio === 'precio') continue;
-          if (lista && l.etiqueta !== lista) continue;
-          const nuevo = Math.max(0, aplicarRegla(l.markup, modo, valor));
-          if (Math.abs(nuevo - l.markup) < 0.005) continue;
-          out.push({
-            id: l.id, producto: p.nombre, detalle: `Lista ${l.etiqueta}`,
-            actual: l.markup, nuevo,
-            precioActual: l.precioFinalUnitario ?? r2((l.precio ?? 0) * conIva),
-            precioNuevo: store.ventaFormato(p, { ...l, markup: nuevo }).finalUnitario,
-          });
-        }
-      } else {
-        for (const pr of p.presentaciones || []) {
-          const nuevo = Math.max(0, aplicarRegla(pr.recargo, modo, valor));
-          if (Math.abs(nuevo - pr.recargo) < 0.005) continue;
-          out.push({
-            id: pr.id, producto: p.nombre,
-            detalle: pr.tamKg < 1 ? `${Math.round(pr.tamKg * 1000)} g` : `${pr.tamKg} kg`,
-            actual: pr.recargo, nuevo,
-            precioActual: r2(store.precioPresentacion(p, pr) * conIva),
-            precioNuevo: r2(store.precioPresentacion(p, { ...pr, recargo: nuevo }) * conIva),
-          });
-        }
+      out.push({
+        id: l.id, producto: p.nombre, detalle: `${prefijo}Lista ${l.etiqueta}`,
+        actual: l.markup, nuevo,
+        precioActual: l.precioFinalUnitario ?? r2((l.precio ?? 0) * conIva),
+        precioNuevo: store.ventaFormato(p, { ...l, markup: nuevo }, costo).finalUnitario,
+      });
+    };
+    for (const p of productos) {
+      for (const l of p.listas || []) agregar(p, l, '', undefined);
+      for (const pr of p.presentaciones || []) {
+        const tam = pr.tamKg < 1 ? `${Math.round(pr.tamKg * 1000)} g` : `${pr.tamKg} kg`;
+        for (const l of pr.listas || []) agregar(p, l, `${tam} · `, pr.costoNeto);
       }
     }
     return out;
-  }, [productos, store, tipo, lista, modo, valor]);
+  }, [productos, store, lista, modo, valor]);
 
   const seleccionados = useMemo(
     () => cambios.filter((c) => !excluidos.has(claveDe(c))),
@@ -227,7 +222,6 @@ export function MargenesMasivosModal({ productos }) {
     setGuardando(true);
     await act(
       store.actualizarMargenes({
-        tipo,
         cambios: seleccionados.map((c) => ({ id: c.id, valor: c.nuevo })),
         motivo: 'Actualización masiva de márgenes',
         usuarioId: store.state.ctx.usuarioId ?? undefined,
@@ -237,7 +231,7 @@ export function MargenesMasivosModal({ productos }) {
     setGuardando(false);
   };
 
-  const pag = usePaginado(cambios, 'margenesMasivos', `${tipo}|${lista}|${modo}|${valor}`);
+  const pag = usePaginado(cambios, 'margenesMasivos', `${lista}|${modo}|${valor}`);
 
   return (
     <ModalShell
@@ -254,29 +248,21 @@ export function MargenesMasivosModal({ productos }) {
       ]}
     >
       <div className={cx(s.callout, s.info)}>
-        Alcanza a los <strong>{productos.length}</strong> producto(s) que quedaron filtrados en el
-        panel. En la vista previa, <strong>destildá</strong> los que no van a cambiar: se aplica solo
-        a los tildados. Las filas en <strong>precio definido</strong> no entran — ese precio lo fijó
-        una persona y un % no debe pisarlo.
+        Mueve el <strong>markup del formato de venta</strong> de los <strong>{productos.length}</strong>{' '}
+        producto(s) que quedaron filtrados en el panel — y también el de sus <strong>paquetes
+        fraccionados</strong>, que se cotizan solos. En la vista previa, <strong>destildá</strong> los
+        que no van a cambiar: se aplica solo a los tildados. Las filas en <strong>precio definido</strong>
+        {' '}no entran — ese precio lo fijó una persona y un % no debe pisarlo.
       </div>
 
       <div className={s['form-grid']}>
         <div className={s.field}>
-          <label>Qué margen</label>
-          <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
-            <option value="markup_lista">Markup del formato de venta</option>
-            <option value="recargo_presentacion">Recargo de fraccionamiento</option>
+          <label>Lista</label>
+          <select value={lista} onChange={(e) => setLista(e.target.value)}>
+            <option value="">Todas</option>
+            {listas.map((l) => <option key={l} value={l}>{l}</option>)}
           </select>
         </div>
-        {tipo === 'markup_lista' && (
-          <div className={s.field}>
-            <label>Lista</label>
-            <select value={lista} onChange={(e) => setLista(e.target.value)}>
-              <option value="">Todas</option>
-              {listas.map((l) => <option key={l} value={l}>{l}</option>)}
-            </select>
-          </div>
-        )}
       </div>
 
       <div className={s['form-grid']}>

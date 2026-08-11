@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
+// La MISMA función que valida el código para dibujar la etiqueta: la fórmula
+// del verificador vive en un solo lugar del front.
+import { verificadorEan13 } from '@core/services/barcode.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { useSeccion } from '../../hooks/useSeccion.js';
-import { money, num, fmtFechaHora } from '../../domain/format.js';
+import { money, num, fmtFechaHora, fmtTam } from '../../domain/format.js';
 import { IVA_OPCIONES, OPCIONES_REDONDEO_PRECIO } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
 import { CatalogoPicker, EtiquetasPicker } from '../CatalogoPicker.jsx';
@@ -447,40 +450,107 @@ function ResumenTab({ prod: p }) {
   );
 }
 
-/* ---- Pestaña Presentaciones (granel): tamaño + recargo sobre el costo neto activo ---- */
-/*
- * El campo se llama `recargo` en la base y en la API. Esta pantalla lo llamaba
- * `ganancia`: leía un campo que no existe (el input salía vacío aunque el
- * recargo estuviera cargado) y al guardar mandaba `ganancia`, que la API
- * ignora — o sea que ABRIR y GUARDAR ponía todos los recargos en cero. Lo
- * mismo con el código de barras de cada presentación, que no viajaba y se
- * borraba. Se ve cuando hay datos de verdad: con todo en cero no se notaba.
+/* ---- Pestaña Presentaciones (granel): SOLO los tamaños ---- *
+ *
+ * Acá se define **cuánto granel consume cada paquete** y nada más. Tuvo una
+ * columna de `recargo` —lo que se cobraba de más por fraccionar— hasta la 0053:
+ * el paquete ahora tiene formato de venta propio y su precio se edita en SU
+ * ficha, con markup o precio fijo, caja por N y mínimo. Un solo número no
+ * alcanzaba para el mostrador.
+ *
+ * Lección vieja que sigue valiendo: esta pantalla llamaba `ganancia` a lo que la
+ * API llamaba `recargo`, así que ABRIR y GUARDAR ponía todos los recargos en
+ * cero sin que nadie lo viera. Los nombres de los campos se comparten con la API
+ * a propósito.
  */
+/**
+ * EN QUÉ ESTADO ESTÁ EL CÓDIGO DE UN RENGLÓN.
+ *
+ * El criterio es el mismo que aplica la API, y la razón de que no sea "válido o
+ * inválido" es la herencia: hay 71 códigos del sistema viejo que no son EAN-13
+ * (13 con el verificador mal, 58 más cortos). Trabarlos dejaría esas
+ * presentaciones sin poder guardar ni un cambio de recargo, así que se avisan
+ * pero pasan; lo que se exige es que lo NUEVO nazca bien.
+ */
+function estadoCodigo(row, previoDe, repetidos) {
+  const c = (row.codigoBarras || '').trim();
+  const previo = row.id ? (previoDe.get(row.id) || '') : null;
+  if (c && repetidos.has(c)) {
+    return { clave: 'repetido', bloquea: true, aviso: 'Repetido en esta lista: dos paquetes con el mismo código no se pueden distinguir en la caja.' };
+  }
+  if (!c) {
+    if (previo === null) return { clave: 'falta', bloquea: true, aviso: 'Falta el código: es el que la caja escanea en el paquete. Generá uno.' };
+    if (previo) return { clave: 'vaciado', bloquea: false, aviso: 'Le estás sacando el código: la etiqueta va a salir sin código de barras.' };
+    return { clave: 'sinCodigo', bloquea: false, aviso: 'No tiene código (viene así): la caja no puede escanear este paquete. Generá uno.' };
+  }
+  if (verificadorEan13(c) === true) return { clave: 'ok', bloquea: false, aviso: '' };
+  if (c === previo) {
+    return { clave: 'viejo', bloquea: false, aviso: 'No es un EAN-13 válido (viene del sistema viejo). Se puede guardar igual, pero conviene reemplazarlo.' };
+  }
+  return {
+    clave: 'malo',
+    bloquea: true,
+    aviso: /^\d{13}$/.test(c)
+      ? 'Son 13 dígitos pero el verificador no cierra: ningún lector lo va a leer. Revisá si lo copiaste bien.'
+      : 'Un EAN-13 son 13 dígitos. Copiá el del fabricante o generá uno propio.',
+  };
+}
+
 function PresentacionesTab({ prod: p }) {
-  const { store, isAdmin, toast } = useProductos();
+  const { store, isAdmin, toast, closeModal, openModal } = useProductos();
   const neto = store.costoNeto(p);
   const [rows, setRows] = useState(() =>
     (p.presentaciones || []).map((pr) => ({
       id: pr.id,
       tamStr: pr.tamKg ? String(pr.tamKg < 1 ? Math.round(pr.tamKg * 1000) : pr.tamKg) : '',
       unidad: pr.tamKg && pr.tamKg < 1 ? 'g' : 'kg',
-      recargo: String(pr.recargo ?? ''),
       codigoBarras: pr.codigoBarras ?? '',
     })),
   );
+  const [generando, setGenerando] = useState(null);
   const setRow = (i, patch) => setRows((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)));
   const delRow = (i) => setRows((r) => r.filter((_, j) => j !== i));
-  const addRow = () => setRows((r) => [...r, { id: null, tamStr: '', unidad: 'g', recargo: '', codigoBarras: '' }]);
+  const addRow = () => setRows((r) => [...r, { id: null, tamStr: '', unidad: 'g', codigoBarras: '' }]);
 
   const tamKgDe = (r) => { const t = parseFloat(r.tamStr); if (isNaN(t) || t <= 0) return 0; return r.unidad === 'kg' ? t : t / 1000; };
 
+  /* El código guardado de cada renglón: es lo que distingue "lo trajo así" de
+   * "lo acabo de escribir", y solo lo segundo se exige. */
+  const previoDe = new Map((p.presentaciones || []).map((pr) => [pr.id, pr.codigoBarras || '']));
+  const repetidos = new Set();
+  const vistos = new Set();
+  for (const r of rows) {
+    const c = (r.codigoBarras || '').trim();
+    if (!c) continue;
+    if (vistos.has(c)) repetidos.add(c); else vistos.add(c);
+  }
+  const estados = rows.map((r) => estadoCodigo(r, previoDe, repetidos));
+
+  /** Pide el código a la API, que es la única que ve TODOS los que ya existen. */
+  const generar = async (i) => {
+    setGenerando(i);
+    try {
+      // Los de la pantalla van como excluidos: el servidor no los conoce todavía.
+      const enPantalla = rows.map((r) => (r.codigoBarras || '').trim()).filter(Boolean);
+      const { codigo } = await store.siguienteEan(enPantalla);
+      setRow(i, { codigoBarras: codigo });
+    } catch {
+      toast('No pude generar el código: revisá la conexión con el servidor.', 'err');
+    } finally {
+      setGenerando(null);
+    }
+  };
+
   const guardar = async () => {
+    const conProblema = estados.findIndex((e, i) => e.bloquea && tamKgDe(rows[i]) > 0);
+    if (conProblema >= 0) {
+      const r = rows[conProblema];
+      const cual = tamKgDe(r) ? fmtTam(tamKgDe(r)) : `renglón ${conProblema + 1}`;
+      toast(`${cual}: ${estados[conProblema].aviso}`, 'err');
+      return;
+    }
     const presentaciones = rows
-      .map((r) => ({
-        id: r.id || null, tamKg: tamKgDe(r),
-        recargo: Number(r.recargo) || 0,
-        codigoBarras: r.codigoBarras.trim(),
-      }))
+      .map((r) => ({ id: r.id || null, tamKg: tamKgDe(r), codigoBarras: r.codigoBarras.trim() }))
       .filter((x) => x.tamKg > 0);
     const res = await store.guardarPresentaciones(p.id, presentaciones);
     toast(res.ok ? 'Presentaciones guardadas.' : res.error, res.ok ? 'ok' : 'err');
@@ -489,49 +559,90 @@ function PresentacionesTab({ prod: p }) {
   return (
     <div className={s.form}>
       <div className={cx(s.callout, s.info)}>
-        El <strong>recargo</strong> es lo que se cobra de más por fraccionar: el paquete chico
-        deja más que el kilo suelto. El precio sale del <strong>costo neto</strong> del proveedor
-        activo (<strong>{money(neto)}</strong> /kg) × tamaño × (1 + markup de la lista) ×
-        (1 + recargo %), y es el que cobra la caja al escanear su código.
+        Cada fila es un <strong>tamaño</strong> en el que se fracciona este granel: lo único que se
+        define acá es <strong>cuánto consume</strong> cada paquete del costo de la madre
+        (<strong>{money(neto)}</strong> /kg) y su <strong>código de barras</strong>. El
+        <strong> precio de cada paquete es propio</strong> y se carga en su ficha — clic en
+        <strong> Ver ficha</strong>.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '.8fr .6fr .8fr 1.2fr 1fr .6fr auto', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '.7fr .5fr 1.3fr 1fr .7fr auto auto', gap: 8 }}>
           <div className={s['mini-label']}>Tamaño</div>
           <div className={s['mini-label']}>Unidad</div>
-          <div className={s['mini-label']}>Recargo %</div>
           <div className={s['mini-label']}>Código de barras</div>
-          <div className={s['mini-label']}>Precio (con IVA)</div>
+          <div className={s['mini-label']}>Precio del paquete</div>
           <div className={s['mini-label']}>En stock</div>
+          <div />
           <div />
         </div>
         {rows.map((r, i) => {
+          const est = estados[i];
           const tamKg = tamKgDe(r);
-          // El precio que ve el cliente: el de la API (ya lleva el markup de la
-          // lista base y el redondeo de góndola). Mientras se edita, se estima.
           const guardada = (p.presentaciones || []).find((x) => x.id === r.id);
-          const sinCambios = guardada
-            && Math.abs((guardada.tamKg || 0) - tamKg) < 1e-9
-            && Math.abs((guardada.recargo || 0) - (Number(r.recargo) || 0)) < 1e-9;
-          const precio = sinCambios && guardada.precio
-            ? store.precioFinal(guardada.precio, p.iva)
-            : store.precioFinal(neto * tamKg * (1 + (Number(r.recargo) || 0) / 100), p.iva);
           const stk = r.id ? store.suma({ productoId: p.id, presentacionId: r.id, estado: 'disponible' }) : 0;
+          const borde = est.bloquea ? 'var(--crm-color-danger)'
+            : est.clave === 'ok' ? 'var(--crm-color-success)'
+              : est.aviso ? 'var(--crm-color-warning)' : undefined;
           return (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '.8fr .6fr .8fr 1.2fr 1fr .6fr auto', gap: 8, alignItems: 'center' }}>
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '.7fr .5fr 1.3fr 1fr .7fr auto auto', gap: 8, alignItems: 'start' }}>
               <input type="number" min="0" step="1" value={r.tamStr} placeholder="500" onChange={(e) => setRow(i, { tamStr: e.target.value })} />
               <select value={r.unidad} onChange={(e) => setRow(i, { unidad: e.target.value })}>
                 <option value="g">g</option>
                 <option value="kg">kg</option>
               </select>
-              <input type="number" min="0" step="0.1" value={r.recargo} placeholder="0" onChange={(e) => setRow(i, { recargo: e.target.value })} />
-              <input
-                value={r.codigoBarras}
-                placeholder="el de su etiqueta"
-                onChange={(e) => setRow(i, { codigoBarras: e.target.value })}
-              />
-              <div className={s.mono} style={{ fontWeight: 700 }}>{money(precio)}</div>
-              <div className={s.muted}>{num(stk, 0)} paq.</div>
-              <button type="button" className={s['pres-remove']} onClick={() => delRow(i)}>×</button>
+              {/* El código y su estado: el aviso va PEGADO al campo, no en un
+                  cartel arriba — con varias presentaciones, un aviso lejos no
+                  dice de cuál habla. */}
+              <div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <input
+                    value={r.codigoBarras}
+                    placeholder="EAN-13 (13 dígitos)"
+                    inputMode="numeric"
+                    maxLength={13}
+                    style={borde ? { borderColor: borde, flex: 1, minWidth: 0 } : { flex: 1, minWidth: 0 }}
+                    onChange={(e) => setRow(i, { codigoBarras: e.target.value.replace(/\D/g, '') })}
+                  />
+                  <Btn
+                    small
+                    title="Generar un EAN-13 propio, libre y sin repetir"
+                    disabled={generando === i}
+                    onClick={() => generar(i)}
+                  >
+                    {generando === i ? '…' : 'Generar'}
+                  </Btn>
+                </div>
+                {est.aviso && (
+                  <div
+                    className={s.hint}
+                    style={{ margin: '3px 0 0', color: est.bloquea ? 'var(--crm-color-danger)' : 'var(--crm-color-warning)' }}
+                  >
+                    {est.aviso}
+                  </div>
+                )}
+              </div>
+              {/* El precio ya no se calcula acá: es del paquete y lo trae la API.
+                  Sin formato de venta no es cero, es "sin precio" — y en rojo,
+                  porque un paquete sin precio no se puede vender. */}
+              <div className={s.mono} style={{ fontWeight: 700, paddingTop: 8 }}>
+                {!guardada
+                  ? <span className={s.muted}>al guardar</span>
+                  : guardada.precioFinal != null
+                    ? money(guardada.precioFinal)
+                    : <span style={{ color: 'var(--crm-color-danger)' }}>sin precio</span>}
+              </div>
+              <div className={s.muted} style={{ paddingTop: 8 }}>{num(stk, 0)} paq.</div>
+              {guardada ? (
+                <Btn
+                  small
+                  variant="btn-ghost"
+                  title="Abrir la ficha del paquete: ahí se carga su precio, su caja y sus ofertas"
+                  onClick={() => { closeModal(); openModal('fraccionado', { prodId: p.id, presId: guardada.id }); }}
+                >
+                  Ver ficha
+                </Btn>
+              ) : <span />}
+              <button type="button" className={s['pres-remove']} style={{ marginTop: 4 }} onClick={() => delRow(i)}>×</button>
             </div>
           );
         })}
@@ -615,7 +726,7 @@ function EvolucionPreciosTab({ prod: p }) {
 }
 
 /* ==================================================================== *
- * FORMATO DE VENTA — cómo se vende este producto
+ * FORMATO DE VENTA — cómo se vende esto
  * ==================================================================== *
  * Acá vive el markup, y por eso esta pestaña es el corazón del precio.
  *
@@ -623,11 +734,17 @@ function EvolucionPreciosTab({ prod: p }) {
  * precio: cada producto define el suyo. La misma "Mayorista" puede ir al 30% en
  * un producto y al 50% en otro, y un producto que no tiene fila mayorista
  * simplemente no se vende así — no hay nada que excluir ni que destildar.
+ *
+ * LA MISMA PESTAÑA SIRVE PARA UN PAQUETE FRACCIONADO (`pres`): desde la 0053 el
+ * paquete se cotiza solo, y lo único que cambia es sobre qué costo (el del kilo
+ * × su tamaño) y dónde se guarda. Tener dos editores parecidos habría garantizado
+ * que uno se quedara atrás del otro.
  */
-function VentaTab({ prod: p }) {
+function VentaTab({ prod: p, pres = null }) {
   const { store, isAdmin, toast } = useProductos();
-  const neto = store.costoNeto(p);
-  const unidad = p.tipo === 'granel' ? '/kg' : '/u';
+  const esPaquete = !!pres;
+  const neto = esPaquete ? (Number(pres.costoNeto) || 0) : store.costoNeto(p);
+  const unidad = esPaquete ? '/paquete' : (p.tipo === 'granel' ? '/kg' : '/u');
   const act = store.formatoActivo(p);
   const nombreAct = act ? (store.getProveedor(act.proveedorId) || {}).nombre : null;
 
@@ -640,7 +757,7 @@ function VentaTab({ prod: p }) {
 
   // Los números se editan como texto (permite borrar y tipear a medias).
   const [rows, setRows] = useState(() =>
-    (p.listas || []).map((l) => ({
+    ((esPaquete ? pres.listas : p.listas) || []).map((l) => ({
       listaId: l.listaId,
       modoPrecio: l.modoPrecio ?? 'markup',
       markup: String(l.markup ?? 0),
@@ -676,19 +793,31 @@ function VentaTab({ prod: p }) {
         return;
       }
     }
-    const res = await store.guardarListasProducto(p.id, { listas: rows });
+    const res = esPaquete
+      ? await store.guardarListasPresentacion(pres.id, { listas: rows })
+      : await store.guardarListasProducto(p.id, { listas: rows });
     toast(res.ok ? 'Formato de venta guardado.' : res.error, res.ok ? 'ok' : 'err');
   };
 
   return (
     <div className={s.form}>
       <div className={cx(s.callout, s.info)}>
-        Cada fila es una <strong>forma de vender</strong> este producto: en qué lista, en cuántas
-        unidades (suelto o caja), con qué código y cómo se define el precio — un <strong>markup</strong>
-        {' '}sobre el costo neto{nombreAct ? <> de <strong>{nombreAct}</strong></> : ''} ({money(neto)} {unidad}),
+        Cada fila es una <strong>forma de vender</strong> {esPaquete ? 'este paquete' : 'este producto'}: en
+        qué lista, en cuántas unidades ({esPaquete ? 'un paquete o una caja de N paquetes' : 'suelto o caja'}),
+        con qué código y cómo se define el precio — un <strong>markup</strong> sobre el costo
+        {esPaquete
+          ? <> del paquete (<strong>{money(neto)}</strong>{unidad}, que es el costo del kilo × su tamaño)</>
+          : <> neto{nombreAct ? <> de <strong>{nombreAct}</strong></> : ''} ({money(neto)} {unidad})</>},
         que acompaña al costo, o un <strong>precio definido</strong> que no se mueve hasta que lo
         cambies. Si no está la fila, no se vende en esa lista.
       </div>
+
+      {esPaquete && !rows.length && (
+        <div className={cx(s.callout, s.warn)}>
+          Este paquete <strong>todavía no tiene precio</strong>: no lo puede vender la caja ni sale en la
+          etiqueta. Agregale abajo la lista con la que se vende.
+        </div>
+      )}
 
       {!tieneBase && activas.some((l) => l.id === baseId) && (
         <div className={cx(s.callout, s.warn)}>
@@ -711,7 +840,7 @@ function VentaTab({ prod: p }) {
             markup: parseFloat(r.markup) || 0,
             precioFijo: parseFloat(r.precioFijo) || 0,
             unidades,
-          });
+          }, esPaquete ? neto : undefined);
           return (
             <div key={r.listaId} className={cx(s.card, s.cardPad)}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 }}>
@@ -809,7 +938,7 @@ function VentaTab({ prod: p }) {
           );
         })}
 
-        {!rows.length && (
+        {!rows.length && !esPaquete && (
           <div className={s.muted} style={{ padding: '8px 0' }}>
             Este producto no se vende en ninguna lista todavía.
           </div>
@@ -817,10 +946,10 @@ function VentaTab({ prod: p }) {
       </div>
 
       <div className={s.hint} style={{ marginTop: 10 }}>
-        <strong>Vende por</strong>: 1 = suelto; 12 = caja de 12 — al escanear el código del formato,
-        la caja registradora carga las 12 unidades de una. <strong>Desde (unidades)</strong> en 0
-        significa que la lista no se abre sola: se llega por contrato del cliente, regla de marca o
-        monto de compra.
+        <strong>Vende por</strong>: 1 = {esPaquete ? 'un paquete' : 'suelto'}; 12 = caja de 12
+        {esPaquete ? ' paquetes' : ''} — al escanear el código del formato, la caja registradora carga
+        las 12 de una. <strong>Desde (unidades)</strong> en 0 significa que la lista no se abre sola:
+        se llega por contrato del cliente, regla de marca o monto de compra.
       </div>
 
       {isAdmin && (
@@ -851,14 +980,15 @@ function VentaTab({ prod: p }) {
  * madre" que muestra de qué producto descuenta — las dos caras de la misma
  * relación que la madre muestra en Presentaciones.
  *
- * EL COSTO ACÁ ES DE SOLO LECTURA, a propósito: se DERIVA del costo de la
- * madre (costo/kg × tamaño × recargo). Si fuera editable, el costo del
- * paquete y el de la madre divergirían — exactamente el vicio del sistema
- * viejo que obligó a revisar 24 precios al importar Bavosi. Lo editable es
- * el RECARGO, en la pestaña Presentaciones de la madre.
+ * EL COSTO ES DE SOLO LECTURA y el PRECIO ES PROPIO. Esa es la división desde la
+ * 0053: el costo se DERIVA de la madre (costo/kg × tamaño) porque lo pone el
+ * proveedor y no puede divergir; el precio se decide acá, en la pestaña Formato
+ * de venta, con la misma libertad que un producto — markup o precio fijo, caja
+ * por N, mínimo y código. El `recargo` que había antes decía una sola cosa y no
+ * alcanzaba para el mostrador.
  */
 export function FraccionadoModal({ prodId, presId }) {
-  const { store, isAdmin, closeModal, openModal } = useProductos();
+  const { store, isAdmin, closeModal } = useProductos();
   useSeccion('movimientos');
   const [tab, setTab] = useState(0);
   const p = store.getProducto(prodId);
@@ -866,29 +996,27 @@ export function FraccionadoModal({ prodId, presId }) {
   if (!p || !pr) return null;
 
   const etiqueta = `${p.nombre} · ${store.presLabel(p, pr.id)}`;
-  const cn = store.costoNeto(p);
-  const costoLista = cn * (pr.tamKg || 0);
-  const costoPaquete = costoLista * (1 + (Number(pr.recargo) || 0) / 100);
-
-  const footer = [];
-  if (isAdmin) {
-    footer.push({
-      texto: 'Editar (en la madre)',
-      clase: 'btn-primary',
-      onClick: () => { closeModal(); openModal('detalleProducto', { prodId: p.id }); },
-    });
-  }
-  footer.push({ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal });
+  const costoPaquete = Number(pr.costoNeto) || 0;
 
   return (
-    <ModalShell title={`Fraccionado — ${etiqueta}`} wide onClose={closeModal} footer={footer}>
+    <ModalShell
+      title={`Fraccionado — ${etiqueta}`}
+      wide
+      onClose={closeModal}
+      footer={[{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }]}
+    >
       <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
         <Tab label="Resumen" />
+        {/* El paquete se cotiza solo: su formato de venta se edita ACÁ, no en la
+            madre. Es la misma pestaña que usa el producto, con otro costo. */}
+        {isAdmin && <Tab label={pr.sinFormato ? 'Formato de venta ⚠' : 'Formato de venta'} />}
         <Tab label="Producto madre" />
       </Tabs>
-      {tab === 0
-        ? <FraccionadoResumen store={store} p={p} pr={pr} costoPaquete={costoPaquete} />
-        : <FraccionadoMadre store={store} p={p} pr={pr} costoLista={costoLista} costoPaquete={costoPaquete} />}
+      {tab === 0 && <FraccionadoResumen store={store} p={p} pr={pr} costoPaquete={costoPaquete} />}
+      {isAdmin && tab === 1 && <VentaTab prod={p} pres={pr} />}
+      {tab === (isAdmin ? 2 : 1) && (
+        <FraccionadoMadre store={store} p={p} pr={pr} costoPaquete={costoPaquete} />
+      )}
     </ModalShell>
   );
 }
@@ -921,17 +1049,20 @@ function FraccionadoResumen({ store, p, pr, costoPaquete }) {
   const listasNombre = new Map(
     ((store.state.listasCatalogo?.listas) ?? []).map((l) => [l.id, `${l.nombre}${l.modalidad ? ` · ${l.modalidad}` : ''}`]),
   );
-  const cn = store.costoNeto(p);
-  const ventaRows = (p.listas || []).map((l) => {
-    const markupEf = l.precio != null && cn > 0 ? ((l.precio / cn) - 1) * 100 : (Number(l.markup) || 0);
-    return (
-      <tr key={l.listaId}>
-        <td>{listasNombre.get(l.listaId) || `Lista ${l.listaId}`}</td>
-        <td className={s.num}>{num(markupEf, 1)}%</td>
-        <td className={cx(s.num, s.mono)}>{money(store.precioPresentacion(p, pr, markupEf))}</td>
-      </tr>
-    );
-  });
+  /* El formato de venta PROPIO del paquete: su markup, su caja y su precio.
+   * Antes esta tabla mostraba las listas de la MADRE con el recargo aplicado —
+   * de ahí venía el "El producto madre no tiene listas de venta cargadas" que
+   * dejaba al paquete sin precio aunque el paquete se venda todos los días. */
+  const ventaRows = (pr.listas || []).map((l) => (
+    <tr key={l.listaId}>
+      <td>{listasNombre.get(l.listaId) || `Lista ${l.listaId}`}</td>
+      <td className={s.num}>
+        {l.modoPrecio === 'precio' ? <span className={s.muted}>precio fijo</span> : `${num(l.markup, 1)}%`}
+      </td>
+      <td className={s.num}>{l.unidades > 1 ? `caja × ${num(l.unidades, 0)}` : '1 paq.'}</td>
+      <td className={cx(s.num, s.mono)}>{money(l.precioFinalUnitario)}</td>
+    </tr>
+  ));
 
   return (
     <>
@@ -939,19 +1070,25 @@ function FraccionadoResumen({ store, p, pr, costoPaquete }) {
         <Di label="Producto madre">{p.nombre}</Di>
         <Di label="Tamaño">{store.presLabel(p, pr.id)} ({num(pr.tamKg, 3)} kg)</Di>
         <Di label="Código de barras">{pr.codigoBarras || '—'}</Di>
-        <Di label="Recargo de fraccionamiento">{num(pr.recargo ?? 0, 1)}%</Di>
         <Di label="Costo del paquete (derivado)">{money(costoPaquete)}</Di>
-        <Di label="Precio de venta (piso)">{money(store.precioPresentacion(p, pr))}</Di>
+        <Di label="Precio de venta (piso)">
+          {pr.precioFinal != null
+            ? money(pr.precioFinal)
+            : <span style={{ color: 'var(--crm-color-danger)', fontWeight: 700 }}>sin precio</span>}
+        </Di>
         <Di label="Disponible">{num(disponible, 0)} paq. ({num(disponible * (pr.tamKg || 0), 3)} kg)</Di>
       </div>
       <div className={s.hint} style={{ marginTop: 4 }}>
-        El costo del paquete <strong>se deriva del producto madre</strong> (costo/kg × tamaño ×
-        recargo) y por eso acá es de solo lectura: no puede divergir. Lo editable es el
-        <strong> recargo</strong>, en la pestaña Presentaciones de la madre.
+        El <strong>costo</strong> se deriva del producto madre (costo/kg × tamaño) y por eso es de solo
+        lectura: no puede divergir del de la madre. El <strong>precio es propio</strong> y se edita en la
+        pestaña <strong>Formato de venta</strong> — este paquete se cotiza solo.
       </div>
 
-      <h3 className={s['card-title']} style={{ marginTop: 12 }}>Formato de venta</h3>
-      <Table cols={[{ h: 'Lista' }, { h: 'Margen', num: true }, { h: 'Precio del paquete', num: true }]} empty="El producto madre no tiene listas de venta cargadas.">
+      <h3 className={s['card-title']} style={{ marginTop: 12 }}>Formato de venta del paquete</h3>
+      <Table
+        cols={[{ h: 'Lista' }, { h: 'Precio por', num: true }, { h: 'Vende por', num: true }, { h: 'Precio del paquete', num: true }]}
+        empty="Este paquete todavía no tiene precio: cargale su formato de venta en la pestaña de al lado."
+      >
         {ventaRows}
       </Table>
 
@@ -971,10 +1108,9 @@ function FraccionadoResumen({ store, p, pr, costoPaquete }) {
 /**
  * La pestaña "Producto madre": el Prod.Util del sistema viejo, con nuestros
  * números. Muestra de qué producto descuenta este fraccionado, cuánto consume
- * por paquete y los dos costos (lista = sin recargo, total = con recargo —
- * las columnas Lista/Total de la pantalla vieja).
+ * por paquete y a qué costo sale.
  */
-function FraccionadoMadre({ store, p, pr, costoLista, costoPaquete }) {
+function FraccionadoMadre({ store, p, pr, costoPaquete }) {
   const suelto = store.suma({ productoId: p.id, presentacionId: null, estado: 'disponible' });
   const misPaquetes = store.suma({ productoId: p.id, presentacionId: pr.id, estado: 'disponible' });
 
@@ -997,7 +1133,7 @@ function FraccionadoMadre({ store, p, pr, costoLista, costoPaquete }) {
       <Table
         cols={[
           { h: 'Código' }, { h: 'Producto madre' }, { h: 'Consume', num: true }, { h: 'Un.Med' },
-          { h: 'Costo (lista)', num: true }, { h: 'Costo total (c/recargo)', num: true },
+          { h: 'Costo del kilo', num: true }, { h: 'Costo del paquete', num: true },
         ]}
       >
         <tr>
@@ -1010,7 +1146,7 @@ function FraccionadoMadre({ store, p, pr, costoLista, costoPaquete }) {
           </td>
           <td className={s.num}>{num(pr.tamKg, 3)}</td>
           <td>kg</td>
-          <td className={s.num}>{money(costoLista)}</td>
+          <td className={s.num}>{money(store.costoNeto(p))}</td>
           <td className={cx(s.num, s.mono)}>{money(costoPaquete)}</td>
         </tr>
       </Table>

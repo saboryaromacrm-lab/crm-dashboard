@@ -211,8 +211,11 @@ function precioFinal(neto, iva) {
  * precio, en los dos modos. Con MARKUP el precio acompaña al costo (redondeo de
  * góndola sobre el final unitario); con PRECIO definido el final del FORMATO es
  * exacto — es la voluntad del que lo fijó — y la unidad se deriva dividiendo.
+ *
+ * `costo` permite cotizar un PAQUETE fraccionado con el mismo helper: su costo es
+ * el del kilo × su tamaño. Sin él se usa el del producto, que es el caso normal.
  */
-function ventaFormato(prod, fila) {
+function ventaFormato(prod, fila, costo) {
   const unidades = Math.max(Number(fila?.unidades) || 1, 1e-9);
   const iva = Number(prod?.iva) || 0;
   const redondeo = prod?.redondeo ?? (Number(state.configVentas?.redondeoPrecio) || 0);
@@ -225,7 +228,8 @@ function ventaFormato(prod, fila) {
       finalFormato,
     };
   }
-  const bruto = costoNeto(prod) * (1 + (Number(fila?.markup) || 0) / 100);
+  const base = costo != null ? Number(costo) || 0 : costoNeto(prod);
+  const bruto = base * (1 + (Number(fila?.markup) || 0) / 100);
   const netoUnitario = redondeo > 0 ? money(redondearPrecio(bruto * (1 + iva / 100), redondeo) / (1 + iva / 100)) : money(bruto);
   const finalUnitario = redondeo > 0 ? redondearPrecio(netoUnitario * (1 + iva / 100), redondeo) : money(netoUnitario * (1 + iva / 100));
   return { unidades, netoUnitario, finalUnitario, finalFormato: money(finalUnitario * unidades) };
@@ -262,20 +266,18 @@ function precioBaseVenta(prod) {
   return ajustarNeto(costoNeto(prod) * (1 + (Number(piso.markup) || 0) / 100), prod.iva);
 }
 /**
- * El markup lo pone la fila producto × lista; la presentación solo agrega su
- * recargo de fraccionamiento. Sin `markupLista` usa el piso, que es el precio
- * de referencia que muestra el catálogo.
+ * PRECIO FINAL DE UN PAQUETE, con IVA. Lo trae la API en cada presentación
+ * (`precioFinal`), derivado de SU formato de venta — acá no se recalcula nada:
+ * hubo una función que multiplicaba el precio de la lista de la madre por un
+ * recargo y esa era la segunda forma de decir cuánto vale un paquete. Se borró
+ * con la columna (0053).
+ *
+ * `null` significa **sin precio** (el paquete no tiene formato de venta
+ * cargado), y no es lo mismo que cero: quien muestra tiene que decirlo.
  */
-function precioPresentacion(prod, presOrId, markupLista) {
+function precioPaquete(prod, presOrId) {
   const pr = typeof presOrId === 'object' ? presOrId : presDe(prod, presOrId);
-  if (!pr) return 0;
-  // Con precio definido el markup no manda: se usa el equivalente del piso.
-  const piso = filaPiso(prod);
-  const cnP = costoNeto(prod);
-  const gPiso = piso ? (piso.precio != null && cnP > 0 ? ((piso.precio / cnP) - 1) * 100 : (piso.markup || 0)) : 0;
-  const g = markupLista != null ? markupLista : gPiso;
-  const porKg = costoNeto(prod) * (1 + (Number(g) || 0) / 100);
-  return ajustarNeto(porKg * (Number(pr.tamKg) || 0) * (1 + (Number(pr.recargo) || 0) / 100), prod.iva);
+  return pr && pr.precioFinal != null ? pr.precioFinal : null;
 }
 function valorEntry(s) {
   const prod = getProducto(s.productoId); if (!prod) return 0;
@@ -512,6 +514,13 @@ const guardarPresentaciones = (prodId, presentaciones) => _mutate(() => httpClie
 const guardarFormatosCompra = (prodId, formatos) => _mutate(() => httpClient.put('/productos/' + prodId + '/formatos-compra', { formatos }));
 const guardarListasProducto = (prodId, o) => _mutate(() => httpClient.put('/productos/' + prodId + '/listas', o));
 
+/**
+ * El formato de venta de UN PAQUETE fraccionado. Va por su propia ruta: la madre
+ * y el paquete se cotizan por separado, y un solo PUT para los dos haría que
+ * guardar uno pudiera borrar el otro.
+ */
+const guardarListasPresentacion = (presId, o) => _mutate(() => httpClient.put('/productos/presentaciones/' + presId + '/listas', o));
+
 /* ---------------- Catálogos del producto ---------------- */
 
 /**
@@ -527,6 +536,15 @@ const fusionarCatalogo = (tipo, id, haciaId) =>
 
 /** Siguiente código propio libre, para el botón "Crear un código". */
 const siguienteCodigo = () => httpClient.get('/productos/siguiente-codigo');
+
+/**
+ * Un EAN-13 propio libre, para el botón "Generar" de la presentación. `excluir`
+ * son los códigos que la pantalla tiene cargados y todavía no guardó: el
+ * servidor no los conoce y sin eso dos renglones nuevos salían iguales.
+ */
+const siguienteEan = (excluir = []) => httpClient.get(
+  '/productos/siguiente-ean' + (excluir.length ? `?excluir=${encodeURIComponent(excluir.join(','))}` : ''),
+);
 
 /** Subcategorías de una categoría: la mitad de abajo de la cascada. */
 function subcategoriasDe(categoriaId) {
@@ -807,11 +825,11 @@ export const inventoryStore = {
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
   sugerenciasArchivado, archivarLote,
   guardarPresentaciones, importarCatalogo,
-  crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, subcategoriasDe, siguienteCodigo,
+  crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, subcategoriasDe, siguienteCodigo, siguienteEan,
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,
-  guardarFormatosCompra, guardarListasProducto,
-  costoNeto, costoNetoEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPresentacion,
+  guardarFormatosCompra, guardarListasProducto, guardarListasPresentacion,
+  costoNeto, costoNetoEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPaquete,
   precioFinal, redondearPrecio,
   crearComprobante, getComprobante, comprobantesDe, cuentaProveedor, facturasReferenciables,
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,

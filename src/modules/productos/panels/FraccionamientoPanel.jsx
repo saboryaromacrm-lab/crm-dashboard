@@ -34,10 +34,21 @@ const PESTANAS = [
 const MODULO_MIN_MM = 0.25;
 
 export function FraccionamientoPanel() {
-  const { can } = useProductos();
+  const { store, can, openModal } = useProductos();
   useSeccion('movimientos');
   const puede = can('fraccionar');
   const [pestana, setPestana] = useState('fraccionar');
+
+  /*
+   * LOS PAQUETES SIN PRECIO. El formato de venta del paquete arrancó en blanco
+   * (decisión del dueño al separarlo de la madre), así que el sistema tiene que
+   * decir cuántos faltan: un paquete sin precio no lo vende la caja y sale con la
+   * etiqueta en blanco. Sin este contador, uno se entera porque un cliente no
+   * pudo comprar.
+   */
+  const sinPrecio = store.state.productos.flatMap((p) => (p.presentaciones || [])
+    .filter((pr) => pr.precioFinal == null)
+    .map((pr) => ({ p, pr })));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
@@ -62,9 +73,65 @@ export function FraccionamientoPanel() {
             {v.label}
           </button>
         ))}
+        <span style={{ flex: 1 }} />
+        {sinPrecio.length > 0 && (
+          <button
+            type="button"
+            className={cx(s.badge)}
+            title="Ver los paquetes que todavía no tienen formato de venta"
+            style={{
+              cursor: 'pointer', padding: '7px 14px', fontSize: 13, borderWidth: 1, borderStyle: 'solid',
+              borderColor: 'var(--crm-color-danger)', color: 'var(--crm-color-danger)', fontWeight: 700,
+              ...(pestana === 'sinPrecio'
+                ? { background: 'var(--crm-color-danger)', color: '#fff' }
+                : {}),
+            }}
+            onClick={() => setPestana('sinPrecio')}
+          >
+            {sinPrecio.length} sin precio
+          </button>
+        )}
       </div>
 
-      {pestana === 'fraccionar' ? <TabFraccionar puede={puede} /> : <TabEtiquetas puede={puede} />}
+      {pestana === 'fraccionar' && <TabFraccionar puede={puede} />}
+      {pestana === 'etiquetas' && <TabEtiquetas puede={puede} />}
+      {pestana === 'sinPrecio' && <TabSinPrecio filas={sinPrecio} store={store} openModal={openModal} />}
+    </div>
+  );
+}
+
+/* ============================== SIN PRECIO ============================== *
+ * La lista de lo que falta cargar. No es un error del sistema: es trabajo
+ * pendiente, y por eso lleva el atajo a la ficha donde se resuelve.
+ */
+function TabSinPrecio({ filas, store, openModal }) {
+  const pag = usePaginado(filas, 'paquetesSinPrecio', '');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-3)' }}>
+      <div className={cx(s.callout, s.warn)}>
+        Estos <strong>{filas.length}</strong> paquete(s) todavía <strong>no tienen formato de venta</strong>,
+        así que no tienen precio: la caja no los puede vender y la etiqueta sale sin precio. Cada paquete
+        se cotiza solo — entrá a su ficha y cargale la lista con la que se vende.
+      </div>
+      <Table
+        cols={[{ h: 'Producto' }, { h: 'Paquete' }, { h: 'Código' }, { h: 'En stock', num: true }, { h: '', cls: 'actions-col' }]}
+        empty="No queda ningún paquete sin precio."
+        pag={pag}
+      >
+        {pag.visibles.map(({ p, pr }) => (
+          <tr key={`${p.id}-${pr.id}`}>
+            <td>{p.nombre}{p.marca ? <span className={s.muted}> · {p.marca}</span> : null}</td>
+            <td>{store.presLabel(p, pr.id)}</td>
+            <td className={s.mono}>{pr.codigoBarras || <span className={s.muted}>sin código</span>}</td>
+            <td className={s.num}>{num(store.suma({ productoId: p.id, presentacionId: pr.id, estado: 'disponible' }), 0)} paq.</td>
+            <td className={s['actions-col']}>
+              <Btn small variant="btn-primary" onClick={() => openModal('fraccionado', { prodId: p.id, presId: pr.id })}>
+                Cargar precio
+              </Btn>
+            </td>
+          </tr>
+        ))}
+      </Table>
     </div>
   );
 }
@@ -183,7 +250,11 @@ function TabEtiquetas({ puede }) {
       <tr key={`${p.id}-${pr.id}`} style={activa ? { background: 'var(--crm-color-primary-soft, rgba(22,101,52,.08))' } : undefined}>
         <td>{p.nombre}{p.marca ? <span className={s.muted}> · {p.marca}</span> : null}</td>
         <td>{store.presLabel(p, pr.id)}</td>
-        <td className={cx(s.num, s.mono)}>{money(store.precioFinal(store.precioPresentacion(p, pr), p.iva))}</td>
+        <td className={cx(s.num, s.mono)}>
+          {pr.precioFinal != null
+            ? money(pr.precioFinal)
+            : <span style={{ color: 'var(--crm-color-danger)', fontWeight: 600 }}>sin precio</span>}
+        </td>
         <td className={s.mono}>{pr.codigoBarras || <span className={s.muted}>sin código</span>}</td>
         <td className={s['actions-col']}>
           <Btn small variant={activa ? 'btn-primary' : undefined} onClick={() => setSel({ prodId: p.id, presId: pr.id })}>
@@ -240,7 +311,10 @@ function FormEtiqueta({ p, pr, store, toast, puede, cfg, cant, setCant, venc, se
   const formato = cfg?.impresion?.etiquetaFraccionado || formatoPorDefecto('etiquetaFraccionado');
   const medida = medidaEtiqueta(formato);
   const info = analizarCodigo(pr.codigoBarras);
-  const precio = money(store.precioFinal(store.precioPresentacion(p, pr), p.iva));
+  /* El precio es del PAQUETE (su formato de venta, 0053). Si no tiene ninguno
+   * cargado no hay precio que imprimir: la etiqueta sale sin él y se avisa. */
+  const sinPrecio = pr.precioFinal == null;
+  const precio = sinPrecio ? '' : money(pr.precioFinal);
   const peso = store.presLabel(p, pr.id);
   const n = Math.round(Number(cant) || 0);
   const cantOk = n >= 1 && n <= MAX_ETIQUETAS;
@@ -294,8 +368,14 @@ function FormEtiqueta({ p, pr, store, toast, puede, cfg, cant, setCant, venc, se
         </div>
         <div className={s.field} style={{ marginBottom: 0 }}>
           <label>Precio que se imprime</label>
-          <strong className={s.mono} style={{ fontSize: 16 }}>{precio}</strong>
-          <div className={s.hint} style={{ margin: '4px 0 0' }}>Del catálogo, IVA incluido{nombreListaBase(store) ? ` (lista ${nombreListaBase(store)})` : ''}. Se cambia en el producto madre.</div>
+          {sinPrecio
+            ? <strong style={{ fontSize: 15, color: 'var(--crm-color-danger)' }}>sin precio</strong>
+            : <strong className={s.mono} style={{ fontSize: 16 }}>{precio}</strong>}
+          <div className={s.hint} style={{ margin: '4px 0 0' }}>
+            {sinPrecio
+              ? 'Este paquete no tiene formato de venta: la etiqueta va a salir sin precio.'
+              : <>Del formato de venta del paquete, IVA incluido{nombreListaBase(store) ? ` (lista ${nombreListaBase(store)})` : ''}. Se cambia en su ficha.</>}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           {puede
@@ -308,6 +388,13 @@ function FormEtiqueta({ p, pr, store, toast, puede, cfg, cant, setCant, venc, se
         </div>
       </div>
 
+      {sinPrecio && (
+        <div className={cx(s.callout, s.warn)} style={{ marginTop: 12 }}>
+          <strong>Este paquete todavía no tiene precio.</strong> Se puede imprimir igual (la etiqueta sale
+          con nombre, peso y código), pero va <strong>sin precio</strong> y la caja tampoco lo puede vender.
+          El precio se carga en la ficha del fraccionado, pestaña <strong>Formato de venta</strong>.
+        </div>
+      )}
       {info.aviso && (
         <div className={cx(s.callout, info.tipo === 'ean13' ? s.ok : s.warn)} style={{ marginTop: 12 }}>
           {info.aviso}

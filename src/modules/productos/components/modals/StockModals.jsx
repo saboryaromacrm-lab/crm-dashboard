@@ -86,8 +86,11 @@ export function VenderModal({ prodId, sucId: sucInit, pre = {} }) {
   const disp = store.cant(prod.id, parseInt(sucId, 10), presNum, 'disponible');
   const unidad = store.unidadDe(prod, presNum);
   const unitLabel = unidad === 'kg' ? 'kg' : presNum ? 'paquetes' : 'unidades';
-  const precio = presNum ? store.precioPresentacion(prod, presNum) : store.precioBaseVenta(prod);
-  const importe = (parseFloat(cant) || 0) * precio;
+  /* El precio de un paquete es SUYO y lo trae la API; `null` = sin formato de
+   * venta cargado, y entonces no se puede vender (la API también lo rechaza). */
+  const precio = presNum ? store.precioPaquete(prod, presNum) : store.precioBaseVenta(prod);
+  const sinPrecio = presNum != null && precio == null;
+  const importe = (parseFloat(cant) || 0) * (precio || 0);
 
   const registrar = async () => {
     const res = await store.opVenta({ productoId: prod.id, sucursalId: parseInt(sucId, 10), presId: presNum, cantidad: cant });
@@ -119,8 +122,11 @@ export function VenderModal({ prodId, sucId: sucInit, pre = {} }) {
         <label>Cantidad ({unitLabel}) <span className={s.req}>*</span></label>
         <input type="number" min="0" step={unidad === 'kg' ? '0.001' : '1'} value={cant} placeholder="0" onChange={(e) => setCant(e.target.value)} />
       </div>
-      <div className={cx(s.callout, s.ok)}>
-        Disponible: <strong>{store.fmtCant(prod, presNum, disp)}</strong> · Importe: <strong>{money(importe)}</strong>
+      <div className={cx(s.callout, sinPrecio ? s.warn : s.ok)}>
+        Disponible: <strong>{store.fmtCant(prod, presNum, disp)}</strong>
+        {sinPrecio
+          ? <> · ⚠ Este paquete <strong>no tiene precio cargado</strong>: cargale el formato de venta en su ficha antes de venderlo.</>
+          : <> · Importe: <strong>{money(importe)}</strong></>}
       </div>
     </ModalShell>
   );
@@ -165,7 +171,14 @@ export function FraccionarModal({ prodId, sucId: sucInit }) {
       <div className={s['pres-list']}>
         {prod.presentaciones.map((pr) => (
           <div key={pr.id} className={s['pres-row']} style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <div><div className={s['mini-label']}>{money(store.precioPresentacion(prod, pr))} · {num(pr.tamKg, 3)} kg</div></div>
+            <div>
+              <div className={s['mini-label']}>
+                {pr.precioFinal != null
+                  ? money(pr.precioFinal)
+                  : <span style={{ color: 'var(--crm-color-danger)' }}>sin precio</span>}
+                {' · '}{num(pr.tamKg, 3)} kg
+              </div>
+            </div>
             <div><input type="number" min="0" step="1" value={cants[pr.id]} onChange={(e) => setCants((c) => ({ ...c, [pr.id]: e.target.value }))} /></div>
           </div>
         ))}
