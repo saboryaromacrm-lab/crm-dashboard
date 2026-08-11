@@ -49,9 +49,24 @@ export function ofertaVigente(o, { ahora, sucursalId }) {
   return true;
 }
 
-/** ¿El alcance de la oferta incluye a este renglón? Varias filas = unión. */
+/**
+ * ¿El alcance de la oferta incluye a este renglón? Varias filas = unión.
+ *
+ * EL PAQUETE FRACCIONADO NO ES SU MADRE (0054). Los cuatro alcances de siempre
+ * se resuelven por datos de la MADRE —producto, marca, categoría, etiqueta— y el
+ * renglón de un paquete los hereda todos, así que sin este filtro una oferta a
+ * "Nuez Pecán" le bajaba el precio también a sus paquetes de 250 g. Nadie lo
+ * había decidido: era el efecto de comparar `productoId`. Ahora lo decide el
+ * tilde `incluyeFraccionados` de cada oferta, y el alcance `presentacion` apunta
+ * a UN paquete a propósito.
+ */
 export function alcanzaRenglon(o, r) {
+  const esPaquete = r.presentacionId != null;
   return (o.alcances ?? []).some((a) => {
+    if (a.tipo === 'presentacion') return esPaquete && r.presentacionId === a.refId;
+    // Los que se resuelven por la madre: al paquete solo lo alcanzan si la
+    // oferta lo dice.
+    if (esPaquete && !o.incluyeFraccionados) return false;
     switch (a.tipo) {
       case 'producto': return r.productoId === a.refId;
       case 'marca': return r.marcaId === a.refId;

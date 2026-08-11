@@ -11,7 +11,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { ventasApi, errorMsg } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO, TIPOS_OFERTA, norm } from '../../domain/constants.js';
-import { resolverOfertas, describirOferta } from '../../domain/ofertas.js';
+import { resolverOfertas, describirOferta, alcanzaRenglon } from '../../domain/ofertas.js';
 import { ModalShell, Btn, money, s } from '../ui.jsx';
 
 const DIAS = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
@@ -40,7 +40,10 @@ function AlcancePicker({ alcances, setAlcances, universo }) {
     return out;
   }, [q, alcances, universo]);
 
-  const etiquetaTipo = { producto: 'Producto', marca: 'Marca', categoria: 'Categoría', etiqueta: 'Etiqueta' };
+  const etiquetaTipo = {
+    producto: 'Producto', marca: 'Marca', categoria: 'Categoría', etiqueta: 'Etiqueta',
+    presentacion: 'Paquete',
+  };
 
   return (
     <div className={s.field}>
@@ -60,7 +63,7 @@ function AlcancePicker({ alcances, setAlcances, universo }) {
       </div>
       <input
         value={q}
-        placeholder="Buscá un producto, marca, categoría o etiqueta…"
+        placeholder="Buscá un producto, un paquete fraccionado, marca, categoría o etiqueta…"
         onChange={(e) => setQ(e.target.value)}
       />
       {opciones.length > 0 && (
@@ -107,12 +110,16 @@ function VistaPrevia({ oferta, items, alcances }) {
     } else if (oferta.tipo === 'ticket') {
       muestra = items.slice(0, 2).map((it) => ({ it, cantidad: 1 }));
     } else {
-      const objetivo = items.find((it) => alcances.some((a) => (
-        (a.tipo === 'producto' && it.productoId === a.refId && !it.presentacionId)
-        || (a.tipo === 'marca' && it.marcaId === a.refId)
-        || (a.tipo === 'categoria' && it.categoriaId === a.refId)
-        || (a.tipo === 'etiqueta' && (it.etiquetas ?? []).includes(a.refId))
-      )));
+      /* El artículo de muestra lo elige EL MOTOR, no una copia de sus reglas:
+       * así la vista previa respeta el alcance `presentacion` y el tilde de los
+       * fraccionados sin tener que repetir la lógica (y quedarse atrás). */
+      const objetivo = items.find((it) => alcanzaRenglon(oferta, {
+        productoId: it.productoId,
+        presentacionId: it.presentacionId ?? null,
+        marcaId: it.marcaId,
+        categoriaId: it.categoriaId,
+        etiquetas: it.etiquetas ?? [],
+      }));
       if (!objetivo) return null;
       // La cantidad justa para que la mecánica dispare (2ª unidad → 2, 3×2 → 3…).
       const cant = oferta.tipo === 'nxm' || oferta.tipo === 'pack' ? (oferta.lleva || 2)
@@ -121,8 +128,8 @@ function VistaPrevia({ oferta, items, alcances }) {
     }
 
     const renglones = muestra.map(({ it, cantidad }, i) => ({
-      key: it.key, uid: i, productoId: it.productoId, marcaId: it.marcaId,
-      categoriaId: it.categoriaId, etiquetas: it.etiquetas ?? [],
+      key: it.key, uid: i, productoId: it.productoId, presentacionId: it.presentacionId ?? null,
+      marcaId: it.marcaId, categoriaId: it.categoriaId, etiquetas: it.etiquetas ?? [],
       nombre: it.nombre, cantidad, precioUnitario: it.precio, descuento: 0,
       iva: it.iva, listaOrigen: 'base',
     }));
@@ -228,6 +235,7 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
     sucursales: oferta?.sucursales || '',
     mediosPago: oferta?.mediosPago || '',
     soloPrecioBase: oferta?.soloPrecioBase ?? true,
+    incluyeFraccionados: oferta?.incluyeFraccionados ?? false,
     activa: oferta?.activa ?? true,
   }));
   const [alcances, setAlcances] = useState(() => (oferta?.alcances ?? []).map((a) => ({
@@ -258,6 +266,7 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
     paga: Number(f.paga) || 0,
     montoMinimo: Number(f.montoMinimo) || 0,
     soloPrecioBase: f.soloPrecioBase,
+    incluyeFraccionados: f.incluyeFraccionados,
     alcances: alcances.map(({ tipo, refId }) => ({ tipo, refId })),
     componentes: componentes.map((c) => ({ productoId: c.productoId, cantidad: Number(c.cantidad) || 1 })),
   }), [f, alcances, componentes]);
@@ -308,6 +317,7 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
       sucursales: f.sucursales,
       mediosPago: f.mediosPago,
       soloPrecioBase: f.soloPrecioBase,
+      incluyeFraccionados: f.incluyeFraccionados,
       activa: f.activa,
       alcances: alcances.map(({ tipo, refId }) => ({ tipo, refId })),
       componentes: componentes.map((c) => ({ productoId: c.productoId, cantidad: Number(c.cantidad) || 1 })),
@@ -501,6 +511,24 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
             mayorista no recibe además la promo (evita el doble beneficio).
           </span>
         </label>
+
+        {/* El paquete fraccionado se cotiza solo, así que una oferta a la madre
+            no lo alcanza salvo que se diga. Antes lo alcanzaba siempre, sin que
+            nadie lo hubiera decidido. */}
+        {meta.alcance && alcances.some((a) => a.tipo !== 'presentacion') && (
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
+            <input
+              type="checkbox" checked={f.incluyeFraccionados}
+              onChange={(e) => set({ incluyeFraccionados: e.target.checked })}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              Incluir también los <strong>paquetes fraccionados</strong> de esos productos — el
+              paquete tiene su propio precio, así que por defecto la oferta no lo toca. Para poner
+              en oferta UN tamaño puntual, elegilo arriba como <strong>Paquete</strong>.
+            </span>
+          </label>
+        )}
 
         {/* --- EN VIVO --- */}
         <VistaPrevia oferta={enVivo} items={items} alcances={alcances} />

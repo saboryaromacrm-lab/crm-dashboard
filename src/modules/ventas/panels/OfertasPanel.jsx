@@ -66,7 +66,13 @@ export function OfertasPanel() {
       if (!vistos.has(k)) { vistos.add(k); out.push({ tipo, refId, nombre }); }
     };
     for (const it of items) {
-      if (!it.presentacionId) add('producto', it.productoId, it.nombre);
+      if (it.presentacionId) {
+        /* El PAQUETE fraccionado es un destino propio desde la 0054: "Lentejas
+         * 500 g" en oferta sin tocar el kilo suelto ni los otros tamaños. */
+        add('presentacion', it.presentacionId, `${it.nombre} · ${it.detalle}`);
+      } else {
+        add('producto', it.productoId, it.nombre);
+      }
       add('marca', it.marcaId, it.marca);
       add('categoria', it.categoriaId, it.categoria);
     }
@@ -84,7 +90,11 @@ export function OfertasPanel() {
         .map((c) => `${c.cantidad}× ${items.find((i) => i.productoId === c.productoId && !i.presentacionId)?.nombre ?? `#${c.productoId}`}`)
         .join(' + ');
     }
-    return (o.alcances ?? []).map(nombreDe).join(', ') || '—';
+    const base = (o.alcances ?? []).map(nombreDe).join(', ') || '—';
+    /* Que la oferta alcance o no a los paquetes es parte de su alcance: si no se
+     * ve en el listado, la única forma de saberlo es abrir cada oferta. */
+    const porLaMadre = (o.alcances ?? []).some((a) => a.tipo !== 'presentacion');
+    return porLaMadre && o.incluyeFraccionados ? `${base} (+ sus fraccionados)` : base;
   };
 
   const condiciones = (o) => {
