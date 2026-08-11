@@ -376,6 +376,49 @@
 
 .section-title { font-size: 13px; font-weight: 700; margin: 16px 0 8px; color: var(--crm-color-text); }
 
+/* PESTAÑAS de carpeta (la solapa que se levanta). Mismo lenguaje visual que las
+   pestañas del POS —pedido del dueño: "parecido a la que tiene POS"— pero las de
+   allá viven en el CSS de Ventas y traerlas cruzaría dos módulos por 18 líneas de
+   estilo. Si aparece un tercer caso, extraer un componente compartido. */
+.pestanas {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  border-bottom: 2px solid var(--crm-color-border);
+  margin: 14px 0 0;
+}
+.pestana {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--crm-color-border);
+  border-bottom: 0;
+  border-radius: var(--crm-radius-md) var(--crm-radius-md) 0 0;
+  background: var(--crm-color-bg);
+  color: var(--crm-color-text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.pestana:hover { color: var(--crm-color-text); }
+.pestanaActiva {
+  background: var(--crm-color-surface);
+  color: var(--crm-color-text);
+  font-weight: 600;
+  border-color: var(--crm-color-primary);
+  border-bottom: 2px solid var(--crm-color-surface);
+}
+/* El contador de cada pestaña: cuántos renglones lleva ese grupo. */
+.pestanaBadge {
+  background: color-mix(in srgb, var(--crm-color-primary) 14%, transparent);
+  color: var(--crm-color-primary);
+  border-radius: var(--crm-radius-pill);
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 /* Cabecera de sección PLEGABLE: mismo peso visual que `.section-title` pero
    clicable. Para bloques largos que no son lo primero que se viene a mirar. */
 .desplegable {

@@ -76,6 +76,21 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
   const [items, setItems] = useState(() => (itemsIniciales?.length ? itemsIniciales : []));
   const [q, setQ] = useState('');
   const [soloSinStock, setSoloSinStock] = useState(false);
+  /**
+   * En qué grupo se está trabajando MIENTRAS se arma la lista. El pedido que
+   * sale es UNO solo: esto no lo parte, solo separa la vista — las cajeras
+   * recorren la góndola de los enteros y la de los granel en dos recorridos
+   * distintos, y mezclarlos en una lista larga hace perder el lugar.
+   *
+   * Arranca en el grupo del PRIMER renglón cuando el modal abre con cosas
+   * cargadas (el sugerido por stock bajo): si no, abriría en una pestaña vacía
+   * teniendo renglones en la otra.
+   */
+  const [grupo, setGrupo] = useState(() => {
+    const primero = itemsIniciales?.[0];
+    const prod = primero ? store.getProducto(parseInt(primero.prodId, 10)) : null;
+    return prod ? listaDeProducto(prod) : 'enteros';
+  });
 
   const origenNum = parseInt(origenId, 10) || null;
   const destinoNum = parseInt(destinoId, 10) || null;
@@ -86,6 +101,9 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
    * Total disponible en una sucursal. Para granel se convierte a KG
    * equivalentes (suelto + paquetes × tamaño): sumar "45 kg + 2 paquetes"
    * como 47 dice algo; sumarlo crudo no.
+   *
+   * Es la medida del DESTINO: lo que la sucursal tiene para vender, en
+   * cualquier forma. Para el ORIGEN se usa `dispParaEnviar`.
    */
   const dispTotal = (p, sucId) => {
     if (!sucId) return 0;
@@ -95,6 +113,23 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
       const pres = st.presentacionId ? (p.presentaciones || []).find((x) => x.id === st.presentacionId) : null;
       return a + st.cantidad * (pres ? pres.tamKg : 1);
     }, 0);
+  };
+
+  /**
+   * LO QUE EL ORIGEN PUEDE MANDAR, que no es lo mismo que lo que tiene.
+   *
+   * Regla del dueño: **todo lo que se pide para una sucursal se fracciona del
+   * producto madre**. Los paquetes que ya están armados en la Distribuidora son
+   * su góndola —se venden ahí— y no viajan. Así que para un granel lo que
+   * respalda el pedido es el **granel suelto en kg**, no los paquetes.
+   *
+   * Mostrar los paquetes acá era peor que no mostrar nada: "10 paq." al lado de
+   * un pedido de 8 daba tranquilidad sobre mercadería que no se iba a mandar.
+   */
+  const dispParaEnviar = (p, sucId) => {
+    if (!sucId) return 0;
+    if (p.tipo !== 'granel') return store.suma({ productoId: p.id, sucursalId: sucId, estado: 'disponible' });
+    return store.cant(p.id, sucId, null, 'disponible');
   };
 
   const resultados = useMemo(() => {
@@ -121,6 +156,9 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
       return [{ prodId: String(p.id), presId: '', cant: '1' }, ...rows];
     });
     setQ('');
+    // Se salta a la pestaña del producto que se acaba de agregar: si no, el
+    // renglón cae en la otra y parece que el clic no hizo nada.
+    setGrupo(listaDeProducto(p));
   };
 
   const setItem = (i, patch) => setItems((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -187,7 +225,8 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
       {resultados.length > 0 && (
         <div className={s.card} style={{ padding: 0, marginTop: 6, overflow: 'hidden' }}>
           {resultados.map((p) => {
-            const enOrigen = dispTotal(p, origenNum);
+            // Origen: lo que puede MANDAR (el granel). Destino: lo que TIENE.
+            const enOrigen = dispParaEnviar(p, origenNum);
             const aca = dispTotal(p, destinoNum);
             return (
               <div
@@ -216,8 +255,35 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
         <div className={s.hint}>Nada coincide{soloSinStock ? ' entre los productos sin stock' : ''}.</div>
       )}
 
-      <div className={s['section-title']} style={{ marginTop: 12 }}>
-        Pedido ({items.length}) — el último agregado queda arriba
+      {/* Dos grupos SOLO para armar: el pedido que sale es uno. Es el recorrido
+          real de la góndola — los enteros por un lado, el granel por otro. */}
+      <div className={s.pestanas} role="tablist" aria-label="Cómo se agrupan los renglones del pedido">
+        {[
+          { id: 'enteros', label: 'Prod. Enteros' },
+          { id: 'granel', label: 'Prod. a granel' },
+        ].map((g) => {
+          const n = items.filter((it) => {
+            const prod = store.getProducto(parseInt(it.prodId, 10));
+            return prod && listaDeProducto(prod) === g.id;
+          }).length;
+          return (
+            <button
+              key={g.id}
+              type="button"
+              role="tab"
+              aria-selected={grupo === g.id}
+              className={cx(s.pestana, grupo === g.id && s.pestanaActiva)}
+              onClick={() => setGrupo(g.id)}
+            >
+              {g.label}
+              {n > 0 && <span className={s.pestanaBadge}>{n}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className={s['section-title']} style={{ marginTop: 8 }}>
+        Pedido ({items.length} en total) — el último agregado queda arriba
       </div>
       <Table
         cols={[
@@ -225,53 +291,88 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
           { h: `En ${origen?.nombre ?? 'origen'}`, num: true }, { h: `En ${destino?.nombre ?? 'destino'}`, num: true },
           { h: 'Cantidad', num: true }, { h: '', cls: 'actions-col' },
         ]}
-        empty="Todavía no agregaste productos. Buscá arriba y agregá con un clic o Enter."
+        empty={grupo === 'granel'
+          ? 'Todavía no agregaste productos a granel. Buscalos arriba: se agregan solos a esta pestaña.'
+          : 'Todavía no agregaste productos enteros. Buscá arriba y agregá con un clic o Enter.'}
       >
-        {items.map((it, i) => {
-          const prod = store.getProducto(parseInt(it.prodId, 10));
-          if (!prod) return null;
-          const presNum = it.presId ? parseInt(it.presId, 10) : null;
-          const enOrigen = origenNum ? store.cant(prod.id, origenNum, presNum, 'disponible') : 0;
-          const aca = destinoNum ? store.cant(prod.id, destinoNum, presNum, 'disponible') : 0;
-          return (
-            <tr key={`${it.prodId}-${it.presId}-${i}`}>
-              <td>
-                <strong>{prod.nombre}</strong>
-                <div className={s.hint} style={{ margin: 0 }}>{prod.marca || 'Sin marca'}</div>
-              </td>
-              <td>
-                <select value={it.presId} onChange={(e) => setItem(i, { presId: e.target.value })}>
-                  {presentacionOptions(prod, true)}
-                </select>
-              </td>
-              {/* El disponible es informativo: orienta el pedido, no lo limita. */}
-              <td className={cx(s.num, s.mono)} style={enOrigen > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}>
-                {store.fmtCant(prod, presNum, enOrigen)}
-              </td>
-              <td className={cx(s.num, s.mono)} style={aca > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}>
-                {store.fmtCant(prod, presNum, aca)}
-              </td>
-              <td className={s.num}>
-                {/* La flechita va DE A 1 (antes sumaba 0.001 y "1" pasaba a
-                    "1,001"). Para kg con coma se tipea el número directo. */}
-                <input
-                  type="number" min="0" step="1"
-                  value={it.cant}
-                  style={{ width: 90, textAlign: 'right' }}
-                  onChange={(e) => setItem(i, { cant: e.target.value })}
-                />
-              </td>
-              <td className={s['actions-col']}>
-                <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>
-              </td>
-            </tr>
-          );
-        })}
+        {items
+          // El índice ORIGINAL viaja con la fila: editar y borrar apuntan a la
+          // lista completa, no a la vista filtrada.
+          .map((it, i) => ({ it, i }))
+          .filter(({ it }) => {
+            const prod = store.getProducto(parseInt(it.prodId, 10));
+            return prod && listaDeProducto(prod) === grupo;
+          })
+          .map(({ it, i }) => {
+            const prod = store.getProducto(parseInt(it.prodId, 10));
+            const presNum = it.presId ? parseInt(it.presId, 10) : null;
+            const esGranel = prod.tipo === 'granel';
+            /*
+             * ORIGEN: lo que puede mandar. En un granel es SIEMPRE el granel
+             * suelto —de ahí se fracciona— sin importar qué presentación se
+             * pidió; los paquetes que ya están armados en la Distribuidora son
+             * su góndola y no viajan.
+             */
+            const enOrigen = origenNum ? dispParaEnviar(prod, origenNum) : 0;
+            const aca = destinoNum ? store.cant(prod.id, destinoNum, presNum, 'disponible') : 0;
+            // Cuántos kg de granel hace falta fraccionar para este renglón.
+            const pres = presNum ? (prod.presentaciones || []).find((x) => x.id === presNum) : null;
+            const pideKg = esGranel
+              ? (parseFloat(it.cant) || 0) * (pres ? pres.tamKg : 1)
+              : 0;
+            const alcanza = !esGranel || pideKg <= enOrigen + 1e-9;
+            return (
+              <tr key={`${it.prodId}-${it.presId}-${i}`}>
+                <td>
+                  <strong>{prod.nombre}</strong>
+                  <div className={s.hint} style={{ margin: 0 }}>{prod.marca || 'Sin marca'}</div>
+                </td>
+                <td>
+                  <select value={it.presId} onChange={(e) => setItem(i, { presId: e.target.value })}>
+                    {presentacionOptions(prod, true)}
+                  </select>
+                </td>
+                {/* El disponible es informativo: orienta el pedido, no lo limita. */}
+                <td
+                  className={cx(s.num, s.mono)}
+                  style={alcanza && enOrigen > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}
+                >
+                  {store.fmtCant(prod, esGranel ? null : presNum, enOrigen)}
+                  {esGranel && pideKg > 0 && (
+                    <div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
+                      {alcanza
+                        ? `se fraccionan ${num(pideKg, 3)} kg`
+                        : `faltan ${num(pideKg - enOrigen, 3)} kg`}
+                    </div>
+                  )}
+                </td>
+                <td className={cx(s.num, s.mono)} style={aca > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}>
+                  {store.fmtCant(prod, presNum, aca)}
+                </td>
+                <td className={s.num}>
+                  {/* La flechita va DE A 1 (antes sumaba 0.001 y "1" pasaba a
+                      "1,001"). Para kg con coma se tipea el número directo. */}
+                  <input
+                    type="number" min="0" step="1"
+                    value={it.cant}
+                    style={{ width: 90, textAlign: 'right' }}
+                    onChange={(e) => setItem(i, { cant: e.target.value })}
+                  />
+                </td>
+                <td className={s['actions-col']}>
+                  <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>
+                </td>
+              </tr>
+            );
+          })}
       </Table>
 
       <div className={s.hint}>
         El pedido es <strong>demanda</strong>: no toca ni exige stock. El origen lo divide en sus dos
-        listas al preparar y la reserva llega recién cuando cada encargado confirma la suya.
+        listas al preparar y la reserva llega recién cuando cada encargado confirma la suya. En los
+        productos a granel, la columna de <strong>{origen?.nombre ?? 'origen'}</strong> muestra el
+        <strong> granel suelto</strong>: los paquetes se fraccionan del madre al preparar, y los que ya
+        están armados allá son su góndola.
       </div>
     </ModalShell>
   );
