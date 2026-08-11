@@ -43,10 +43,20 @@ function fmtFecha(marca) {
 
 const porFechaDesc = (a, b) => (b.actualizado || '').localeCompare(a.actualizado || '');
 
-/** `**negrita**` → <strong>. Es el único formato que admite el contenido. */
+/**
+ * `**negrita**` y `*cursiva*` → <strong> / <em>. Los dos únicos formatos que
+ * admite el contenido.
+ *
+ * La negrita se resuelve PRIMERO y la cursiva se busca dentro de cada trozo
+ * suelto: al revés, un `**` se comería como dos cursivas vacías. Lo que no
+ * cierra queda como texto tal cual — es un manual, no un editor.
+ */
 function Texto({ children }) {
-  const partes = String(children).split(/\*\*(.+?)\*\*/g);
-  return partes.map((p, i) => (i % 2 ? <strong key={i}>{p}</strong> : p));
+  const negritas = String(children).split(/\*\*(.+?)\*\*/g);
+  return negritas.map((p, i) => {
+    if (i % 2) return <strong key={i}>{p}</strong>;
+    return p.split(/\*([^*]+?)\*/g).map((q, j) => (j % 2 ? <em key={`${i}-${j}`}>{q}</em> : q));
+  });
 }
 
 function Bloque({ b }) {

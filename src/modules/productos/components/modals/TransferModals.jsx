@@ -48,6 +48,17 @@ export function difiereDelPedido(t) {
 const normTxt = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
 /**
+ * Las dos pestañas con las que se ARMA el pedido, en el orden en que las
+ * recorren las cajeras. Usan las mismas claves que las listas de preparación
+ * (`listaDeProducto`), así que la vista de la cajera y el trabajo del origen
+ * hablan de los mismos dos grupos.
+ */
+const GRUPOS_PEDIDO = [
+  { id: 'enteros', label: 'Prod. Enteros' },
+  { id: 'granel', label: 'Prod. a granel' },
+];
+
+/**
  * El pedido se arma con un BUSCADOR (como el legacy): se tipea, se agrega y el
  * último queda arriba. Cada renglón muestra el stock de las DOS puntas — lo
  * que tiene el origen (¿puede mandarme?) y lo que me queda a mí (¿necesito
@@ -91,6 +102,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
     const prod = primero ? store.getProducto(parseInt(primero.prodId, 10)) : null;
     return prod ? listaDeProducto(prod) : 'enteros';
   });
+  const otroGrupo = GRUPOS_PEDIDO.find((g) => g.id !== grupo);
 
   const origenNum = parseInt(origenId, 10) || null;
   const destinoNum = parseInt(destinoId, 10) || null;
@@ -132,20 +144,41 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
     return store.cant(p.id, sucId, null, 'disponible');
   };
 
-  const resultados = useMemo(() => {
+  /**
+   * Cada pestaña busca SOLO lo suyo: parado en "Prod. Enteros" no aparece un
+   * granel. Si no, el buscador obliga a leer el tipo de cada resultado antes de
+   * hacer clic, que es justo el trabajo que las pestañas vinieron a sacar.
+   *
+   * Se cuentan igual las coincidencias de la OTRA pestaña (`otros`) para no
+   * dejar un "nada coincide" mentiroso cuando el producto existe al lado.
+   */
+  const busqueda = useMemo(() => {
     const ql = normTxt(q);
-    if (!ql && !soloSinStock) return [];
-    const out = [];
+    if (!ql && !soloSinStock) return { lista: [], otros: 0 };
+    const lista = [];
+    let otros = 0;
     for (const p of store.state.productos) {
       if (soloSinStock && dispTotal(p, destinoNum) > 1e-9) continue;
       if (ql && !(normTxt(p.nombre).includes(ql) || normTxt(p.marca).includes(ql)
         || (p.codigoBarras || '').includes(q.trim()) || (p.codigoPropio || '').includes(q.trim()))) continue;
-      out.push(p);
-      if (out.length >= 8) break;
+      if (listaDeProducto(p) !== grupo) { otros += 1; continue; }
+      if (lista.length < 8) lista.push(p);
     }
-    return out;
+    return { lista, otros };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.state.productos, store.state.stock, q, soloSinStock, destinoNum]);
+  }, [store.state.productos, store.state.stock, q, soloSinStock, destinoNum, grupo]);
+  const resultados = busqueda.lista;
+
+  /** Cuántos renglones cayeron en cada pestaña (el pedido sigue siendo UNO). */
+  const porGrupo = useMemo(() => {
+    const c = { enteros: 0, granel: 0 };
+    for (const it of items) {
+      const prod = store.getProducto(parseInt(it.prodId, 10));
+      if (prod) c[listaDeProducto(prod)] += 1;
+    }
+    return c;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, store.state.productos]);
 
   /** Agrega arriba de todo; si ya está (misma presentación base), suma 1. */
   const agregar = (p) => {
@@ -156,9 +189,8 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
       return [{ prodId: String(p.id), presId: '', cant: '1' }, ...rows];
     });
     setQ('');
-    // Se salta a la pestaña del producto que se acaba de agregar: si no, el
-    // renglón cae en la otra y parece que el clic no hizo nada.
-    setGrupo(listaDeProducto(p));
+    // No hace falta saltar de pestaña: el buscador de cada una solo ofrece lo
+    // suyo, así que el renglón cae siempre en la que está a la vista.
   };
 
   const setItem = (i, patch) => setItems((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -207,165 +239,182 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial }
         </div>
       </div>
 
-      <div className={s.toolbar} style={{ marginTop: 4 }}>
-        <input
-          type="search"
-          autoFocus
-          placeholder="Buscar producto por nombre, marca o código y agregarlo con Enter…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar(resultados[0]); } }}
-        />
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
-          <input type="checkbox" checked={soloSinStock} onChange={(e) => setSoloSinStock(e.target.checked)} />
-          Ver solo sin stock en {destino?.nombre ?? 'mi sucursal'}
-        </label>
-      </div>
-
-      {resultados.length > 0 && (
-        <div className={s.card} style={{ padding: 0, marginTop: 6, overflow: 'hidden' }}>
-          {resultados.map((p) => {
-            // Origen: lo que puede MANDAR (el granel). Destino: lo que TIENE.
-            const enOrigen = dispParaEnviar(p, origenNum);
-            const aca = dispTotal(p, destinoNum);
-            return (
-              <div
-                key={p.id}
-                className={s.clickable}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderBottom: '1px solid var(--crm-color-border)', cursor: 'pointer' }}
-                onClick={() => agregar(p)}
-              >
-                <span style={{ flex: 1 }}>
-                  <strong>{p.nombre}</strong>
-                  <span className={s.muted}> · {p.marca || 'Sin marca'}</span>
-                </span>
-                <span className={cx(s.mono)} style={{ fontSize: 12.5, color: enOrigen > 0 ? 'var(--crm-color-text-secondary)' : 'var(--crm-color-accent-2)' }}>
-                  {origen?.nombre}: {store.fmtCant(p, null, enOrigen)}
-                </span>
-                <span className={cx(s.mono)} style={{ fontSize: 12.5, color: aca > 0 ? 'var(--crm-color-text-secondary)' : 'var(--crm-color-accent-2)' }}>
-                  acá: {store.fmtCant(p, null, aca)}
-                </span>
-                <span style={{ color: 'var(--crm-color-primary)', fontWeight: 700 }}>+ Agregar</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {q && !resultados.length && (
-        <div className={s.hint}>Nada coincide{soloSinStock ? ' entre los productos sin stock' : ''}.</div>
-      )}
-
       {/* Dos grupos SOLO para armar: el pedido que sale es uno. Es el recorrido
-          real de la góndola — los enteros por un lado, el granel por otro. */}
-      <div className={s.pestanas} role="tablist" aria-label="Cómo se agrupan los renglones del pedido">
-        {[
-          { id: 'enteros', label: 'Prod. Enteros' },
-          { id: 'granel', label: 'Prod. a granel' },
-        ].map((g) => {
-          const n = items.filter((it) => {
-            const prod = store.getProducto(parseInt(it.prodId, 10));
-            return prod && listaDeProducto(prod) === g.id;
-          }).length;
-          return (
-            <button
-              key={g.id}
-              type="button"
-              role="tab"
-              aria-selected={grupo === g.id}
-              className={cx(s.pestana, grupo === g.id && s.pestanaActiva)}
-              onClick={() => setGrupo(g.id)}
-            >
-              {g.label}
-              {n > 0 && <span className={s.pestanaBadge}>{n}</span>}
-            </button>
-          );
-        })}
+          real de la góndola — los enteros por un lado, el granel por otro.
+          Van ARRIBA del buscador porque manda sobre él: cada pestaña busca,
+          ofrece y lista únicamente sus productos. */}
+      <div className={s.pestanas} role="tablist" aria-label="Cómo se agrupan los renglones del pedido" style={{ marginTop: 4 }}>
+        {GRUPOS_PEDIDO.map((g) => (
+          <button
+            key={g.id}
+            type="button"
+            role="tab"
+            aria-selected={grupo === g.id}
+            className={cx(s.pestana, grupo === g.id && s.pestanaActiva)}
+            onClick={() => setGrupo(g.id)}
+          >
+            {g.label}
+            {porGrupo[g.id] > 0 && <span className={s.pestanaBadge}>{porGrupo[g.id]}</span>}
+          </button>
+        ))}
       </div>
 
-      <div className={s['section-title']} style={{ marginTop: 8 }}>
-        Pedido ({items.length} en total) — el último agregado queda arriba
-      </div>
-      <Table
-        cols={[
-          { h: 'Producto' }, { h: 'Present.' },
-          { h: `En ${origen?.nombre ?? 'origen'}`, num: true }, { h: `En ${destino?.nombre ?? 'destino'}`, num: true },
-          { h: 'Cantidad', num: true }, { h: '', cls: 'actions-col' },
-        ]}
-        empty={grupo === 'granel'
-          ? 'Todavía no agregaste productos a granel. Buscalos arriba: se agregan solos a esta pestaña.'
-          : 'Todavía no agregaste productos enteros. Buscá arriba y agregá con un clic o Enter.'}
-      >
-        {items
-          // El índice ORIGINAL viaja con la fila: editar y borrar apuntan a la
-          // lista completa, no a la vista filtrada.
-          .map((it, i) => ({ it, i }))
-          .filter(({ it }) => {
-            const prod = store.getProducto(parseInt(it.prodId, 10));
-            return prod && listaDeProducto(prod) === grupo;
-          })
-          .map(({ it, i }) => {
-            const prod = store.getProducto(parseInt(it.prodId, 10));
-            const presNum = it.presId ? parseInt(it.presId, 10) : null;
-            const esGranel = prod.tipo === 'granel';
-            /*
-             * ORIGEN: lo que puede mandar. En un granel es SIEMPRE el granel
-             * suelto —de ahí se fracciona— sin importar qué presentación se
-             * pidió; los paquetes que ya están armados en la Distribuidora son
-             * su góndola y no viajan.
-             */
-            const enOrigen = origenNum ? dispParaEnviar(prod, origenNum) : 0;
-            const aca = destinoNum ? store.cant(prod.id, destinoNum, presNum, 'disponible') : 0;
-            // Cuántos kg de granel hace falta fraccionar para este renglón.
-            const pres = presNum ? (prod.presentaciones || []).find((x) => x.id === presNum) : null;
-            const pideKg = esGranel
-              ? (parseFloat(it.cant) || 0) * (pres ? pres.tamKg : 1)
-              : 0;
-            const alcanza = !esGranel || pideKg <= enOrigen + 1e-9;
-            return (
-              <tr key={`${it.prodId}-${it.presId}-${i}`}>
-                <td>
-                  <strong>{prod.nombre}</strong>
-                  <div className={s.hint} style={{ margin: 0 }}>{prod.marca || 'Sin marca'}</div>
-                </td>
-                <td>
-                  <select value={it.presId} onChange={(e) => setItem(i, { presId: e.target.value })}>
-                    {presentacionOptions(prod, true)}
-                  </select>
-                </td>
-                {/* El disponible es informativo: orienta el pedido, no lo limita. */}
-                <td
-                  className={cx(s.num, s.mono)}
-                  style={alcanza && enOrigen > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}
+      <div role="tabpanel">
+        <div className={s.toolbar} style={{ marginTop: 4 }}>
+          <input
+            type="search"
+            autoFocus
+            placeholder={grupo === 'granel'
+              ? 'Buscar un producto a granel por nombre, marca o código y agregarlo con Enter…'
+              : 'Buscar un producto entero por nombre, marca o código y agregarlo con Enter…'}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar(resultados[0]); } }}
+          />
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+            <input type="checkbox" checked={soloSinStock} onChange={(e) => setSoloSinStock(e.target.checked)} />
+            Ver solo sin stock en {destino?.nombre ?? 'mi sucursal'}
+          </label>
+        </div>
+
+        {resultados.length > 0 && (
+          <div className={s.card} style={{ padding: 0, marginTop: 6, overflow: 'hidden' }}>
+            {resultados.map((p) => {
+              // Origen: lo que puede MANDAR (el granel). Destino: lo que TIENE.
+              const enOrigen = dispParaEnviar(p, origenNum);
+              const aca = dispTotal(p, destinoNum);
+              return (
+                <div
+                  key={p.id}
+                  className={s.clickable}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderBottom: '1px solid var(--crm-color-border)', cursor: 'pointer' }}
+                  onClick={() => agregar(p)}
                 >
-                  {store.fmtCant(prod, esGranel ? null : presNum, enOrigen)}
-                  {esGranel && pideKg > 0 && (
-                    <div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
-                      {alcanza
-                        ? `se fraccionan ${num(pideKg, 3)} kg`
-                        : `faltan ${num(pideKg - enOrigen, 3)} kg`}
-                    </div>
-                  )}
-                </td>
-                <td className={cx(s.num, s.mono)} style={aca > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}>
-                  {store.fmtCant(prod, presNum, aca)}
-                </td>
-                <td className={s.num}>
-                  {/* La flechita va DE A 1 (antes sumaba 0.001 y "1" pasaba a
-                      "1,001"). Para kg con coma se tipea el número directo. */}
-                  <input
-                    type="number" min="0" step="1"
-                    value={it.cant}
-                    style={{ width: 90, textAlign: 'right' }}
-                    onChange={(e) => setItem(i, { cant: e.target.value })}
-                  />
-                </td>
-                <td className={s['actions-col']}>
-                  <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>
-                </td>
-              </tr>
-            );
-          })}
-      </Table>
+                  <span style={{ flex: 1 }}>
+                    <strong>{p.nombre}</strong>
+                    <span className={s.muted}> · {p.marca || 'Sin marca'}</span>
+                  </span>
+                  <span className={cx(s.mono)} style={{ fontSize: 12.5, color: enOrigen > 0 ? 'var(--crm-color-text-secondary)' : 'var(--crm-color-accent-2)' }}>
+                    {origen?.nombre}: {store.fmtCant(p, null, enOrigen)}
+                  </span>
+                  <span className={cx(s.mono)} style={{ fontSize: 12.5, color: aca > 0 ? 'var(--crm-color-text-secondary)' : 'var(--crm-color-accent-2)' }}>
+                    acá: {store.fmtCant(p, null, aca)}
+                  </span>
+                  <span style={{ color: 'var(--crm-color-primary)', fontWeight: 700 }}>+ Agregar</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {/* Un buscador acotado puede decir "no existe" de algo que sí existe: si
+            la coincidencia está en la otra pestaña, se avisa y se ofrece ir. */}
+        {(q || soloSinStock) && !resultados.length && (
+          <div className={s.hint}>
+            {busqueda.otros > 0 ? (
+              <>
+                Nada coincide entre los productos {grupo === 'granel' ? 'a granel' : 'enteros'}
+                {soloSinStock ? ' sin stock' : ''}, pero hay {busqueda.otros}{' '}
+                {grupo === 'granel' ? 'entre los enteros' : 'a granel'}.{' '}
+                <button
+                  type="button"
+                  className={s.linkBtn}
+                  onClick={() => setGrupo(grupo === 'granel' ? 'enteros' : 'granel')}
+                >
+                  Ver {otroGrupo.label}
+                </button>
+              </>
+            ) : (
+              <>Nada coincide{soloSinStock ? ' entre los productos sin stock' : ''}.</>
+            )}
+          </div>
+        )}
+
+        <div className={s['section-title']} style={{ marginTop: 8 }}>
+          {grupo === 'granel' ? 'A granel' : 'Enteros'} en el pedido ({porGrupo[grupo]} de {items.length} en
+          total) — el último agregado queda arriba
+        </div>
+        <Table
+          cols={[
+            { h: 'Producto' }, { h: 'Present.' },
+            { h: `En ${origen?.nombre ?? 'origen'}`, num: true }, { h: `En ${destino?.nombre ?? 'destino'}`, num: true },
+            { h: 'Cantidad', num: true }, { h: '', cls: 'actions-col' },
+          ]}
+          empty={grupo === 'granel'
+            ? 'Todavía no agregaste productos a granel. Buscalos con el buscador de esta pestaña.'
+            : 'Todavía no agregaste productos enteros. Buscá arriba y agregá con un clic o Enter.'}
+        >
+          {items
+            // El índice ORIGINAL viaja con la fila: editar y borrar apuntan a la
+            // lista completa, no a la vista filtrada.
+            .map((it, i) => ({ it, i }))
+            .filter(({ it }) => {
+              const prod = store.getProducto(parseInt(it.prodId, 10));
+              return prod && listaDeProducto(prod) === grupo;
+            })
+            .map(({ it, i }) => {
+              const prod = store.getProducto(parseInt(it.prodId, 10));
+              const presNum = it.presId ? parseInt(it.presId, 10) : null;
+              const esGranel = prod.tipo === 'granel';
+              /*
+               * ORIGEN: lo que puede mandar. En un granel es SIEMPRE el granel
+               * suelto —de ahí se fracciona— sin importar qué presentación se
+               * pidió; los paquetes que ya están armados en la Distribuidora son
+               * su góndola y no viajan.
+               */
+              const enOrigen = origenNum ? dispParaEnviar(prod, origenNum) : 0;
+              const aca = destinoNum ? store.cant(prod.id, destinoNum, presNum, 'disponible') : 0;
+              // Cuántos kg de granel hace falta fraccionar para este renglón.
+              const pres = presNum ? (prod.presentaciones || []).find((x) => x.id === presNum) : null;
+              const pideKg = esGranel
+                ? (parseFloat(it.cant) || 0) * (pres ? pres.tamKg : 1)
+                : 0;
+              const alcanza = !esGranel || pideKg <= enOrigen + 1e-9;
+              return (
+                <tr key={`${it.prodId}-${it.presId}-${i}`}>
+                  <td>
+                    <strong>{prod.nombre}</strong>
+                    <div className={s.hint} style={{ margin: 0 }}>{prod.marca || 'Sin marca'}</div>
+                  </td>
+                  <td>
+                    <select value={it.presId} onChange={(e) => setItem(i, { presId: e.target.value })}>
+                      {presentacionOptions(prod, true)}
+                    </select>
+                  </td>
+                  {/* El disponible es informativo: orienta el pedido, no lo limita. */}
+                  <td
+                    className={cx(s.num, s.mono)}
+                    style={alcanza && enOrigen > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}
+                  >
+                    {store.fmtCant(prod, esGranel ? null : presNum, enOrigen)}
+                    {esGranel && pideKg > 0 && (
+                      <div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
+                        {alcanza
+                          ? `se fraccionan ${num(pideKg, 3)} kg`
+                          : `faltan ${num(pideKg - enOrigen, 3)} kg`}
+                      </div>
+                    )}
+                  </td>
+                  <td className={cx(s.num, s.mono)} style={aca > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}>
+                    {store.fmtCant(prod, presNum, aca)}
+                  </td>
+                  <td className={s.num}>
+                    {/* La flechita va DE A 1 (antes sumaba 0.001 y "1" pasaba a
+                        "1,001"). Para kg con coma se tipea el número directo. */}
+                    <input
+                      type="number" min="0" step="1"
+                      value={it.cant}
+                      style={{ width: 90, textAlign: 'right' }}
+                      onChange={(e) => setItem(i, { cant: e.target.value })}
+                    />
+                  </td>
+                  <td className={s['actions-col']}>
+                    <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>
+                  </td>
+                </tr>
+              );
+            })}
+        </Table>
+      </div>
 
       <div className={s.hint}>
         El pedido es <strong>demanda</strong>: no toca ni exige stock. El origen lo divide en sus dos
