@@ -1,4 +1,5 @@
 import { appConfig } from '@core/config/app.config.js';
+import { leerSesion, limpiarSesion } from '@core/auth/sesion.js';
 
 /**
  * Thin, dependency-free HTTP client built on fetch.
@@ -7,6 +8,10 @@ import { appConfig } from '@core/config/app.config.js';
  * cross-cutting concerns (base URL, auth header, timeout, error normalization,
  * future retry/telemetry) are configured in ONE place. Swapping to axios or
  * adding interceptors later means editing this file only.
+ *
+ * ACÁ VIAJA LA CREDENCIAL. Desde que la API se cerró, cada llamada tiene que
+ * llevar el token de la sesión: es el único lugar por donde pasan todas, así
+ * que es el único lugar donde hay que ponerlo.
  */
 
 class HttpError extends Error {
@@ -18,7 +23,33 @@ class HttpError extends Error {
   }
 }
 
-async function request(method, path, { body, headers, signal } = {}) {
+/**
+ * Los endpoints que la API abre a propósito. Un 401 acá NO es una sesión
+ * vencida: es "la contraseña está mal". Si no se distinguiera, escribir mal la
+ * clave en el login limpiaría la sesión y recargaría la pantalla.
+ */
+const PUBLICOS = ['/auth/login', '/auth/opciones', '/health'];
+
+/**
+ * La sesión venció del lado del SERVIDOR (la cortaron, se desactivó el usuario,
+ * pasaron las 12 h). Se limpia lo local y se recarga: el arranque ve que no hay
+ * sesión y muestra el login, sin inventar una ruta ni duplicar esa lógica.
+ *
+ * El candado del `yaAvisado` es lo que evita el bucle: varias llamadas en vuelo
+ * fallan casi juntas, y sin él cada una dispararía su propia recarga.
+ */
+let yaAvisado = false;
+function sesionVencida() {
+  if (yaAvisado) return;
+  yaAvisado = true;
+  limpiarSesion();
+  try {
+    window.dispatchEvent(new CustomEvent('crm:sesion-vencida'));
+    window.location.reload();
+  } catch { /* sin window (tests) */ }
+}
+
+async function request(method, path, { body, headers, signal, sinRedirigir = false } = {}) {
   const url = path.startsWith('http')
     ? path
     : `${appConfig.api.baseUrl}${path}`;
@@ -26,17 +57,28 @@ async function request(method, path, { body, headers, signal } = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), appConfig.api.timeoutMs);
 
+  const token = leerSesion()?.token;
+
   try {
     const response = await fetch(url, {
       method,
       headers: {
         'Content-Type': 'application/json',
-        // TODO: inject Authorization from the token store when auth is wired.
+        ...(token ? { Authorization: `Bearer ${token}` } : null),
         ...headers,
       },
       body: body != null ? JSON.stringify(body) : undefined,
       signal: signal ?? controller.signal,
     });
+
+    /*
+     * 401 = la credencial no sirve → afuera. 403 = la credencial está bien pero
+     * el rol no alcanza → NO se cierra la sesión. Confundirlos echaría a la
+     * cajera al login por haber tocado algo que no le corresponde.
+     */
+    if (response.status === 401 && !sinRedirigir && !PUBLICOS.some((p) => path.startsWith(p))) {
+      sesionVencida();
+    }
 
     const isJson = (response.headers.get('content-type') ?? '').includes(
       'application/json',
@@ -56,6 +98,8 @@ async function request(method, path, { body, headers, signal } = {}) {
 }
 
 export const httpClient = {
+  /** Se llama al entrar: una sesión nueva vuelve a habilitar el aviso. */
+  reiniciarAvisoDeSesion: () => { yaAvisado = false; },
   get: (path, opts) => request('GET', path, opts),
   post: (path, body, opts) => request('POST', path, { ...opts, body }),
   put: (path, body, opts) => request('PUT', path, { ...opts, body }),

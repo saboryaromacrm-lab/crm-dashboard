@@ -39,19 +39,36 @@ export const authService = {
    */
   async getCurrentUser() {
     const s = leerSesion();
-    if (!s) return null;
+    // Sin token no hay sesión que valga: las de antes del cierre de la API
+    // quedaron obsoletas y hay que volver a entrar una vez.
+    if (!s?.token) return null;
     try {
-      const usuarios = await httpClient.get('/usuarios');
-      const vivo = usuarios.find((u) => u.id === s.usuario.id);
-      // Usuario borrado o desactivado: la sesión ya no vale.
-      if (!vivo || vivo.activo === false) {
+      /*
+       * `/auth/yo` y no `/usuarios`: es EL SERVIDOR el que dice si el token
+       * todavía vale y con qué permisos, en vez de que el frontend se busque a
+       * sí mismo en un listado. Dos razones concretas:
+       *
+       *  - `/usuarios` ahora exige permiso de gerencia, así que a un cajero le
+       *    daría 403 y su sesión quedaría con los permisos del día que entró;
+       *  - la sucursal también viene del servidor, que es donde vive el candado.
+       *
+       * `sinRedirigir`: acá el 401 se maneja devolviendo null para que el router
+       * muestre el login. Sin eso, la llamada del arranque dispararía la
+       * recarga del cliente HTTP y quedaría en un bucle.
+       */
+      const yo = await httpClient.get('/auth/yo', { sinRedirigir: true });
+      const sesion = { ...s, usuario: yo.usuario, sucursal: yo.sucursal };
+      actualizarSesion(sesion);
+      return aUsuarioSesion(sesion);
+    } catch (e) {
+      // El token murió: lo cortaron, venció, o desactivaron al usuario.
+      if (e?.status === 401) {
         limpiarSesion();
         return null;
       }
-      const sesion = { ...s, usuario: vivo };
-      actualizarSesion(sesion);
-      return aUsuarioSesion(sesion);
-    } catch {
+      // La API no contesta (corte de red, servicio caído): vale la foto
+      // guardada al entrar. Mejor operar con los permisos de ayer que dejar el
+      // sistema en blanco por un corte de internet.
       return aUsuarioSesion(s);
     }
   },
@@ -59,8 +76,11 @@ export const authService = {
   /** credentials: { usuarioId, password, sucursalId } */
   async login(credentials) {
     const res = await httpClient.post('/auth/login', credentials);
-    const sesion = { usuario: res.usuario, sucursal: res.sucursal };
+    // EL TOKEN ES LA SESIÓN. Sin él, guardar usuario y sucursal solo alcanzaría
+    // para pintar el menú: la API no contestaría ni una llamada.
+    const sesion = { token: res.token, usuario: res.usuario, sucursal: res.sucursal };
     guardarSesion(sesion);
+    httpClient.reiniciarAvisoDeSesion();
     // La elección del login ES el contexto de trabajo: los módulos arrancan
     // parados en esa sucursal y operando como ese usuario.
     actualizarCtx({ sucursalId: res.sucursal.id, usuarioId: res.usuario.id }, res.usuario.id);
@@ -68,6 +88,18 @@ export const authService = {
   },
 
   async logout() {
+    /*
+     * Avisarle al servidor es lo que hace que salir signifique algo: sin esto,
+     * la sesión quedaría viva en la base 12 horas más y el token, si alguien lo
+     * copió del navegador, seguiría entrando.
+     *
+     * Corta SOLO esta sesión, no las otras del mismo usuario: salir en la caja
+     * no puede cerrar la tablet del depósito.
+     *
+     * Si falla (sin red), se limpia igual del lado del cliente: dejar al usuario
+     * adentro porque no hubo internet sería peor.
+     */
+    try { await httpClient.post('/auth/salir'); } catch { /* se limpia igual */ }
     limpiarSesion();
     return true;
   },

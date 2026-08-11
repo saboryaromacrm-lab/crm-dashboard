@@ -36,10 +36,20 @@ export function LoginPage() {
 
   useEffect(() => {
     let vivo = true;
-    Promise.all([httpClient.get('/usuarios'), httpClient.get('/sucursales')])
-      .then(([us, sucs]) => {
+    /*
+     * UN SOLO endpoint público, y devuelve lo justo para poder elegir.
+     *
+     * Antes esto pedía `/usuarios` y `/sucursales`, que ahora exigen sesión —
+     * y no puede haberla todavía. Pero abrirlos habría sido peor que un
+     * problema técnico: `/usuarios` trae los permisos de cada rol y quién es
+     * superadmin, o sea el mapa de a quién conviene atacar, servido a
+     * cualquiera que abra la URL. `/auth/opciones` devuelve nombre, id y si
+     * tiene contraseña definida. Nada más.
+     */
+    httpClient.get('/auth/opciones')
+      .then(({ usuarios: us, sucursales: sucs }) => {
         if (!vivo) return;
-        setUsuarios(us.filter((u) => u.activo));
+        setUsuarios(us);
         setSucursales(sucs);
         if (sucs.length) setSucursalId(String(sucs[0].id));
       })
@@ -131,7 +141,14 @@ export function LoginPage() {
                   <PersonIcon color="primary" />
                   <div>
                     <Typography variant="subtitle2">{usuario?.nombre}</Typography>
-                    <Typography variant="caption" color="text.secondary">{usuario?.rolNombre}</Typography>
+                    {/* Antes acá iba el nombre del ROL. Se sacó a propósito: la
+                        pantalla de login es pública, y "Lucas ·
+                        Superadministrador" le dice a cualquiera a quién le
+                        conviene adivinarle la contraseña. El rol aparece
+                        adentro, cuando ya hay sesión. */}
+                    <Typography variant="caption" color="text.secondary">
+                      Todo lo que hagas queda registrado a este nombre
+                    </Typography>
                   </div>
                 </Stack>
                 <Divider />
