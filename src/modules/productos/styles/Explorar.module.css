@@ -1,0 +1,103 @@
+/*
+ * EXPLORADOR DEL CATÁLOGO (buscar productos para el pedido)
+ * ===========================================================================
+ * El modal `xl` entrega su cuerpo SIN padding y con el alto fijo al de la
+ * ventana, para que la cabecera no se vaya de vista. Así que la respiración y
+ * el scroll los pone esta hoja: tres zonas en columna, y solo la del medio
+ * corre.
+ */
+
+.marco {
+  display: flex;
+  flex-direction: column;
+  /* `min-height: 0` es lo que hace que el hijo con scroll pueda encogerse:
+     sin esto, un flex item crece hasta su contenido y el scroll nunca aparece. */
+  min-height: 0;
+  height: 100%;
+}
+
+/*
+ * Filtros: quietos arriba, TODOS EN UNA FILA (como la consulta de Existencias).
+ * Cada renglón fijo que se agrega acá es un producto menos que se ve en la
+ * lista, y la lista es para lo que se vino.
+ */
+.filtros {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) 1.1fr 1.1fr 1.1fr auto;
+  gap: var(--crm-space-3);
+  align-items: end;
+  padding: var(--crm-space-4) var(--crm-space-5);
+  border-bottom: 1px solid var(--crm-color-border);
+  background: var(--crm-color-surface);
+}
+
+/* En pantallas angostas se parte en dos filas antes que apretar los selects. */
+@media (max-width: 900px) {
+  .filtros { grid-template-columns: 1fr 1fr; }
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.campo > label {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: var(--crm-color-text-secondary);
+}
+.campo input,
+.campo select { width: 100%; }
+
+.tilde {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--crm-color-text);
+  cursor: pointer;
+  white-space: nowrap;
+  /* Se alinea con la base de los selects de al lado. */
+  padding: 7px 0;
+}
+.tilde strong { margin: 0 3px; }
+.tilde input { width: auto; }
+
+.espacio { flex: 1; }
+
+/* La lista: la ÚNICA zona que scrollea, en los dos ejes. */
+.lista {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--crm-space-4) var(--crm-space-5);
+}
+
+/* El pie: contador, limpiar y paginador en UNA línea, siempre visible. */
+.pie {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--crm-space-3);
+  flex-wrap: wrap;
+  padding: var(--crm-space-3) var(--crm-space-5);
+  border-top: 1px solid var(--crm-color-border);
+  background: var(--crm-color-surface);
+}
+/* El paginador ya trae su propio margen para cuando vive debajo de una tabla. */
+.pie > div:last-child { margin: 0; }
+
+/* "(hay 123 kg a granel)": info del renglón, no un número más para comparar. */
+.suelto {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--crm-color-text-secondary);
+  white-space: nowrap;
+}
