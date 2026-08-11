@@ -577,7 +577,6 @@ function PresentacionesTab({ prod: p }) {
         </div>
         {rows.map((r, i) => {
           const est = estados[i];
-          const tamKg = tamKgDe(r);
           const guardada = (p.presentaciones || []).find((x) => x.id === r.id);
           const stk = r.id ? store.suma({ productoId: p.id, presentacionId: r.id, estado: 'disponible' }) : 0;
           const borde = est.bloquea ? 'var(--crm-color-danger)'
@@ -745,6 +744,8 @@ function VentaTab({ prod: p, pres = null }) {
   const esPaquete = !!pres;
   const neto = esPaquete ? (Number(pres.costoNeto) || 0) : store.costoNeto(p);
   const unidad = esPaquete ? '/paquete' : (p.tipo === 'granel' ? '/kg' : '/u');
+  /** El código del artículo en sí: el del paquete es el de su etiqueta. */
+  const codigoPropio = esPaquete ? pres.codigoBarras : p.codigoBarras;
   const act = store.formatoActivo(p);
   const nombreAct = act ? (store.getProveedor(act.proveedorId) || {}).nombre : null;
 
@@ -812,6 +813,20 @@ function VentaTab({ prod: p, pres = null }) {
         cambies. Si no está la fila, no se vende en esa lista.
       </div>
 
+      {/* El código que YA tiene el artículo, para que no se lo vuelva a cargar
+          en la fila (el de la fila es el de la caja de N). Dice también dónde se
+          edita: el del paquete vive en Presentaciones de la madre. */}
+      <div className={s.hint} style={{ margin: '-4px 0 0' }}>
+        Código de {esPaquete ? 'este paquete' : 'este producto'}:{' '}
+        {codigoPropio
+          ? <strong className={s.mono}>{codigoPropio}</strong>
+          : <span style={{ color: 'var(--crm-color-danger)' }}>sin código</span>}
+        {esPaquete
+          ? <> — es el de su etiqueta, y se carga en <strong>Presentaciones</strong> del producto madre.</>
+          : <> — se carga en la ficha del producto.</>}
+        {' '}El código de cada fila de abajo es <strong>otro</strong>: el de la caja de N.
+      </div>
+
       {esPaquete && !rows.length && (
         <div className={cx(s.callout, s.warn)}>
           Este paquete <strong>todavía no tiene precio</strong>: no lo puede vender la caja ni sale en la
@@ -856,14 +871,34 @@ function VentaTab({ prod: p, pres = null }) {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1.1fr .7fr 1fr .9fr .8fr', gap: 8, alignItems: 'end' }}>
+                {/*
+                 * EL CÓDIGO DE ESTA FILA ES EL DE LA CAJA, no el del artículo.
+                 *
+                 * El artículo ya tiene el suyo —el del producto, o el de la
+                 * etiqueta del paquete que se carga en Presentaciones— así que
+                 * con "vende por 1" un código acá sería un SEGUNDO código para
+                 * lo mismo y el escáner de la caja se quedaría sin desempate.
+                 * Por eso solo se habilita con la caja de N, y si quedó uno de
+                 * antes (hay uno heredado del sistema viejo) se avisa en vez de
+                 * borrarlo por atrás.
+                 */}
                 <div>
-                  <div className={s['mini-label']}>Código de barras del formato</div>
+                  <div className={s['mini-label']}>
+                    {unidades > 1 ? `Código de la caja (× ${num(unidades, 0)})` : 'Código de la caja'}
+                  </div>
                   <input
                     value={r.codigoBarras}
-                    placeholder={unidades > 1 ? 'EAN de la caja' : 'Opcional'}
-                    disabled={!isAdmin}
+                    placeholder={unidades > 1 ? 'EAN o DUN-14 de la caja' : 'solo con caja de N'}
+                    disabled={!isAdmin || (unidades <= 1 && !r.codigoBarras)}
+                    style={unidades <= 1 && r.codigoBarras ? { borderColor: 'var(--crm-color-danger)' } : undefined}
                     onChange={(e) => setRow(i, { codigoBarras: e.target.value.trim() })}
                   />
+                  {unidades <= 1 && r.codigoBarras && (
+                    <div className={s.hint} style={{ margin: '3px 0 0', color: 'var(--crm-color-danger)' }}>
+                      Con <strong>1</strong> no puede tener código propio: competiría con el
+                      del {esPaquete ? 'paquete' : 'artículo'}. Quitalo, o poné cuántas trae la caja.
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div className={s['mini-label']}>Vende por</div>
