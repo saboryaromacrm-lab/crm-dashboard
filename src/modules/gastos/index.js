@@ -27,8 +27,11 @@ export const gastosModule = defineModule({
   permissions: GASTOS_PANELS.map((p) => p.permiso),
   navigation: {
     showInSidebar: true,
-    group: 'administration',
-    order: 10,
+    // Con el resto de los módulos: tenía un encabezado propio
+    // ("Administración") para un solo ítem, que era ruido y no una sección.
+    // El 60 lo deja donde ya estaba a la vista — último, después de Sistema (55).
+    group: 'catalog',
+    order: 60,
     // Pendientes del sidebar: gastos vencidos + pagos que nadie aplicó todavía.
     badgeCount: () => gastosPendientes.count(),
     badgeSubscribe: (listener) => gastosPendientes.subscribe(listener),

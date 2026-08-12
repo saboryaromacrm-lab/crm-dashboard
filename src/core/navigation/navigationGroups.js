@@ -6,7 +6,13 @@
 export const NAVIGATION_GROUPS = Object.freeze([
   { key: 'general', label: 'General' },
   { key: 'operations', label: 'Operaciones' },
-  { key: 'catalog', label: 'Catálogo' },
+  /*
+   * La clave sigue siendo `catalog` porque la usan los manifiestos de los siete
+   * módulos; lo que cambió es la ETIQUETA que se ve. "Catálogo" decía mal lo que
+   * hay abajo: no es un catálogo de productos, son los módulos del sistema.
+   */
+  { key: 'catalog', label: 'Módulo' },
   { key: 'analytics', label: 'Análisis' },
-  { key: 'administration', label: 'Administración' },
+  // El grupo `administration` se sacó (12/8): su único módulo, Gastos, pasó a
+  // `catalog` — un encabezado para un solo ítem era ruido, no una sección.
 ]);
