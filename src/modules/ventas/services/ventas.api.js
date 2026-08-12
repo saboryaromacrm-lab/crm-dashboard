@@ -62,7 +62,12 @@ export const ventasApi = {
   abrirVenta: (data) => httpClient.post('/ventas', { ...data, estado: 'borrador' }),
   guardarVenta: (id, data) => httpClient.put(`/ventas/${id}`, data),
   confirmarVenta: (id, data) => httpClient.post(`/ventas/${id}/confirmar`, data),
-  delegarVenta: (id, usuarioId) => httpClient.post(`/ventas/${id}/delegar`, { usuarioId }),
+  /*
+   * `paraUsuarioId` y no `usuarioId`: acá el id es de OTRO —a quién se le pasa
+   * el borrador—, y el `usuarioId` del body ahora lo pisa el servidor con el de
+   * la sesión. Si se llamara igual, delegar terminaría delegándose a uno mismo.
+   */
+  delegarVenta: (id, paraUsuarioId) => httpClient.post(`/ventas/${id}/delegar`, { paraUsuarioId }),
   descartarVenta: (id) => httpClient.delete(`/ventas/${id}`),
   cuentaCliente: (clienteId) => httpClient.get(`/ventas/cuenta/${clienteId}`),
 
