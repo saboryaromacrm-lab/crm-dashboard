@@ -144,15 +144,25 @@ function BuscadorProducto({ candidatos, proveedorNombre, onElegir, autoFocus }) 
 const PASOS_WIZARD = ['Datos del comprobante', 'Ítems', 'Pago y confirmación'];
 
 /**
- * LOS TIPOS QUE MUEVEN MERCADERÍA — una sola lista, dos usos: decide si se
- * OFRECE el tilde de recepción y si arranca PUESTO.
+ * LOS TIPOS QUE INGRESAN MERCADERÍA, SIEMPRE Y SIN PREGUNTAR (12/8/2026).
+ * ============================================================================
+ * Esto era un tilde ("Ingresa stock") y dejó de serlo por decisión del dueño.
+ * La razón está en cómo llega la mercadería de verdad: el proveedor manda 50
+ * paquetes de fideos, **25 vienen en la factura y 25 en la liquidación**.
+ * Entran los 50 — mitad facturada, mitad no.
  *
- * Tiene que coincidir con `ingresaStock` de la API (comprobantes.module.ts). Es
- * la clase de lista que ya falló una vez: la liquidación no estaba, así que el
- * tilde no se dibujaba y el payload mandaba `recepcion: false` — la deuda se
- * cargaba y la mercadería no entraba al depósito, en silencio, porque no había
- * ningún tilde sin marcar a la vista. Estaba escrita en dos lugares; ahora en
- * uno, para que agregar un tipo nuevo no pueda quedar a medias.
+ * Y ahí está la clave de por qué el tilde no hacía falta: **cada documento trae
+ * SUS renglones**, los suyos y nada más. No existe el caso de contar dos veces
+ * la misma mercadería, que es lo único que el tilde podía prevenir. Lo que sí
+ * pasaba seguido era lo contrario: olvidarlo y quedarse con la deuda cargada y
+ * la mercadería afuera del depósito, en silencio.
+ *
+ * EL REMITO SE QUEDA EN LA LISTA aunque el dueño lo marcó como "no aplica" —
+ * para él "remito" es la liquidación, no un tipo aparte. Se deja porque
+ * sacarlo reviviría la falla de siempre: alguien elige Remito, el stock no
+ * entra y nada lo avisa. Un documento que lista mercadería, la ingresa.
+ *
+ * Tiene que coincidir con `ingresaStock` de la API (comprobantes.module.ts).
  */
 const TIPOS_CON_RECEPCION = new Set(['factura', 'liquidacion', 'remito']);
 
@@ -257,29 +267,6 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const [fechaCarga, setFechaCarga] = useState(isoDate(new Date()));
   const [provId, setProvId] = useState(proveedorId || store.state.proveedores[0]?.id || '');
   const [sucId, setSucId] = useState(lectura?.sucursalId ?? sucOperativa() ?? '');
-  /*
-   * ARRANCA TILDADO SIEMPRE que el tipo mueva mercadería (12/8, decisión del
-   * dueño), no solo cuando viene de la bandeja: el caso normal es que la
-   * factura llega CON el camión, y dejar el tilde vacío hacía que el caso
-   * normal necesitara un clic y que olvidarlo dejara la deuda cargada con la
-   * mercadería afuera del depósito.
-   *
-   * Sigue siendo un tilde visible y desmarcable, porque el caso contrario
-   * existe: la mercadería ya entró por remito y esta factura solo la documenta
-   * — ahí ingresarla otra vez DUPLICA el stock. Por eso ahora el paso 3 dice en
-   * palabras si va a entrar o no: un tilde puesto de fábrica no puede pasar
-   * desapercibido.
-   */
-  const [recepcion, setRecepcion] = useState(() => TIPOS_CON_RECEPCION.has(tipo));
-  /*
-   * ¿La persona ya decidió por su cuenta? El default sigue al tipo mientras
-   * nadie lo toque; desde el primer clic manda la persona. Sin esto, cambiar el
-   * tipo de comprobante le pisaría una decisión ya tomada.
-   */
-  const [recepcionTocada, setRecepcionTocada] = useState(false);
-  useEffect(() => {
-    if (!recepcionTocada) setRecepcion(TIPOS_CON_RECEPCION.has(tipo));
-  }, [tipo, recepcionTocada]);
   const [venc, setVenc] = useState('');
   const [obs, setObs] = useState('');
   // El renglón nace VACÍO: preseleccionar el primer producto del catálogo era
@@ -877,7 +864,9 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
 
     const res = await store.crearComprobante({
       tipo, letra, puntoVenta, numero, fecha, fechaCarga, proveedorId: parseInt(provId, 10),
-      sucursalId: sucId ? parseInt(sucId, 10) : null, condicionPago, recepcion: permiteRecepcion && recepcion,
+      // Sale del TIPO, no de un tilde: factura, liquidación y remito ingresan
+      // mercadería siempre (ver TIPOS_CON_RECEPCION).
+      sucursalId: sucId ? parseInt(sucId, 10) : null, condicionPago, recepcion: permiteRecepcion,
       vencimientoPago: venc || null, observaciones: obs.trim(), items: parsed,
       // De la bandeja: el CAE del QR (o el leído del PDF, si el QR no se pudo)
       // y la lectura que este comprobante cierra en la misma transacción.
@@ -928,6 +917,17 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const continuar = () => {
     if (paso === 1) {
       if (!parseInt(provId, 10)) { toast('Elegí el proveedor del comprobante.', 'err'); return; }
+      /*
+       * La sucursal pasó a ser OBLIGATORIA en estos tipos desde que la
+       * mercadería entra siempre: antes se podía registrar sin ella dejando el
+       * tilde vacío. La API la exige (`Indicá la sucursal de recepción.`), así
+       * que sin este corte el aviso llegaba recién al confirmar, con los ítems
+       * ya cargados y el pago ya elegido.
+       */
+      if (permiteRecepcion && !parseInt(sucId, 10)) {
+        toast('Elegí a qué sucursal entra la mercadería.', 'err');
+        return;
+      }
       setPaso(2);
     } else if (paso === 2) {
       if (!itemsValidos) { toast('Agregá al menos un ítem con bultos y tamaño de bulto.', 'err'); return; }
@@ -1061,26 +1061,25 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       {permiteRecepcion && (
         <div className={s['form-grid']}>
           <div className={s.field}>
-            <label>Sucursal de recepción</label>
+            {/* Obligatoria desde que el stock entra siempre: sin ella la API
+                rechaza el alta. */}
+            <label>Sucursal de recepción <span className={s.req}>*</span></label>
             {/* Cambia la sucursal → cambia la bandeja de pagos que se ofrece
                 en el paso 3: lo tildado hablaba de otra sucursal. */}
             <select value={sucId} onChange={(e) => { setSucId(e.target.value); setTomados({}); }}>
               {sucursalOptions(store, false)}
             </select>
           </div>
-          <label className={s['granel-toggle']} style={{ alignSelf: 'end' }}>
-            {/* Al tocarlo, la decisión pasa a ser de la persona: cambiar el tipo
-                después no vuelve a pisarla. */}
-            <input
-              type="checkbox"
-              checked={recepcion}
-              onChange={(e) => { setRecepcion(e.target.checked); setRecepcionTocada(true); }}
-            />
-            <span>
-              <span className={s['t-title']}>Ingresa stock (recepción)</span><br />
-              <span className={s['t-sub']}>Suma al inventario la mercadería de los ítems.</span>
-            </span>
-          </label>
+          {/*
+            ACÁ HABÍA UN TILDE "Ingresa stock" y se sacó a propósito: en este tipo
+            de comprobante la mercadería entra SIEMPRE. Lo que queda es la única
+            pregunta que el sistema no puede contestar solo — a qué depósito.
+          */}
+          <div className={s.field} style={{ alignSelf: 'end' }}>
+            <div className={s.hint} style={{ margin: 0 }}>
+              La mercadería de los ítems <strong>entra al stock de esa sucursal</strong> al registrar.
+            </div>
+          </div>
         </div>
       )}
 
@@ -1547,29 +1546,17 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       </div>
 
       {/*
-        QUÉ VA A PASAR CON LA MERCADERÍA, en palabras.
-        Desde que el tilde de recepción arranca PUESTO, el caso peligroso dejó de
-        ser el olvido y pasó a ser el descuido: cargar la factura de mercadería
-        que ya entró por remito, no ver el tilde, y duplicar el stock. Decirlo
-        acá —en el paso donde se confirma— es lo que hace que un default no pueda
-        colarse sin que nadie lo lea.
+        A QUÉ DEPÓSITO ENTRA, en palabras. Ya no hay nada que decidir sobre el
+        stock —entra siempre—, pero sí queda algo que se elige mal seguido: la
+        SUCURSAL. Cargar en Express 3 la mercadería que llegó a la Distribuidora
+        deja las dos con el inventario torcido, así que se dice acá, al lado del
+        total, antes de confirmar.
       */}
       {permiteRecepcion && itemsValidos > 0 && (
-        <div className={cx(s.callout, recepcion ? s.info : s.warn)}>
-          {recepcion ? (
-            <>
-              La mercadería de {itemsValidos === 1 ? 'el ítem' : `los ${itemsValidos} ítems`}{' '}
-              <strong>entra al stock de {store.getSucursal(parseInt(sucId, 10))?.nombre || 'la sucursal'}</strong>{' '}
-              al registrar. Si esta mercadería ya entró antes por un remito, volvé al paso 1 y destildá
-              «Ingresa stock»: cargarla dos veces infla el inventario.
-            </>
-          ) : (
-            <>
-              <strong>No entra mercadería al stock</strong> — se registra solo la deuda con{' '}
-              {provElegido?.nombre || 'el proveedor'}. Es lo correcto si esta mercadería ya entró por un
-              remito; si el camión llegó con esta factura, volvé al paso 1 y tildá «Ingresa stock».
-            </>
-          )}
+        <div className={cx(s.callout, s.info)}>
+          {itemsValidos === 1 ? 'El ítem' : `Los ${itemsValidos} ítems`} de este comprobante{' '}
+          <strong>entran al stock de {store.getSucursal(parseInt(sucId, 10))?.nombre || 'la sucursal elegida'}</strong>.
+          {' '}Si la mercadería llegó a otra sucursal, cambiala en el paso 1.
         </div>
       )}
 
