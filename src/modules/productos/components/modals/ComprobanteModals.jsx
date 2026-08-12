@@ -144,6 +144,19 @@ function BuscadorProducto({ candidatos, proveedorNombre, onElegir, autoFocus }) 
 const PASOS_WIZARD = ['Datos del comprobante', 'Ítems', 'Pago y confirmación'];
 
 /**
+ * LOS TIPOS QUE MUEVEN MERCADERÍA — una sola lista, dos usos: decide si se
+ * OFRECE el tilde de recepción y si arranca PUESTO.
+ *
+ * Tiene que coincidir con `ingresaStock` de la API (comprobantes.module.ts). Es
+ * la clase de lista que ya falló una vez: la liquidación no estaba, así que el
+ * tilde no se dibujaba y el payload mandaba `recepcion: false` — la deuda se
+ * cargaba y la mercadería no entraba al depósito, en silencio, porque no había
+ * ningún tilde sin marcar a la vista. Estaba escrita en dos lugares; ahora en
+ * uno, para que agregar un tipo nuevo no pueda quedar a medias.
+ */
+const TIPOS_CON_RECEPCION = new Set(['factura', 'liquidacion', 'remito']);
+
+/**
  * Indicador de pasos del asistente. Solo los pasos YA RECORRIDOS son
  * clickeables: avanzar por acá saltearía las validaciones de "Continuar".
  */
@@ -245,18 +258,28 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const [provId, setProvId] = useState(proveedorId || store.state.proveedores[0]?.id || '');
   const [sucId, setSucId] = useState(lectura?.sucursalId ?? sucOperativa() ?? '');
   /*
-   * Desde la bandeja arranca tildado: si alguien fotografió la factura en el
-   * mostrador es porque el camión llegó con la mercadería. Sigue siendo un
-   * tilde visible, porque el caso contrario existe — la mercadería ya entró por
-   * remito y esta factura solo la documenta; ahí ingresarla otra vez duplicaría
-   * el stock.
+   * ARRANCA TILDADO SIEMPRE que el tipo mueva mercadería (12/8, decisión del
+   * dueño), no solo cuando viene de la bandeja: el caso normal es que la
+   * factura llega CON el camión, y dejar el tilde vacío hacía que el caso
+   * normal necesitara un clic y que olvidarlo dejara la deuda cargada con la
+   * mercadería afuera del depósito.
+   *
+   * Sigue siendo un tilde visible y desmarcable, porque el caso contrario
+   * existe: la mercadería ya entró por remito y esta factura solo la documenta
+   * — ahí ingresarla otra vez DUPLICA el stock. Por eso ahora el paso 3 dice en
+   * palabras si va a entrar o no: un tilde puesto de fábrica no puede pasar
+   * desapercibido.
    */
-  // LISTA DE TIPOS · el tilde de recepción arranca puesto cuando viene de la
-  // bandeja. La liquidación va acá: su mercadería entró como cualquier otra.
-  const [recepcion, setRecepcion] = useState(
-    !!lectura && (lectura.tipo === 'factura' || lectura.tipo === 'liquidacion'
-      || lectura.tipo === 'remito' || !lectura.tipo),
-  );
+  const [recepcion, setRecepcion] = useState(() => TIPOS_CON_RECEPCION.has(tipo));
+  /*
+   * ¿La persona ya decidió por su cuenta? El default sigue al tipo mientras
+   * nadie lo toque; desde el primer clic manda la persona. Sin esto, cambiar el
+   * tipo de comprobante le pisaría una decisión ya tomada.
+   */
+  const [recepcionTocada, setRecepcionTocada] = useState(false);
+  useEffect(() => {
+    if (!recepcionTocada) setRecepcion(TIPOS_CON_RECEPCION.has(tipo));
+  }, [tipo, recepcionTocada]);
   const [venc, setVenc] = useState('');
   const [obs, setObs] = useState('');
   // El renglón nace VACÍO: preseleccionar el primer producto del catálogo era
@@ -278,18 +301,8 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const [asociados, setAsociados] = useState({});
   const tienePdf = !!lectura?.archivos?.some((a) => a.mime === 'application/pdf');
 
-  /*
-   * LISTA DE TIPOS · qué comprobantes pueden ingresar mercadería.
-   *
-   * La liquidación FALTABA acá, y era el agujero de la función: sin este tipo en
-   * la lista, el tilde de recepción no se dibujaba y el payload mandaba siempre
-   * `recepcion: false`, así que la mitad no facturada generaba la deuda pero
-   * **la mercadería no entraba al depósito** — en silencio, porque no había
-   * ningún tilde sin marcar a la vista. Justo el caso que motivó el tipo nuevo.
-   *
-   * Tiene que coincidir con `ingresaStock` de la API (comprobantes.module.ts).
-   */
-  const permiteRecepcion = tipo === 'factura' || tipo === 'liquidacion' || tipo === 'remito';
+  /** Deriva de la MISMA lista: si el tipo mueve mercadería, se ofrece el tilde. */
+  const permiteRecepcion = TIPOS_CON_RECEPCION.has(tipo);
   const provElegido = store.getProveedor(parseInt(provId, 10));
 
   /**
@@ -1056,7 +1069,13 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
             </select>
           </div>
           <label className={s['granel-toggle']} style={{ alignSelf: 'end' }}>
-            <input type="checkbox" checked={recepcion} onChange={(e) => setRecepcion(e.target.checked)} />
+            {/* Al tocarlo, la decisión pasa a ser de la persona: cambiar el tipo
+                después no vuelve a pisarla. */}
+            <input
+              type="checkbox"
+              checked={recepcion}
+              onChange={(e) => { setRecepcion(e.target.checked); setRecepcionTocada(true); }}
+            />
             <span>
               <span className={s['t-title']}>Ingresa stock (recepción)</span><br />
               <span className={s['t-sub']}>Suma al inventario la mercadería de los ítems.</span>
@@ -1526,6 +1545,33 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
           <span>Total: <strong style={{ fontSize: 16 }}>{money(total)}</strong></span>
         </span>
       </div>
+
+      {/*
+        QUÉ VA A PASAR CON LA MERCADERÍA, en palabras.
+        Desde que el tilde de recepción arranca PUESTO, el caso peligroso dejó de
+        ser el olvido y pasó a ser el descuido: cargar la factura de mercadería
+        que ya entró por remito, no ver el tilde, y duplicar el stock. Decirlo
+        acá —en el paso donde se confirma— es lo que hace que un default no pueda
+        colarse sin que nadie lo lea.
+      */}
+      {permiteRecepcion && itemsValidos > 0 && (
+        <div className={cx(s.callout, recepcion ? s.info : s.warn)}>
+          {recepcion ? (
+            <>
+              La mercadería de {itemsValidos === 1 ? 'el ítem' : `los ${itemsValidos} ítems`}{' '}
+              <strong>entra al stock de {store.getSucursal(parseInt(sucId, 10))?.nombre || 'la sucursal'}</strong>{' '}
+              al registrar. Si esta mercadería ya entró antes por un remito, volvé al paso 1 y destildá
+              «Ingresa stock»: cargarla dos veces infla el inventario.
+            </>
+          ) : (
+            <>
+              <strong>No entra mercadería al stock</strong> — se registra solo la deuda con{' '}
+              {provElegido?.nombre || 'el proveedor'}. Es lo correcto si esta mercadería ya entró por un
+              remito; si el camión llegó con esta factura, volvé al paso 1 y tildá «Ingresa stock».
+            </>
+          )}
+        </div>
+      )}
 
       {/* ============ QUÉ FACTURA AJUSTA (solo NC y ND) ============
           Una nota nace de UNA factura. Elegirla es lo que hace que el saldo de
