@@ -55,13 +55,24 @@ export function Topbar() {
     httpClient.get('/sucursales').then(setSucursales).catch(() => setSucursales([]));
   }, [anchorEl, esJefe, sucursales.length]);
 
-  const cambiarSucursal = (suc) => {
+  const cambiarSucursal = async (suc) => {
     // Se reescribe la sesión y el contexto de los módulos DE ESTA PESTAÑA y se
     // recarga: los motores leen su contexto al arrancar, así todo queda parado
     // en la nueva. Otras ventanas logueadas no se enteran — cada una tiene su
     // propia sesión (ver core/auth/sesion.js).
     const sesion = leerSesion();
     if (!sesion) return;
+    /*
+     * PRIMERO EL SERVIDOR. La sucursal vive en la fila de la sesión, y hasta que
+     * este endpoint existió no se movía nunca: al recargar, `/auth/yo` devolvía
+     * la sucursal del login y pisaba la elegida, mientras el contexto de los
+     * módulos —que no se pisa— se quedaba en la nueva. El encabezado decía una
+     * sucursal y Compras/Almacén/Ventas trabajaban en otra. Si el servidor
+     * rechaza, no se toca nada del navegador y no se recarga.
+     */
+    try {
+      await httpClient.post('/auth/sucursal', { sucursalId: suc.id });
+    } catch { return; }
     sesion.sucursal = { id: suc.id, nombre: suc.nombre };
     actualizarSesion(sesion);
     actualizarCtx({ sucursalId: suc.id, usuarioId: sesion.usuario.id }, sesion.usuario.id);

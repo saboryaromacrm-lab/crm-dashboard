@@ -4,12 +4,16 @@ import { useAuth } from '@core/auth/AuthContext.jsx';
 const PermissionContext = createContext(null);
 
 /**
- * Derives the permission-checking API from the current user.
+ * La API de permisos, derivada del usuario de la sesión.
  *
- * Permissions use "<resource>:<action>" strings (e.g. "customers:read").
- * A wildcard "*" grants everything (used by the admin role). Components and
- * route guards ask `can()` / `hasRole()` instead of inspecting the user object,
- * so the authorization model can evolve without touching call sites.
+ * Las claves son las del catálogo del servidor (`usuarios.module.ts`): las de
+ * SECCIÓN tienen la forma `modulo.seccion` (`ventas.caja`, `web.productos`) y
+ * las de ACCIÓN son una palabra (`merma`, `precio_manual`). El comodín `'*'` da
+ * todo y lo tiene solo el superadmin.
+ *
+ * Las pantallas preguntan con `can()` en vez de mirar el objeto del usuario,
+ * así el modelo puede cambiar sin tocar cada lugar que consulta. Ojo: esto
+ * decide qué se MUESTRA; quién puede hacer qué lo decide el servidor.
  */
 export function PermissionProvider({ children }) {
   const { user } = useAuth();
@@ -31,8 +35,6 @@ export function PermissionProvider({ children }) {
     [can],
   );
 
-  const hasRole = useCallback((role) => roles.includes(role), [roles]);
-
   /**
    * ¿Es un rol de ADMINISTRACIÓN? Distinto de `can()`: no pregunta si puede ver
    * una pantalla, sino si le corresponde una responsabilidad de conducción.
@@ -48,8 +50,8 @@ export function PermissionProvider({ children }) {
   );
 
   const value = useMemo(
-    () => ({ permissions, roles, can, canAny, hasRole, esAdmin }),
-    [permissions, roles, can, canAny, hasRole, esAdmin],
+    () => ({ permissions, roles, can, canAny, esAdmin }),
+    [permissions, roles, can, canAny, esAdmin],
   );
 
   return (

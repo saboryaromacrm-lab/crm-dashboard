@@ -16,15 +16,15 @@ import {
 
 function aUsuarioSesion(s) {
   return {
+    // `email` y `tenantId` eran restos del andamio multi-inquilino del arranque:
+    // un string vacío y una constante que nadie leía en todo el dashboard.
     id: s.usuario.id,
     name: s.usuario.nombre,
-    email: '',
     roles: [s.usuario.rolClave],
     permissions: s.usuario.permisos ?? [],
     rolNombre: s.usuario.rolNombre,
     sucursalId: s.sucursal.id,
     sucursalNombre: s.sucursal.nombre,
-    tenantId: 'tnt_default',
   };
 }
 

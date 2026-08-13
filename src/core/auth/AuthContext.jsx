@@ -13,9 +13,10 @@ const AuthContext = createContext(null);
 /**
  * Holds the authenticated user and exposes login/logout.
  *
- * Kept deliberately minimal today (a mock user resolves immediately), but the
- * shape is the real contract the whole app is coded against, so wiring a
- * backend later is isolated to auth.service.js.
+ * La sesión es REAL desde que existe el login con token: `auth.service.js`
+ * resuelve contra `/auth/yo` en cada arranque, así que los permisos y la
+ * sucursal salen del servidor y no de lo que quedó guardado. Este contexto solo
+ * guarda el resultado y expone entrar/salir.
  */
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);

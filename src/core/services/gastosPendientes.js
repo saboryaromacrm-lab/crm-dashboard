@@ -32,7 +32,23 @@ async function tick() {
       _count = n;
       _listeners.forEach((l) => l());
     }
-  } catch { /* API caída: el próximo tick reintenta */ }
+  } catch (e) {
+    /*
+     * UN 403 NO SE REINTENTA. El módulo se ve con cualquiera de sus seis
+     * secciones, pero estos dos contadores piden claves más finas: un rol con
+     * solo "Rubros" o solo "Resumen" ve el módulo, arranca el poller y se come
+     * un 403 cada 60 segundos, para siempre, tragado por este mismo `catch` —
+     * ruido en el log del servidor y trabajo al pedo de las dos puntas. El
+     * permiso no va a aparecer solo: se corta el reloj y el badge queda en 0,
+     * que es exactamente lo que corresponde mostrarle a ese rol.
+     *
+     * Todo lo demás (la API caída, un corte de red) SÍ se reintenta.
+     */
+    if (e?.status === 403 && _timer) {
+      clearInterval(_timer);
+      _timer = null;
+    }
+  }
 }
 
 function asegurarPolling() {

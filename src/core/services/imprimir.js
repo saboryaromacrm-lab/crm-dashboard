@@ -17,6 +17,17 @@
 import { httpClient } from './httpClient.js';
 import { barcodeSvg } from './barcode.js';
 
+/**
+ * ESCAPA UN DATO PARA METERLO EN EL HTML DEL DOCUMENTO.
+ *
+ * Se exporta porque el `cuerpo` de cada documento lo arman los paneles, y ahí
+ * es donde entran los datos de verdad: el nombre del producto, el del cliente y
+ * —la que importa— las observaciones de un pedido del sitio, que las escribe
+ * cualquiera desde internet. Un `<` en cualquiera de esos campos no puede
+ * empezar una etiqueta.
+ */
+export const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 const FORMATOS = {
   rollo80: { page: '80mm auto', margen: '3mm', font: '11px', chica: '9.5px', rollo: true },
   rollo58: { page: '58mm auto', margen: '2mm', font: '10px', chica: '9px', rollo: true },
@@ -63,7 +74,7 @@ export function medidaEtiqueta(formato) {
   const f = FORMATOS[formato];
   if (!f?.etiqueta) return null;
   const margen = parseFloat(f.margen) || 0;
-  return { anchoMm: f.anchoMm, altoMm: f.altoMm, margenMm: margen, anchoUtilMm: f.anchoMm - margen * 2 };
+  return { anchoMm: f.anchoMm, altoMm: f.altoMm, anchoUtilMm: f.anchoMm - margen * 2 };
 }
 
 /**
@@ -93,22 +104,68 @@ export async function configImpresion() {
 export function invalidarConfigImpresion() { _cache = null; }
 
 /**
+ * NADA DE LO QUE ES DATO SE INTERPOLA CRUDO.
+ *
+ * El documento se arma concatenando texto, así que cada valor que viene de la
+ * base o de la configuración es una oportunidad de inyectar HTML. Y no es
+ * teórico ni interno: el campo "observaciones" de un pedido del sitio lo
+ * escribe **cualquiera desde internet, sin cuenta**, y termina en este
+ * documento cuando el vendedor lo imprime. La ventana de impresión se abre con
+ * `about:blank`, que HEREDA EL ORIGEN del dashboard — o sea que un script ahí
+ * adentro lee el token de sesión de quien imprimió.
+ *
+ * Tres candados, y ninguno reemplaza a los otros:
+ *   1. `esc()` en todo lo que es dato (acá y en los cuerpos que arman los paneles);
+ *   2. formato validado para lo que NO se arregla escapando —el color entra
+ *      adentro de `<style>`, donde las entidades HTML no protegen, y el logo
+ *      entra en un `src`—;
+ *   3. una CSP en el propio documento que prohíbe ejecutar script, para que un
+ *      olvido futuro en (1) no vuelva a abrir esto.
+ */
+
+/** Un color de marca y nada más: `#abc` o `#aabbcc`. Cualquier otra cosa, el default. */
+const colorSeguro = (v, porDefecto) => (/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(String(v ?? '').trim())
+  ? String(v).trim() : porDefecto);
+
+/** El logo solo puede ser una imagen embebida. Un `data:text/html` no es un logo. */
+const logoSeguro = (v) => (/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(String(v ?? '').trim())
+  ? String(v).trim() : '');
+
+/**
+ * La CSP del documento impreso. Va como `<meta>` porque el HTML no se sirve por
+ * HTTP (se escribe en la ventana), y arriba de todo para que aplique desde el
+ * primer byte. `script-src` no está en la lista: con `default-src 'none'`, no
+ * corre ningún script — ni inline, ni de un `onerror`, ni de ningún lado.
+ * Imágenes y estilos sí, que es todo lo que un impreso necesita.
+ */
+const CSP_IMPRESION = "default-src 'none'; img-src data: blob: https: http:; "
+  + "style-src 'unsafe-inline'; font-src data:";
+
+/**
  * Documento COMPLETO como HTML (lo usa la impresión y la vista previa de
  * Sistema). `cuerpo` es el contenido propio del documento (título, tablas…);
  * el motor pone página, empresa, estilos y pie.
+ *
+ * `cuerpo` es HTML A PROPÓSITO —trae tablas y filas— así que NO se escapa acá:
+ * lo escapa quien lo arma, dato por dato. Es la única entrada que queda cruda,
+ * y por eso existe el candado 3.
  */
 export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTicket = false }) {
   const f = FORMATOS[formato] || FORMATOS.a4;
   // La etiqueta no es un documento chico: no lleva membrete, ni pie, ni bordes,
   // y cada una es una página del rollo. Sale por su propio camino.
   if (f.etiqueta) return htmlEtiquetas({ f, titulo, cuerpo });
-  const color = f.rollo ? '#111' : (empresa.colorMarca || '#166534');
-  const datos = [empresa.cuit && `CUIT ${empresa.cuit}`, empresa.direccion, empresa.telefono]
+  const color = f.rollo ? '#111' : colorSeguro(empresa.colorMarca, '#166534');
+  const datos = [empresa.cuit && `CUIT ${esc(empresa.cuit)}`, esc(empresa.direccion), esc(empresa.telefono)]
     .filter(Boolean).join(' · ');
-  const logo = empresa.logo
-    ? `<img class="logo" src="${empresa.logo}" alt="" />`
-    : '';
-  return `<!doctype html><html><head><meta charset="utf-8" /><title>${titulo}</title><style>
+  // Una sola vez: la vista previa de Sistema rearma el documento en CADA tecla,
+  // y el logo son ~533 KB de base64 — validarlo dos veces era regex y copia por
+  // duplicado en cada pulsación.
+  const src = logoSeguro(empresa.logo);
+  const logo = src ? `<img class="logo" src="${src}" alt="" />` : '';
+  return `<!doctype html><html><head><meta charset="utf-8" />`
+    + `<meta http-equiv="Content-Security-Policy" content="${CSP_IMPRESION}" />`
+    + `<title>${esc(titulo)}</title><style>
     @page { size: ${f.page}; margin: ${f.margen}; }
     * { box-sizing: border-box; }
     body { font: ${f.font}/1.45 ${f.rollo ? "'Courier New', monospace" : 'system-ui, sans-serif'}; margin: 0; color: #111; }
@@ -130,9 +187,9 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
     .nota { margin-top: ${f.rollo ? '8px' : '14px'}; color: #555; font-size: ${f.chica}; ${esTicket ? 'text-align: center;' : ''} }
     .fiscal { margin-top: 6px; text-align: center; font-size: ${f.chica}; color: #555; letter-spacing: 0.06em; }
   </style></head><body>
-    <div class="emp">${logo}<div><div class="empNombre">${empresa.nombre || ''}</div>${datos ? `<div class="empDatos">${datos}</div>` : ''}</div></div>
+    <div class="emp">${logo}<div><div class="empNombre">${esc(empresa.nombre || '')}</div>${datos ? `<div class="empDatos">${datos}</div>` : ''}</div></div>
     ${cuerpo}
-    ${pie ? `<div class="nota">${pie}</div>` : ''}
+    ${pie ? `<div class="nota">${esc(pie)}</div>` : ''}
   </body></html>`;
 }
 
@@ -145,7 +202,9 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
  * detrás y en un rollo eso es un adhesivo desperdiciado por cada impresión.
  */
 function htmlEtiquetas({ f, titulo, cuerpo }) {
-  return `<!doctype html><html><head><meta charset="utf-8" /><title>${titulo}</title><style>
+  return `<!doctype html><html><head><meta charset="utf-8" />`
+    + `<meta http-equiv="Content-Security-Policy" content="${CSP_IMPRESION}" />`
+    + `<title>${esc(titulo)}</title><style>
     @page { size: ${f.page}; margin: 0; }
     * { box-sizing: border-box; }
     body { margin: 0; font: ${f.font}/1.15 system-ui, sans-serif; color: #000; }
@@ -170,9 +229,6 @@ function htmlEtiquetas({ f, titulo, cuerpo }) {
     .vto { font-size: ${f.chica}; font-weight: 700; }
   </style></head><body>${cuerpo}</body></html>`;
 }
-
-/** El texto viene del catálogo (lo tipea una persona): un `<` no puede romper la etiqueta. */
-const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /** Tope de una tanda: un error de tipeo no puede vaciar el rollo entero. */
 export const MAX_ETIQUETAS = 500;
@@ -228,15 +284,15 @@ export function cuerpoTicket(venta, { moneda, fechaHora, leyendaNoFiscal = true 
     const neto = it.cantidad * it.precioUnitario * (1 - (it.descuento || 0) / 100);
     const final = neto * (1 + (it.iva ?? 21) / 100);
     return `<tr>
-      <td>${it.nombre ?? `#${it.productoId}`}<br /><span style="color:#555">${Number(it.cantidad)} x ${moneda(it.precioUnitario * (1 + (it.iva ?? 21) / 100))}</span></td>
+      <td>${esc(it.nombre ?? `#${it.productoId}`)}<br /><span style="color:#555">${Number(it.cantidad)} x ${moneda(it.precioUnitario * (1 + (it.iva ?? 21) / 100))}</span></td>
       <td class="n">${moneda(final)}</td>
     </tr>`;
   }).join('');
-  const pagos = (venta.pagos ?? []).map((p) => `<tr><td>${p.medio}</td><td class="n">${moneda(p.importe)}</td></tr>`).join('');
-  const nro = venta.numero != null ? `${venta.puntoVenta}-${String(venta.numero).padStart(8, '0')}` : '';
+  const pagos = (venta.pagos ?? []).map((p) => `<tr><td>${esc(p.medio)}</td><td class="n">${moneda(p.importe)}</td></tr>`).join('');
+  const nro = venta.numero != null ? `${esc(venta.puntoVenta)}-${String(venta.numero).padStart(8, '0')}` : '';
   return `
     <h1>Ticket ${nro}</h1>
-    <div class="sub">${fechaHora(venta.fecha)}${venta.clienteNombre ? ` · ${venta.clienteNombre}` : ''}</div>
+    <div class="sub">${esc(fechaHora(venta.fecha))}${venta.clienteNombre ? ` · ${esc(venta.clienteNombre)}` : ''}</div>
     <table><tbody>${filas}</tbody></table>
     <div class="tot"><strong>TOTAL ${moneda(venta.total)}</strong></div>
     ${pagos ? `<table><tbody>${pagos}</tbody></table>` : ''}

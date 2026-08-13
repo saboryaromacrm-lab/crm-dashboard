@@ -22,8 +22,50 @@
 export const SESION_KEY = 'crm_sesion';
 export const CTX_KEYS = ['crm_inv_ctx', 'crm_ventas_ctx'];
 
+/**
+ * CUÁNTO DURA LA COPIA HEREDABLE, y por qué existe este tope.
+ *
+ * La copia compartida vive en localStorage, que sobrevive a cerrar el navegador:
+ * en la PC del mostrador eso significaba que apagar y prender no cerraba nada —
+ * el que abría Chrome a la mañana entraba como el último que se había logueado
+ * la tarde anterior. Con este tope, la copia se puede heredar durante un turno y
+ * después deja de servir.
+ *
+ * El tope limita SOLO la herencia hacia una pestaña nueva: la pestaña que ya
+ * está trabajando tiene su propia sesión en sessionStorage y no se toca. O sea
+ * que a nadie se le corta el trabajo por este número; lo único que pasa al
+ * pasarse es que una ventana nueva pide login. El vencimiento de verdad lo
+ * sigue mandando el servidor.
+ */
+const HEREDABLE_MS = 10 * 60 * 60 * 1000; // 10 horas: un turno largo
+
 function parse(raw) {
   try { return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+
+/* La marca de vencimiento va en una clave APARTE para no cambiarle la forma al
+ * objeto guardado: quien lea la copia compartida sigue viendo la sesión tal cual. */
+const claveVence = (k) => `${k}_hasta`;
+
+/** Borra la copia compartida de una clave (y su marca). */
+function olvidarCompartida(k) {
+  try {
+    localStorage.removeItem(k);
+    localStorage.removeItem(claveVence(k));
+  } catch { /* modo privado */ }
+}
+
+/**
+ * ¿La copia compartida todavía se puede heredar? Sin marca se considera
+ * VENCIDA: una copia guardada por una versión anterior no tiene por qué
+ * sobrevivir para siempre, y equivocarse para el lado de pedir login es el
+ * error barato.
+ */
+function heredable(k) {
+  try {
+    const hasta = Number(localStorage.getItem(claveVence(k)));
+    return Number.isFinite(hasta) && hasta > Date.now();
+  } catch { return false; }
 }
 
 /**
@@ -36,18 +78,24 @@ export function leerClave(k) {
     const propio = sessionStorage.getItem(k);
     if (propio != null) return parse(propio);
     const heredado = localStorage.getItem(k);
-    if (heredado != null) sessionStorage.setItem(k, heredado);
+    if (heredado == null) return null;
+    // Vencida: no se hereda, y se limpia para no dejarla dando vueltas.
+    if (!heredable(k)) { olvidarCompartida(k); return null; }
+    sessionStorage.setItem(k, heredado);
     return parse(heredado);
   } catch { return null; }
 }
 
 /** Escribe una clave de ESTA pestaña. `compartir` también la deja como copia
- *  compartida (solo el login usa eso sin condiciones). */
+ *  compartida (solo el login usa eso sin condiciones), con su vencimiento. */
 export function escribirClave(k, valor, { compartir = false } = {}) {
   const raw = JSON.stringify(valor);
   try { sessionStorage.setItem(k, raw); } catch { /* modo privado */ }
   if (compartir) {
-    try { localStorage.setItem(k, raw); } catch { /* modo privado */ }
+    try {
+      localStorage.setItem(k, raw);
+      localStorage.setItem(claveVence(k), String(Date.now() + HEREDABLE_MS));
+    } catch { /* modo privado */ }
   }
 }
 
@@ -90,9 +138,7 @@ export function limpiarSesion() {
     for (const k of CTX_KEYS) sessionStorage.removeItem(k);
   } catch { /* modo privado */ }
   if (duena) {
-    try {
-      localStorage.removeItem(SESION_KEY);
-      for (const k of CTX_KEYS) localStorage.removeItem(k);
-    } catch { /* modo privado */ }
+    olvidarCompartida(SESION_KEY);
+    for (const k of CTX_KEYS) olvidarCompartida(k);
   }
 }

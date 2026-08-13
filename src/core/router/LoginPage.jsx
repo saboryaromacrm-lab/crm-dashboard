@@ -43,8 +43,9 @@ export function LoginPage() {
      * y no puede haberla todavía. Pero abrirlos habría sido peor que un
      * problema técnico: `/usuarios` trae los permisos de cada rol y quién es
      * superadmin, o sea el mapa de a quién conviene atacar, servido a
-     * cualquiera que abra la URL. `/auth/opciones` devuelve nombre, id y si
-     * tiene contraseña definida. Nada más.
+     * cualquiera que abra la URL. `/auth/opciones` devuelve **solo nombre e
+     * id**: también se le sacó "si tiene contraseña definida", que era la lista
+     * de por dónde empezar y que esta pantalla ni siquiera usaba.
      */
     httpClient.get('/auth/opciones')
       .then(({ usuarios: us, sucursales: sucs }) => {
@@ -107,10 +108,12 @@ export function LoginPage() {
                     onChange={(e) => setUsuarioId(e.target.value)}
                     disabled={usuarios === null}
                   >
+                    {/* Solo el nombre. `rolNombre` NO viaja en /auth/opciones —que es
+                        público— y este renglón mostraba "Lucas — " con el guion colgando.
+                        Agregarlo a la API para "arreglar" el guion publicaría quién es el
+                        superadmin a cualquiera que abra la URL del login. */}
                     {(usuarios ?? []).map((u) => (
-                      <MenuItem key={u.id} value={String(u.id)}>
-                        {u.nombre} — {u.rolNombre}
-                      </MenuItem>
+                      <MenuItem key={u.id} value={String(u.id)}>{u.nombre}</MenuItem>
                     ))}
                   </TextField>
                   <TextField
