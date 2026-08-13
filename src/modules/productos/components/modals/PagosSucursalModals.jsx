@@ -14,7 +14,6 @@
  * compra (el candado vive en la API; acá ni se ofrecen otros documentos).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, fmtFecha, fmtFechaHora } from '../../domain/format.js';
 import { ModalShell } from '../Modal.jsx';

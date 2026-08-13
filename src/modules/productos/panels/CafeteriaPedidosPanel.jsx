@@ -10,7 +10,7 @@
  * El admin también puede abrir esta pantalla (tiene la sección), pero su lugar
  * de trabajo es la bandeja de Pedidos en Almacén › Cafetería.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { fmtFecha } from '../domain/format.js';
 import { ESTADOS_PEDIDO_CAFE } from '../domain/constants.js';
@@ -29,8 +29,16 @@ export function CafeteriaPedidosPanel() {
   }, [store, toast]);
   useEffect(() => { cargar(); }, [cargar]);
 
+  // Se re-pide cuando el store versiona (armar o anular un pedido lo mueve),
+  // pero NO en el primer render: ahí ya cargó el efecto de arriba y la pantalla
+  // pedía la lista dos veces, con la segunda pisando el resultado de la primera.
   const version = store.getVersion?.() ?? 0;
-  useEffect(() => { cargar(); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const versionVista = useRef(version);
+  useEffect(() => {
+    if (versionVista.current === version) return;
+    versionVista.current = version;
+    cargar();
+  }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pag = usePaginado(pedidos, 'cafeteria-pedidos', 'todos');
 

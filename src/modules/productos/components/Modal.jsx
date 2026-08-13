@@ -60,8 +60,11 @@ export function ModalShell({ title, subtitle, size, wide, muted, onClose, childr
 
       {footer.length > 0 && (
         <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+          {/* `disabled` para que el botón que confirma se pueda apagar mientras
+              la petición vuela: sin eso, un doble click en una conexión lenta
+              manda la operación dos veces (dos gastos, dos egresos de caja). */}
           {footer.map((b, i) => (
-            <Btn key={i} variant={b.clase || 'btn-ghost'} onClick={b.onClick}>
+            <Btn key={i} variant={b.clase || 'btn-ghost'} onClick={b.onClick} disabled={b.disabled}>
               {b.texto}
             </Btn>
           ))}

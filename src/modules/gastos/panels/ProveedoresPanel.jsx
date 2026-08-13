@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useGastos } from '../context/GastosContext.jsx';
+import { useResource } from '../hooks/useResource.js';
+import { gastosApi } from '../services/gastos.api.js';
 import { Table, PanelHead, Stat, Btn, Pill, s } from '../components/ui.jsx';
 
 /**
@@ -11,11 +13,24 @@ import { Table, PanelHead, Stat, Btn, Pill, s } from '../components/ui.jsx';
  * plomero sin tener que entrar a Compras, y para poder marcar que un proveedor
  * de mercadería también factura servicios (el que trae la mercadería y además
  * te cobra el flete).
+ *
+ * EL PADRÓN COMPLETO SE PIDE ACÁ, no se toma del contexto. El bootstrap del
+ * módulo manda una versión recortada —id, nombre y las dos banderas— que es lo
+ * único que necesitan los selectores del formulario de gasto, y así el CUIT y
+ * los datos de contacto quedan detrás de `gastos.proveedores`, que es el
+ * permiso de ESTA pantalla. Además, es lo que le da al formulario de edición la
+ * ficha entera: prellenarlo con la versión recortada le borraba al proveedor el
+ * CUIT, la dirección, el teléfono y el mail al guardar.
  */
 export function ProveedoresPanel() {
-  const { proveedores, openModal } = useGastos();
+  const { openModal, recargar } = useGastos();
+  const { data: padron, reload } = useResource('padron-gastos', () => gastosApi.proveedores());
+  const proveedores = padron ?? [];
   const [q, setQ] = useState('');
   const [verTodos, setVerTodos] = useState(false);
+
+  /** Después de crear o editar hay que refrescar las dos: la ficha y el selector. */
+  const trasGuardar = () => { reload(); recargar(); };
 
   const visibles = useMemo(() => {
     const ql = q.trim().toLowerCase();
@@ -38,7 +53,7 @@ export function ProveedoresPanel() {
         title="Proveedores"
         desc="El mismo padrón que Compras: un proveedor, un CUIT, una cuenta. Acá se ven los que facturan gastos."
         actions={
-          <Btn variant="btn-primary" onClick={() => openModal('proveedorForm', {})}>
+          <Btn variant="btn-primary" onClick={() => openModal('proveedorForm', { onChange: trasGuardar })}>
             + Nuevo proveedor
           </Btn>
         }
@@ -78,7 +93,15 @@ export function ProveedoresPanel() {
             </td>
             <td className={s['actions-col']}>
               <div className={s['row-actions']} onClick={stop}>
-                <Btn variant="btn-edit" small onClick={() => openModal('proveedorForm', { proveedorId: p.id })}>
+                {/* Se manda la ficha ENTERA, no el id: el formulario prellena con
+                    esto y al guardar reenvía todos los campos. Con la versión
+                    recortada del bootstrap, editar le borraba al proveedor el
+                    CUIT, la dirección, el teléfono y el mail. */}
+                <Btn
+                  variant="btn-edit"
+                  small
+                  onClick={() => openModal('proveedorForm', { proveedor: p, onChange: trasGuardar })}
+                >
                   Editar
                 </Btn>
               </div>

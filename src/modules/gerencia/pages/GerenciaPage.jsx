@@ -77,7 +77,7 @@ function UsuarioModal({ usuario, roles, onGuardar, onCerrar }) {
           <input
             type="password"
             value={password}
-            placeholder={esAlta ? 'Mínimo 4 caracteres' : 'Dejar vacío para no cambiarla'}
+            placeholder={esAlta ? 'Mínimo 8 caracteres' : 'Dejar vacío para no cambiarla'}
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
@@ -235,20 +235,38 @@ export function GerenciaPage() {
   const [aviso, setAviso] = useState(null);
   const [modal, setModal] = useState(null); // {tipo:'usuario'|'rol', datos}
 
+  /*
+   * Solo se pide si el rol PUEDE ver Usuarios y roles. Antes se pedía siempre,
+   * y como los tres endpoints exigen `gerencia.usuarios`, el rol Administrador
+   * —que tiene las otras cinco secciones de Gerencia pero no esta— se comía
+   * TRES 403 cada vez que entraba, con un aviso de error que ni siquiera se ve
+   * (vive dentro del panel de usuarios, que ese rol no abre).
+   */
   const cargar = useCallback(async () => {
+    if (!can('gerencia.usuarios')) { setUsuarios([]); return; }
     try {
-      const [us, rs, cat] = await Promise.all([
+      const [us, rs] = await Promise.all([
         httpClient.get('/usuarios'),
         httpClient.get('/roles'),
-        httpClient.get('/roles/permisos'),
       ]);
-      setUsuarios(us); setRoles(rs); setCatalogo(cat);
+      setUsuarios(us); setRoles(rs);
     } catch (e) {
       setAviso({ tipo: 'err', texto: e?.data?.message || 'No se pudo conectar con la API.' });
       setUsuarios([]);
     }
-  }, []);
+  }, [can]);
   useEffect(() => { cargar(); }, [cargar]);
+
+  /*
+   * El catálogo de permisos va APARTE y una sola vez: es una constante del
+   * servidor (8 grupos, 71 claves, ~5 KB). Estaba adentro de `cargar()`, que
+   * corre después de cada guardado, así que desactivar cinco usuarios se
+   * bajaba cinco veces la misma tabla que nunca cambia.
+   */
+  useEffect(() => {
+    if (!can('gerencia.usuarios')) return;
+    httpClient.get('/roles/permisos').then(setCatalogo).catch(() => setCatalogo([]));
+  }, [can]);
 
   // El aviso se va solo: es una confirmación, no un estado permanente.
   useEffect(() => {

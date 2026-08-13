@@ -202,14 +202,3 @@ export function indicePrecios(items) {
   for (const i of items) m.set(i.key, i.precios || []);
   return m;
 }
-
-/**
- * Listas que el cliente tiene asignadas, ordenadas por preferencia. Sirve para
- * mostrarlas; la resolución las consulta por `Set` en el contexto.
- */
-export function listasDelCliente(cliente, listasCatalogo) {
-  const ids = new Set(cliente?.listas ?? []);
-  return (listasCatalogo ?? [])
-    .filter((l) => ids.has(l.listaId))
-    .sort((a, b) => a.orden - b.orden);
-}

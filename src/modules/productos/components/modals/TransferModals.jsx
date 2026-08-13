@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { fmtFechaHora, money, num } from '../../domain/format.js';
 import { cx } from '@shared/utils/classNames.js';
-import { imprimirDocumento } from '@core/services/imprimir.js';
+import { esc, imprimirDocumento } from '@core/services/imprimir.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions, presentacionOptions, usuarioOptions } from '../selectOptions.jsx';
@@ -807,18 +807,18 @@ function imprimirLista(t, store, tipo, filas) {
   const destino = store.getSucursal(t.destinoId)?.nombre ?? '';
   const rows = filas.map(({ it, p }) => `
     <tr>
-      <td>${p.nombre}${it.agregado ? ' <em>(agregado)</em>' : ''}</td>
-      <td class="chica">${store.presLabel(p, it.presentacionId)}</td>
-      <td class="chica n">${it.agregado ? '—' : store.fmtCant(p, it.presentacionId, it.cantidad)}</td>
+      <td>${esc(p.nombre)}${it.agregado ? ' <em>(agregado)</em>' : ''}</td>
+      <td class="chica">${esc(store.presLabel(p, it.presentacionId))}</td>
+      <td class="chica n">${it.agregado ? '—' : esc(store.fmtCant(p, it.presentacionId, it.cantidad))}</td>
       <td class="prep"></td>
-      <td class="obs">${it.motivo || ''}</td>
+      <td class="obs">${esc(it.motivo || '')}</td>
       <td class="c">&#9744;</td>
     </tr>`).join('');
   imprimirDocumento('listaPreparacion', {
     titulo: `${t.codigo} — ${meta.titulo}`,
     cuerpo: `
-      <h1>${t.codigo} · ${meta.titulo} — para ${destino}</h1>
-      <div class="sub">Lista del ${meta.encargado} · ${filas.length} renglón(es) · impresa ${new Date().toLocaleString('es-AR')} · anotá lo preparado y cargalo al volver</div>
+      <h1>${esc(t.codigo)} · ${esc(meta.titulo)} — para ${esc(destino)}</h1>
+      <div class="sub">Lista del ${esc(meta.encargado)} · ${filas.length} renglón(es) · impresa ${esc(new Date().toLocaleString('es-AR'))} · anotá lo preparado y cargalo al volver</div>
       <table><thead><tr><th>Producto</th><th>Present.</th><th>Pedido</th><th>Preparar</th><th>Observación</th><th>&#10003;</th></tr></thead><tbody>${rows}</tbody></table>`,
   });
 }

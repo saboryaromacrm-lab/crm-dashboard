@@ -230,10 +230,43 @@ export function resolverOfertas(renglones, ofertas, { ahora, sucursalId, ticketA
       if (!pasaPrecioBase(o, r) || !alcanzaRenglon(o, r)) continue;
       const res = descuentoMecanica(o, r, libre);
       if (res && (!mejor || res.descuento > mejor.descuento)) {
-        mejor = { ofertaId: o.id, oferta: o.nombre, ...res };
+        mejor = { ofertaId: o.id, oferta: o.nombre, tipoOferta: o.tipo, ...res };
       }
     }
-    if (mejor) resultado.set(r.key, mejor);
+    /*
+     * LA PROMO PORCENTUAL DESCUENTA SOBRE LO QUE EL RENGLÓN PAGA DE VERDAD.
+     *
+     * Un "20% off" se calculaba sobre el precio unitario —el bruto— aunque el
+     * renglón ya viniera con el descuento del cliente encima. La API acota esas
+     * promos al porcentaje del neto YA bonificado, así que las dos puntas no
+     * coincidían y el ticket se rechazaba entero: un cliente con 10% de
+     * descuento no podía comprar nada en oferta (10 u × $1.000 daba $2.000 acá
+     * contra un techo de $1.800 allá, y el autoguardado fallaba en cada tecla).
+     *
+     * SOLO LAS PROPORCIONALES, y por eso la condición mira el tipo en vez de
+     * aplicar el factor a todo. El corte es si el ahorro es un MÚLTIPLO del
+     * precio unitario:
+     *
+     *  - `porcentaje` (c·p·pct), `segunda_unidad` (pares·p·pct) y `nxm`
+     *    (gratis·p) lo son. En el 3×2 la unidad gratis vale lo que el cliente
+     *    iba a pagar por ella —$900 si tiene 10% de descuento, no $1.000—, así
+     *    que sin el factor el ticket regalaba $100 de más.
+     *  - `precio_fijo` y `pack` NO: prometen un PRECIO ("el kilo a $800", "el
+     *    pack de 6 a $4.000"). Escalarles el ahorro le cobraría al cliente más
+     *    que el número del cartel, y del lado del servidor nadie lo pide — su
+     *    techo para esas dos es el bruto del renglón. Cómo se combinan un precio
+     *    de oferta y el descuento del cliente es decisión del dueño, no un
+     *    efecto de esta línea: quedan como estaban.
+     */
+    if (mejor) {
+      const proporcional = mejor.tipoOferta === 'porcentaje'
+        || mejor.tipoOferta === 'segunda_unidad'
+        || mejor.tipoOferta === 'nxm';
+      const bonificacion = 1 - (Number(r.descuento) || 0) / 100;
+      resultado.set(r.key, proporcional && bonificacion < 1
+        ? { ...mejor, descuento: mejor.descuento * bonificacion }
+        : mejor);
+    }
   }
 
   // La oferta de ticket aceptada: % sobre los renglones que quedaron sin promo.

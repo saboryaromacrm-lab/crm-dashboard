@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { leerClave, escribirClave, leerSesion } from '@core/auth/sesion.js';
+import { leerClave, leerSesion } from '@core/auth/sesion.js';
 import { errorMsg, ventasApi } from '../services/ventas.api.js';
 
 /**
@@ -34,7 +34,6 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
   const [ctx, setCtxState] = useState(() => ({ sucursalId: null, usuarioId: null, ...leerCtx() }));
 
   const [panel, setPanel] = useState(defaultPanel || panels[0]?.id);
-  const [panelParams, setPanelParams] = useState({});
   const [modal, setModal] = useState(null); // { type, props }
   const [toastState, setToastState] = useState({ open: false, msg: '', kind: 'ok' });
 
@@ -82,22 +81,13 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  const setCtx = useCallback((campo, valor) => {
-    setCtxState((c) => {
-      const next = { ...c, [campo]: valor };
-      escribirClave(CTX_KEY, next);
-      return next;
-    });
-  }, []);
-
   /* --------------------------- UI compartida --------------------------- */
 
   const closeModal = useCallback(() => setModal(null), []);
   const openModal = useCallback((type, props = {}) => setModal({ type, props }), []);
 
-  const goPanel = useCallback((id, params = {}) => {
+  const goPanel = useCallback((id) => {
     setPanel(id);
-    setPanelParams(params);
     setModal(null);
   }, []);
 
@@ -149,13 +139,13 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
   const value = useMemo(
     () => ({
       ...data, loaded, loadError, recargar: cargar,
-      ctx, setCtx,
-      panels, panel, panelParams, goPanel,
+      ctx,
+      panels, panel, goPanel,
       modal, openModal, closeModal,
       toast, toastState, closeToast, act,
       getCliente, listasCatalogo, esJefe,
     }),
-    [data, loaded, loadError, cargar, ctx, setCtx, panels, panel, panelParams, goPanel, modal,
+    [data, loaded, loadError, cargar, ctx, panels, panel, goPanel, modal,
       openModal, closeModal, toast, toastState, closeToast, act, getCliente, listasCatalogo, esJefe],
   );
 

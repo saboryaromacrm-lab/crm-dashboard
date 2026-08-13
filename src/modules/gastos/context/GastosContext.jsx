@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { leerSesion } from '@core/auth/sesion.js';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { errorMsg, gastosApi } from '../services/gastos.api.js';
 
 /**
@@ -39,6 +40,14 @@ export function GastosProvider({ children, panels = [], defaultPanel }) {
     sucursalId: sesion?.sucursal?.id ?? null,
   }), [sesion]);
 
+  /**
+   * ¿Puede atravesar sucursales? Solo administración: imputarle un gasto a otra
+   * sucursal, o explicar un pago de un cajón con un comprobante de otro, son
+   * cosas de conducción. El servidor decide lo mismo con `esJefe`; esto es para
+   * que la pantalla no ofrezca algo que la API va a corregir por atrás.
+   */
+  const { esAdmin: esJefe } = usePermissions();
+
   /* ------------------------------ Carga ------------------------------ */
 
   const cargarContadores = useCallback(async () => {
@@ -49,7 +58,6 @@ export function GastosProvider({ children, panels = [], defaultPanel }) {
         pendientes: p?.pendientes ?? 0,
         saldo: p?.saldo ?? 0,
         sinAplicar: sa?.cantidad ?? 0,
-        sinAplicarTotal: sa?.total ?? 0,
       });
     } catch { /* la API puede estar caída: los badges quedan como estaban */ }
   }, []);
@@ -136,13 +144,13 @@ export function GastosProvider({ children, panels = [], defaultPanel }) {
     () => ({
       ...data, categoriasActivas, contadores,
       loaded, loadError, recargar: cargar, recargarContadores: cargarContadores,
-      ctx,
+      ctx, esJefe,
       panels, panel, panelParams, goPanel,
       modal, openModal, closeModal,
       toast, toastState, closeToast, act,
       getCategoria, getProveedor, nombreSucursal,
     }),
-    [data, categoriasActivas, contadores, loaded, loadError, cargar, cargarContadores, ctx,
+    [data, categoriasActivas, contadores, loaded, loadError, cargar, cargarContadores, ctx, esJefe,
       panels, panel, panelParams, goPanel, modal, openModal, closeModal,
       toast, toastState, closeToast, act, getCategoria, getProveedor, nombreSucursal],
   );

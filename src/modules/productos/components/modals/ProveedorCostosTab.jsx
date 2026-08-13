@@ -38,7 +38,28 @@ function aplicarRegla(actual, modo, valor) {
   return r2(a * (1 + v / 100));
 }
 
-const costoNetoDe = (e) => (Number(e.costo) || 0) * (1 - (Number(e.descuento) || 0) / 100) * (1 + (Number(e.flete) || 0) / 100);
+/*
+ * EL COSTO NETO SALE DEL MOTOR, NO DE UNA CUENTA ESCRITA ACÁ.
+ *
+ * Acá había una copia a mano de la cadena de costo, y estaba mal de tres formas
+ * a la vez — las tres invisibles, porque el número que sale igual parece
+ * razonable:
+ *
+ *  1. miraba SOLO `descuento` e ignoraba los otros tres. El importador del
+ *     sistema viejo carga `descuento2`, así que con un "30 y 10" mostraba el
+ *     neto con 30 nomás;
+ *  2. ignoraba `modoCosto: 'final'` (el costo cargado con IVA incluido), donde
+ *     `costo` vale 0 y el neto vive en `costoFinal`: mostraba 0;
+ *  3. y lo peor: devolvía el neto **del bulto** mientras la ganancia se
+ *     calculaba con el neto **unitario** (`store.costoNeto` → `costoNetoUnitario`).
+ *     Para una bolsa de 20 kg, la columna "Precio de venta" mostraba veinte
+ *     veces el precio de góndola.
+ *
+ * `costosFormato` es el mismo espejo de `pricing.ts` que usa el resto del
+ * sistema, y devuelve las dos escalas con nombre. Era la quinta copia de esta
+ * cadena; ahora son cuatro.
+ */
+const costoNetoDe = (store, e, iva) => store.costosFormato(e, iva).costoNetoUnitario;
 
 export function ProveedorCostosTab({ prov }) {
   const { store, isAdmin, openModal, toast, act } = useProductos();
@@ -131,6 +152,17 @@ export function ProveedorCostosTab({ prov }) {
     if (ok) setEdits({});
   };
 
+  /*
+   * EL HOOK VA ANTES DEL RETURN TEMPRANO, Y NO ES ESTILO.
+   *
+   * Estaba después, así que la cantidad de hooks del componente cambiaba según
+   * hubiera filas o no. Y eso pasa de verdad: guardar costos recarga el
+   * bootstrap y reescribe `state.productos`, así que `filas` se recalcula con el
+   * modal abierto. Si cruza el cero en cualquier dirección, React tira
+   * "Rendered fewer hooks than expected" y se cae la pantalla entera.
+   */
+  const pag = usePaginado(filas, 'costosProveedor');
+
   if (!filas.length) {
     return (
       <div className={cx(s.callout, s.info)}>
@@ -140,14 +172,14 @@ export function ProveedorCostosTab({ prov }) {
     );
   }
 
-  const pag = usePaginado(filas, 'costosProveedor');
-
   const cuerpo = pag.visibles.map((f) => {
     const e = efectivo(f);
     const tocada = !!edits[f.entry.id];
     const sel = estaSeleccionada(f);
-    const netoAntes = costoNetoDe(f.entry);
-    const netoAhora = costoNetoDe(e);
+    // El IVA del PRODUCTO: `modoCosto: 'final'` lo necesita para sacarle el IVA
+    // al costo cargado con impuesto incluido.
+    const netoAntes = costoNetoDe(store, f.entry, f.p.iva);
+    const netoAhora = costoNetoDe(store, e, f.p.iva);
     const precioAntes = netoAntes * (1 + f.ganancia / 100);
     const precioAhora = netoAhora * (1 + f.ganancia / 100);
     const subio = precioAhora > precioAntes;

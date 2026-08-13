@@ -3,7 +3,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { ventasApi } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO } from '../../domain/constants.js';
-import { Btn, ModalShell, money, s } from '../ui.jsx';
+import { ModalShell, money, s } from '../ui.jsx';
 
 /* ==================================================================== *
  * Modalidad (agrupación visual)

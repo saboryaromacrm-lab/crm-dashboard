@@ -116,9 +116,15 @@ export function FacturacionPanel() {
   const totalNoFiscal = verNoFiscal
     ? comps.filter((c) => TIPOS_COMPROBANTE[c.tipo]?.noFiscal && c.estado === 'confirmado').reduce((a, c) => a + c.total, 0)
     : 0;
+  /*
+   * El saldo lo da la API. Antes esta línea recorría TODOS los comprobantes una
+   * vez por proveedor, en cada render y sin memo: con 50 proveedores y 2.000
+   * comprobantes son 100.000 iteraciones por cada tecla tipeada en un filtro. Y
+   * de paso sumaba proveedores de gastos, que nunca tienen comprobantes.
+   */
   const saldoCtaCte = provF
     ? store.cuentaProveedor(parseInt(provF, 10))
-    : store.state.proveedores.reduce((a, p) => a + store.cuentaProveedor(p.id), 0);
+    : store.saldoTotalProveedores();
 
   const pag = usePaginado(comps, 'comprobantes', `${tipoF}|${provF}|${estadoF}`);
 

@@ -134,10 +134,6 @@ export const TIPOS_INCIDENCIA = [
 // rolNombre, permisos). El catálogo de claves lo sirve GET /roles/permisos y
 // se administra desde Gerencia › Usuarios y roles.
 
-// ---- Umbrales de vencimiento ----
-export const DIAS_VENC_ALERTA = 30; // "próximo a vencer"
-export const DIAS_VENC_CRITICO = 7;
-
 /**
  * Alícuotas legales de IVA. Lista cerrada y espejo de `ALICUOTAS_IVA` del
  * backend: un IVA tipeado a mano (2.1 en vez de 21) no da error y descalabra
@@ -178,8 +174,6 @@ export const TIPOS_COMPROBANTE = {
   orden_compra: { label: 'Orden de compra',  tag: 'tag-ajuste' },
 };
 
-/** Tipos que requieren el permiso `liquidaciones` para verse y cargarse. */
-export const TIPOS_RESERVADOS = Object.keys(TIPOS_COMPROBANTE).filter((k) => TIPOS_COMPROBANTE[k].noFiscal);
 export const ESTADOS_COMPROBANTE = {
   borrador:   { label: 'Borrador',   pill: 'est-pendiente' },
   confirmado: { label: 'Confirmado', pill: 'est-recibida' },

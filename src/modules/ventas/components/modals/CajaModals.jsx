@@ -5,7 +5,7 @@ import { useResource } from '../../hooks/useResource.js';
 import { ventasApi } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
-import { Table, Btn, Di, ModalShell, money, fmtFechaHora, s } from '../ui.jsx';
+import { Table, Di, ModalShell, money, fmtFechaHora, s } from '../ui.jsx';
 
 /* ==================================================================== *
  * Apertura
@@ -571,7 +571,7 @@ export function DetalleArqueo({ arqueo }) {
 }
 
 export function CerrarCajaModal({ cajaSesionId, onChange }) {
-  const { act, closeModal } = useVentas();
+  const { act, closeModal, toast } = useVentas();
   const [declarado, setDeclarado] = useState('');
   const [observaciones, setObservaciones] = useState('');
 
@@ -584,6 +584,11 @@ export function CerrarCajaModal({ cajaSesionId, onChange }) {
   }, [arqueo, declarado]);
 
   const cerrar = async () => {
+    /* El campo vacío NO es "cero contado": era un `r2('')` = 0 que cerraba el
+     * turno con una diferencia inventada del tamaño de todo el efectivo del día,
+     * firmada y sin poder reabrirse. El control intermedio ya exigía el conteo;
+     * el cierre, que es el que queda, no lo pedía. */
+    if (declarado === '') { toast('Contá el efectivo del cajón e ingresá el monto.', 'err'); return; }
     const ok = await act(
       ventasApi.cerrarCaja(cajaSesionId, { declaradoEfectivo: r2(declarado), observaciones }),
       'Turno cerrado.',

@@ -52,14 +52,12 @@ export const gastosApi = {
   /* Usar un pago a cuenta que ya existía */
   aplicarPagoAGasto: (id, data) => httpClient.post(`/gastos/${id}/aplicar-pago`, data),
 
-  /* Rubros */
-  categorias: () => httpClient.get('/gastos/categorias'),
+  /* Rubros — la LISTA no está acá: viene con el bootstrap del módulo. */
   crearCategoria: (data) => httpClient.post('/gastos/categorias', data),
   editarCategoria: (id, data) => httpClient.patch(`/gastos/categorias/${id}`, data),
   borrarCategoria: (id) => httpClient.delete(`/gastos/categorias/${id}`),
 
-  /* Gastos fijos */
-  recurrentes: () => httpClient.get('/gastos/recurrentes'),
+  /* Gastos fijos — ídem: las plantillas vienen con el bootstrap. */
   crearRecurrente: (data) => httpClient.post('/gastos/recurrentes', data),
   editarRecurrente: (id, data) => httpClient.patch(`/gastos/recurrentes/${id}`, data),
   borrarRecurrente: (id) => httpClient.delete(`/gastos/recurrentes/${id}`),
@@ -83,7 +81,11 @@ export const gastosApi = {
   cuentaProveedor: (proveedorId) => httpClient.get(`/pagos-proveedor/cuenta/${proveedorId}`),
   sinAplicar: () => httpClient.get('/pagos-proveedor/sin-aplicar?destino=gastos'),
 
-  /* Padrón de proveedores (el mismo de Compras, filtrable por tipo) */
+  /*
+   * Padrón de proveedores: la ficha COMPLETA (con CUIT y contacto), que el
+   * bootstrap no manda. La usa la pantalla de Proveedores, que es la que tiene
+   * el permiso para verla.
+   */
   proveedores: (tipo) => httpClient.get(`/proveedores${qs({ tipo })}`),
   crearProveedor: (data) => httpClient.post('/proveedores', data),
   editarProveedor: (id, data) => httpClient.patch(`/proveedores/${id}`, data),

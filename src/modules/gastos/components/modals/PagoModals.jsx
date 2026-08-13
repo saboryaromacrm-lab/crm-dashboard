@@ -18,7 +18,9 @@ import {
  * sucursal, se ofrece descontarlo de esa caja.
  */
 export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
-  const { proveedores, sucursales, ctx, act, closeModal, toast } = useGastos();
+  const {
+    proveedores, sucursales, ctx, esJefe, nombreSucursal, act, closeModal, toast,
+  } = useGastos();
   const [proveedorId, setProveedorId] = useState(proveedorFijo ? String(proveedorFijo) : '');
   const [importe, setImporte] = useState('');
   const [medio, setMedio] = useState('transferencia');
@@ -111,10 +113,18 @@ export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
         </div>
         <div className={s.field}>
           <label>Sucursal</label>
-          <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
-            <option value="">Sin sucursal</option>
-            {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
-          </select>
+          {/* Si el medio es efectivo, la API exige que el turno sea el de la
+              sucursal de la sesión: elegir otra terminaba en un rechazo. Y de
+              esta sucursal depende a qué documentos se va a poder aplicar el
+              pago después. Solo administración elige. */}
+          {esJefe ? (
+            <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
+              <option value="">Sin sucursal</option>
+              {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+            </select>
+          ) : (
+            <input value={nombreSucursal(ctx.sucursalId)} disabled />
+          )}
         </div>
       </div>
 
@@ -320,12 +330,18 @@ export function CuentaProveedorModal({ proveedorId }) {
 
           <div className={s.hint}>
             Saldo positivo = se le debe. Negativo = se le pagó de más y queda a favor.
+            El saldo incluye <strong>mercadería y gastos</strong>; el detalle de las facturas
+            de mercadería está en Compras.
           </div>
 
-          <div className={s['section-title']}>Documentos impagos</div>
+          {/* Los NÚMEROS de arriba son de la cuenta entera (mercadería + gastos),
+              pero esta tabla la arma el módulo de Gastos y solo pide los
+              documentos de gastos. Decirlo evita la lectura de "faltan
+              documentos": las facturas de mercadería se ven en Compras. */}
+          <div className={s['section-title']}>Gastos impagos</div>
           <Table
             cols={[{ h: 'Documento' }, { h: 'Fecha' }, { h: 'Total', num: true }, { h: 'Saldo', num: true }]}
-            empty="No le debemos nada."
+            empty="No hay gastos impagos de este proveedor."
           >
             {(docs ?? []).map((d) => (
               <tr key={`${d.tipo}-${d.docId}`}>

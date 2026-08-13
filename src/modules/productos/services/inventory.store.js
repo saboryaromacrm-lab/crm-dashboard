@@ -46,6 +46,8 @@ function nuevoEstado() {
   return {
     sucursales: [], proveedores: [], usuarios: [], productos: [],
     stock: [], movimientos: [], transferencias: [], incidencias: [], comprobantes: [],
+    /** `{ total, porProveedor }` que calcula la API; ver `cuentaProveedor`. */
+    saldosProveedor: { total: 0, porProveedor: {} },
     // Preferencias que afectan el cálculo de precios (llegan en el bootstrap).
     configVentas: {},
     // Catálogo del formato de venta (modalidad › lista). Se necesita para
@@ -290,29 +292,28 @@ function valorEntry(s) {
 function getComprobante(id) { return state.comprobantes.find((c) => c.id === id); }
 function comprobantesDe(proveedorId) { return state.comprobantes.filter((c) => c.proveedorId === proveedorId).sort((a, b) => b.id - a.id); }
 /**
- * Saldo del proveedor calculado con lo que ya está en memoria.
+ * SALDO DEL PROVEEDOR — LO CALCULA LA API, NO ESTA PANTALLA.
+ * ============================================================================
+ * Antes esto sumaba sobre `state.comprobantes`, y era la CUARTA copia de la
+ * fórmula de la deuda. Ya se había desalineado dos veces: le faltaba la
+ * liquidación (la mitad no facturada generaba deuda invisible) y filtraba por
+ * `condicionPago`, criterio que el backend había abandonado.
  *
- * LISTA DE TIPOS · tiene que decir lo MISMO que `cuenta()` de la API
- * (`comprobantes.module.ts`), que es la fuente de verdad. Estaba desalineada en
- * dos cosas:
+ * Lo que la mató fue algo peor: desde que el listado esconde las liquidaciones
+ * a quien no tiene el permiso, este saldo salía **más bajo que la deuda real**
+ * para ese usuario, sin ningún aviso. Un saldo que depende de quién lo mira no
+ * es un saldo.
  *
- *   · Le faltaba la **liquidación**, así que la mitad no facturada generaba
- *     deuda en la base y el saldo de la pantalla no la contaba: plata que se
- *     debe, invisible.
- *   · Filtraba por `condicionPago === 'cuenta_corriente'`, criterio que el
- *     backend ya abandonó: una factura marcada "contado" pero sin pago
- *     registrado desaparecía del saldo aunque no se hubiera pagado nunca. Ahora
- *     la deuda la define el DOCUMENTO y la cancela el PAGO.
+ * Ahora viene de `GET /comprobantes/saldos`, que suma en la base — y por eso el
+ * listado pudo pasar a pedirse acotado sin dejar el saldo mal en silencio.
  */
 function cuentaProveedor(proveedorId) {
-  let deuda = 0;
-  let pagado = 0;
-  state.comprobantes.filter((c) => c.proveedorId === proveedorId && c.estado === 'confirmado').forEach((c) => {
-    if (c.tipo === 'factura' || c.tipo === 'liquidacion' || c.tipo === 'nota_debito') {
-      deuda += c.total; pagado += c.pagado || 0;
-    } else if (c.tipo === 'nota_credito') deuda -= c.total;
-  });
-  return deuda - pagado;
+  return state.saldosProveedor?.porProveedor?.[proveedorId] ?? 0;
+}
+
+/** El saldo de TODOS los proveedores, para el encabezado sin filtro. */
+function saldoTotalProveedores() {
+  return state.saldosProveedor?.total ?? 0;
 }
 
 /* ---------------- Métricas ---------------- */
@@ -430,8 +431,25 @@ const _LOADERS = {
   movimientos: async () => {
     state.movimientos = _enriquecerMovimientos(await httpClient.get('/movimientos?limit=300'));
   },
+  /*
+   * Los comprobantes se piden ACOTADOS y con los SALDOS al lado.
+   *
+   * Era el único listado sin techo: traía todos los comprobantes con sus ítems,
+   * percepciones, pagos y notas, y se re-pedía completo en cada `_mutate`
+   * (cargar una factura recargaba la historia entera).
+   *
+   * Los `saldos` vienen aparte y de la base, no de sumar esta lista: si el saldo
+   * se calculara con lo que llegó, acotar la lista lo dejaría MAL EN SILENCIO
+   * para cualquier proveedor con más de 300 comprobantes. Van juntos en la misma
+   * carga a propósito — el techo y el saldo son dos mitades de lo mismo.
+   */
   comprobantes: async () => {
-    state.comprobantes = await httpClient.get('/comprobantes');
+    const [lista, saldos] = await Promise.all([
+      httpClient.get('/comprobantes?limit=300'),
+      httpClient.get('/comprobantes/saldos'),
+    ]);
+    state.comprobantes = lista;
+    state.saldosProveedor = saldos;
   },
 };
 
@@ -563,12 +581,6 @@ const siguienteCodigo = () => httpClient.get('/productos/siguiente-codigo');
 const siguienteEan = (excluir = []) => httpClient.get(
   '/productos/siguiente-ean' + (excluir.length ? `?excluir=${encodeURIComponent(excluir.join(','))}` : ''),
 );
-
-/** Subcategorías de una categoría: la mitad de abajo de la cascada. */
-function subcategoriasDe(categoriaId) {
-  if (!categoriaId) return [];
-  return state.catalogos.subcategorias.filter((sc) => sc.categoriaId === categoriaId);
-}
 
 const crearProveedor = (o) => _mutate(() => httpClient.post('/proveedores', o));
 const editarProveedor = (id, o) => _mutate(() => httpClient.patch('/proveedores/' + id, o));
@@ -787,7 +799,7 @@ const pedidoCafeteria = (id) => httpClient.get('/cafeteria/pedidos/' + id);
 const crearPedidoCafeteria = (o) => _mutate(() => httpClient.post('/cafeteria/pedidos', { usuarioId: state.ctx.usuarioId ?? undefined, ...o }));
 const tomarPedidoCafeteria = (id) => _mutate(() => httpClient.post(`/cafeteria/pedidos/${id}/tomar`, {}));
 const anularPedidoCafeteria = (id, motivo) => _mutate(() => httpClient.post(`/cafeteria/pedidos/${id}/anular`, { motivo, usuarioId: state.ctx.usuarioId ?? undefined }));
-/** pedido → transito → recibido. `desde` evita que un doble clic salte dos pasos. */
+/** Anular = reversión completa del egreso; sube la versión y coffit lo deshace. */
 const anularEnvioCafeteria = (id, motivo) => _mutate(() => httpClient.post(`/cafeteria/envios/${id}/anular`, { motivo, usuarioId: state.ctx.usuarioId ?? undefined }));
 
 /* ---- Vencimientos (el vigía de fechas, sin lote) ----
@@ -879,13 +891,14 @@ export const inventoryStore = {
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
   sugerenciasArchivado, archivarLote,
   guardarPresentaciones, importarCatalogo,
-  crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, subcategoriasDe, siguienteCodigo, siguienteEan,
+  crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, siguienteCodigo, siguienteEan,
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,
   guardarFormatosCompra, guardarListasProducto, guardarListasPresentacion,
   costoNeto, costoNetoEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPaquete,
   precioFinal, redondearPrecio,
-  crearComprobante, getComprobante, comprobantesDe, cuentaProveedor, facturasReferenciables,
+  crearComprobante, getComprobante, comprobantesDe, cuentaProveedor, saldoTotalProveedores,
+  facturasReferenciables,
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
   urlPapelFactura, leerRenglonesLectura,

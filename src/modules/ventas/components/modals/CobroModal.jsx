@@ -9,8 +9,6 @@ import { Table, Btn, Di, ModalShell, VentaTag, money, fmtFechaHora, s } from '..
 import { configImpresion, cuerpoTicket, imprimirDocumento } from '@core/services/imprimir.js';
 import p from '../../styles/Pos.module.css';
 
-const EPS = 0.005;
-
 /**
  * COBRO
  * ============================================================================
@@ -37,7 +35,7 @@ const EPS = 0.005;
  * tiene cuenta corriente habilitada — si no, toda venta es al contado y no hay
  * nada que elegir. Los medios de pago arrancan en efectivo por el total.
  */
-export function CobroModal({ ventaId, renglones, totales, clienteId, cajaSesionId, onCobrado }) {
+export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrado }) {
   const { getCliente, config, ctx, closeModal, toast } = useVentas();
   const cliente = getCliente(clienteId);
 

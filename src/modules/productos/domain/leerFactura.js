@@ -42,12 +42,6 @@ const CALIDAD = 0.82;
 export const esImagen = (file) => !!file && String(file.type || '').startsWith('image/');
 export const esPdf = (file) => !!file && String(file.type || '') === 'application/pdf';
 
-/**
- * Siempre se puede: `jsQR` es JavaScript puro y funciona en cualquier navegador.
- * Queda como función para que la pantalla no tenga que saber cómo se lee.
- */
-export function puedeLeerQr() { return true; }
-
 /** El camino rápido, cuando el navegador lo tiene (Android sí, Windows no). */
 let _detector;
 async function detectorNativo() {

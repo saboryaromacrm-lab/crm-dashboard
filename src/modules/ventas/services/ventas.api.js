@@ -53,8 +53,8 @@ export const ventasApi = {
    */
   listadoVentas: (filtros) => httpClient.get(`/ventas/listado${qs(filtros)}`),
   venta: (id) => httpClient.get(`/ventas/${id}`),
-  crearVenta: (data) => httpClient.post('/ventas', data),
-  anularVenta: (id) => httpClient.post(`/ventas/${id}/anular`, {}),
+  /** El motivo es obligatorio: queda en `anuladoMotivo` junto a quién y cuándo. */
+  anularVenta: (id, motivo) => httpClient.post(`/ventas/${id}/anular`, { motivo }),
 
   /* Ventas abiertas del punto de venta (borradores) */
   ventasAbiertas: (sucursalId) =>
@@ -82,9 +82,6 @@ export const ventasApi = {
    */
   catalogo: (sucursalId) => httpClient.get(`/ventas/catalogo${qs({ sucursalId })}`),
 
-  /* ---- Evolución de precios (Alt+F5) ---- */
-  evolucionPrecios: (q = '') => httpClient.get('/precios/evolucion' + q),
-
   /* ---- Ofertas ---- */
   ofertas: () => httpClient.get('/ofertas'),
   crearOferta: (o) => httpClient.post('/ofertas', o),
@@ -102,8 +99,9 @@ export const ventasApi = {
   editarOferta: (id, o) => httpClient.patch('/ofertas/' + id, o),
   borrarOferta: (id) => httpClient.delete('/ofertas/' + id),
 
-  /* ---- Formato de venta: modalidad › lista + reglas de marca ---- */
-  listas: () => httpClient.get('/listas'),
+  /* ---- Formato de venta: modalidad › lista + reglas de marca ----
+     El catálogo (modalidades + listas + reglas) llega con el bootstrap: acá van
+     solo las escrituras. */
   crearReglaMarca: (o) => httpClient.post('/listas/reglas-marca', o),
   editarReglaMarca: (id, o) => httpClient.patch(`/listas/reglas-marca/${id}`, o),
   borrarReglaMarca: (id) => httpClient.delete(`/listas/reglas-marca/${id}`),
@@ -127,19 +125,16 @@ export const ventasApi = {
   /* Pagos a proveedores (la plata que sale, desde la caja o desde Gastos) */
   proveedoresPadron: (tipo) => httpClient.get(`/proveedores${qs({ tipo })}`),
   crearPagoProveedor: (data) => httpClient.post('/pagos-proveedor', data),
-  pagosProveedor: (filtros) => httpClient.get(`/pagos-proveedor${qs(filtros)}`),
-  documentosPendientesProveedor: (proveedorId) => httpClient.get(`/pagos-proveedor/pendientes/${proveedorId}`),
 
   /* Cobranzas */
   cobranzas: (filtros) => httpClient.get(`/cobranzas${qs(filtros)}`),
   cobranza: (id) => httpClient.get(`/cobranzas/${id}`),
   crearCobranza: (data) => httpClient.post('/cobranzas', data),
-  anularCobranza: (id) => httpClient.post(`/cobranzas/${id}/anular`, {}),
+  anularCobranza: (id, motivo) => httpClient.post(`/cobranzas/${id}/anular`, { motivo }),
 
   /* Presupuestos (pedidos mayoristas: WhatsApp hoy, tienda web mañana) */
   presupuestos: () => httpClient.get('/presupuestos'),
   crearPresupuesto: (data) => httpClient.post('/presupuestos', data),
-  actualizarPresupuesto: (id, data) => httpClient.patch(`/presupuestos/${id}`, data),
   enviarPresupuesto: (id) => httpClient.post(`/presupuestos/${id}/enviar`, {}),
   reabrirPresupuesto: (id) => httpClient.post(`/presupuestos/${id}/reabrir`, {}),
   confirmarPresupuesto: (id, usuarioId) => httpClient.post(`/presupuestos/${id}/confirmar`, { usuarioId }),
@@ -147,12 +142,12 @@ export const ventasApi = {
   delegarPresupuesto: (id, vendedorId) => httpClient.post(`/presupuestos/${id}/delegar`, { vendedorId }),
   cancelarPresupuesto: (id, usuarioId, motivo) => httpClient.post(`/presupuestos/${id}/cancelar`, { usuarioId, motivo }),
 
-  /* Órdenes web (pedidos del sitio en estado pendiente) */
-  ordenesPendientes: () => httpClient.get('/presupuestos/ordenes/pendientes'),
+  /* Órdenes web (pedidos del sitio en estado pendiente).
+     El CONTADOR de pendientes no está acá: lo pollea `@core/services/ordenesWeb.js`,
+     que es el único que habla con ese endpoint (badge del sidebar + alerta). */
   orden: (id) => httpClient.get(`/presupuestos/${id}/orden`),
   aceptarOrden: (id, data) => httpClient.post(`/presupuestos/${id}/aceptar`, data),
 
-  /* Configuración */
-  config: () => httpClient.get('/configuracion/ventas'),
+  /* Configuración (la lectura viaja con el bootstrap). */
   guardarConfig: (patch) => httpClient.put('/configuracion/ventas', patch),
 };

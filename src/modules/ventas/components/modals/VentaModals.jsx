@@ -17,7 +17,7 @@ import { useResource } from '../../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO, CONDICIONES_PAGO, nroComprobante } from '../../domain/constants.js';
 import {
-  ModalShell, Table, Btn, Pill, VentaEstadoPill, VentaTag, Di, SaldoMonto,
+  ModalShell, Table, Pill, VentaEstadoPill, VentaTag, Di, SaldoMonto,
   money, num, fmtFechaHora, s,
 } from '../ui.jsx';
 
@@ -181,13 +181,29 @@ export function DetalleVentaModal({ ventaId, onCambio }) {
  * rechaza si la venta tiene cobranzas imputadas (primero se anula el recibo).
  */
 export function AnularVentaModal({ venta, onCambio }) {
-  const { closeModal, act } = useVentas();
+  const { closeModal, act, toast } = useVentas();
+  /*
+   * EL MOTIVO ES OBLIGATORIO, y la API lo exige igual que esta pantalla.
+   *
+   * Anular una venta al contado le baja el efectivo esperado al arqueo del
+   * turno: es la forma de tapar un faltante y que el cierre dé diferencia 0. El
+   * motivo, con quién anuló y cuándo, es lo único que después distingue una
+   * devolución legítima de eso.
+   */
+  const [motivo, setMotivo] = useState('');
 
-  const anular = () => act(
-    ventasApi.anularVenta(venta.id),
-    `Venta ${nroComprobante(venta)} anulada: la mercadería volvió al stock.`,
-    { recargar: false },
-  ).then((ok) => { if (ok) onCambio?.(); });
+  const anular = () => {
+    const razon = motivo.trim();
+    if (!razon) {
+      toast('Escribí por qué se anula: queda registrado con tu nombre.', 'err');
+      return;
+    }
+    act(
+      ventasApi.anularVenta(venta.id, razon),
+      `Venta ${nroComprobante(venta)} anulada: la mercadería volvió al stock.`,
+      { recargar: false },
+    ).then((ok) => { if (ok) onCambio?.(); });
+  };
 
   return (
     <ModalShell
@@ -219,8 +235,19 @@ export function AnularVentaModal({ venta, onCambio }) {
           que no existe.
         </div>
       )}
+      <div className={s.field}>
+        <label>Motivo de la anulación <span className={s.req}>*</span></label>
+        <input
+          autoFocus
+          maxLength={300}
+          placeholder="Por ejemplo: el cliente devolvió todo, se cargó dos veces…"
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+        />
+      </div>
       <div className={s.hint}>
-        Si la devolución es de una parte, no se anula: se hace una nota de crédito por lo devuelto.
+        Queda guardado con tu nombre y la hora. Si la devolución es de una parte, no se anula:
+        se hace una nota de crédito por lo devuelto.
       </div>
     </ModalShell>
   );

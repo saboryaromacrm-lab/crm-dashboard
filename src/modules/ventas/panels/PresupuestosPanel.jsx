@@ -12,7 +12,7 @@
  */
 import { useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
-import { configImpresion, imprimirDocumento } from '@core/services/imprimir.js';
+import { configImpresion, esc, imprimirDocumento } from '@core/services/imprimir.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
@@ -44,13 +44,19 @@ const armadaDe = (it) => (it.cantidadArmada ?? it.cantidad);
 
 /* ------------------------- Impresiones y WhatsApp ------------------------- */
 /* El formato (A4/Carta/rollo) y el membrete de la empresa salen de
- * Sistema › Impresión: acá solo se arma el CONTENIDO de cada documento. */
+ * Sistema › Impresión: acá solo se arma el CONTENIDO de cada documento.
+ *
+ * TODO DATO VA CON `esc()`. Este panel imprime pedidos que entraron por el
+ * SITIO PÚBLICO: el nombre del cliente y las observaciones los escribió alguien
+ * de internet, sin cuenta. Sin escapar, ese texto se ejecutaba como HTML en la
+ * ventana de impresión, que comparte origen con el dashboard — o sea, con la
+ * sesión abierta del vendedor. */
 
 /** Hoja del CLIENTE: formal, con precios finales y validez. */
 function imprimirCliente(p, cliente) {
   const filas = p.items.map((it) => `
     <tr>
-      <td>${it.nombre}${it.detalle ? ` <span style="color:#666">· ${it.detalle}</span>` : ''}</td>
+      <td>${esc(it.nombre)}${it.detalle ? ` <span style="color:#666">· ${esc(it.detalle)}</span>` : ''}</td>
       <td class="chica n">${num(it.cantidad)}</td>
       <td class="chica n">${money(finalUnit(it))}</td>
       <td class="chica n"><strong>${money(finalUnit(it) * it.cantidad)}</strong></td>
@@ -58,12 +64,12 @@ function imprimirCliente(p, cliente) {
   imprimirDocumento('presupuesto', {
     titulo: `${p.codigo} — Presupuesto`,
     cuerpo: `
-      <h1>Presupuesto ${p.codigo}</h1>
-      <div class="sub">${cliente?.nombre ?? ''} · ${fmtFecha(p.fecha)}${p.vencimiento ? ` · <strong>válido hasta ${fmtFecha(p.vencimiento)}</strong>` : ''}</div>
+      <h1>Presupuesto ${esc(p.codigo)}</h1>
+      <div class="sub">${esc(cliente?.nombre ?? '')} · ${esc(fmtFecha(p.fecha))}${p.vencimiento ? ` · <strong>válido hasta ${esc(fmtFecha(p.vencimiento))}</strong>` : ''}</div>
       <table><thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Importe</th></tr></thead>
       <tbody>${filas}</tbody></table>
       <div class="tot">Total: <strong>${money(p.total)}</strong> <span style="color:#666;font-size:12px">(IVA incluido)</span></div>
-      ${p.observaciones ? `<div class="nota">${p.observaciones}</div>` : ''}`,
+      ${p.observaciones ? `<div class="nota">${esc(p.observaciones)}</div>` : ''}`,
     pie: 'Los precios quedan garantizados hasta el vencimiento del presupuesto.',
   });
 }
@@ -72,17 +78,17 @@ function imprimirCliente(p, cliente) {
 function imprimirArmado(p, cliente) {
   const filas = p.items.map((it) => `
     <tr>
-      <td>${it.nombre}${it.detalle ? ` <span style="color:#666">· ${it.detalle}</span>` : ''}</td>
+      <td>${esc(it.nombre)}${it.detalle ? ` <span style="color:#666">· ${esc(it.detalle)}</span>` : ''}</td>
       <td class="chica n">${num(it.cantidad)}</td>
       <td class="prep"></td>
-      <td class="obs">${it.motivo || ''}</td>
+      <td class="obs">${esc(it.motivo || '')}</td>
       <td class="chica" style="text-align:center;font-size:16px">&#9744;</td>
     </tr>`).join('');
   imprimirDocumento('hojaArmado', {
     titulo: `${p.codigo} — Armado`,
     cuerpo: `
-      <h1>${p.codigo} · Armado del pedido</h1>
-      <div class="sub">${cliente?.nombre ?? ''} · ${ENTREGAS[p.entrega] ?? p.entrega} · anotá lo armado y cargalo al volver</div>
+      <h1>${esc(p.codigo)} · Armado del pedido</h1>
+      <div class="sub">${esc(cliente?.nombre ?? '')} · ${esc(ENTREGAS[p.entrega] ?? p.entrega)} · anotá lo armado y cargalo al volver</div>
       <table><thead><tr><th>Producto</th><th>Pedido</th><th>Armado</th><th>Observación</th><th>&#10003;</th></tr></thead>
       <tbody>${filas}</tbody></table>`,
   });
@@ -269,7 +275,13 @@ export function PresupuestosPanel() {
         productoId: it.productoId, presentacionId: it.presentacionId ?? undefined,
         cantidad: armadaDe(it), precioLista: it.precioLista, precioUnitario: it.precioLista,
         descuento: it.descuento || 0, iva: it.iva, lista: it.lista || undefined,
-        listaOrigen: 'manual',
+        /*
+         * Viaja el `listaId` con el que se COTIZÓ, no el nombre. El servidor
+         * reconoce el precio congelado contra el renglón del presupuesto (que
+         * también recibe por `presupuestoId`) y lo registra con origen
+         * 'presupuesto': ni un precio pisado a mano, ni el de la lista de hoy.
+         */
+        listaId: it.listaId ?? undefined,
       }));
     if (!items.length) { toast('No hay nada armado para vender.', 'err'); return; }
     const ok = await accion(() => ventasApi.abrirVenta({

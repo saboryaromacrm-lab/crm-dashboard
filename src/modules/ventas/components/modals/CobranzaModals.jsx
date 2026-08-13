@@ -337,10 +337,23 @@ export function CobranzaDetalleModal({ cobranzaId, onChange }) {
 }
 
 export function AnularCobranzaModal({ cobranzaId, onChange }) {
-  const { act, closeModal } = useVentas();
+  const { act, closeModal, toast } = useVentas();
+  /*
+   * EL MOTIVO ES OBLIGATORIO, igual que al anular una venta, y por la misma
+   * razón: el arqueo solo suma los recibos confirmados, así que anular uno le
+   * saca esa plata al efectivo esperado del cajón y el cierre da diferencia 0.
+   * Es la maniobra con la que se tapa un faltante. El motivo, con quién anuló y
+   * cuándo (0060), es lo único que después distingue una corrección legítima.
+   */
+  const [motivo, setMotivo] = useState('');
 
   const anular = async () => {
-    const ok = await act(ventasApi.anularCobranza(cobranzaId), 'Cobranza anulada.');
+    const razon = motivo.trim();
+    if (!razon) {
+      toast('Escribí por qué se anula: queda registrado con tu nombre.', 'err');
+      return;
+    }
+    const ok = await act(ventasApi.anularCobranza(cobranzaId, razon), 'Cobranza anulada.');
     if (ok) onChange?.();
   };
 
@@ -357,6 +370,21 @@ export function AnularCobranzaModal({ cobranzaId, onChange }) {
         El recibo queda <strong>anulado</strong> (no se borra) y sus imputaciones dejan de contar:
         los comprobantes involucrados vuelven a figurar como impagos y el saldo del cliente sube
         por el importe anulado.
+      </div>
+
+      <Di label="Por qué se anula" requerido>
+        <input
+          className={s.input}
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          placeholder="Se cargó dos veces / el cheque no tenía fondos / error de importe"
+          maxLength={300}
+          autoFocus
+        />
+      </Di>
+      <div className={s.hint}>
+        Queda guardado con tu nombre y la hora. Si el turno de caja del recibo ya se cerró,
+        no se puede anular: su arqueo está firmado y se corrige con un recibo nuevo.
       </div>
     </ModalShell>
   );

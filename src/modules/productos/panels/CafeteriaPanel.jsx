@@ -11,7 +11,7 @@
  *  · MÉTRICA — qué se le mandó al café en el período, agregado por artículo,
  *    con filtros. El agregado lo hace la API: acá solo se muestra.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money, num, fmtFecha, isoDate } from '../domain/format.js';
@@ -72,10 +72,22 @@ export function CafeteriaPanel() {
   }, [store, desde, hasta, estadoF, buscar, toast]);
   useEffect(() => { cargar(); }, [cargar]);
 
-  // Los modales mutan por el store (_mutate refresca el bootstrap); esta lista
-  // vive fuera del bootstrap, así que se re-pide cuando el store versiona.
+  /*
+   * Los modales mutan por el store (_mutate refresca el bootstrap); esta lista
+   * vive fuera del bootstrap, así que se re-pide cuando el store versiona.
+   *
+   * SALTEA EL PRIMER RENDER. El efecto de arriba ya carga al montar (y cada vez
+   * que cambia un filtro, que es su trabajo), así que sin esta guarda entrar a
+   * Cafetería disparaba OCHO consultas en vez de cuatro — envíos, resumen,
+   * métrica y pedidos, dos veces cada una.
+   */
   const version = store.getVersion?.() ?? 0;
-  useEffect(() => { cargar(); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const versionVista = useRef(version);
+  useEffect(() => {
+    if (versionVista.current === version) return;
+    versionVista.current = version;
+    cargar();
+  }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const clave = `${pestana}|${desde}|${hasta}|${estadoF}`;
   const pag = usePaginado(envios, 'cafeteria', clave);

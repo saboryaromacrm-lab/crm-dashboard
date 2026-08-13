@@ -288,8 +288,23 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const [asociados, setAsociados] = useState({});
   const tienePdf = !!lectura?.archivos?.some((a) => a.mime === 'application/pdf');
 
-  /** Deriva de la MISMA lista: si el tipo mueve mercadería, se ofrece el tilde. */
+  /** Deriva de la MISMA lista: si el tipo INGRESA mercadería, entra siempre. */
   const permiteRecepcion = TIPOS_CON_RECEPCION.has(tipo);
+  /**
+   * UNA NC PUEDE SACAR MERCADERÍA, Y ESO SÍ SE PREGUNTA.
+   *
+   * La API lo soporta desde hace tiempo (`egresaStock`) pero ninguna pantalla lo
+   * podía activar: el alta mandaba `recepcion` derivado del tipo, y para una nota
+   * eso siempre daba "no". Así que la mercadería que se le devolvía a un
+   * proveedor quedaba en el depósito y había que sacarla a mano por Almacén.
+   *
+   * Acá NO puede ser automático por tipo, y es la diferencia con la factura: una
+   * NC no siempre es una devolución — también ajusta un precio mal facturado o
+   * compensa un bulto roto que igual te quedaste. Solo la persona que tiene el
+   * papel en la mano sabe cuál de las dos es.
+   */
+  const esNotaCredito = tipo === 'nota_credito';
+  const [devuelveMercaderia, setDevuelveMercaderia] = useState(false);
   const provElegido = store.getProveedor(parseInt(provId, 10));
 
   /**
@@ -706,7 +721,9 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
    */
   const toggleTomar = (p) => setTomados((m) => {
     if (m[p.id] != null) {
-      const { [p.id]: _, ...resto } = m;
+      // Quitar una clave sin mutar: el descarte no se usa, y eso es el punto.
+      // eslint-disable-next-line no-unused-vars
+      const { [p.id]: descartado, ...resto } = m;
       return resto;
     }
     const yaTomado = Object.values(m).reduce((a, v) => a + (Number(v) || 0), 0);
@@ -866,7 +883,12 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       tipo, letra, puntoVenta, numero, fecha, fechaCarga, proveedorId: parseInt(provId, 10),
       // Sale del TIPO, no de un tilde: factura, liquidación y remito ingresan
       // mercadería siempre (ver TIPOS_CON_RECEPCION).
-      sucursalId: sucId ? parseInt(sucId, 10) : null, condicionPago, recepcion: permiteRecepcion,
+      sucursalId: sucId ? parseInt(sucId, 10) : null,
+      condicionPago,
+      // En factura/liquidacion/remito sale del TIPO (entra siempre); en una NC es
+      // la decision de quien carga el papel: `recepcion` ahi significa "esta NC
+      // devuelve mercaderia" y la API la usa para SACAR stock.
+      recepcion: esNotaCredito ? devuelveMercaderia : permiteRecepcion,
       vencimientoPago: venc || null, observaciones: obs.trim(), items: parsed,
       // De la bandeja: el CAE del QR (o el leído del PDF, si el QR no se pudo)
       // y la lectura que este comprobante cierra en la misma transacción.
@@ -924,8 +946,10 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
        * que sin este corte el aviso llegaba recién al confirmar, con los ítems
        * ya cargados y el pago ya elegido.
        */
-      if (permiteRecepcion && !parseInt(sucId, 10)) {
-        toast('Elegí a qué sucursal entra la mercadería.', 'err');
+      if ((permiteRecepcion || (esNotaCredito && devuelveMercaderia)) && !parseInt(sucId, 10)) {
+        toast(esNotaCredito
+          ? 'Elegí de qué sucursal sale la mercadería devuelta.'
+          : 'Elegí a qué sucursal entra la mercadería.', 'err');
         return;
       }
       setPaso(2);
@@ -1058,12 +1082,15 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       </div>
 
 
-      {permiteRecepcion && (
+      {(permiteRecepcion || esNotaCredito) && (
         <div className={s['form-grid']}>
           <div className={s.field}>
             {/* Obligatoria desde que el stock entra siempre: sin ella la API
-                rechaza el alta. */}
-            <label>Sucursal de recepción <span className={s.req}>*</span></label>
+                rechaza el alta. En la NC solo cuando devuelve mercadería. */}
+            <label>
+              {esNotaCredito ? 'Sucursal de la mercadería' : 'Sucursal de recepción'}
+              {(permiteRecepcion || devuelveMercaderia) && <span className={s.req}> *</span>}
+            </label>
             {/* Cambia la sucursal → cambia la bandeja de pagos que se ofrece
                 en el paso 3: lo tildado hablaba de otra sucursal. */}
             <select value={sucId} onChange={(e) => { setSucId(e.target.value); setTomados({}); }}>
@@ -1071,15 +1098,36 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
             </select>
           </div>
           {/*
-            ACÁ HABÍA UN TILDE "Ingresa stock" y se sacó a propósito: en este tipo
-            de comprobante la mercadería entra SIEMPRE. Lo que queda es la única
-            pregunta que el sistema no puede contestar solo — a qué depósito.
+            En factura, liquidación y remito acá había un tilde "Ingresa stock" y
+            se sacó: la mercadería entra SIEMPRE, y lo único que el sistema no
+            puede contestar solo es a qué depósito.
+            En una NC el tilde SÍ hace falta y no puede deducirse del tipo: una
+            nota de crédito a veces es una devolución y a veces solo corrige un
+            precio. Hasta hoy no existía, así que la API podía descontar stock
+            pero ninguna pantalla se lo pedía.
           */}
-          <div className={s.field} style={{ alignSelf: 'end' }}>
-            <div className={s.hint} style={{ margin: 0 }}>
-              La mercadería de los ítems <strong>entra al stock de esa sucursal</strong> al registrar.
+          {esNotaCredito ? (
+            <label className={s['granel-toggle']} style={{ alignSelf: 'end' }}>
+              <input
+                type="checkbox"
+                checked={devuelveMercaderia}
+                onChange={(e) => setDevuelveMercaderia(e.target.checked)}
+              />
+              <span>
+                <span className={s['t-title']}>Esta nota devuelve mercadería</span><br />
+                <span className={s['t-sub']}>
+                  Descuenta del stock los ítems que volvieron al proveedor. Dejalo sin tildar si la
+                  nota solo corrige un precio o compensa algo que igual te quedaste.
+                </span>
+              </span>
+            </label>
+          ) : (
+            <div className={s.field} style={{ alignSelf: 'end' }}>
+              <div className={s.hint} style={{ margin: 0 }}>
+                La mercadería de los ítems <strong>entra al stock de esa sucursal</strong> al registrar.
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -1552,6 +1600,17 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
         deja las dos con el inventario torcido, así que se dice acá, al lado del
         total, antes de confirmar.
       */}
+      {/* La NC va en `warn` y no en `info` a propósito: descontar stock es lo
+          menos esperable de las dos cosas, y el tilde que lo activa quedó en el
+          paso 1 — acá es donde se confirma. */}
+      {esNotaCredito && devuelveMercaderia && itemsValidos > 0 && (
+        <div className={cx(s.callout, s.warn)}>
+          {itemsValidos === 1 ? 'El ítem' : `Los ${itemsValidos} ítems`} de esta nota{' '}
+          <strong>
+            se DESCUENTAN del stock de {store.getSucursal(parseInt(sucId, 10))?.nombre || 'la sucursal'}
+          </strong>: es mercadería que volvió al proveedor.
+        </div>
+      )}
       {permiteRecepcion && itemsValidos > 0 && (
         <div className={cx(s.callout, s.info)}>
           {itemsValidos === 1 ? 'El ítem' : `Los ${itemsValidos} ítems`} de este comprobante{' '}
@@ -1682,7 +1741,7 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
                 desde <strong>{store.getSucursal(parseInt(sucId, 10))?.nombre || 'esta sucursal'}</strong> y
                 sin aplicar. Tildá los que esta factura explica: tomarlos es lo que los{' '}
                 <strong>aplica</strong> — no vuelve a mover plata. Si esta factura se pagó por otro
-                lado, no tildes nada y usá "Se paga ahora".
+                lado, no tildes nada y usá «Se paga ahora».
               </div>
               <Table
                 cols={[

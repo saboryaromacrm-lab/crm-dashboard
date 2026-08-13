@@ -9,7 +9,7 @@ import {
   problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
   totalesTicket, ultimoArticulo,
 } from '../domain/pos.js';
-import { indicePrecios, listasDelCliente, sugerenciaPorMonto } from '../domain/listas.js';
+import { indicePrecios, sugerenciaPorMonto } from '../domain/listas.js';
 import { sugerenciasOfertaTicket } from '../domain/ofertas.js';
 import { Table, PanelHead, Btn, money, num, fmtFechaHora, s } from '../components/ui.jsx';
 import { configImpresion, cuerpoTicket, imprimirDocumento } from '@core/services/imprimir.js';
@@ -131,7 +131,7 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
  * Ticket
  * ==================================================================== */
 
-function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, esAdmin, preciosDe, ultimoKey, listasPorId, overrideBloqueado }) {
+function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, puedePisarPrecio, preciosDe, ultimoKey, listasPorId, overrideBloqueado }) {
   if (!renglones.length) {
     return (
       <div className={p.ticket}>
@@ -160,7 +160,7 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, esAd
           {renglones.map((r) => {
             const calc = calcularRenglon(r);
             const sinStock = !permitirStockNegativo && r.cantidad > r.stock + 1e-9;
-            const descExcedido = !esAdmin && r.descuento > descuentoMax + 1e-9;
+            const descExcedido = !puedePisarPrecio && r.descuento > descuentoMax + 1e-9;
             return (
               <tr key={r.uid} className={cx(r.key === ultimoKey && p.filaUltima)}>
                 <td>
@@ -244,7 +244,7 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, esAd
                   })()}
                 </td>
                 <td className={p.num}>
-                  {esAdmin ? (
+                  {puedePisarPrecio ? (
                     <input
                       className={p.inputMini}
                       type="number" min="0" step="0.01"
@@ -384,9 +384,19 @@ export function PosPanel() {
   const prevLenRef = useRef(0);
 
   const sucursalId = ctx.sucursalId;
-  const esAdmin = ['admin', 'superadmin'].includes(usuarios.find((u) => u.id === ctx.usuarioId)?.rolClave);
   const permisosActual = usuarios.find((u) => u.id === ctx.usuarioId)?.permisos ?? [];
   const puedePresupuestar = permisosActual.includes('*') || permisosActual.includes('presupuestos');
+  /*
+   * PISAR EL PRECIO es un PERMISO (`precio_manual`), no el rol.
+   *
+   * Antes esto era `rolClave === 'admin'`, y era la única barrera que existía:
+   * `descuentoMaxVendedor` y `overrideListaRequiereAdmin` se evaluaban acá y en
+   * ningún otro lado, así que un request armado a mano se los saltaba enteros.
+   * Ahora la API valida lo mismo con esta misma clave — y tiene que ser LA MISMA,
+   * porque si la pantalla habilita algo que el servidor rechaza, el cajero se
+   * entera recién al cobrar.
+   */
+  const puedePisarPrecio = permisosActual.includes('*') || permisosActual.includes('precio_manual');
   const descuentoMax = Number(config.descuentoMaxVendedor) || 0;
 
   /* --------------------------- Datos del puesto --------------------------- */
@@ -489,12 +499,6 @@ export function PosPanel() {
     [catalogoRaw],
   );
 
-  /** Las que el cliente tiene asignadas: se muestran, no se resuelven acá. */
-  const listasCliente = useMemo(
-    () => listasDelCliente(clienteActual, catalogoRaw?.listas ?? []),
-    [clienteActual, catalogoRaw],
-  );
-
   /**
    * El contexto de cotización vive en el reducer para que reasignar listas sea
    * síncrono y sin efectos. Se re-inyecta cuando cambia el catálogo o el
@@ -587,9 +591,9 @@ export function PosPanel() {
   }, [ticket.renglones, listasPorId, preciosDe, toast]);
   const problemas = useMemo(
     () => problemasDelTicket(ticket.renglones, {
-      permitirStockNegativo: !!config.permitirStockNegativo, descuentoMax, esAdmin,
+      permitirStockNegativo: !!config.permitirStockNegativo, descuentoMax, puedePisarPrecio,
     }),
-    [ticket.renglones, config.permitirStockNegativo, descuentoMax, esAdmin],
+    [ticket.renglones, config.permitirStockNegativo, descuentoMax, puedePisarPrecio],
   );
 
   /**
@@ -597,7 +601,7 @@ export function PosPanel() {
    * puede ser −40% sin registrarse como descuento). El automático por condición
    * no se toca: es una regla, no una decisión.
    */
-  const overrideBloqueado = !!config.overrideListaRequiereAdmin && !esAdmin;
+  const overrideBloqueado = !!config.overrideListaRequiereAdmin && !puedePisarPrecio;
 
   const cajaAbierta = caja?.estado === 'abierta';
   const requiereCaja = !!config.cajaObligatoria;
@@ -729,7 +733,12 @@ export function PosPanel() {
         productoId: r.productoId, presentacionId: r.presentacionId ?? null,
         nombre: r.nombre, detalle: r.detalle,
         cantidad: r.cantidad, precioLista: r.precioLista, descuento: r.descuento || 0,
-        iva: r.iva, lista: r.lista || '', ofertaNombre: r.oferta || '',
+        iva: r.iva, lista: r.lista || '',
+        /* La lista por ID además del nombre: es lo que después deja demostrar que
+         * el precio cotizado era el de esa lista y no uno puesto a mano. Sin
+         * esto, cerrar el pedido en el POS chocaba con el portero de precios. */
+        listaId: r.listaId ?? null,
+        ofertaNombre: r.oferta || '',
       }));
       const res = await ventasApi.crearPresupuesto({
         clienteId: clienteActual.id, sucursalId,
@@ -826,7 +835,6 @@ export function PosPanel() {
     guardarAhora(activaId, ticket, clienteActual).then(() => {
       openModal('cobro', {
         ventaId: activaId,
-        renglones: ticket.renglones,
         totales,
         clienteId: clienteActual.id,
         cajaSesionId: caja?.id ?? null,
@@ -994,7 +1002,7 @@ export function PosPanel() {
                 dispatch={dispatch}
                 permitirStockNegativo={!!config.permitirStockNegativo}
                 descuentoMax={descuentoMax}
-                esAdmin={esAdmin}
+                puedePisarPrecio={puedePisarPrecio}
                 preciosDe={preciosDe}
                 ultimoKey={ultimoKey}
                 listasPorId={listasPorId}

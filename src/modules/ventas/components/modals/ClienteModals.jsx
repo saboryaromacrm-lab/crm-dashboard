@@ -343,7 +343,7 @@ function TabComprobantes({ clienteId }) {
 }
 
 export function DetalleClienteModal({ clienteId }) {
-  const { getCliente, closeModal, openModal, usuarios, sucursales, config } = useVentas();
+  const { getCliente, closeModal, openModal, usuarios, sucursales } = useVentas();
   const [tab, setTab] = useState(0);
   const cliente = getCliente(clienteId);
 

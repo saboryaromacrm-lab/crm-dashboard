@@ -12,9 +12,12 @@ import { cx } from '@shared/utils/classNames.js';
 import { Pill, s } from '@modules/productos/components/ui.jsx';
 import { ESTADOS_GASTO, TIPOS_GASTO, urgenciaDe } from '../domain/constants.js';
 
-export { Table, PanelHead, Stat, Pill, Btn, usePaginado, Paginador, s } from '@modules/productos/components/ui.jsx';
+export { Table, PanelHead, Stat, Pill, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
 export { ModalShell } from '@modules/productos/components/Modal.jsx';
-export { money, num, fmtFecha, fmtFechaHora, isoDate } from '@modules/productos/domain/format.js';
+/* `isoDate` NO se re-exporta a propósito: es la trampa del `toISOString()` para
+ * un día del calendario (después de las 21 h devuelve MAÑANA). Para la fecha de
+ * hoy el módulo usa `hoyISO` de `domain/constants.js`. */
+export { money, num, fmtFecha, fmtFechaHora } from '@modules/productos/domain/format.js';
 
 export function GastoEstadoPill({ estado }) {
   const m = ESTADOS_GASTO[estado] || {};

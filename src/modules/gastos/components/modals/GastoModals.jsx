@@ -25,7 +25,7 @@ import {
  */
 export function GastoFormModal({ gastoId, onChange }) {
   const {
-    categoriasActivas, proveedores, sucursales, ctx, closeModal, toast,
+    categoriasActivas, proveedores, sucursales, ctx, esJefe, closeModal, toast,
     nombreSucursal, recargarContadores,
   } = useGastos();
   const editando = !!gastoId;
@@ -106,12 +106,20 @@ export function GastoFormModal({ gastoId, onChange }) {
    * decisión (este gasto pudo pagarse por otro lado y el pago que espera ser
    * de otro comprobante).
    */
+  /*
+   * La sucursal EFECTIVA del gasto. Para el jefe es la que eligió; para el
+   * resto es la de su sesión, porque el servidor la clava ahí igual. Importa
+   * más de lo que parece: de esto depende qué pagos a cuenta se ofrecen, y un
+   * pago de otra sucursal la API ya no lo acepta.
+   */
+  const sucursalGasto = esJefe ? (Number(f.sucursalId) || 0) : (ctx.sucursalId ?? 0);
+
   const pagosOfrecidos = useMemo(() => {
-    const sid = Number(f.sucursalId) || 0;
+    const sid = sucursalGasto;
     return (disponibles ?? [])
       .filter((p) => !sid || p.sucursalId === sid)
       .sort((a, b) => new Date(a.fecha) - new Date(b.fecha) || a.id - b.id);
-  }, [disponibles, f.sucursalId]);
+  }, [disponibles, sucursalGasto]);
   const aCuenta = useMemo(() => pagosOfrecidos.reduce((a, p) => a + p.saldo, 0), [pagosOfrecidos]);
   const aCuentaOtras = useMemo(
     () => r2((disponibles ?? []).reduce((a, p) => a + p.saldo, 0) - aCuenta),
@@ -137,9 +145,22 @@ export function GastoFormModal({ gastoId, onChange }) {
   });
   // Cambiar de proveedor o de sucursal cambia la bandeja ofrecida: lo tildado
   // hablaba de otra.
-  useEffect(() => { setTomados({}); }, [f.proveedorId, f.sucursalId]);
+  useEffect(() => { setTomados({}); }, [f.proveedorId, sucursalGasto]);
+
+  /**
+   * Doble submit. El alta puede crear un gasto Y un egreso de caja, y el guard
+   * de duplicado del servidor se rinde justo en el caso más común de este
+   * módulo —"if (!proveedorId || !numero) return"—, que es el ticket de nafta o
+   * la changa: sin número, no hay con qué comparar. Así que la única barrera
+   * real es esta: mientras la petición vuela, el botón se apaga.
+   */
+  const [guardando, setGuardando] = useState(false);
+
+  /** Con pagos registrados solo se tocan los campos descriptivos (lo dice el cartel). */
+  const bloqueado = editando && original?.pagado > 0.009;
 
   const guardar = async () => {
+    if (guardando) return;
     if (!f.categoriaId) { toast('Elegí el rubro al que se imputa.', 'err'); return; }
     if (!(total > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return; }
     // No se puede tomar más de lo que dice el gasto: sería inventar plata.
@@ -152,21 +173,38 @@ export function GastoFormModal({ gastoId, onChange }) {
       .filter((t) => t.importe > 0.009);
 
     const payload = {
-      fecha: f.fecha || undefined,
-      tipoDoc: f.tipoDoc,
-      letra: f.letra,
-      numero: f.numero.trim(),
-      proveedorId: f.proveedorId ? Number(f.proveedorId) : undefined,
-      proveedorTexto: f.proveedorTexto.trim(),
       categoriaId: Number(f.categoriaId),
-      sucursalId: f.sucursalId ? Number(f.sucursalId) : undefined,
       negocio: f.negocio,
       descripcion: f.descripcion.trim(),
-      condicionPago: f.condicionPago,
       vencimiento: f.vencimiento || undefined,
-      neto: r2(f.neto), iva: r2(f.iva), otros: r2(f.otros),
       observaciones: f.observaciones.trim(),
       usuarioId: ctx.usuarioId ?? undefined,
+      /*
+       * LA SUCURSAL SOLO SE MANDA SI EL JEFE PUEDE ELEGIRLA. Para el resto es
+       * un campo de solo lectura, y mandarlo no agrega nada. Va `null` —y no
+       * `undefined`— cuando eligió "Toda la empresa": son cosas distintas del
+       * lado del servidor, que solo toca el campo si viene, y con `undefined`
+       * el jefe no podía sacarle la sucursal a un gasto nunca más.
+       */
+      ...(esJefe ? { sucursalId: sucursalGasto || null } : {}),
+      /*
+       * LOS CAMPOS QUE EL GASTO PAGADO TIENE BLOQUEADOS NO VIAJAN. El servidor
+       * rechaza la edición entera si llega cualquiera de ellos con pagos
+       * registrados —importes, número, proveedor—, y como esto los mandaba
+       * SIEMPRE, la promesa del cartel de arriba ("con pagos podés cambiar el
+       * rubro, la descripción, el vencimiento y las observaciones") era falsa:
+       * ninguna edición pasaba, todas volvían con el mismo 400.
+       */
+      ...(bloqueado ? {} : {
+        fecha: f.fecha || undefined,
+        tipoDoc: f.tipoDoc,
+        letra: f.letra,
+        numero: f.numero.trim(),
+        proveedorId: f.proveedorId ? Number(f.proveedorId) : undefined,
+        proveedorTexto: f.proveedorTexto.trim(),
+        condicionPago: f.condicionPago,
+        neto: r2(f.neto), iva: r2(f.iva), otros: r2(f.otros),
+      }),
       // "Se paga ahora" cubre EL RESTO: lo que los pagos tomados no explican.
       ...(pagaAhora && !editando && resto > 0.009
         ? {
@@ -175,7 +213,8 @@ export function GastoFormModal({ gastoId, onChange }) {
             medio: medioPago,
             fecha: f.fecha || undefined,
             cajaSesionId: saleDeCaja ? caja.id : undefined,
-            usuarioId: ctx.usuarioId ?? undefined,
+            // Sin `usuarioId`: el pago del gasto lo firma el mismo que carga el
+            // gasto, y el servidor toma el del nivel de arriba a propósito.
           },
         }
         : {}),
@@ -188,9 +227,14 @@ export function GastoFormModal({ gastoId, onChange }) {
      * ciegas; el resto queda en la bandeja.
      */
     let res;
+    setGuardando(true);
     try {
       res = editando ? await gastosApi.editarGasto(gastoId, payload) : await gastosApi.crearGasto(payload);
-    } catch (e) { toast(errorMsg(e), 'err'); return; }
+    } catch (e) {
+      setGuardando(false);
+      toast(errorMsg(e), 'err');
+      return;
+    }
 
     let falloToma = false;
     let aplicados = 0;
@@ -228,8 +272,6 @@ export function GastoFormModal({ gastoId, onChange }) {
     );
   }
 
-  const bloqueado = editando && original?.pagado > 0.009;
-
   return (
     <ModalShell
       title={editando ? `Editar gasto #${gastoId}` : 'Cargar gasto'}
@@ -238,7 +280,12 @@ export function GastoFormModal({ gastoId, onChange }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: editando ? 'Guardar' : 'Cargar gasto', clase: 'btn-primary', onClick: guardar },
+        {
+          texto: guardando ? 'Guardando…' : (editando ? 'Guardar' : 'Cargar gasto'),
+          clase: 'btn-primary',
+          onClick: guardar,
+          disabled: guardando,
+        },
       ]}
     >
       {bloqueado && (
@@ -318,10 +365,23 @@ export function GastoFormModal({ gastoId, onChange }) {
         </div>
         <div className={s.field}>
           <label>Sucursal</label>
-          <select value={f.sucursalId} onChange={set('sucursalId')}>
-            <option value="">Toda la empresa</option>
-            {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
-          </select>
+          {/* Imputarle un gasto a OTRA sucursal es cosa de administración: define
+              el resumen por sucursal y, sobre todo, qué pagos lo pueden
+              explicar. El servidor decide lo mismo — esto es para no ofrecer una
+              opción que la API va a corregir por atrás. */}
+          {esJefe ? (
+            <select value={f.sucursalId} onChange={set('sucursalId')}>
+              <option value="">Toda la empresa</option>
+              {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+            </select>
+          ) : (
+            <>
+              <input value={nombreSucursal(ctx.sucursalId)} disabled />
+              <div className={s.hint} style={{ margin: '6px 0 0' }}>
+                El gasto se imputa a la sucursal con la que entraste.
+              </div>
+            </>
+          )}
         </div>
         <div className={s.field}>
           <label>Negocio</label>
@@ -371,7 +431,7 @@ export function GastoFormModal({ gastoId, onChange }) {
             <>
               <div className={cx(s.callout, s.info)}>
                 Hay <strong>{money(aCuenta)}</strong> pagados
-                {Number(f.sucursalId) ? ` desde ${nombreSucursal(Number(f.sucursalId))}` : ''} y sin
+                {sucursalGasto ? ` desde ${nombreSucursal(sucursalGasto)}` : ''} y sin
                 aplicar. Tildá los que este gasto explica: tomarlos es lo que los{' '}
                 <strong>aplica</strong> — no vuelve a mover plata. Si este gasto se pagó por otro
                 lado, no tildes nada.

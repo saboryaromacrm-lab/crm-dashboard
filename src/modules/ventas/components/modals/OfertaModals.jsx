@@ -12,7 +12,7 @@ import { useVentas } from '../../context/VentasContext.jsx';
 import { ventasApi, errorMsg } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO, TIPOS_OFERTA, norm } from '../../domain/constants.js';
 import { resolverOfertas, describirOferta, alcanzaRenglon } from '../../domain/ofertas.js';
-import { ModalShell, Btn, money, s } from '../ui.jsx';
+import { ModalShell, money, s } from '../ui.jsx';
 
 const DIAS = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
 
@@ -92,7 +92,7 @@ function AlcancePicker({ alcances, setAlcances, universo }) {
  * alcance (o los componentes del combo) con la cantidad que pide la mecánica,
  * y se muestra antes → después.
  */
-function VistaPrevia({ oferta, items, alcances }) {
+function VistaPrevia({ oferta, items }) {
   const preview = useMemo(() => {
     if (!items.length) return null;
 
@@ -140,7 +140,8 @@ function VistaPrevia({ oferta, items, alcances }) {
     });
     if (![...res.values()].length) return { renglones, res: null };
     return { renglones, res };
-  }, [oferta, items, alcances]);
+    // `oferta` es el objeto armado en vivo: cambia cuando cambia el alcance.
+  }, [oferta, items]);
 
   if (!preview) {
     return (
@@ -531,7 +532,7 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
         )}
 
         {/* --- EN VIVO --- */}
-        <VistaPrevia oferta={enVivo} items={items} alcances={alcances} />
+        <VistaPrevia oferta={enVivo} items={items} />
       </div>
     </ModalShell>
   );

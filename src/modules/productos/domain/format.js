@@ -7,19 +7,6 @@
  */
 
 /* ---- Fechas (el JS corre en el navegador) ---- */
-export function hoy() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-export function addDays(base, n) {
-  const d = new Date(base);
-  d.setDate(d.getDate() + n);
-  return d;
-}
-export function iso(d) {
-  return new Date(d).toISOString();
-}
 /**
  * yyyy-mm-dd LOCAL (para inputs type="date").
  *
@@ -44,11 +31,6 @@ export function fmtFechaHora(v) {
     ' ' +
     d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
   );
-}
-export function diasHasta(v) {
-  const d = new Date(v);
-  d.setHours(0, 0, 0, 0);
-  return Math.round((d - hoy()) / 86400000);
 }
 
 /* ---- Formato numérico / moneda ---- */

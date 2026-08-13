@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
-import { imprimirDocumento } from '@core/services/imprimir.js';
+import { esc, imprimirDocumento } from '@core/services/imprimir.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFechaHora, isoDate } from '../../domain/format.js';
 import { ESTADOS_ENVIO_CAFE, ESTADOS_PEDIDO_CAFE } from '../../domain/constants.js';
@@ -436,8 +436,8 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null }) {
 function imprimirRemito(envio) {
   const filas = (envio.items || []).map((it) => `
     <tr>
-      <td>${it.nombre}</td>
-      <td class="chica">${it.codigoBarras || it.codigoPropio || '—'}</td>
+      <td>${esc(it.nombre)}</td>
+      <td class="chica">${esc(it.codigoBarras || it.codigoPropio || '—')}</td>
       <td class="n">${num(it.cantidad, 3)} ${it.unidad}</td>
       <td class="chica">${it.totalKg != null ? `${num(it.totalKg, 3)} kg` : '—'}</td>
       <td class="n">${money(it.costoUnitario)}</td>
@@ -446,14 +446,14 @@ function imprimirRemito(envio) {
   imprimirDocumento('remitoCafeteria', {
     titulo: `${envio.codigo} — Remito a Cafetería`,
     cuerpo: `
-      <h1>${envio.codigo} · Remito a Cafetería${envio.version > 1 ? ` (versión ${envio.version})` : ''}</h1>
-      <div class="sub">${new Date(envio.fecha).toLocaleString('es-AR')} · sale de ${envio.sucursalNombre || ''}${envio.usuarioNombre ? ` · ${envio.usuarioNombre}` : ''}</div>
+      <h1>${esc(envio.codigo)} · Remito a Cafetería${envio.version > 1 ? ` (versión ${Number(envio.version)})` : ''}</h1>
+      <div class="sub">${esc(new Date(envio.fecha).toLocaleString('es-AR'))} · sale de ${esc(envio.sucursalNombre || '')}${envio.usuarioNombre ? ` · ${esc(envio.usuarioNombre)}` : ''}</div>
       <table>
         <thead><tr><th>Producto</th><th>Código</th><th>Cantidad</th><th>Equiv. kg</th><th>Costo unit.</th><th>Subtotal</th></tr></thead>
         <tbody>${filas}</tbody>
       </table>
       <div class="tot"><strong>Total a costo: ${money(envio.totalCosto)}</strong></div>
-      ${envio.observaciones ? `<div class="nota">${envio.observaciones}</div>` : ''}
+      ${envio.observaciones ? `<div class="nota">${esc(envio.observaciones)}</div>` : ''}
       <div class="fiscal">TRASPASO INTERNO VALORIZADO A COSTO — DOCUMENTO NO FISCAL</div>`,
   });
 }

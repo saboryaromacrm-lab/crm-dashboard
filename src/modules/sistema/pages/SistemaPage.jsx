@@ -32,6 +32,7 @@ const DOCUMENTOS = [
   { clave: 'presupuesto', label: 'Presupuesto (cliente)', hint: 'La hoja formal que se le manda al cliente.' },
   { clave: 'hojaArmado', label: 'Hoja de armado (presupuestos)', hint: 'Sin precios, con columna en blanco para el lápiz.' },
   { clave: 'listaPreparacion', label: 'Listas de preparación (envíos)', hint: 'Enteros y Fraccionados de las transferencias.' },
+  { clave: 'remitoCafeteria', label: 'Remito a Cafetería', hint: 'El papel que acompaña la mercadería que sale para el café, valorizada a costo.' },
   {
     clave: 'etiquetaFraccionado',
     label: 'Etiquetas del fraccionado (autoadhesivas)',
@@ -115,10 +116,21 @@ export function SistemaPage() {
     return () => clearTimeout(t);
   }, [aviso]);
 
+  /**
+   * Guarda y SE QUEDA CON LO QUE DEVOLVIÓ EL SERVIDOR, que es el valor ya
+   * saneado. No es un detalle: el CUIT `30123456789` se guarda como
+   * `30-12345678-9` y un color inválido vuelve al de la marca — sin esto, la
+   * pantalla seguía mostrando lo que se tipeó hasta la próxima recarga, o sea
+   * mintiendo sobre lo que quedó guardado.
+   */
   const guardar = async (clave, valores) => {
     setGuardando(true);
     try {
-      await httpClient.put(`/configuracion/${clave}`, valores);
+      const saneado = await httpClient.put(`/configuracion/${clave}`, valores);
+      if (saneado && typeof saneado === 'object') {
+        if (clave === 'empresa') setEmpresa(saneado);
+        if (clave === 'impresion') setImpresion(saneado);
+      }
       invalidarConfigImpresion();
       setAviso({ tipo: 'ok', texto: 'Guardado. Impacta en la próxima impresión.' });
     } catch (e) {
@@ -204,7 +216,12 @@ export function SistemaPage() {
               {aviso.texto}
             </div>
           )}
-          {cargando && <div className={s.hint}>Cargando…</div>}
+          {/* "Respaldos" no depende de la configuración: es texto fijo. Antes
+              quedaba atrás del mismo candado de carga que las otras dos, así
+              que con la API caída la sección se quedaba en "Cargando…" para
+              siempre — una pantalla que no necesita ningún dato, esperando dos
+              consultas que no le hacen falta. */}
+          {cargando && seccionActiva !== 'respaldos' && <div className={s.hint}>Cargando…</div>}
 
           {!cargando && seccionActiva === 'empresa' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
@@ -320,8 +337,12 @@ export function SistemaPage() {
                     srcDoc={previewHtml}
                     style={{
                       // La etiqueta y el rollo se ven en su ancho real; el papel, a lo que dé.
-                      width: esFormatoEtiqueta(impresion[previewDoc]) ? 260
-                        : (impresion[previewDoc] || 'a4').startsWith('rollo') ? 320 : '100%',
+                      // `formatoPorDefecto` y no 'a4' pelado: es el MISMO
+                      // fallback que usan el motor y la vista previa de arriba.
+                      // Con un documento sin clave guardada, el 'a4' suelto
+                      // renderizaba una etiqueta y la mostraba a ancho completo.
+                      width: esFormatoEtiqueta(impresion[previewDoc] || formatoPorDefecto(previewDoc)) ? 260
+                        : (impresion[previewDoc] || formatoPorDefecto(previewDoc)).startsWith('rollo') ? 320 : '100%',
                       height: 460, border: '1px solid var(--crm-color-border)',
                       borderRadius: 'var(--crm-radius-sm)', background: '#fff',
                     }}

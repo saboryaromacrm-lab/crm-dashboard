@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
@@ -38,6 +38,20 @@ export function GastosPanel() {
   const [negocio, setNegocio] = useState('');
   const [busqueda, setBusqueda] = useState('');
 
+  /*
+   * La búsqueda espera a que dejes de escribir. Va en la identidad del pedido,
+   * así que sin esto cada tecla dispara un `GET /gastos` que puede traer hasta
+   * 300 filas: escribir "coca cola" eran nueve consultas para leer una.
+   */
+  const [buscado, setBuscado] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setBuscado(busqueda.trim()), 300);
+    return () => clearTimeout(t);
+  }, [busqueda]);
+
+  /** El techo que aplica la API (`limit` por defecto). Ver el aviso de abajo. */
+  const TOPE_LISTADO = 300;
+
   const filtros = {
     desde: desde || undefined,
     hasta: hasta || undefined,
@@ -46,12 +60,16 @@ export function GastosPanel() {
     sucursalId: sucursalId || undefined,
     estado: estado || undefined,
     negocio: negocio || undefined,
-    q: busqueda.trim() || undefined,
+    q: buscado || undefined,
   };
   const key = `gastos:${Object.values(filtros).join('|')}`;
   const { data, loading, error, reload } = useResource(key, () => gastosApi.gastos(filtros));
 
   const gastos = data ?? [];
+  /* Los cuatro números de arriba suman lo que TRAJO la consulta, no el período
+   * entero: si se llegó al techo, hay que decirlo en vez de mostrar totales que
+   * no cierran con nada. */
+  const truncado = gastos.length >= TOPE_LISTADO;
   // Un cambio en una pestaña afecta a la otra (aplicar mueve saldos de los dos
   // lados): se refresca el listado de gastos y los contadores del sub-menú.
   const alCambiar = () => { reload(); recargarContadores(); };
@@ -148,11 +166,19 @@ export function GastosPanel() {
       ) : (
         <>
           <div className={s.stats}>
-            <Stat label="Comprobantes" value={stats.cantidad} />
+            <Stat label={truncado ? 'Comprobantes (parcial)' : 'Comprobantes'} value={stats.cantidad} />
             <Stat label="Total del período" value={money(stats.total)} accent="accent-amber" />
             <Stat label="IVA (crédito fiscal)" value={money(stats.iva)} />
             <Stat label="Falta pagar" value={money(stats.saldo)} accent={stats.saldo > 0.009 ? 'accent-red' : undefined} />
           </div>
+          {truncado && (
+            <div className={cx(s.callout, s.warn)}>
+              El período tiene más de {TOPE_LISTADO} comprobantes y solo se trajeron los primeros:
+              <strong> los totales de arriba son de lo que se ve</strong>, no del período completo.
+              Acotá las fechas o filtrá por rubro. Para los números del período entero está{' '}
+              <strong>Resumen</strong>, que los calcula en la base.
+            </div>
+          )}
 
           <div className={s.toolbar}>
             <label className={s.hint} style={{ margin: 0 }}>

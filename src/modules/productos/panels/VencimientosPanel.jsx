@@ -1121,10 +1121,23 @@ export function VencimientosPanel() {
   }, [store]);
 
   useEffect(() => { cargar(); }, [cargar]);
-  // Los registros viven fuera del bootstrap: se re-piden cuando el store
-  // versiona (después de cada mutación — procesar puede tocar stock).
+  /*
+   * Los registros viven fuera del bootstrap: se re-piden cuando el store
+   * versiona (después de cada mutación — procesar puede tocar stock).
+   *
+   * SALTEA EL PRIMER RENDER, igual que la bandeja de "Por procesar". Sin eso
+   * este efecto y el de arriba disparaban los dos al montar, y entrar a
+   * Vencimientos pedía SEIS consultas en vez de tres — dos de ellas la del
+   * cruce con ofertas, que recorre todas las ofertas contra todos los
+   * registros abiertos.
+   */
   const version = store.getVersion?.() ?? 0;
-  useEffect(() => { cargar(); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const versionVista = useRef(version);
+  useEffect(() => {
+    if (versionVista.current === version) return;
+    versionVista.current = version;
+    cargar();
+  }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const irA = (rango) => { setFiltroRango(rango); setPestana('registros'); };
   const abiertosVencidos = registros.filter((v) => !v.procesado && v.diasParaVencer < 0).length;

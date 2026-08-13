@@ -62,10 +62,21 @@ export function LecturasPanel() {
   }, [store, vista, toast]);
   useEffect(() => { cargar(); }, [cargar]);
 
-  // Confirmar una factura crea un comprobante (que sí pasa por `_mutate`): al
-  // versionar el store, la bandeja se re-pide y la que se cargó desaparece.
+  /*
+   * Confirmar una factura crea un comprobante (que sí pasa por `_mutate`): al
+   * versionar el store, la bandeja se re-pide y la que se cargó desaparece.
+   *
+   * SALTEA EL PRIMER RENDER. Sin eso, este efecto y el de arriba disparaban los
+   * dos al montar y cada entrada a "Por procesar" pedía la bandeja DOS veces —
+   * dos consultas idénticas, y la segunda pisando el resultado de la primera.
+   */
   const version = store.getVersion?.() ?? 0;
-  useEffect(() => { cargar(); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const versionVista = useRef(version);
+  useEffect(() => {
+    if (versionVista.current === version) return;
+    versionVista.current = version;
+    cargar();
+  }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Sube archivos. **El QR se lee del original**, antes de comprimir: al

@@ -429,7 +429,14 @@ export function ticketReducer(estado, accion) {
   }
 }
 
-/** Renglones en el formato que espera `POST/PUT /ventas`. */
+/**
+ * Renglones en el formato que espera `POST/PUT /ventas`.
+ *
+ * NO viaja `iva`: la alícuota es del PRODUCTO y la pone el servidor
+ * (`resolverRenglones`). `VentaItemDto` no lo declara, así que el `whitelist` de
+ * la API lo descartaba en silencio — mandarlo hacía creer que la pantalla decide
+ * el IVA del renglón.
+ */
 export function itemsParaApi(renglones) {
   return renglones.map((r) => ({
     productoId: r.productoId,
@@ -444,7 +451,6 @@ export function itemsParaApi(renglones) {
     ofertaId: r.ofertaId ?? undefined,
     oferta: r.oferta || undefined,
     ofertaDescuento: r.ofertaDescuento > 0 ? r.ofertaDescuento : undefined,
-    iva: r.iva,
   }));
 }
 
@@ -519,7 +525,7 @@ export function ultimoArticulo(borrador, catalogo) {
  * Motivos por los que el ticket todavía no se puede cobrar. Se devuelven todos
  * juntos para que el cajero vea de una qué arreglar, no de a uno.
  */
-export function problemasDelTicket(renglones, { permitirStockNegativo, descuentoMax, esAdmin }) {
+export function problemasDelTicket(renglones, { permitirStockNegativo, descuentoMax, puedePisarPrecio }) {
   const problemas = [];
   if (!renglones.length) problemas.push('El ticket está vacío.');
   for (const r of renglones) {
@@ -529,7 +535,7 @@ export function problemasDelTicket(renglones, { permitirStockNegativo, descuento
     if (!permitirStockNegativo && r.cantidad > r.stock + 1e-9) {
       problemas.push(`${etiqueta}: hay ${r.stock} ${r.unidad} y estás vendiendo ${r.cantidad}.`);
     }
-    if (!esAdmin && r.descuento > descuentoMax + 1e-9) {
+    if (!puedePisarPrecio && r.descuento > descuentoMax + 1e-9) {
       problemas.push(`${etiqueta}: el descuento de ${r.descuento}% supera el tope de ${descuentoMax}%.`);
     }
   }

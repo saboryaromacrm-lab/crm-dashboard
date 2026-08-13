@@ -297,9 +297,16 @@ export function BorrarRecurrenteModal({ recurrenteId, onChange }) {
  * Proveedor (el mismo padrón de Compras)
  * ==================================================================== */
 
-export function ProveedorFormModal({ proveedorId }) {
-  const { getProveedor, act, closeModal, toast } = useGastos();
-  const original = proveedorId ? getProveedor(proveedorId) : null;
+/**
+ * `proveedor` es la FICHA COMPLETA, no un id: la manda el panel, que es quien
+ * pide el padrón entero. Antes salía del contexto —que trae una versión
+ * recortada para los selectores— y como el guardado reenvía todos los campos,
+ * editar acá le borraba al proveedor el CUIT, la dirección, el teléfono y el
+ * mail, y lo pasaba a Responsable Inscripto. El CUIT es, además, lo que usa la
+ * bandeja de facturas de Compras para reconocer de quién es un comprobante.
+ */
+export function ProveedorFormModal({ proveedor: original = null, onChange }) {
+  const { act, closeModal, toast } = useGastos();
 
   const [f, setF] = useState({
     nombre: '', cuit: '', condicionIva: 'responsable_inscripto', direccion: '', telefono: '', email: '',
@@ -330,16 +337,17 @@ export function ProveedorFormModal({ proveedorId }) {
       return;
     }
     const payload = { ...f, nombre: f.nombre.trim(), cuit: f.cuit.trim() };
-    await act(
-      proveedorId ? gastosApi.editarProveedor(proveedorId, payload) : gastosApi.crearProveedor(payload),
-      proveedorId ? 'Proveedor actualizado.' : 'Proveedor creado.',
+    const ok = await act(
+      original ? gastosApi.editarProveedor(original.id, payload) : gastosApi.crearProveedor(payload),
+      original ? 'Proveedor actualizado.' : 'Proveedor creado.',
       { recargar: true },
     );
+    if (ok) onChange?.();
   };
 
   return (
     <ModalShell
-      title={proveedorId ? 'Editar proveedor' : 'Nuevo proveedor'}
+      title={original ? 'Editar proveedor' : 'Nuevo proveedor'}
       subtitle="Es el mismo padrón que usa Compras"
       wide
       onClose={closeModal}

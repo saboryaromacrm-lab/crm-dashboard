@@ -224,8 +224,18 @@ export function ProductosPanel() {
           <option value="granel">A granel</option>
           <option value="entero">Enteros</option>
         </select>
+        {/* `estadoF` también se limpia: `hayFiltro` lo cuenta, así que el botón
+            APARECÍA cuando lo único cambiado era el estado — y al hacer clic no
+            pasaba nada. Un botón que se muestra y no hace nada es peor que no
+            tenerlo. Vuelve a 'vigentes', que es el default, no a ''. */}
         {hayFiltro && (
-          <Btn small onClick={() => { setQ(''); setTipo(''); setMarca(''); setCategoria(''); setProveedorId(''); }}>
+          <Btn
+            small
+            onClick={() => {
+              setQ(''); setTipo(''); setMarca(''); setCategoria(''); setProveedorId('');
+              setEstadoF('vigentes');
+            }}
+          >
             Limpiar
           </Btn>
         )}

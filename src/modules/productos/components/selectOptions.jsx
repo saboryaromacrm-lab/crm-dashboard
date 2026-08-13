@@ -2,11 +2,36 @@
  * Fábricas de <option> reutilizables para los <select> nativos de los modales.
  * Devuelven arrays de elementos <option> listos para poner como children.
  */
+import { leerSesion } from '@core/auth/sesion.js';
 import { fmtTam } from '../domain/format.js';
 
+/**
+ * Las sucursales que ESTE usuario puede elegir.
+ *
+ * El que no es jefe ve SOLO la suya, y el filtro vive acá y no en cada uno de
+ * los dieciséis lugares que arman el desplegable. Ofrecerle las cinco no era un
+ * detalle cosmético: era el ataque completo sin necesidad de consola —el
+ * repositor de Fontana elegía "Express 2" en el combo del movimiento manual y
+ * le bajaba 80 unidades a un local donde no pisa—. El servidor ahora lo rechaza
+ * igual (`sucursalDeOperacion`), pero una pantalla que ofrece lo que la API va a
+ * negar es una pantalla que miente.
+ *
+ * "Todas las sucursales" también desaparece para el no-jefe: su "todas" es una.
+ */
 export function sucursalOptions(store, incTodas) {
-  const arr = incTodas ? [<option key="_all" value="">Todas las sucursales</option>] : [];
-  store.state.sucursales.forEach((s) => arr.push(<option key={s.id} value={s.id}>{s.nombre}</option>));
+  const sesion = leerSesion();
+  const rol = sesion?.usuario?.rolClave ?? '';
+  const esJefe = rol === 'admin' || rol === 'superadmin';
+  const propia = sesion?.sucursal?.id ?? null;
+
+  const visibles = esJefe || propia == null
+    ? store.state.sucursales
+    : store.state.sucursales.filter((s) => s.id === propia);
+
+  const arr = incTodas && visibles.length > 1
+    ? [<option key="_all" value="">Todas las sucursales</option>]
+    : [];
+  visibles.forEach((s) => arr.push(<option key={s.id} value={s.id}>{s.nombre}</option>));
   return arr;
 }
 

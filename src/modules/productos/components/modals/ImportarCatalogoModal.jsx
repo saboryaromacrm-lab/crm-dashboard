@@ -21,7 +21,7 @@ import {
   armarPlan, leerTexto, parseCsv, tipoDeArchivo,
 } from '../../domain/importarCatalogo.js';
 import { ModalShell } from '../Modal.jsx';
-import { Table, Btn, s } from '../ui.jsx';
+import { Table, s } from '../ui.jsx';
 
 const PASOS = ['Archivos', 'Cómo se importa', 'Vista previa'];
 

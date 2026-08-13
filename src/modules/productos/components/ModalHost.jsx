@@ -84,11 +84,17 @@ function EliminarProductoModal({ prodId }) {
 function BajaProductoModal({ prodId }) {
   const { store, act, closeModal } = useProductos();
   const p = store.getProducto(prodId);
-  if (!p) return null;
-
-  const actual = p.estado || 'activo';
+  const actual = p?.estado || 'activo';
+  /*
+   * LOS HOOKS VAN ANTES DEL `return null`, y acá el caso es concreto: este modal
+   * es el que ELIMINA un producto, así que el producto desaparece del store
+   * mientras el modal está abierto. Con los `useState` después del return, ese
+   * render tiene dos hooks menos que el anterior y React tira
+   * "Rendered fewer hooks than expected" en vez de cerrar el modal.
+   */
   const [estado, setEstado] = useState(actual === 'activo' ? 'discontinuado' : 'activo');
   const [motivo, setMotivo] = useState('');
+  if (!p) return null;
 
   /* Cuánto queda y dónde: es el dato que decide si se puede archivar. Los
    * MISMOS estados que valida la API (`ESTADOS_STOCK_VIVO`): si acá se mirara

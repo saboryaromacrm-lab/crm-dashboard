@@ -360,7 +360,9 @@ export function DelegarVentaModal({ ventaId, actualId, onChange }) {
   const { usuarios, act, closeModal, toast } = useVentas();
   const [usuarioId, setUsuarioId] = useState('');
 
-  const candidatos = usuarios.filter((u) => u.id !== actualId);
+  // Sin los dados de baja: la API rechaza delegarle el ticket a alguien
+  // inactivo, así que ofrecerlo era ofrecer un error.
+  const candidatos = usuarios.filter((u) => u.id !== actualId && u.activo !== false);
   const actual = usuarios.find((u) => u.id === actualId);
 
   const delegar = async () => {

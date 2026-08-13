@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
-import { fmtFecha, fmtFechaHora, money, num } from '../domain/format.js';
+import { fmtFecha, fmtFechaHora, isoDate, money, num } from '../domain/format.js';
 import { cx } from '@shared/utils/classNames.js';
 import { Table, PanelHead, Btn, usePaginado, s } from '../components/ui.jsx';
 
@@ -29,7 +29,10 @@ function inicioDeMes() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 }
-const hoy = () => new Date().toISOString().slice(0, 10);
+/* `isoDate` y no `toISOString()`: a partir de las 21:00 de Argentina (UTC−3)
+ * el ISO ya está en el día siguiente, así que el "hasta" del libro nacía con la
+ * fecha de mañana. `inicioDeMes()`, dos líneas más arriba, ya lo hacía bien. */
+const hoy = () => isoDate(new Date());
 
 export function OperacionesPanel() {
   const { store, toast, openModal } = useProductos();
