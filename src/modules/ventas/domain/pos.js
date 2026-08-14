@@ -145,7 +145,18 @@ export const ticketInicial = {
   renglones: [], extras: [], uid: 1, montoAplicado: null,
   /** Oferta de ticket ("10% desde $30.000") que el cajero aceptó. Id o null. */
   ofertaTicket: null,
-  ctx: { catalogo: null, cliente: null, precios: new Map(), sucursalId: null, ahora: null },
+  /**
+   * Descuentos con nombre aplicados, por ID. Uno por lista de precios: es la
+   * regla del negocio y la que hace que dos descuentos no compitan por los
+   * mismos renglones. Solo ids — el porcentaje lo dice el catálogo y lo
+   * REVALIDA el servidor.
+   */
+  descuentos: [],
+  ctx: {
+    catalogo: null, cliente: null, precios: new Map(), sucursalId: null, ahora: null,
+    /** Catálogo de descuentos con nombre disponibles (lo trae el POS). */
+    descuentos: [],
+  },
 };
 
 /**
@@ -213,6 +224,49 @@ function recalcular(estado) {
       : { ...r, ofertaId: null, oferta: '', ofertaDescuento: 0, ofertaDetalle: '' };
   });
 
+  /*
+   * DESCUENTOS CON NOMBRE — tercera pasada, y va última por las mismas dos
+   * razones que en el servidor (`resolverDescuentos` en ventas.module.ts):
+   * después de resolver la lista, porque el descuento cae sobre los renglones
+   * de SU lista; y después de las ofertas, porque no toca un renglón que ya
+   * tiene promo.
+   *
+   * ESTO ES LO QUE HACE QUE EL DESCUENTO SEA ESTADO DEL TICKET Y NO UN AJUSTE.
+   * `recalcular` corre en cada cambio, así que agregar un producto de esa lista
+   * lo mete solo, cambiar un renglón de lista lo saca, y sacar el último lo deja
+   * sin efecto — sin que nadie tenga que acordarse de recalcular.
+   *
+   * `descuentoBase` guarda lo que el renglón trae por su cuenta (el descuento
+   * del cliente o el que puso el vendedor a mano). Se conserva aparte porque
+   * "gana el mayor" tiene que poder DESHACERSE: si el nombrado se quita, el
+   * renglón vuelve a su descuento propio, no a cero.
+   *
+   * Y ES `descuentoBase` LO QUE VIAJA A LA API, no el combinado — ver
+   * `itemsParaApi`. Mandar el 25% del nombrado como si fuera manual lo haría
+   * rebotar contra `descuentoMaxVendedor` antes de que el servidor llegue a
+   * aplicarlo.
+   */
+  const aplicados = (estado.ctx.descuentos ?? [])
+    .filter((d) => (estado.descuentos ?? []).includes(d.id));
+  const porLista = new Map(aplicados.map((d) => [d.listaId, d]));
+
+  renglones = renglones.map((r) => {
+    const base = Number(r.descuentoBase ?? r.descuento) || 0;
+    const d = r.ofertaDescuento > 0 ? null : (porLista.get(r.listaId) ?? null);
+    const gana = d && Number(d.porcentaje) > base + 1e-9 ? d : null;
+    const desc = gana ? Number(gana.porcentaje) : base;
+    if (r.descuento === desc && r.descuentoBase === base
+      && (r.descuentoId ?? null) === (gana?.id ?? null)) return r;
+    cambio = true;
+    return {
+      ...r,
+      descuentoBase: base,
+      descuento: desc,
+      descuentoId: gana?.id ?? null,
+      descuentoNombre: gana?.nombre ?? '',
+    };
+  });
+
   return cambio ? { ...estado, renglones } : estado;
 }
 
@@ -273,7 +327,13 @@ export function ticketReducer(estado, accion) {
         listaManual: !!listaFija,
         precioLista: listaFija?.precio ?? item.precio,
         precioUnitario: listaFija?.precio ?? item.precio,
+        // Los dos, y el mismo valor: `descuentoBase` es lo que decidió una
+        // persona y `descuento` lo que se cobra. Recién si un nombrado le gana
+        // se separan (tercera pasada de `recalcular`).
+        descuentoBase: descuentoCliente,
         descuento: descuentoCliente,
+        descuentoId: null,
+        descuentoNombre: '',
         ofertaId: null,
         oferta: '',
         ofertaDescuento: 0,
@@ -287,12 +347,24 @@ export function ticketReducer(estado, accion) {
         renglones: estado.renglones.map((r) =>
           r.uid === accion.uid ? { ...r, cantidad: Math.max(0, Number(accion.valor) || 0) } : r),
       });
-    case 'descuento':
-      return {
+    /**
+     * Descuento puesto A MANO por el vendedor. Escribe la BASE, no el que se
+     * ve: si el renglón está bajo un descuento con nombre más grande, tipear un
+     * 5% no tiene que bajarle el precio al cliente — el nombrado sigue ganando,
+     * y el 5% queda anotado para cuando el nombrado se saque.
+     *
+     * `descuento` se escribe igual, para que el número sea correcto aunque el
+     * catálogo todavía no esté cargado y `recalcular` se corte en la primera
+     * línea. Con catálogo, la tercera pasada lo recalcula y manda ella.
+     */
+    case 'descuento': {
+      const v = Math.min(100, Math.max(0, Number(accion.valor) || 0));
+      return recalcular({
         ...estado,
         renglones: estado.renglones.map((r) =>
-          r.uid === accion.uid ? { ...r, descuento: Math.min(100, Math.max(0, Number(accion.valor) || 0)) } : r),
-      };
+          r.uid === accion.uid ? { ...r, descuentoBase: v, descuento: v } : r),
+      });
+    }
     case 'precio':
       return {
         ...estado,
@@ -378,7 +450,7 @@ export function ticketReducer(estado, accion) {
     case 'quitar':
       return recalcular({ ...estado, renglones: estado.renglones.filter((r) => r.uid !== accion.uid) });
     case 'limpiar':
-      return { ...estado, renglones: [], extras: [], montoAplicado: null, ofertaTicket: null };
+      return { ...estado, renglones: [], extras: [], montoAplicado: null, ofertaTicket: null, descuentos: [] };
 
     /* ---- Cargos que no son mercadería (envío, packaging) ---- */
     case 'extraAgregar':
@@ -410,23 +482,143 @@ export function ticketReducer(estado, accion) {
       // La oferta de ticket aceptada se deduce igual: del renglón que la lleva.
       const conOfertaTicket = accion.renglones.find((r) => r.ofertaId
         && estado.ctx.catalogo?.ofertas?.find((o) => o.id === r.ofertaId)?.tipo === 'ticket');
+      /*
+       * Y los descuentos con nombre, por el mismo camino: salen de los
+       * renglones que los llevan. Una verdad sola, la que ya viaja.
+       *
+       * Consecuencia asumida: un descuento que no ganó en NINGÚN renglón —
+       * porque todos tenían uno propio más grande— no vuelve marcado al
+       * reabrir. Es coherente con la regla: si no bajó ni un peso, no está
+       * aplicado a nada. Y en cuanto entre un renglón donde sí gane, la cajera
+       * lo aplica de nuevo con un clic.
+       */
+      const idsDescuento = [...new Set(accion.renglones.map((r) => r.descuentoId).filter(Boolean))];
       return recalcular({
         ...estado,
         renglones: accion.renglones, extras: accion.extras, uid: accion.uid,
         montoAplicado: modalidadId,
         ofertaTicket: conOfertaTicket?.ofertaId ?? null,
+        descuentos: idsDescuento,
       });
     }
-    /** Cambió el cliente: se re-aplica su descuento a los renglones que no se tocaron. */
+    /**
+     * Cambió el cliente: se re-aplica su descuento a los renglones que no se
+     * tocaron.
+     *
+     * "No se tocaron" se mide contra la BASE y no contra el descuento visible,
+     * y ahí había una trampa: un renglón donde ganó un nombrado del 25% muestra
+     * 25 aunque su base siga siendo el 10% del cliente anterior. Comparando el
+     * visible, ese renglón no coincidía con `anterior` y se quedaba con el
+     * descuento del cliente VIEJO escondido debajo — que reaparecía al quitar
+     * el nombrado, o al confirmar si el nombrado dejaba de aplicar.
+     */
     case 'descuentoCliente':
-      return {
+      return recalcular({
         ...estado,
-        renglones: estado.renglones.map((r) =>
-          r.descuento === (accion.anterior || 0) ? { ...r, descuento: accion.valor || 0 } : r),
-      };
+        renglones: estado.renglones.map((r) => {
+          const base = Number(r.descuentoBase ?? r.descuento) || 0;
+          if (base !== (accion.anterior || 0)) return r;
+          const v = accion.valor || 0;
+          return { ...r, descuentoBase: v, descuento: v };
+        }),
+      });
+
+    /**
+     * El cajero aplicó (o quitó) DESCUENTOS CON NOMBRE. Mismo criterio que la
+     * sugerencia por monto y la oferta de ticket: no se toca ningún renglón a
+     * mano, se anota la decisión y `recalcular` reparte. Por eso quitar uno
+     * revierte solo, sin que nadie tenga que acordarse de qué traía cada
+     * renglón antes.
+     *
+     * Viajan IDS. El porcentaje lo dice el catálogo para mostrar, y lo vuelve a
+     * decidir el servidor al guardar.
+     */
+    case 'descuentos':
+      return recalcular({ ...estado, descuentos: accion.ids ?? [] });
     default:
       return estado;
   }
+}
+
+/**
+ * QUÉ DESCUENTOS CON NOMBRE SIRVEN PARA ESTE TICKET, y por qué los otros no.
+ *
+ * Devuelve el catálogo entero —no solo los que se pueden— porque en el
+ * mostrador "no está" y "está pero no se puede, por esto" son cosas distintas:
+ * lo primero manda a la cajera a buscar al encargado sin saber qué preguntar.
+ *
+ * El orden de los motivos va del más permanente al más circunstancial, para que
+ * el que se muestre sea el que de verdad hay que resolver: si venció, no
+ * importa que además ningún renglón use su lista.
+ *
+ * Un descuento YA APLICADO se devuelve siempre clickeable aunque tenga motivo:
+ * hay que poder sacarlo. Ahí el motivo pasa a ser un aviso —"lo aplicaste y ya
+ * no descuenta nada"— que es exactamente lo que la cajera necesita ver.
+ */
+export function descuentosDisponibles(estado, { esAdmin = false } = {}) {
+  const catalogo = estado.ctx.catalogo;
+  const t = estado.ctx.ahora ? new Date(estado.ctx.ahora).getTime() : Date.now();
+  const sucursalId = estado.ctx.sucursalId ?? null;
+  const puestos = estado.descuentos ?? [];
+
+  const etiqueta = (listaId) => catalogo?.listas
+    ?.find((l) => l.listaId === listaId)?.etiqueta || 'esa lista';
+
+  /* Dos conjuntos y no uno: un renglón en oferta USA su lista (así que el
+   * descuento no está "fuera del ticket") pero no la deja descontar. */
+  const conRenglon = new Set();
+  const sinOferta = new Set();
+  for (const r of estado.renglones) {
+    if (r.listaId == null) continue;
+    conRenglon.add(r.listaId);
+    if (!(r.ofertaDescuento > 0)) sinOferta.add(r.listaId);
+  }
+
+  const ocupadas = new Set(
+    (estado.ctx.descuentos ?? []).filter((d) => puestos.includes(d.id)).map((d) => d.listaId),
+  );
+
+  return (estado.ctx.descuentos ?? [])
+    .filter((d) => d.activo !== false)
+    .map((d) => {
+      const puesto = puestos.includes(d.id);
+      let motivo = '';
+      if (d.vence && new Date(d.vence).getTime() < t) motivo = 'Venció';
+      else if (d.sucursalId != null && sucursalId != null && d.sucursalId !== sucursalId) {
+        motivo = 'Es de otra sucursal';
+      } else if (d.requiereAdmin && !esAdmin) motivo = 'Lo aplica un administrador';
+      else if (!conRenglon.has(d.listaId)) motivo = `Ningún renglón usa ${etiqueta(d.listaId)}`;
+      else if (!sinOferta.has(d.listaId)) motivo = `Lo de ${etiqueta(d.listaId)} ya está en oferta`;
+      else if (!puesto && ocupadas.has(d.listaId)) motivo = `Ya hay uno de ${etiqueta(d.listaId)}`;
+      return { ...d, lista: etiqueta(d.listaId), puesto, motivo, aplicable: puesto || !motivo };
+    });
+}
+
+/**
+ * LOS DESCUENTOS QUE VIAJAN A LA API — que no son todos los que el POS muestra.
+ *
+ * El ticket conserva el id de un descuento que dejó de tener efecto (porque su
+ * lista se cayó del ticket, o porque venció mientras estaba abierto) y lo
+ * muestra con el aviso: si vuelve a entrar un renglón de esa lista, el
+ * descuento se reactiva solo. Eso es del POS.
+ *
+ * El servidor no puede razonar así — RECHAZA un descuento cuya lista no está en
+ * el ticket, y con razón: es la defensa contra colgarle a una venta un
+ * descuento que no le corresponde. Si el POS mandara el id igual, el
+ * autoguardado devolvería 400 EN CADA TECLA y el ticket quedaría sin poder
+ * guardarse, con un error sobre algo que la cajera ya ve marcado en pantalla.
+ *
+ * Así que se manda lo que el servidor acepta, y el aviso queda del lado de acá.
+ * Descubierto guardando un ticket de verdad, no en las pruebas de API.
+ */
+export function descuentosParaApi(estado) {
+  const listas = new Set(estado.renglones.map((r) => r.listaId).filter((x) => x != null));
+  const ahora = estado.ctx.ahora ? new Date(estado.ctx.ahora).getTime() : Date.now();
+  return (estado.descuentos ?? []).filter((id) => {
+    const d = (estado.ctx.descuentos ?? []).find((x) => x.id === id);
+    if (!d || !listas.has(d.listaId)) return false;
+    return !(d.vence && new Date(d.vence).getTime() < ahora);
+  });
 }
 
 /**
@@ -447,7 +639,19 @@ export function itemsParaApi(renglones) {
     listaOrigen: r.listaOrigen || undefined,
     precioLista: r.precioLista,
     precioUnitario: r.precioUnitario,
-    descuento: r.descuento,
+    /*
+     * VIAJA EL DESCUENTO BASE, no el que se ve en pantalla.
+     *
+     * El de pantalla puede ser el de un descuento CON NOMBRE que ganó (25% de
+     * "Atención por tardanza"), y ese porcentaje lo pone el servidor a partir
+     * del id — no lo acepta del navegador. Si se mandara el combinado, el
+     * servidor lo leería como un descuento puesto a mano y lo rebotaría contra
+     * `descuentoMaxVendedor` (10%) antes de llegar a aplicar el nombrado.
+     *
+     * O sea: el cliente manda lo que decidió una persona, el servidor suma lo
+     * que autorizó el dueño. Cada uno pone lo que le corresponde.
+     */
+    descuento: Number(r.descuentoBase ?? r.descuento) || 0,
     ofertaId: r.ofertaId ?? undefined,
     oferta: r.oferta || undefined,
     ofertaDescuento: r.ofertaDescuento > 0 ? r.ofertaDescuento : undefined,
@@ -495,6 +699,14 @@ export function ticketDesdeBorrador(borrador, catalogo) {
       precioLista: it.precioLista,
       precioUnitario: it.precioUnitario,
       descuento: it.descuento,
+      /*
+       * LA BASE VIENE DE LA BASE. El `??` es para los renglones anteriores a la
+       * migración 0064, donde la columna no existía y el descuento cobrado ERA
+       * el propio (no había descuentos con nombre todavía).
+       */
+      descuentoBase: it.descuentoBase ?? it.descuento,
+      descuentoId: it.descuentoId ?? null,
+      descuentoNombre: it.descuentoNombre || '',
       ofertaId: it.ofertaId ?? null,
       oferta: it.oferta || '',
       ofertaDescuento: it.ofertaDescuento || 0,

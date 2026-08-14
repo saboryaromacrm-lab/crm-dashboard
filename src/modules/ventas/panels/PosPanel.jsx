@@ -5,7 +5,8 @@ import { useResource } from '../hooks/useResource.js';
 import { ventasApi } from '../services/ventas.api.js';
 import { CONDICIONES_IVA, CONDICIONES_PAGO, MEDIOS_PAGO, ORIGEN_LISTA } from '../domain/constants.js';
 import {
-  buscarEnCatalogo, calcularRenglon, extrasParaApi, itemsParaApi, parseEtiquetaBalanza,
+  buscarEnCatalogo, calcularRenglon, descuentosDisponibles, descuentosParaApi,
+  extrasParaApi, itemsParaApi, parseEtiquetaBalanza,
   problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
   totalesTicket, ultimoArticulo,
 } from '../domain/pos.js';
@@ -128,6 +129,79 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
 }
 
 /* ==================================================================== *
+ * Descuentos con nombre (debajo del total)
+ * ==================================================================== */
+
+/**
+ * El desplegable muestra el catálogo ENTERO, con los que no sirven en gris y su
+ * motivo escrito. Esconderlos sería más prolijo y peor: la cajera que no
+ * encuentra "Empleados" no sabe si no existe, si venció o si le falta permiso,
+ * y termina llamando al encargado sin poder decirle qué pasa.
+ *
+ * Lo aplicado sale del desplegable y queda como chip a la vista: mientras cobra
+ * es lo único de acá que necesita ver.
+ */
+function DescuentosConNombre({ opciones, puestos, onAlternar, habilitado }) {
+  const [abierto, setAbierto] = useState(false);
+  // Sin descuentos cargados no hay nada que ofrecer: la fila no aparece.
+  if (!opciones.length) return null;
+
+  return (
+    <div>
+      {puestos.map((d) => (
+        <div key={d.id} className={p.descChip}>
+          <span>
+            <strong>{d.nombre}</strong> −{d.porcentaje}% · {d.lista}
+            {/* Sin `toLowerCase`: el motivo lleva adentro el nombre de la lista
+                y bajarle las mayúsculas la volvía otra cosa que la del combo. */}
+            {d.motivo && <span className={p.descMotivo}>{d.motivo} — ya no descuenta</span>}
+          </span>
+          <button
+            type="button"
+            className={p.descChipQuitar}
+            aria-label={`Quitar el descuento ${d.nombre}`}
+            onClick={() => onAlternar(d)}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+
+      <button
+        type="button"
+        className={p.descBoton}
+        disabled={!habilitado}
+        aria-expanded={abierto}
+        onClick={() => setAbierto((v) => !v)}
+      >
+        {abierto ? 'Cerrar' : 'Aplicar descuento'}
+      </button>
+
+      {abierto && (
+        <div className={p.descLista}>
+          {opciones.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              className={cx(p.descItem, d.puesto && p.descItemPuesto)}
+              disabled={!d.aplicable}
+              onClick={() => { onAlternar(d); setAbierto(false); }}
+            >
+              <span>
+                {d.puesto ? '✓ ' : ''}<strong>{d.nombre}</strong> −{d.porcentaje}%
+              </span>
+              <span className={p.descMotivo}>
+                {d.motivo || `Sobre ${d.lista}${d.medioPago ? ` · solo con ${MEDIOS_PAGO[d.medioPago] || d.medioPago}` : ''}`}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ==================================================================== *
  * Ticket
  * ==================================================================== */
 
@@ -160,7 +234,16 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
           {renglones.map((r) => {
             const calc = calcularRenglon(r);
             const sinStock = !permitirStockNegativo && r.cantidad > r.stock + 1e-9;
-            const descExcedido = !puedePisarPrecio && r.descuento > descuentoMax + 1e-9;
+            /*
+             * El tope se mide contra la BASE, no contra el descuento visible.
+             * Un renglón bajo "Atención por tardanza 25%" muestra 25 y no está
+             * excedido: ese porcentaje lo autorizó el dueño al crear el
+             * descuento. Comparar el visible pintaría de rojo —y le avisaría al
+             * cajero que hace falta un permiso— justo el caso que el descuento
+             * con nombre existe para permitir. El servidor mide igual.
+             */
+            const descExcedido = !puedePisarPrecio
+              && (Number(r.descuentoBase ?? r.descuento) || 0) > descuentoMax + 1e-9;
             return (
               <tr key={r.uid} className={cx(r.key === ultimoKey && p.filaUltima)}>
                 <td>
@@ -175,6 +258,13 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                   {r.ofertaDescuento > 0 && (
                     <div className={p.ofertaBadge} title={r.ofertaDetalle || r.oferta}>
                       {r.oferta} · −{money(r.ofertaDescuento)}
+                    </div>
+                  )}
+                  {/* Y el descuento con nombre, en el mismo lugar y por el
+                      mismo motivo: el renglón dice de dónde salió su precio. */}
+                  {r.descuentoId && (
+                    <div className={p.ofertaBadge} title={`Descuento "${r.descuentoNombre}"`}>
+                      {r.descuentoNombre} · −{r.descuento}%
                     </div>
                   )}
                 </td>
@@ -253,14 +343,25 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                     />
                   ) : money(r.precioUnitario)}
                 </td>
+                {/*
+                  Con un descuento CON NOMBRE ganando, el campo se vuelve texto.
+                  Dejarlo editable mostrando 25 sería una trampa: lo que se
+                  tipea encima es la base —el número de abajo—, así que escribir
+                  30 sobre un 25 autorizado da un 30 que el servidor rebota por
+                  el tope. Se saca el descuento y recién ahí se tipea.
+                */}
                 <td className={p.num}>
-                  <input
-                    className={cx(p.inputMini, descExcedido && p.inputAlerta)}
-                    style={{ width: 64 }}
-                    type="number" min="0" max="100" step="0.5"
-                    value={r.descuento}
-                    onChange={(e) => dispatch({ tipo: 'descuento', uid: r.uid, valor: e.target.value })}
-                  />
+                  {r.descuentoId ? (
+                    <span title={`Lo pone el descuento "${r.descuentoNombre}"`}>{r.descuento}%</span>
+                  ) : (
+                    <input
+                      className={cx(p.inputMini, descExcedido && p.inputAlerta)}
+                      style={{ width: 64 }}
+                      type="number" min="0" max="100" step="0.5"
+                      value={r.descuento}
+                      onChange={(e) => dispatch({ tipo: 'descuento', uid: r.uid, valor: e.target.value })}
+                    />
+                  )}
                 </td>
                 <td className={p.num}><strong>{money(calc.total)}</strong></td>
                 <td>
@@ -430,11 +531,28 @@ export function PosPanel() {
    * cliente otro número del que se le dijo. Los precios nuevos rigen para lo
    * que se agregue de ahora en más.
    */
+  /**
+   * DESCUENTOS CON NOMBRE. Endpoint propio y no parte del bootstrap: los edita
+   * el dueño en Configuración y la caja los necesita frescos.
+   *
+   * Se piden UNA vez y no en cada tecla, y alcanza: lo que caduca no es la
+   * lista sino la vigencia de cada uno, y eso se decide comparando su fecha
+   * contra el reloj que entra con el contexto — así, el que vence al mediodía
+   * se apaga solo en el desplegable, sin volver a la red. Lo que sí necesita
+   * recarga es un descuento NUEVO, y para eso está el mismo botón que ya
+   * refresca los precios.
+   */
+  const { data: descuentosRaw, reload: recargarDescuentos } = useResource(
+    'descuentos-pos',
+    () => ventasApi.descuentos(),
+  );
+  const catalogoDescuentos = useMemo(() => descuentosRaw ?? [], [descuentosRaw]);
+
   useEffect(() => {
-    const alRecargar = () => { recargarCatalogo(); };
+    const alRecargar = () => { recargarCatalogo(); recargarDescuentos(); };
     window.addEventListener(EVENTO_PRECIOS, alRecargar);
     return () => window.removeEventListener(EVENTO_PRECIOS, alRecargar);
-  }, [recargarCatalogo]);
+  }, [recargarCatalogo, recargarDescuentos]);
 
   /** Recarga el catálogo y da por visto el aviso de cambio de precios. */
   const actualizarPrecios = useCallback(() => {
@@ -512,10 +630,10 @@ export function PosPanel() {
       // no necesita más precisión que la próxima tecla.
       ctx: {
         catalogo: catalogoRaw, cliente: clienteActual, precios: idxPrecios,
-        sucursalId, ahora: new Date(),
+        sucursalId, ahora: new Date(), descuentos: catalogoDescuentos,
       },
     });
-  }, [catalogoRaw, clienteActual, idxPrecios, sucursalId]);
+  }, [catalogoRaw, clienteActual, idxPrecios, sucursalId, catalogoDescuentos]);
 
   /**
    * Ofertas de ticket que el total habilita. Misma regla que el monto: se
@@ -533,6 +651,40 @@ export function PosPanel() {
     dispatch({ tipo: 'ofertaTicket', ofertaId });
     toast(ofertaId ? 'Oferta aplicada al ticket.' : 'Se retiró la oferta del ticket.', 'ok');
   }, [toast]);
+
+  /**
+   * DESCUENTOS CON NOMBRE: cuáles sirven para ESTE ticket y por qué los otros
+   * no. Se recalcula con los renglones porque el conjunto cambia solo — cargar
+   * un producto de Mayorista 1 habilita el descuento de Mayorista 1, y sacarlo
+   * lo vuelve a apagar.
+   */
+  const descuentosDelTicket = useMemo(
+    () => descuentosDisponibles(ticket, { esAdmin: puedePisarPrecio }),
+    [ticket, puedePisarPrecio],
+  );
+  const descuentosPuestos = useMemo(
+    () => descuentosDelTicket.filter((d) => d.puesto),
+    [descuentosDelTicket],
+  );
+
+  /**
+   * Aplicar o quitar. Se manda la lista ENTERA de ids y no un "toggle" en el
+   * reducer: así el estado del ticket es lo único que decide, y sacar el
+   * descuento devuelve cada renglón a su base sin que nadie recuerde cuál era.
+   */
+  const alternarDescuento = useCallback((d) => {
+    const puestos = ticket.descuentos ?? [];
+    const sacando = puestos.includes(d.id);
+    // Uno por lista: aplicar uno desplaza al de su misma lista, si lo hubiera.
+    const ids = sacando
+      ? puestos.filter((x) => x !== d.id)
+      : [...puestos.filter((x) => {
+        const otro = catalogoDescuentos.find((c) => c.id === x);
+        return !otro || otro.listaId !== d.listaId;
+      }), d.id];
+    dispatch({ tipo: 'descuentos', ids });
+    toast(sacando ? `Se quitó "${d.nombre}".` : `${d.nombre}: ${d.porcentaje}% aplicado.`, 'ok');
+  }, [ticket.descuentos, catalogoDescuentos, toast]);
 
   /**
    * La sugerencia por MONTO: lo único que se ofrece en vez de aplicarse solo.
@@ -648,6 +800,11 @@ export function PosPanel() {
         clienteId: cliente?.id,
         items: itemsParaApi(estado.renglones),
         extras: extrasParaApi(estado.extras),
+        /* Los descuentos con nombre van EN CADA GUARDADO, no solo al cobrar:
+         * el borrador tiene que volver igual a como quedó. Son ids —el
+         * porcentaje lo pone el servidor— y se filtran los que ya no tienen
+         * efecto, que el servidor rechaza (ver `descuentosParaApi`). */
+        descuentos: descuentosParaApi(estado),
       });
       recargarAbiertas();
     } catch (e) {
@@ -1221,6 +1378,13 @@ export function PosPanel() {
                 <div className={p.totalLabel}>Total</div>
                 <div className={p.totalValor}>{money(totales.total)}</div>
               </div>
+
+              <DescuentosConNombre
+                opciones={descuentosDelTicket}
+                puestos={descuentosPuestos}
+                onAlternar={alternarDescuento}
+                habilitado={ticket.renglones.length > 0}
+              />
 
               <button type="button" className={p.cobrar} onClick={cobrar} disabled={!puedeCobrar}>
                 Cobrar · F2

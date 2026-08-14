@@ -342,6 +342,76 @@
 .cobrar:not(:disabled):hover { background: var(--crm-color-primary-hover); }
 .cobrar:not(:disabled):active { transform: translateY(1px); }
 
+/* ---- Descuentos con nombre: debajo del total, chico ----
+   Deliberadamente discreto y NO un botón de acción: aplicar un descuento
+   autorizado es la excepción del día, no el camino de cada ticket. Compite con
+   "Cobrar", que está justo abajo y tiene que seguir siendo lo único grande. */
+.descBoton {
+  width: 100%;
+  margin-top: 8px;
+  padding: 5px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--crm-color-text-secondary);
+  background: none;
+  border: 1px dashed var(--crm-color-border);
+  border-radius: var(--crm-radius-sm);
+  cursor: pointer;
+}
+.descBoton:hover:not(:disabled) { color: var(--crm-color-text); border-color: var(--crm-color-text-secondary); }
+.descBoton:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.descLista {
+  margin-top: 6px;
+  border: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-sm);
+  background: var(--crm-color-surface);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.descItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 12.5px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--crm-color-border);
+  cursor: pointer;
+}
+.descItem:last-child { border-bottom: 0; }
+.descItem:hover:not(:disabled) { background: var(--crm-color-surface-alt, rgba(0, 0, 0, 0.04)); }
+.descItem:disabled { opacity: 0.5; cursor: not-allowed; }
+.descItemPuesto { background: color-mix(in srgb, var(--crm-color-success) 12%, transparent); }
+.descMotivo { display: block; font-size: 11px; color: var(--crm-color-text-secondary); margin-top: 1px; }
+
+/* El chip de lo aplicado: es lo único que la cajera necesita ver de un vistazo
+   mientras cobra, así que vive fuera del desplegable. */
+.descChip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  border-radius: var(--crm-radius-sm);
+  background: color-mix(in srgb, var(--crm-color-success) 14%, transparent);
+}
+.descChipQuitar {
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 4px;
+  background: none;
+  border: 0;
+  color: var(--crm-color-text-secondary);
+  cursor: pointer;
+}
+.descChipQuitar:hover { color: var(--crm-color-danger); }
+
 .atajos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .tecla {
   display: inline-flex;
