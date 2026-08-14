@@ -1,0 +1,35 @@
+# Lo que NUNCA tiene que entrar al build.
+#
+# LA PRIMERA LÍNEA ES LA IMPORTANTE, y no es por tamaño: el `.env` local tiene
+#   VITE_API_BASE_URL=http://localhost:3001/api
+# y las variables `VITE_*` se HORNEAN dentro del JavaScript durante el build. Si
+# ese archivo entrara, la imagen de producción saldría con el dashboard pidiendo
+# la API a la máquina de quien la construyó. Nadie lo vería en el build —
+# fallaría recién en el navegador del usuario, con la pantalla en blanco.
+#
+# Sin `.env`, `src/core/config/env.js` cae a su default `/api`, que es
+# justamente lo correcto cuando la API y el dashboard salen del mismo dominio.
+.env
+.env.*
+!.env.example
+
+node_modules
+dist
+.git
+.gitignore
+
+# Basura del editor y salidas de herramientas.
+coverage
+*.log
+.DS_Store
+.vscode
+.idea
+
+# Certificados del dev con HTTPS (scripts/dev-https.mjs): son locales.
+*.pem
+*.key
+*.crt
+
+# Documentación: no hace falta para construir la SPA.
+*.md
+!README.md

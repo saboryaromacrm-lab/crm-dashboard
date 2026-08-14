@@ -1,6 +1,11 @@
 /* eslint-env node */
 module.exports = {
   root: true,
+  // `dist/` es la SALIDA del build, no código fuente: son dos bundles minificados
+  // que ESLint marcaba con ~288 errores cada uno y tapaban por completo los de
+  // `src/`. Ahora que la imagen de Docker se construye con `npm run build`, esa
+  // carpeta existe siempre, así que el ruido era permanente.
+  ignorePatterns: ['dist', 'coverage'],
   env: { browser: true, es2021: true },
   extends: [
     'eslint:recommended',
