@@ -694,9 +694,17 @@ export function PosPanel() {
     }
   }, [activaId, ticket, clienteActual, catalogo, guardarAhora, abrirPestana, enfocarBuscador, toast]);
 
-  const nuevaVenta = useCallback(async () => {
-    clearTimeout(guardadoRef.current);
-    if (activaId) await guardarAhora(activaId, ticket, clienteActual);
+  /**
+   * Abre un borrador nuevo y deja la registradora lista para tipear. NO guarda
+   * nada de lo anterior: eso es responsabilidad de quien llama.
+   *
+   * Está separado de `nuevaVenta` por el caso de después de cobrar. Ahí no hay
+   * nada que guardar —la venta se confirmó recién— y encima `activaId` todavía
+   * apunta a ella, porque `setActivaId(null)` no se aplica hasta el próximo
+   * render. Llamar a `nuevaVenta` desde ese punto intentaría re-guardar una
+   * venta ya cerrada.
+   */
+  const abrirBorradorNuevo = useCallback(async () => {
     try {
       const borrador = await ventasApi.abrirVenta({
         clienteId: consumidorFinal?.id,
@@ -715,7 +723,13 @@ export function PosPanel() {
     } catch (e) {
       toast(e?.data?.message || 'No se pudo abrir una venta nueva.', 'err');
     }
-  }, [activaId, ticket, clienteActual, consumidorFinal, sucursalId, ctx.usuarioId, guardarAhora, abrirPestana, recargarAbiertas, enfocarBuscador, toast]);
+  }, [consumidorFinal, sucursalId, ctx.usuarioId, abrirPestana, recargarAbiertas, enfocarBuscador, toast]);
+
+  const nuevaVenta = useCallback(async () => {
+    clearTimeout(guardadoRef.current);
+    if (activaId) await guardarAhora(activaId, ticket, clienteActual);
+    await abrirBorradorNuevo();
+  }, [activaId, ticket, clienteActual, guardarAhora, abrirBorradorNuevo]);
 
   /**
    * Guarda el ticket actual como PRESUPUESTO (pedido mayorista): el mismo
@@ -814,7 +828,6 @@ export function PosPanel() {
   }, [toast, clienteActual, preciosDe, listasPorId]);
 
   const trasCobrar = useCallback((idCobrado) => {
-    setActivaId(null);
     dispatch({ tipo: 'limpiar' });
     setClienteId(null);
     setUltimoKey(null);
@@ -822,8 +835,25 @@ export function PosPanel() {
     if (idCobrado) cerrarPestana(idCobrado);
     recargarCatalogo();   // el stock cambió con la venta
     recargarCaja();
-    recargarAbiertas();
-  }, [cerrarPestana, recargarCatalogo, recargarCaja, recargarAbiertas]);
+
+    /*
+     * Y ARRANCA LA SIGUIENTE VENTA SOLA.
+     *
+     * Antes acá iba `setActivaId(null)`, y eso hacía que `enLista` pasara a
+     * true: el POS se caía de la registradora a pantalla completa a su vista de
+     * lista, cuyo primer elemento es la barra de caja. El cajero lo vivía como
+     * "me sacó a Caja" y tenía que apretar "+ Nueva venta" con el cliente
+     * siguiente ya esperando en el mostrador.
+     *
+     * Una registradora siempre tiene un ticket abierto. `abrirBorradorNuevo`
+     * ya deja el foco en el buscador, así que se puede escanear de una.
+     *
+     * Efecto lateral aceptado: si el cajero cierra el turno justo después de
+     * cobrar, queda UN borrador vacío abierto. Es el ticket en curso del
+     * puesto, no basura — y es uno solo, porque el siguiente cobro lo reusa.
+     */
+    abrirBorradorNuevo();
+  }, [cerrarPestana, recargarCatalogo, recargarCaja, abrirBorradorNuevo]);
 
   const cobrar = useCallback(() => {
     if (!puedeCobrar) {
