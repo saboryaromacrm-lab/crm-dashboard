@@ -209,14 +209,37 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
   const busqueda = useMemo(() => {
     const ql = normTxt(q);
     if (!ql && !soloSinStock) return { lista: [], otros: 0 };
+    const cod = q.trim();
     const lista = [];
     let otros = 0;
     for (const p of store.state.productos) {
       if (soloSinStock && dispTotal(p, destinoNum) > 1e-9) continue;
       if (ql && !(normTxt(p.nombre).includes(ql) || normTxt(p.marca).includes(ql)
-        || (p.codigoBarras || '').includes(q.trim()) || (p.codigoPropio || '').includes(q.trim()))) continue;
+        || (p.codigoBarras || '').includes(cod) || (p.codigoPropio || '').includes(cod)
+        // También por el código del PAQUETE: escanear un 500 g tiene que
+        // encontrarlo, y ese código es de la presentación, no de la madre.
+        || (p.presentaciones || []).some((pr) => (pr.codigoBarras || '').includes(cod)))) continue;
       if (listaDeProducto(p) !== grupo) { otros += 1; continue; }
-      if (lista.length < 8) lista.push(p);
+      if (lista.length >= 8) continue;
+
+      /*
+       * EN GRANEL SE OFRECEN LOS TAMAÑOS, NO LA MADRE (decisión del dueño,
+       * 11/8/2026): lo que viaja a una sucursal son paquetes, así que la madre
+       * en la lista solo daba una fila más para elegir mal — y obligaba a
+       * elegir el tamaño DESPUÉS, en un desplegable del renglón ya agregado.
+       *
+       * El explorador del catálogo ya lo hacía así desde el primer día; este
+       * buscador —el rápido, el que se usa con el lector— se había quedado con
+       * la fila de la madre. Misma regla en los dos, y la excepción también:
+       * un granel SIN tamaños definidos no tiene paquetes que ofrecer, y
+       * esconderlo sería no poder pedirlo nunca.
+       */
+      const tamanos = grupo === 'granel' ? (p.presentaciones || []) : [];
+      if (!tamanos.length) { lista.push({ clave: `p${p.id}`, p, pres: null }); continue; }
+      for (const pr of tamanos) {
+        if (lista.length >= 8) break;
+        lista.push({ clave: `f${pr.id}`, p, pres: pr });
+      }
     }
     return { lista, otros };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -585,26 +608,43 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
 
         {resultados.length > 0 && (
           <div className={s.card} style={{ padding: 0, marginTop: 6, overflow: 'hidden' }}>
-            {resultados.map((p) => {
-              // Origen: lo que puede MANDAR (el granel). Destino: lo que TIENE.
+            {resultados.map(({ clave, p, pres }) => {
+              /*
+               * ORIGEN: lo que puede MANDAR, que en un granel es siempre el
+               * granel suelto —también en la fila de un tamaño—, porque el
+               * paquete se fracciona del madre al preparar.
+               * DESTINO: lo que TIENE en ESA forma, o sea los paquetes de ese
+               * tamaño; y el granel suelto va como nota al lado, porque la fila
+               * de la madre ya no está para decirlo. Sin eso, "0 paq. de 500 g"
+               * esconde que el local tiene 123 kg sin envasar y se pide de más.
+               */
               const enOrigen = dispParaEnviar(p, origenNum);
-              const aca = dispTotal(p, destinoNum);
+              const aca = pres
+                ? store.cant(p.id, destinoNum, pres.id, 'disponible')
+                : dispTotal(p, destinoNum);
+              const suelto = pres ? store.cant(p.id, destinoNum, null, 'disponible') : 0;
+              const codigo = pres ? (pres.codigoBarras || '') : (p.codigoBarras || p.codigoPropio || '');
               return (
                 <div
-                  key={p.id}
+                  key={clave}
                   className={s.clickable}
                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderBottom: '1px solid var(--crm-color-border)', cursor: 'pointer' }}
-                  onClick={() => agregar(p)}
+                  onClick={() => agregar(p, pres ? pres.id : '')}
                 >
                   <span style={{ flex: 1 }}>
                     <strong>{p.nombre}</strong>
+                    {pres && <strong> · {store.presLabel(p, pres.id)}</strong>}
                     <span className={s.muted}> · {p.marca || 'Sin marca'}</span>
+                    {codigo && <span className={cx(s.muted, s.mono)} style={{ fontSize: 11.5 }}> · {codigo}</span>}
                   </span>
                   <span className={cx(s.mono)} style={{ fontSize: 12.5, color: enOrigen > 0 ? 'var(--crm-color-text-secondary)' : 'var(--crm-color-accent-2)' }}>
                     {origen?.nombre}: {store.fmtCant(p, null, enOrigen)}
                   </span>
                   <span className={cx(s.mono)} style={{ fontSize: 12.5, color: aca > 0 ? 'var(--crm-color-text-secondary)' : 'var(--crm-color-accent-2)' }}>
-                    acá: {store.fmtCant(p, null, aca)}
+                    acá: {store.fmtCant(p, pres ? pres.id : null, aca)}
+                    {suelto > 1e-9 && (
+                      <span className={s.muted}> (+{store.fmtCant(p, null, suelto)} a granel)</span>
+                    )}
                   </span>
                   <span style={{ color: 'var(--crm-color-primary)', fontWeight: 700 }}>+ Agregar</span>
                 </div>
