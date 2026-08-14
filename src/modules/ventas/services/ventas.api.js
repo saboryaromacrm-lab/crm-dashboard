@@ -150,4 +150,15 @@ export const ventasApi = {
 
   /* Configuración (la lectura viaja con el bootstrap). */
   guardarConfig: (patch) => httpClient.put('/configuracion/ventas', patch),
+
+  /*
+   * DESCUENTOS CON NOMBRE. Endpoint propio y no parte del bootstrap: la
+   * pantalla de configuración los edita de a uno, y el POS los pide aparte
+   * porque su vigencia se vence sola en medio de un turno — un catálogo
+   * cacheado al abrir la caja seguiría ofreciendo el que venció al mediodía.
+   */
+  descuentos: () => httpClient.get('/descuentos'),
+  crearDescuento: (data) => httpClient.post('/descuentos', data),
+  editarDescuento: (id, data) => httpClient.patch(`/descuentos/${id}`, data),
+  borrarDescuento: (id) => httpClient.delete(`/descuentos/${id}`),
 };
