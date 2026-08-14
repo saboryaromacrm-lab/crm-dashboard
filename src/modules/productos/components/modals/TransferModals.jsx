@@ -13,7 +13,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { esc, imprimirDocumento } from '@core/services/imprimir.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { ModalShell } from '../Modal.jsx';
-import { sucursalOptions, presentacionOptions, usuarioOptions } from '../selectOptions.jsx';
+import { sucursalOptions, sucursalOptionsOtras, presentacionOptions, usuarioOptions } from '../selectOptions.jsx';
 import { Table, TransferPill, Btn, s } from '../ui.jsx';
 import { LISTAS_PREP, GRUPOS_PEDIDO, listaDeProducto, puedeMandar, disponibleTotal } from '../../domain/pedido.js';
 import { ExplorarProductosModal } from './ExplorarProductosModal.jsx';
@@ -167,6 +167,28 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
 
   const origenNum = parseInt(origenId, 10) || null;
   const destinoNum = parseInt(destinoId, 10) || null;
+
+  /*
+   * EL ORIGEN SIGUE AL DESTINO, y esto no es un lujo: son dos formas de que el
+   * modal quede con un origen que no existe en su propio desplegable, y en las
+   * dos el <select> muestra otra cosa de la que tiene guardada.
+   *
+   *   · El valor inicial se calcula al MONTAR, y las sucursales llegan por red:
+   *     con la lista todavía vacía no hay candidato y el origen queda en "".
+   *   · Y si se cambia el destino a la sucursal que estaba de origen, esa opción
+   *     desaparece de la lista pero el estado se queda con ella.
+   *
+   * Se repara acá una sola vez, con la misma preferencia de siempre: la
+   * Distribuidora, que es el depósito central, y si no cualquier otra.
+   */
+  useEffect(() => {
+    if (origenNum && origenNum !== destinoNum && store.getSucursal(origenNum)) return;
+    const preferida = dist && dist.id !== destinoNum ? dist.id : null;
+    const otra = preferida ?? store.state.sucursales.find((su) => su.id !== destinoNum)?.id ?? '';
+    if (otra !== origenId) setOrigenId(otra);
+    // `store.getSucursal` es estable; lo que importa es la lista y el destino.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.state.sucursales, destinoNum, origenNum]);
   const origen = store.getSucursal(origenNum);
   const destino = store.getSucursal(destinoNum);
 
@@ -464,7 +486,13 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Pedir a (origen) <span className={s.req}>*</span></label>
-          <select value={origenId} onChange={(e) => setOrigenId(parseInt(e.target.value, 10))}>{sucursalOptions(store, false)}</select>
+          {/* Las OTRAS, nunca la propia: pedirse mercadería a uno mismo no es una
+              operación. Y no va el filtro por sesión —el de `sucursalOptions`—
+              porque acá la sucursal no es dónde opero sino a quién le pido, que
+              es justamente el trabajo de la cajera. Ver `sucursalOptionsOtras`. */}
+          <select value={origenId} onChange={(e) => setOrigenId(parseInt(e.target.value, 10))}>
+            {sucursalOptionsOtras(store, destinoNum)}
+          </select>
         </div>
         <div className={s.field}>
           <label>Entregar en (destino) <span className={s.req}>*</span></label>

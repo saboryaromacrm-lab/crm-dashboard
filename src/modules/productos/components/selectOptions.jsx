@@ -35,6 +35,30 @@ export function sucursalOptions(store, incTodas) {
   return arr;
 }
 
+/**
+ * LAS OTRAS sucursales — a quién le pido, no dónde opero.
+ *
+ * `sucursalOptions` acota al no-jefe a la suya, y está bien donde está: ahí la
+ * sucursal es DÓNDE SE OPERA (de qué depósito sale la merma, en qué local se
+ * ajusta el conteo), y ofrecerle otra es ofrecerle mover stock ajeno.
+ *
+ * Acá la pregunta es otra: A QUIÉN LE PIDO. Pedirle a la Distribuidora es
+ * literalmente el trabajo de la cajera, y el pedido no toca ni una unidad del
+ * origen —es demanda; la mercadería recién se mueve cuando el origen prepara y
+ * despacha, con su propia gente y su propio permiso—. Usar el filtro de la otra
+ * dejaba el desplegable con un solo local (el propio) en las DOS puntas, y el
+ * modal cortaba con "elegí un origen y un destino distintos": el pedido era
+ * imposible de armar.
+ *
+ * El servidor ya lo dice así: clava `destinoId` en la sucursal de la sesión
+ * (`sucursalDeOperacion`) y toma `origenId` libre.
+ */
+export function sucursalOptionsOtras(store, excluirId) {
+  return store.state.sucursales
+    .filter((s) => s.id !== excluirId)
+    .map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>);
+}
+
 export function productoOptions(store, incTodos, soloTipo) {
   const arr = incTodos ? [<option key="_all" value="">Todos los productos</option>] : [];
   store.state.productos
