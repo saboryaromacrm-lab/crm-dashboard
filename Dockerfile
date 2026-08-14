@@ -27,6 +27,24 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
+
+# A DÓNDE LE PIDE LA API ESTE BUILD.
+#
+# Se pasa como argumento de build (en Dokploy: Build Args) porque las `VITE_*`
+# se resuelven al COMPILAR, no al arrancar: quedan escritas adentro del
+# JavaScript. Cambiar esto no es reiniciar el contenedor, es reconstruirlo.
+#
+# Sin pasar nada, el default de `src/core/config/env.js` es `/api` relativo, que
+# es lo correcto cuando la API vive en el MISMO dominio que el dashboard.
+# Cuando la API tiene subdominio propio hay que pasar la URL absoluta:
+#
+#   VITE_API_BASE_URL=https://api.saboryaroma.com/api
+#
+# Ojo con el `/api` del final: es el prefijo con el que la API publica TODAS sus
+# rutas, y no se deduce del subdominio.
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
 RUN npm run build
 
 # ------------------------------ 2) Ejecución --------------------------------
