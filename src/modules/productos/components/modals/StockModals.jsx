@@ -148,6 +148,15 @@ export function FraccionarModal({ prodId, sucId: sucInit }) {
   const disp = store.cant(prod.id, parseInt(sucId, 10), null, 'disponible');
   const rest = disp - total;
   const excede = rest < -1e-9;
+  /*
+   * UN GRANEL PUEDE NO TENER NINGÚN TAMAÑO DEFINIDO, y es lo más común de lo
+   * que parece: son 62 de los 164 granel activos. Sin esto, el modal abría con
+   * la sección "Paquetes a armar" VACÍA y un botón Fraccionar que no podía
+   * hacer nada — se lee como "me pide el tamaño y no me da las opciones", que
+   * es exactamente lo que pasa. La pantalla ahora dice qué falta y dónde se
+   * carga, en vez de dejar al usuario adivinando.
+   */
+  const sinTamanos = !prod.presentaciones.length;
 
   const fraccionar = () => {
     const asignaciones = prod.presentaciones.map((pr) => ({ presId: pr.id, cant: cants[pr.id] }));
@@ -160,14 +169,34 @@ export function FraccionarModal({ prodId, sucId: sucInit }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Fraccionar', clase: 'btn-primary', onClick: fraccionar },
+        {
+          texto: 'Fraccionar',
+          clase: 'btn-primary',
+          onClick: fraccionar,
+          // Sin tamaños no hay nada que armar; con el total en 0 tampoco, y
+          // excediendo el granel el servidor lo rechaza igual.
+          disabled: sinTamanos || excede || !(total > 0),
+        },
       ]}
     >
       <div className={s.field}>
         <label>Se fracciona en</label>
         <strong style={{ fontSize: 14 }}>{store.getSucursal(parseInt(sucId, 10))?.nombre ?? '—'}</strong>
       </div>
-      <div className={s['mini-label']}>Paquetes a armar por presentación</div>
+
+      {sinTamanos && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>{prod.nombre} no tiene tamaños de paquete definidos</strong>, así que todavía no
+          se puede fraccionar: el sistema no sabe de cuántos kilos es cada paquete.
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            Se cargan en <strong>Compras › Productos</strong>, abriendo este producto, en la
+            pestaña <strong>Presentaciones</strong>: ahí se define cada tamaño (500 g, 1 kg…) con
+            su código de barras. Después el paquete se precia en su propia ficha.
+          </div>
+        </div>
+      )}
+
+      {!sinTamanos && <div className={s['mini-label']}>Paquetes a armar por presentación</div>}
       <div className={s['pres-list']}>
         {prod.presentaciones.map((pr) => (
           <div key={pr.id} className={s['pres-row']} style={{ gridTemplateColumns: '1fr 1fr' }}>
@@ -183,12 +212,16 @@ export function FraccionarModal({ prodId, sucId: sucInit }) {
           </div>
         ))}
       </div>
-      <div className={cx(s.callout, excede ? s.warn : total > 0 ? s.ok : undefined)}>
-        Granel disponible: <strong>{num(disp, 3)} kg</strong> · Total a fraccionar: <strong>{num(total, 3)} kg</strong> ·{' '}
-        {excede
-          ? '⚠ Excede el granel disponible.'
-          : <>Quedarían <strong>{num(rest, 3)} kg</strong> a granel.</>}
-      </div>
+      {/* El resumen de kilos no tiene nada que resumir sin tamaños: repetir
+          "total 0 kg" al lado del aviso solo agrega ruido. */}
+      {!sinTamanos && (
+        <div className={cx(s.callout, excede ? s.warn : total > 0 ? s.ok : undefined)}>
+          Granel disponible: <strong>{num(disp, 3)} kg</strong> · Total a fraccionar: <strong>{num(total, 3)} kg</strong> ·{' '}
+          {excede
+            ? '⚠ Excede el granel disponible.'
+            : <>Quedarían <strong>{num(rest, 3)} kg</strong> a granel.</>}
+        </div>
+      )}
     </ModalShell>
   );
 }

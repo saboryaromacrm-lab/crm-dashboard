@@ -154,14 +154,38 @@ function TabFraccionar({ puede }) {
 
   const filas = pag.visibles.map((st) => {
       const p = store.getProducto(st.productoId), su = store.getSucursal(st.sucursalId);
+      /*
+       * UN GRANEL SIN TAMAÑOS NO SE PUEDE FRACCIONAR, y son muchos (62 de 164
+       * al 15/8/2026): el sistema no sabe de cuántos kilos es cada paquete. Se
+       * dice EN LA FILA y no recién adentro del modal, que era donde el usuario
+       * se enteraba —con la sección de paquetes vacía y un botón que no hacía
+       * nada—. El botón sigue estando y lleva a la explicación de qué falta y
+       * dónde se carga: esconderlo dejaría el producto sin ninguna pista.
+       */
+      const sinTamanos = !(p.presentaciones || []).length;
       return (
         <tr key={st.id}>
-          <td>{p.nombre}</td>
+          <td>
+            {p.nombre}
+            {sinTamanos && (
+              <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-accent-2)' }}>
+                sin tamaños de paquete definidos
+              </div>
+            )}
+          </td>
           <td>{su.nombre}</td>
           <td className={s.num}>{num(st.cantidad, 3)} kg</td>
           <td className={s['actions-col']}>
             {puede
-              ? <Btn variant="btn-fracc" small onClick={() => openModal('fraccionar', { prodId: p.id, sucId: st.sucursalId })}>Fraccionar</Btn>
+              ? (
+                <Btn
+                  variant={sinTamanos ? undefined : 'btn-fracc'}
+                  small
+                  onClick={() => openModal('fraccionar', { prodId: p.id, sucId: st.sucursalId })}
+                >
+                  Fraccionar
+                </Btn>
+              )
               : <span className={s.muted}>sin permiso</span>}
           </td>
         </tr>
