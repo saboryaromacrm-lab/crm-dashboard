@@ -192,24 +192,35 @@ export function CambiosPrecioVista({ compacto = false }) {
 
       <div className={c.scroll}>
         <table className={c.tabla}>
+          {/*
+            SIN LA COLUMNA "MOTIVO" (15/8/2026, pedido del dueño). Decía de dónde
+            salió el cambio —"Cambio de costo · Recepción de comprobante"— y era
+            la columna más ancha de la tabla para un dato que en la práctica se
+            mira poco: el 90% de los cambios vienen del mismo lado.
+            Y con eso muere el grupo "Origen", que agrupaba Motivo + Fecha: un
+            encabezado de grupo sobre una sola columna es ruido que no agrupa
+            nada. La FECHA se queda —en un historial es lo que más se mira— y el
+            filtro por Motivo sigue arriba, que es donde de verdad sirve: para
+            acotar la lista, no para leerlo renglón por renglón.
+          */}
           <Cabecera
-            grupos={[{ h: 'Producto', span: 2 }, { h: 'Precio de góndola', span: 3 }, { h: 'Origen', span: 2 }]}
+            grupos={[{ h: 'Producto', span: 2 }, { h: 'Precio de góndola', span: 3 }, { h: '', span: 1 }]}
             columnas={[
               { h: 'Producto' }, { h: 'Lista' },
               { h: 'Antes', num: true, grupo: true }, { h: 'Después', num: true }, { h: 'Variación', num: true },
-              { h: 'Motivo', grupo: true }, { h: 'Fecha' },
+              { h: 'Fecha', grupo: true },
             ]}
           />
           <tbody>
             {error && (
-              <tr><td colSpan={7} className={c.vacio}>{error}</td></tr>
+              <tr><td colSpan={6} className={c.vacio}>{error}</td></tr>
             )}
             {!error && filas === null && (
-              <tr><td colSpan={7} className={c.vacio}>Cargando…</td></tr>
+              <tr><td colSpan={6} className={c.vacio}>Cargando…</td></tr>
             )}
             {!error && filas !== null && visibles.length === 0 && (
               <tr>
-                <td colSpan={7} className={c.vacio}>
+                <td colSpan={6} className={c.vacio}>
                   {(filas ?? []).length === 0
                     ? 'Todavía no hay cambios de precio registrados.'
                     : 'Nada coincide con esos filtros.'}
@@ -230,11 +241,16 @@ export function CambiosPrecioVista({ compacto = false }) {
                 </td>
                 <td className={cx(c.num, c.mono, c.precioBase)}>{money(x.precio)}</td>
                 <td className={c.num}><Variacion valor={x.variacion} /></td>
-                <td className={c.grupo}>
-                  <div className={c.motivo}>{ORIGEN_PRECIO[x.origen] || x.origen}</div>
-                  {x.detalle && <div className={c.motivoDetalle}>{x.detalle}</div>}
+                {/* El motivo no se muestra pero SÍ se sigue leyendo: va en el
+                    title de la fecha, para el día que haga falta uno puntual
+                    sin volver a agrandar la tabla. */}
+                <td
+                  className={cx(c.mono, c.grupo)}
+                  style={{ whiteSpace: 'nowrap', fontSize: 12 }}
+                  title={[ORIGEN_PRECIO[x.origen] || x.origen, x.detalle].filter(Boolean).join(' · ')}
+                >
+                  {fmtFechaHora(x.fecha)}
                 </td>
-                <td className={c.mono} style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtFechaHora(x.fecha)}</td>
               </tr>
             ))}
           </tbody>
