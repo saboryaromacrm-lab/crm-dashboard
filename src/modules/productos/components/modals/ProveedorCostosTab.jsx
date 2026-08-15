@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money } from '../../domain/format.js';
+import { norm } from '../CatalogoPicker.jsx';
 import { Table, Btn, usePaginado, s } from '../ui.jsx';
 
 /**
@@ -90,6 +91,39 @@ export function ProveedorCostosTab({ prov }) {
     })
     .filter(Boolean), [store.state.productos, prov.id]);
 
+  /**
+   * FILTRO DE LA TABLA — el que hace usable "subió una marca, no el proveedor".
+   *
+   * Un proveedor grande trae 130 productos de varias marcas, y lo que aumenta
+   * casi nunca es todo: es "Coca Cola subió 10%". Sin esto había que destildar
+   * a mano, de a 20 por página, todo lo que NO era Coca — con lo cual la regla
+   * masiva no servía justo para el caso más común.
+   *
+   * El desplegable ofrece SOLO las marcas que este proveedor trae: una lista
+   * con las 40 marcas del sistema, de las cuales 35 no están acá, es una lista
+   * para elegir mal.
+   */
+  const [q, setQ] = useState('');
+  const [marcaId, setMarcaId] = useState('');
+
+  const marcasDelProveedor = useMemo(() => {
+    const m = new Map();
+    for (const f of filas) if (f.p.marcaId) m.set(f.p.marcaId, f.p.marca || `#${f.p.marcaId}`);
+    return [...m].map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [filas]);
+
+  const hayFiltro = !!q.trim() || !!marcaId;
+  const visibles = useMemo(() => {
+    if (!hayFiltro) return filas;
+    const n = norm(q);
+    return filas.filter((f) => {
+      if (marcaId && String(f.p.marcaId ?? '') !== String(marcaId)) return false;
+      if (!n) return true;
+      return norm(f.p.nombre).includes(n) || norm(f.p.marca).includes(n)
+        || (f.p.codigoBarras || '').includes(q.trim()) || (f.p.codigoPropio || '').includes(q.trim());
+    });
+  }, [filas, q, marcaId, hayFiltro]);
+
   /** Estado efectivo de una fila: lo editado si se tocó, si no lo guardado. */
   const efectivo = useCallback((f) => ({ ...f.entry, ...(edits[f.entry.id] || {}) }), [edits]);
 
@@ -98,17 +132,36 @@ export function ProveedorCostosTab({ prov }) {
   }));
 
   const estaSeleccionada = (f) => !excluidos.has(f.entry.id);
-  const seleccionadas = filas.filter(estaSeleccionada);
-  const todasSeleccionadas = excluidos.size === 0 || seleccionadas.length === filas.length;
+
+  /*
+   * EL ALCANCE DE LA REGLA ES LO TILDADO **Y VISIBLE**, y esta línea es la que
+   * evita el accidente caro.
+   *
+   * Los tildes arrancan todos puestos, así que filtrar por "Coca Cola" y
+   * aplicar +10% sobre "los tildados" —los 134 del proveedor, incluidos los que
+   * el filtro esconde— sería subirle el costo a todo el catálogo del proveedor
+   * de un clic, sin verlo en pantalla. Con el filtro puesto, la regla alcanza
+   * exactamente lo que se está mirando; sin filtro, todo, como antes.
+   *
+   * Los tildes NO se reinician al filtrar: si destildaste dos Coca y después
+   * buscás otra cosa, siguen destildadas cuando volvés.
+   */
+  const seleccionadas = visibles.filter(estaSeleccionada);
+  const todasSeleccionadas = visibles.length > 0 && seleccionadas.length === visibles.length;
 
   const toggleFila = (id) => setExcluidos((prev) => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
-  const toggleTodas = () => setExcluidos(
-    todasSeleccionadas ? new Set(filas.map((f) => f.entry.id)) : new Set(),
-  );
+  /** Tilda o destilda SOLO lo que se ve: con filtro puesto no toca el resto. */
+  const toggleTodas = () => setExcluidos((prev) => {
+    const next = new Set(prev);
+    for (const f of visibles) {
+      if (todasSeleccionadas) next.add(f.entry.id); else next.delete(f.entry.id);
+    }
+    return next;
+  });
 
   /** Aplica la regla SOLO a las filas tildadas, solo en pantalla. */
   const aplicarMasiva = () => {
@@ -161,7 +214,7 @@ export function ProveedorCostosTab({ prov }) {
    * modal abierto. Si cruza el cero en cualquier dirección, React tira
    * "Rendered fewer hooks than expected" y se cae la pantalla entera.
    */
-  const pag = usePaginado(filas, 'costosProveedor');
+  const pag = usePaginado(visibles, 'costosProveedor');
 
   if (!filas.length) {
     return (
@@ -244,10 +297,45 @@ export function ProveedorCostosTab({ prov }) {
         destildá los que no cambian. Editar un campo a mano vale siempre, esté tildado o no.
       </div>
 
+      {/* Acotar la tabla ANTES de la regla: "subió una marca" es el caso normal,
+          y sin esto había que destildar a mano lo que no cambia. */}
+      <div className={s.toolbar} style={{ marginBottom: 'var(--crm-space-2)' }}>
+        <input
+          value={q}
+          placeholder="Buscar por nombre, marca o código…"
+          onChange={(e) => setQ(e.target.value)}
+          style={{
+            flex: 1, minWidth: 220, padding: '8px 11px',
+            border: '1px solid var(--crm-color-border)', borderRadius: 'var(--crm-radius-sm)',
+            background: 'var(--crm-color-surface)', color: 'var(--crm-color-text)',
+          }}
+        />
+        {marcasDelProveedor.length > 1 && (
+          <select className={s['select-inline']} value={marcaId} onChange={(e) => setMarcaId(e.target.value)}>
+            <option value="">Todas las marcas</option>
+            {marcasDelProveedor.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+          </select>
+        )}
+        {hayFiltro && (
+          <>
+            <span className={s.muted} style={{ fontSize: 13 }}>
+              {visibles.length} de {filas.length}
+            </span>
+            <Btn small onClick={() => { setQ(''); setMarcaId(''); }}>Limpiar filtro</Btn>
+          </>
+        )}
+      </div>
+
       {isAdmin && (
         <div className={s.toolbar} style={{ marginBottom: 'var(--crm-space-3)' }}>
+          {/* El rótulo dice el número EXACTO sobre el que va a caer la regla. Con
+              el filtro puesto nombra el filtro, porque "los 8 tildados" en una
+              tabla de 134 se lee como si los otros 126 también fueran a moverse. */}
           <span className={s['mini-label']}>
-            Aplicar a {seleccionadas.length === filas.length ? `los ${filas.length}` : `${seleccionadas.length} de ${filas.length} tildados`}:
+            Aplicar a{' '}
+            {hayFiltro
+              ? `${seleccionadas.length} de los ${visibles.length} que se ven`
+              : (todasSeleccionadas ? `los ${filas.length}` : `${seleccionadas.length} de ${filas.length} tildados`)}:
           </span>
           <select className={s['select-inline']} value={masiva.campo} onChange={(e) => setMasiva((m) => ({ ...m, campo: e.target.value }))}>
             {CAMPOS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}

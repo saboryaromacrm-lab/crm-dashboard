@@ -966,19 +966,25 @@ export const MANUAL = [
       },
       {
         id: 'actualizacion',
-        actualizado: '2026-08-01',
+        actualizado: '2026-08-15 06:00',
         titulo: 'Actualización masiva y deshacer',
         bloques: [
           {
             t: 'lista',
             items: [
-              'Los costos se actualizan desde la pestaña de productos del proveedor, que es donde aparece el aumento.',
-              'La regla masiva alcanza **solo a los productos tildados** — no siempre sube todo el proveedor. Por defecto están todos tildados; se destildan los que no cambian (el checkbox de la cabecera tilda/destilda todos). Lo mismo en "Actualizar márgenes" de Compras › Productos.',
+              'Los costos se actualizan desde **Compras › Proveedores › (el proveedor) › Productos y costos**, que es donde aparece el aumento. Se elige el campo (**Costo**, Descuento % o Flete %), cómo se mueve (**variar un %**, sumar/restar, o fijar un valor) y el número. La tabla muestra en el acto el costo neto y el **precio de venta antes → después**, en rojo lo que sube; recién al Guardar viaja.',
+              '**Se puede filtrar antes de aplicar** (15/8/2026): buscador por nombre, marca o código, y un desplegable con las marcas que ESE proveedor trae. Es lo que hace usable el caso normal —"Coca Cola subió 10%" dentro de un distribuidor que trae seis marcas—, porque antes había que destildar a mano, de a 20 por página, todo lo que no cambiaba.',
+              'La regla masiva alcanza **solo a los productos tildados Y VISIBLES** — no siempre sube todo el proveedor. Por defecto están todos tildados; se destildan los que no cambian (el checkbox de la cabecera tilda/destilda **solo lo que se ve**). Lo mismo en "Actualizar márgenes" de Compras › Productos.',
               'Editar un campo a mano vale siempre, esté tildado o no: el checkbox solo define el alcance de la regla masiva.',
               '«Actualizar márgenes» (Compras › Productos) opera sobre el **markup del formato de venta**: las filas del producto Y las de cada **paquete fraccionado**, que desde la 0053 son la misma clase de fila. Tenía un segundo modo para el recargo de fraccionamiento, que dejó de existir con la columna. Las filas en **precio definido** se saltean: ese precio lo fijó una persona y un % no lo pisa. Los cambios quedan en la evolución de precios (origen «Formato de venta»).',
               'Cada cambio queda registrado con el valor anterior Y el nuevo, en lotes.',
               'Un lote se puede revertir. Las filas que alguien tocó DESPUÉS se saltean: revertirlas pisaría una decisión más nueva.',
             ],
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**Con el filtro puesto, la regla cae SOLO sobre lo que se ve.** Suena obvio y es lo que evita el accidente caro: los tildes arrancan todos puestos, así que filtrar por una marca y aplicar +10% "a los tildados" —los 134 del proveedor, incluidos los que el filtro esconde— sería subirle el costo a todo el catálogo de un clic, sin verlo. El rótulo del botón lo dice con el número exacto ("Aplicar a 2 de los 2 que se ven"). Los tildes **no se reinician** al filtrar: lo que destildaste sigue destildado cuando volvés.',
           },
           {
             t: 'nota',
@@ -2434,7 +2440,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-15 05:00',
+        actualizado: '2026-08-15 06:00',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -2445,6 +2451,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**15/8/2026**', '**Los costos de un proveedor se pueden filtrar antes de la regla masiva.** Preguntaste cómo hacer "Coca Cola subió un 10%" y resultó que Coca Cola es una MARCA dentro de un distribuidor que trae varias. La regla masiva ya existía —campo (costo/descuento/flete) × modo (variar un %, sumar/restar, fijar) sobre los tildados, con vista previa del precio de venta antes → después y lote reversible— pero la pestaña **no tenía buscador ni filtro**: listaba los 134 productos del proveedor paginados de a 20, así que subir una sola marca obligaba a destildar a mano todo lo demás, página por página. Inviable. Ahora hay un **buscador por nombre, marca o código** y un desplegable con **las marcas que ESE proveedor trae** (no las 40 del sistema: una lista con 35 marcas que no están acá es una lista para elegir mal). **Y el candado que importa: con el filtro puesto la regla cae solo sobre lo que se ve.** Los tildes arrancan todos puestos, así que sin eso, filtrar por una marca y aplicar +10% habría subido el costo de los 134 productos del proveedor de un clic, sin verlo en pantalla — el rótulo ahora dice el número exacto ("Aplicar a 2 de los 2 que se ven"), y el tilde de la cabecera también alcanza solo a lo visible. Los tildes no se reinician al filtrar. Verificado con datos reales: filtré una marca de 2 productos dentro de un proveedor de 134, apliqué +10%, y al sacar el filtro solo esos 2 tenían el cambio y otra marca quedó intacta. Se cerró sin guardar y se comprobó contra la base que no se escribió nada'],
               ['**15/8/2026**', '**La oferta elige sobre qué listas corre (migración 0065), y de paso el servidor empezó a controlarlo.** Lo pediste así: *"que se pueda elegir a qué lista se aplica la oferta"*. Hasta acá había un sí/no —"solo sobre el precio de mostrador"— que servía para una sola cosa: que la promo de vidriera no se le sumara al precio ya negociado de un mayorista. Con ese sí/no, **"20% en Mayorista 1" era imposible de expresar**: o corría en todas o corría solo en la de mostrador. Ahora son chips, **igual que los días y las sucursales**, con la misma regla de "todas tildadas = corre en todas". **La tilde murió en vez de convivir** (decisión tuya): decía lo mismo con otro vocabulario, y dos perillas que se pisan obligan a explicar cuál gana cada vez que alguien arma una oferta. **El arrastre se hizo solo y es exacto**: las 5 ofertas que tenían la tilde quedaron atadas a la lista de mostrador y las 2 que no, corriendo en todas — que resultan ser justo las dos que se llaman "(web)", así que el sitio publica exactamente lo mismo que antes. **Y apareció un agujero que no era del pedido:** el servidor validaba QUÉ PRODUCTOS alcanza una oferta —eso se cerró el 13/8— pero no sobre qué lista corre. La restricción vivía **solo en el navegador**, así que un pedido armado a mano le colgaba una promo de mostrador a un renglón cotizado a precio mayorista: exactamente el doble beneficio que la restricción existe para impedir. Ahora se valida del lado que manda, con el mensaje diciendo qué lista es. **Dos cosas más que se corrigieron de paso, las dos encontradas usando la pantalla:** (1) los chips de **Sucursales** se comportaban distinto que los de **Días** —en Días, con todas encendidas, un clic apaga esa; en Sucursales, un clic dejaba SOLO esa y apagaba las otras cuatro de golpe—. Tres controles pegados, con la misma pinta y la misma promesa escrita abajo, no pueden responder distinto al mismo clic: se unificaron con el de Días, que es el que hace lo que la pantalla dice. (2) La **vista previa** neutraliza fechas, días y sucursal para mostrar qué hace la mecánica, y sus renglones de ejemplo no tienen lista asignada — sin sumar las listas a esa lista de exenciones, toda oferta acotada iba a decir "no descuenta nada" justo en el lugar donde se la está revisando. Verificado con **9 pruebas nuevas** contra la API (se guarda ordenado y sin repetidos ni basura; sobre su lista entra, sobre otra la rechaza, sin acotar entra en cualquiera), las **66 migraciones contra una base virgen**, y armando una oferta acotada a Mayorista desde el formulario de punta a punta'],
               ['**15/8/2026**', '**"No me deja fraccionar, me pide el tamaño y no me da las opciones" — y era cierto.** El producto (Albahaca) **no tiene ningún tamaño de paquete definido**, y el modal abría con la sección "Paquetes a armar" **vacía** y un botón Fraccionar que no podía hacer nada: se lee exactamente como lo describió el dueño. No es un caso raro — son **62 de los 164 granel activos**. Ahora el modal dice qué falta (*"el sistema no sabe de cuántos kilos es cada paquete"*) y **dónde se carga** (Compras › Productos, abriendo el producto, pestaña Presentaciones), y el botón queda deshabilitado en vez de prometer algo que no va a pasar. **Y se avisa antes del clic**, que es lo que de verdad ahorra el viaje: la fila de "Granel disponible para fraccionar" marca *"sin tamaños de paquete definidos"*. El botón igual se deja —lleva a la explicación—, porque esconderlo dejaría al producto sin ninguna pista de por qué no aparece. De paso, Fraccionar también se deshabilita con el total en 0 o excediendo el granel: los dos casos el servidor ya los rechazaba (*"Indicá al menos un paquete a fraccionar"*), así que el error se adelanta al lugar donde se entiende'],
               ['**15/8/2026**', '**El buscador rápido del pedido seguía ofreciendo la madre en vez de los tamaños.** La regla es del 11/8 y está escrita: **en granel se ofrecen los tamaños, no la madre**, porque lo que viaja a una sucursal son paquetes. El **explorador** del catálogo ("Buscar en el catálogo") lo hacía así desde el primer día; el que se había quedado atrás era el **buscador rápido de la pestaña** —el que se usa con el lector—, que mostraba "Ajo en Polvo" con un solo botón y obligaba a elegir el tamaño DESPUÉS, en un desplegable del renglón ya agregado. Ahora las dos puertas hablan el mismo idioma: una fila por tamaño, **con su código**, con el granel suelto del origen (que es lo que puede mandar: el paquete se fracciona del madre al preparar) y con los paquetes que el destino tiene de ESE tamaño; si además tiene granel suelto, va como nota al lado, porque sin eso "0 paq. de 500 g" esconde que el local tiene 123 kg sin envasar y se pide de más. La excepción es la misma que ya tenía el explorador: un granel **sin tamaños definidos** va con su fila suelta, porque esconderlo sería no poder pedirlo nunca. **Y de paso el buscador encuentra por el código del PAQUETE**, no solo por el de la madre: escanear un 500 g tiene que traerlo, y ese código es de la presentación. Verificado en pantalla con una cajera de Express 1: "Ajo en Polvo" ahora son tres filas (1 kg, 500 g, 100 g) con sus códigos, y al agregar la de 500 g el renglón cae **con la presentación ya elegida**. La pestaña de enteros sigue con una fila por producto'],
@@ -2808,6 +2815,7 @@ export const MANUAL = [
     ],
   },
 ];
+
 
 
 
