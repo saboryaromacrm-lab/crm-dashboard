@@ -78,11 +78,22 @@ export function alcanzaRenglon(o, r) {
 }
 
 /**
- * `soloPrecioBase`: la promo de vidriera no se suma a un precio ya negociado.
- * El renglón elegible es el que está al precio de mostrador.
+ * SOBRE QUÉ LISTAS CORRE LA OFERTA (0065). CSV de ids, vacío = todas.
+ *
+ * Reemplazó al viejo `soloPrecioBase`, que era un sí/no y solo sabía decir "que
+ * no se sume al precio ya negociado de un mayorista". Esa protección sigue
+ * entera —se tilda únicamente la lista de mostrador— y ahora además se puede
+ * una promo SOLO para Mayorista 1, que antes era imposible de expresar.
+ *
+ * Se compara contra la LISTA con la que quedó cotizado el renglón, no contra su
+ * origen: si alguien lo pasó a mano a esa lista, está en esa lista. El criterio
+ * viejo miraba el origen ('base'), y con eso un renglón puesto a mano en la
+ * lista de mostrador quedaba afuera de una promo de mostrador.
  */
-function pasaPrecioBase(o, r) {
-  return !o.soloPrecioBase || r.listaOrigen === 'base';
+function pasaLista(o, r) {
+  const ids = String(o.listas ?? '').split(',')
+    .map((x) => parseInt(x.trim(), 10)).filter((n) => Number.isFinite(n) && n > 0);
+  return !ids.length || ids.includes(r.listaId);
 }
 
 /** Neto de un precio de cartel (final, con IVA) para la alícuota del renglón. */
@@ -156,7 +167,7 @@ function aplicarCombos(combos, renglones, usadas, resultado) {
     // Disponible por producto = lo cargado menos lo ya consumido por otro combo.
     const disponibles = new Map();
     for (const r of renglones) {
-      if (!pasaPrecioBase(o, r) || resultado.has(r.key)) continue;
+      if (!pasaLista(o, r) || resultado.has(r.key)) continue;
       const libre = (Number(r.cantidad) || 0) - (usadas.get(r.key) ?? 0);
       if (libre > 0) disponibles.set(r.productoId, (disponibles.get(r.productoId) ?? 0) + libre);
     }
@@ -171,7 +182,7 @@ function aplicarCombos(combos, renglones, usadas, resultado) {
       let falta = cmp.cantidad * sets;
       for (const r of renglones) {
         if (falta <= 0) break;
-        if (r.productoId !== cmp.productoId || !pasaPrecioBase(o, r) || resultado.has(r.key)) continue;
+        if (r.productoId !== cmp.productoId || !pasaLista(o, r) || resultado.has(r.key)) continue;
         const libre = (Number(r.cantidad) || 0) - (usadas.get(r.key) ?? 0);
         if (libre <= 0) continue;
         const toma = Math.min(libre, falta);
@@ -227,7 +238,7 @@ export function resolverOfertas(renglones, ofertas, { ahora, sucursalId, ticketA
     const libre = (Number(r.cantidad) || 0) - (usadas.get(r.key) ?? 0);
     let mejor = null;
     for (const o of porRenglon) {
-      if (!pasaPrecioBase(o, r) || !alcanzaRenglon(o, r)) continue;
+      if (!pasaLista(o, r) || !alcanzaRenglon(o, r)) continue;
       const res = descuentoMecanica(o, r, libre);
       if (res && (!mejor || res.descuento > mejor.descuento)) {
         mejor = { ofertaId: o.id, oferta: o.nombre, tipoOferta: o.tipo, ...res };
@@ -274,7 +285,7 @@ export function resolverOfertas(renglones, ofertas, { ahora, sucursalId, ticketA
     const ot = ofertas.find((o) => o.id === ticketAplicadaId && o.tipo === 'ticket');
     if (ot && ofertaVigente(ot, { ahora, sucursalId })) {
       for (const r of renglones) {
-        if (resultado.has(r.key) || !pasaPrecioBase(ot, r)) continue;
+        if (resultado.has(r.key) || !pasaLista(ot, r)) continue;
         const neto = (Number(r.cantidad) || 0) * (Number(r.precioUnitario) || 0)
           * (1 - (Number(r.descuento) || 0) / 100);
         if (neto <= 0) continue;
@@ -306,7 +317,7 @@ export function sugerenciasOfertaTicket(ofertas, renglones, total, { ahora, sucu
       // Solo si de verdad cambiaría algún renglón: la de ticket no se apila
       // sobre promos ya aplicadas, y ofrecer algo que no hace nada ensucia la
       // pantalla del cajero.
-      && (renglones ?? []).some((r) => !(r.ofertaDescuento > 0) && pasaPrecioBase(o, r)))
+      && (renglones ?? []).some((r) => !(r.ofertaDescuento > 0) && pasaLista(o, r)))
     .map((o) => ({
       id: o.id,
       nombre: o.nombre,
@@ -342,3 +353,4 @@ export function estadoOferta(o, ahora = new Date()) {
   if (o.hasta && ahora > new Date(o.hasta)) return { id: 'vencida', label: 'Vencida' };
   return { id: 'vigente', label: 'Vigente' };
 }
+

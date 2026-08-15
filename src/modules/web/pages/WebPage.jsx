@@ -285,9 +285,15 @@ function OfertasWebPanel({ avisar }) {
     return () => { activo = false; };
   }, [avisar]);
 
-  /** La MISMA regla que aplica el sitio: activa, para toda lista, de un solo precio. */
+  /**
+   * La MISMA regla que aplica el sitio: activa, para TODA lista, de un solo
+   * precio. `listas` vacío = corre en todas — es el reemplazo exacto del viejo
+   * `!soloPrecioBase` (0065), y tiene que seguir espejando a `tienda.module`:
+   * si las dos se separan, esta tabla promete lo que el sitio no muestra.
+   */
   const delSitio = useMemo(
-    () => (ofertas ?? []).filter((o) => o.activa && !o.soloPrecioBase && o.tipo !== 'combo' && o.tipo !== 'ticket'),
+    () => (ofertas ?? []).filter((o) => o.activa && !String(o.listas ?? '').trim()
+      && o.tipo !== 'combo' && o.tipo !== 'ticket'),
     [ofertas],
   );
 

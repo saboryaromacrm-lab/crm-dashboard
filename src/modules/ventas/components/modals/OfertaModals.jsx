@@ -134,7 +134,14 @@ function VistaPrevia({ oferta, items }) {
       iva: it.iva, listaOrigen: 'base',
     }));
 
-    const sim = { ...oferta, id: -1, activa: true, desde: null, hasta: null, dias: '', sucursales: '' };
+    /*
+     * La previa muestra QUÉ HACE la mecánica, no dónde ni cuándo: por eso se
+     * neutralizan vigencia, días y sucursales. `listas` va en la misma bolsa
+     * (0065) y no es un detalle — los renglones de ejemplo no tienen lista
+     * asignada, así que sin esto una oferta acotada diría "no descuenta nada"
+     * en el único lugar donde se la está por revisar.
+     */
+    const sim = { ...oferta, id: -1, activa: true, desde: null, hasta: null, dias: '', sucursales: '', listas: '' };
     const res = resolverOfertas(renglones, [sim], {
       ahora: new Date(), sucursalId: null, ticketAplicadaId: oferta.tipo === 'ticket' ? -1 : null,
     });
@@ -219,8 +226,10 @@ function FichaVencimiento({ v }) {
 }
 
 export function OfertaFormModal({ oferta, items = [], universo = [], onListo, vencimiento = null }) {
-  const { closeModal, act, toast, sucursales } = useVentas();
+  const { closeModal, act, toast, sucursales, listasCatalogo } = useVentas();
   const editando = !!oferta?.id;
+  /* Las listas del formato de venta, para elegir sobre cuáles corre (0065). */
+  const listas = listasCatalogo?.listas ?? [];
 
   const [f, setF] = useState(() => ({
     nombre: oferta?.nombre ?? '',
@@ -235,7 +244,7 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
     dias: oferta?.dias || '',
     sucursales: oferta?.sucursales || '',
     mediosPago: oferta?.mediosPago || '',
-    soloPrecioBase: oferta?.soloPrecioBase ?? true,
+    listas: oferta?.listas || '',
     incluyeFraccionados: oferta?.incluyeFraccionados ?? false,
     activa: oferta?.activa ?? true,
   }));
@@ -266,7 +275,7 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
     lleva: Number(f.lleva) || 0,
     paga: Number(f.paga) || 0,
     montoMinimo: Number(f.montoMinimo) || 0,
-    soloPrecioBase: f.soloPrecioBase,
+    listas: f.listas,
     incluyeFraccionados: f.incluyeFraccionados,
     alcances: alcances.map(({ tipo, refId }) => ({ tipo, refId })),
     componentes: componentes.map((c) => ({ productoId: c.productoId, cantidad: Number(c.cantidad) || 1 })),
@@ -295,13 +304,37 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
       .slice(0, 6);
   }, [qComp, items, componentes]);
 
-  const toggleSucursal = (id) => {
-    const ya = f.sucursales.split(',').map((x) => x.trim()).filter(Boolean);
+  /**
+   * VACÍO SIGNIFICA TODAS, ASÍ QUE UN CLIC SOBRE "TODAS" APAGA ESA — no deja
+   * solo esa.
+   *
+   * Es como se comportan los Días desde siempre, y como NO se comportaban las
+   * Sucursales: ahí, con el campo vacío (todas tildadas, todas encendidas),
+   * hacer clic en una la dejaba sola y apagaba las otras cuatro de golpe. Tres
+   * controles pegados, con la misma pinta y la misma promesa escrita abajo, no
+   * pueden responder distinto al mismo clic. Se unificó con el de Días, que es
+   * el que hace lo que la pantalla dice.
+   *
+   * Apagar la última vuelve a "todas": es la lectura honesta de un conjunto
+   * vacío y se ve al instante —los chips se encienden de nuevo—, así que no
+   * hace falta trabarlo con un error.
+   */
+  const toggleCsv = (csv, id, universo) => {
+    const todos = universo.map(String);
+    const ya = csv ? csv.split(',').map((x) => x.trim()).filter(Boolean) : todos;
     const next = ya.includes(String(id)) ? ya.filter((x) => x !== String(id)) : [...ya, String(id)];
-    // Todas tildadas es lo mismo que ninguna: se guarda vacío (= todas).
-    set({ sucursales: next.length === sucursales.length ? '' : next.join(',') });
+    return next.length === todos.length ? '' : next.join(',');
   };
-  const sucActiva = (id) => !f.sucursales || f.sucursales.split(',').map((x) => x.trim()).includes(String(id));
+  const enCsv = (csv, id) => !csv || csv.split(',').map((x) => x.trim()).includes(String(id));
+
+  const toggleSucursal = (id) => set({ sucursales: toggleCsv(f.sucursales, id, sucursales.map((x) => x.id)) });
+  const sucActiva = (id) => enCsv(f.sucursales, id);
+
+  /* Sobre qué listas corre (0065): misma mecánica que Sucursales y Días, y a
+   * propósito — son tres preguntas del mismo tipo (cuándo, dónde y sobre qué
+   * precios) y aprender una tiene que alcanzar para las tres. */
+  const toggleLista = (id) => set({ listas: toggleCsv(f.listas, id, listas.map((l) => l.listaId ?? l.id)) });
+  const listaActiva = (id) => enCsv(f.listas, id);
 
   const guardar = async () => {
     const dto = {
@@ -317,7 +350,7 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
       dias: f.dias,
       sucursales: f.sucursales,
       mediosPago: f.mediosPago,
-      soloPrecioBase: f.soloPrecioBase,
+      listas: f.listas,
       incluyeFraccionados: f.incluyeFraccionados,
       activa: f.activa,
       alcances: alcances.map(({ tipo, refId }) => ({ tipo, refId })),
@@ -501,17 +534,31 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
           </div>
         </div>
 
-        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
-          <input
-            type="checkbox" checked={f.soloPrecioBase}
-            onChange={(e) => set({ soloPrecioBase: e.target.checked })}
-            style={{ marginTop: 2 }}
-          />
-          <span>
-            Solo sobre el <strong>precio de mostrador</strong> — un renglón que ya está en lista
-            mayorista no recibe además la promo (evita el doble beneficio).
-          </span>
-        </label>
+        {/* Sobre qué precios corre (0065). Reemplazó a la tilde "solo sobre el
+            precio de mostrador", que era un sí/no: la protección contra el doble
+            beneficio se sigue armando igual —se deja tildada solo la lista de
+            mostrador— y ahora además se puede una promo SOLO para Mayorista 1,
+            que con la tilde no había forma de expresar. */}
+        <div className={s.field}>
+          <label>Listas de precio</label>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {listas.map((l) => (
+              <button
+                key={l.listaId ?? l.id} type="button"
+                className={cx(s.badge)}
+                style={{ cursor: 'pointer', opacity: listaActiva(l.listaId ?? l.id) ? 1 : 0.35, userSelect: 'none' }}
+                onClick={() => toggleLista(l.listaId ?? l.id)}
+              >
+                {l.etiqueta || l.nombre}
+              </button>
+            ))}
+          </div>
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            {f.listas
+              ? 'Solo sobre las tildadas: un renglón cotizado con otra lista no recibe la promo.'
+              : 'Todas tildadas = corre sobre cualquier precio. Dejá solo la de mostrador para que un mayorista no reciba además la promo (el doble beneficio).'}
+          </div>
+        </div>
 
         {/* El paquete fraccionado se cotiza solo, así que una oferta a la madre
             no lo alcanza salvo que se diga. Antes lo alcanzaba siempre, sin que
@@ -561,3 +608,4 @@ export function BorrarOfertaModal({ oferta, onListo }) {
     </ModalShell>
   );
 }
+
