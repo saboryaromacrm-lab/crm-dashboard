@@ -41,7 +41,7 @@ export function difiereDelPedido(t) {
 /** Texto comparable: sin mayúsculas ni acentos. */
 const normTxt = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
-const PASOS_PEDIDO =['A quién y para dónde', 'Qué se pide', 'Revisar y enviar'];
+const PASOS_PEDIDO = ['A quién le pido', 'Qué se pide', 'Revisar y enviar'];
 
 /**
  * Indicador de pasos. Solo se puede volver a los ya recorridos: saltar para
@@ -138,10 +138,27 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
     const candidato = dist && dist.id !== miId ? dist.id : store.state.sucursales.find((su) => su.id !== miId)?.id;
     return candidato ?? '';
   });
+  /**
+   * QUIÉN PIDE: el usuario de la sesión, y NO se elige (15/8/2026).
+   *
+   * Al RETOMAR queda el que lo abrió (decisión del dueño): el pedido se arma
+   * durante el día y lo continúa quien entra al turno, pero el responsable del
+   * armado es quien lo empezó. Si se pisara con el de la sesión, al enviarlo
+   * figuraría el último que pasó por la pantalla, no el que lo armó.
+   */
   const [userId, setUserId] = useState(
-    (sesion?.usuario?.id != null && store.getUsuario(sesion.usuario.id) ? sesion.usuario.id : null)
+    retomado?.usuarioId
+      ?? (sesion?.usuario?.id != null && store.getUsuario(sesion.usuario.id) ? sesion.usuario.id : null)
       ?? store.state.ctx.usuarioId,
   );
+  /**
+   * El jefe puede armar el pedido EN NOMBRE de otra sucursal —el servidor se lo
+   * permite (`sucursalDeOperacion` honra el destino pedido solo para jefes)— y
+   * esto abre esa puerta sin dejarla abierta: arranca cerrada, y ni siquiera se
+   * ve para la cajera, a quien el servidor le clava su sucursal igual.
+   */
+  const esJefe = ['admin', 'superadmin'].includes(sesion?.usuario?.rolClave ?? '');
+  const [cambiandoQuienPide, setCambiandoQuienPide] = useState(false);
   const [obs, setObs] = useState(obsInicial ?? '');
   const [items, setItems] = useState([]);
   const [q, setQ] = useState('');
@@ -506,9 +523,50 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
       {/* ==================== PASO 1 · A QUIÉN Y PARA DÓNDE ==================== */}
       {paso === 1 && (
       <>
+      {/*
+        DOS PREGUNTAS, NO TRES (15/8/2026, rediseño pedido por el dueño).
+        Antes eran "Pedir a (origen)", "Entregar en (destino)" y "Responsable",
+        y las tres se elegían. Pero dos de ellas no son preguntas: quien pide es
+        el que está logueado, en el local donde está parado, y lo que pide se
+        descarga ahí mismo — se entiende por lógica y no hace falta decirlo.
+        Peor: al ofrecerlas como desplegables invitaban a un error caro (mandarle
+        el pedido a otro local) en la pantalla más apurada del día.
+        Queda QUIÉN PIDE, fijo, y A QUIÉN, que es la única decisión real.
+      */}
       <div className={s['form-grid']}>
         <div className={s.field}>
-          <label>Pedir a (origen) <span className={s.req}>*</span></label>
+          <label>Quién pide</label>
+          {cambiandoQuienPide ? (
+            <>
+              <select value={destinoId} onChange={(e) => setDestinoId(parseInt(e.target.value, 10))}>
+                {sucursalOptions(store, false)}
+              </select>
+              <select
+                value={userId}
+                onChange={(e) => setUserId(parseInt(e.target.value, 10))}
+                style={{ marginTop: 6 }}
+              >
+                {usuarioOptions(store)}
+              </select>
+            </>
+          ) : (
+            <>
+              <div className={cx(s.card)} style={{ padding: '9px 12px', display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                <strong>{destino?.nombre ?? '—'}</strong>
+                <span className={s.muted}>· {store.getUsuario(userId)?.nombre ?? 'sin usuario'}</span>
+              </div>
+              {/* Solo el jefe: a la cajera el servidor le clava su sucursal
+                  igual, así que ofrecérselo sería prometer lo que no se cumple. */}
+              {esJefe && !retomado && (
+                <button type="button" className={s.linkBtn} style={{ marginTop: 4 }} onClick={() => setCambiandoQuienPide(true)}>
+                  Pedir en nombre de otra sucursal
+                </button>
+              )}
+            </>
+          )}
+        </div>
+        <div className={s.field}>
+          <label>A quién le pide <span className={s.req}>*</span></label>
           {/* Las OTRAS, nunca la propia: pedirse mercadería a uno mismo no es una
               operación. Y no va el filtro por sesión —el de `sucursalOptions`—
               porque acá la sucursal no es dónde opero sino a quién le pido, que
@@ -516,16 +574,9 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
           <select value={origenId} onChange={(e) => setOrigenId(parseInt(e.target.value, 10))}>
             {sucursalOptionsOtras(store, destinoNum)}
           </select>
-        </div>
-        <div className={s.field}>
-          <label>Entregar en (destino) <span className={s.req}>*</span></label>
-          <select value={destinoId} onChange={(e) => setDestinoId(parseInt(e.target.value, 10))}>{sucursalOptions(store, false)}</select>
-        </div>
-      </div>
-      <div className={s['form-grid']}>
-        <div className={s.field}>
-          <label>Responsable</label>
-          <select value={userId} onChange={(e) => setUserId(parseInt(e.target.value, 10))}>{usuarioOptions(store)}</select>
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            La mercadería se descarga en <strong>{destino?.nombre ?? 'tu local'}</strong>.
+          </div>
         </div>
       </div>
 
