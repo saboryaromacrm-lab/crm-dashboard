@@ -630,6 +630,38 @@ const enviarBorradorPedido = (id) => _mutate(
 );
 const descartarBorradorPedido = (id) => _mutate(() => httpClient.delete(`/transferencias/${id}/borrador`));
 
+/* ---------------- Control de stock (0066) ----------------
+ * Nada de esto pasa por `_mutate` SALVO aplicar, y es a propósito: abrir,
+ * contar y cerrar no tocan stock, y recargar el bootstrap completo por cada
+ * Enter del contador sería traerse el inventario entero renglón por renglón
+ * (la lección del autosave del pedido). Aplicar sí mueve stock: ahí el
+ * refresco completo es exactamente lo que corresponde.
+ */
+/* Siempre `{ ok, data }` — el patrón del borrador mezclaba la respuesta en el
+ * objeto y eso rompe cuando la API devuelve un ARRAY (Object.assign sobre un
+ * array lo convierte en {0:…,1:…}). */
+const _directo = async (fn) => {
+  try {
+    return { ok: true, data: await fn() };
+  } catch (e) {
+    return { ok: false, error: _errMsg(e) };
+  }
+};
+const listarConteos = () => _directo(() => httpClient.get('/conteos'));
+const crearConteo = (o) => _directo(() => httpClient.post('/conteos', o));
+const getConteo = (id) => _directo(() => httpClient.get(`/conteos/${id}`));
+/** `contado: null` devuelve el renglón a pendiente. */
+const contarItemConteo = (id, itemId, contado) => _directo(
+  () => httpClient.put(`/conteos/${id}/items/${itemId}`, { contado }),
+);
+const cerrarConteo = (id) => _directo(() => httpClient.post(`/conteos/${id}/cerrar`, {}));
+const reabrirConteo = (id) => _directo(() => httpClient.post(`/conteos/${id}/reabrir`, {}));
+const marcarRecontarConteo = (id, itemId, recontar) => _directo(
+  () => httpClient.post(`/conteos/${id}/items/${itemId}/recontar`, { recontar }),
+);
+const descartarConteo = (id) => _directo(() => httpClient.delete(`/conteos/${id}`));
+const aplicarConteo = (id) => _mutate(() => httpClient.post(`/conteos/${id}/aplicar`, {}));
+
 /* Preparación en dos listas: editar renglones, agregar/quitar y confirmar con reserva. */
 const editarItemTransferencia = (id, itemId, o) => _mutate(() => httpClient.patch(`/transferencias/${id}/items/${itemId}`, o));
 const agregarItemTransferencia = (id, o) => _mutate(() => httpClient.post(`/transferencias/${id}/items`, o));
@@ -886,6 +918,8 @@ export const inventoryStore = {
   opCompra, opFraccionar, opCorregirFraccionado, opVenta, opSimple,
   avanzarTransferencia, cancelarTransferencia,
   abrirBorradorPedido, guardarBorradorPedido, enviarBorradorPedido, descartarBorradorPedido,
+  listarConteos, crearConteo, getConteo, contarItemConteo, cerrarConteo, reabrirConteo,
+  marcarRecontarConteo, descartarConteo, aplicarConteo,
   editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,

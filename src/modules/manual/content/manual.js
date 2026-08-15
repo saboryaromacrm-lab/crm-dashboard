@@ -1729,6 +1729,39 @@ export const MANUAL = [
         ],
       },
       {
+        id: 'conteos',
+        actualizado: '2026-08-15 10:00',
+        titulo: 'Control de stock: el físico contra el virtual',
+        bloques: [
+          {
+            t: 'p',
+            texto: 'Se cuenta lo que hay en la góndola y el sistema lo compara contra lo que él cree que hay (migración 0066). El conteo es una **sesión de trabajo**, no una acción: dura horas, se interrumpe, y la sigue el que entra al turno — igual que el pedido de mercadería, y es **del local**, no de cada persona. Se hace con el **local cerrado**.',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**El alcance define qué se cuenta**: marca, categoría, proveedor, enteros/granel, y "solo con stock" (destildado entra también lo que figura en cero, para descubrir sobrantes). El dueño cuenta por marca, no todo junto. **La lista se congela al abrir**: un alta a mitad del conteo no se cuela.',
+              '**La pantalla está pensada para el lector**: escaneás el código (del producto o del paquete), el foco cae en su renglón, tipeás la cantidad, Enter, y el foco vuelve al lector. El granel madre se cuenta **en kg** (pesado) y cada tamaño de paquete **por paquetes**, en filas separadas.',
+              '**Es CIEGO por defecto** (decisión del dueño): el que cuenta no ve cuánto "debería" haber — se cuenta la realidad, no la pantalla. Y el ciego lo impone **la API**, no el CSS: mientras la sesión está en curso, el payload no trae el virtual para quien no tiene la llave de aplicar; ocultarlo solo en pantalla se lee con F12. El jefe puede abrir sesiones no-ciegas.',
+              '**Los apartados avisan**: si un renglón tiene mercadería comprometida (separada para envíos), la pantalla lo dice para que no se cuente — sin eso la diferencia daría un sobrante fantasma.',
+              '**Cerrar → reporte de diferencias** (lo ve quien puede aplicar): contado vs. sistema, la diferencia **valorizada al costo del día**, faltante/sobrante/neto en pesos, y el botón **Recontar** por renglón — las diferencias grandes casi siempre son errores de conteo. Se reabre, el contador ve los marcados resaltados, recuenta y se vuelve a cerrar.',
+              '**Aplicar** (llave `conteos_aplicar`: admin, o el encargado a quien se la des en Usuarios y roles) genera un lote **atómico** de ajustes, cada uno atado a la sesión (`refConteoId`) y con el **costo congelado** — el reporte en pesos de este conteo no cambia el mes que viene.',
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**SE APLICA POR DIFERENCIA, NUNCA POR VALOR ABSOLUTO.** Cada renglón guarda el disponible del instante en que se contó, y al aplicar se ajusta por `contado − ese snapshot` sobre el stock actual. Si el sistema pisara el stock con el contado, resucitaría mercadería legítimamente movida después del conteo. Y como el control se hace con el local cerrado, **cualquier movimiento entre contar y aplicar es una alarma**: la aplicación lo lista con nombre y apellido ("el stock se movió después de contarlo — ¿se vendió algo con el local cerrado?"). **Lo no contado queda como está**: un pendiente no es un cero, es una pregunta sin responder.',
+          },
+          {
+            t: 'nota',
+            tono: 'info',
+            texto: 'Candados: un producto no puede estar en **dos sesiones abiertas** de la misma sucursal (dos conteos ajustarían dos veces, y el error dice en cuál está). La cajera abre, cuenta, cierra y puede **descartar su sesión virgen**; con renglones contados, tirar ese trabajo lo decide quien puede aplicar. El ajuste de un **paquete no toca a la madre** — un faltante de paquetes es pérdida real, no un error de fraccionamiento (para eso está "Corregir fraccionado").',
+          },
+          { t: 'ruta', texto: 'Almacén › Control de stock (contar: sección almacen.conteos · revisar y aplicar: conteos_aplicar)' },
+        ],
+      },
+      {
         id: 'operaciones',
         actualizado: '2026-07-30',
         titulo: 'Operaciones del almacén',
@@ -2440,7 +2473,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-15 08:00',
+        actualizado: '2026-08-15 10:00',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -2451,6 +2484,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**15/8/2026**', '**CONTROL DE STOCK: el físico contra el virtual (migración 0066).** Preguntaste si existía y no existía: lo más cercano era el ajuste suelto (un producto, la diferencia calculada de memoria) y la corrección del fraccionado. Ahora es una pestaña propia en Almacén con el modelo de SESIÓN: se abre con filtros (marca, categoría, proveedor, tipo, solo con stock — porque el stock se cuenta por partes, no todo junto), **la lista se congela al abrir**, se cuenta con el lector renglón por renglón con guardado automático, y la sigue el que entra al turno. **Ciego por defecto** (tu decisión): el que cuenta no ve el virtual, y lo impone la API en el payload, no un ocultamiento de pantalla. **Se aplica POR DIFERENCIA**, nunca pisando el stock con lo contado — cada renglón congela el disponible del instante en que se contó, así aplicar horas después no resucita nada; y como el control es con el **local cerrado**, cualquier movimiento entre contar y aplicar sale listado como alarma. El reporte valoriza cada diferencia **al costo del día** (faltante/sobrante/neto en pesos), tiene **Recontar** por renglón, y **Aplicar** es una llave aparte (`conteos_aplicar`, admin y el encargado que designes) que genera el lote atómico de ajustes atados a la sesión con costo congelado. **Lo no contado queda como está** — jamás se pisa con cero. Verificado con una suite de 24 pruebas contra la API (el ciego real en el payload, el solapamiento de sesiones, la venta fantasma entre contar y aplicar que termina en el stock correcto por diferencia, la cajera que cuenta pero no aplica, decimales del granel, lo no contado intacto, el costo congelado en el ledger) + el circuito completo en pantalla (alta con preview por marca, conteo con Enter, cierre, recontar, aplicar con 2 ajustes reales que después se revirtieron) + las **67 migraciones desde cero**. La planilla de papel (contar impreso y cargar después) quedó para una fase 2, en Pendientes'],
               ['**15/8/2026**', '**El paso 1 del pedido pasó de tres preguntas a una.** Tenía "Pedir a (origen)", "Entregar en (destino)" y "Responsable", los tres como desplegables. Pero **dos de esos no son preguntas**: quien pide es el que está logueado, en el local donde está parado, y lo que pide se descarga ahí mismo — se entiende por lógica. Peor que redundante era peligroso: ofrecerlos como desplegables invitaba a un error caro (mandarle el pedido a otro local) en la pantalla más apurada del día. Ahora hay **"Quién pide"** —sucursal y usuario de la sesión, fijos, sin desplegable— y **"A quién le pide"**, que es la única decisión real, con un aviso abajo que dice dónde se va a descargar. **El jefe conserva lo que ya podía hacer**: como `sucursalDeOperacion` le acepta pedir en nombre de otra sucursal (a la cajera le clava la suya pase lo que pase), tiene un enlace discreto *"Pedir en nombre de otra sucursal"* que abre los dos campos. La cajera no lo ve, porque ofrecérselo sería prometerle algo que el servidor no le va a cumplir. **Y el responsable, al RETOMAR un pedido, queda el que lo abrió** (decisión tuya): el pedido se arma durante el día y lo continúa quien entra al turno, pero el responsable del armado es quien lo empezó — si se pisara con el de la sesión, al enviarlo figuraría el último que pasó por la pantalla. Verificado con las dos sesiones: la cajera de Express 1 ve un solo desplegable y ningún enlace; el jefe ve el enlace, y al cambiar quién pide a Express 1, Express 1 desaparece de "a quién" y el aviso se actualiza solo'],
               ['**15/8/2026**', '**Alt+F5 sin la columna Motivo.** Pedido tuyo. Ojo que "Origen" no era una columna sino un **encabezado de grupo** que abarcaba *Motivo* y *Fecha*, así que sacarlo entero te dejaba sin saber CUÁNDO cambió cada precio — con 164 registros de varias fechas, dos filas del mismo producto pasaban a ser indistinguibles. Elegiste sacar **solo Motivo**: era la columna más ancha de la tabla para un dato que se mira poco (el 90% de los cambios vienen del mismo lado). Con eso muere también el rótulo "Origen", porque un encabezado de grupo sobre una sola columna es ruido que no agrupa nada. **El motivo no se pierde**: sigue en el filtro de arriba —que es donde de verdad sirve, para acotar la lista— y aparece al pasar el mouse por la fecha, para el caso puntual, sin volver a agrandar la tabla'],
               ['**15/8/2026**', '**Los costos de un proveedor se pueden filtrar antes de la regla masiva.** Preguntaste cómo hacer "Coca Cola subió un 10%" y resultó que Coca Cola es una MARCA dentro de un distribuidor que trae varias. La regla masiva ya existía —campo (costo/descuento/flete) × modo (variar un %, sumar/restar, fijar) sobre los tildados, con vista previa del precio de venta antes → después y lote reversible— pero la pestaña **no tenía buscador ni filtro**: listaba los 134 productos del proveedor paginados de a 20, así que subir una sola marca obligaba a destildar a mano todo lo demás, página por página. Inviable. Ahora hay un **buscador por nombre, marca o código** y un desplegable con **las marcas que ESE proveedor trae** (no las 40 del sistema: una lista con 35 marcas que no están acá es una lista para elegir mal). **Y el candado que importa: con el filtro puesto la regla cae solo sobre lo que se ve.** Los tildes arrancan todos puestos, así que sin eso, filtrar por una marca y aplicar +10% habría subido el costo de los 134 productos del proveedor de un clic, sin verlo en pantalla — el rótulo ahora dice el número exacto ("Aplicar a 2 de los 2 que se ven"), y el tilde de la cabecera también alcanza solo a lo visible. Los tildes no se reinician al filtrar. Verificado con datos reales: filtré una marca de 2 productos dentro de un proveedor de 134, apliqué +10%, y al sacar el filtro solo esos 2 tenían el cambio y otra marca quedó intacta. Se cerró sin guardar y se comprobó contra la base que no se escribió nada'],
@@ -2540,7 +2574,7 @@ export const MANUAL = [
       },
       {
         id: 'proximo',
-        actualizado: '2026-08-15 05:00',
+        actualizado: '2026-08-15 10:00',
         titulo: 'Lo próximo',
         bloques: [
           {
@@ -2752,6 +2786,7 @@ export const MANUAL = [
               '**El CUIT de la empresa sigue siendo el de prueba** (`30-71555666-7`, en Sistema › Empresa). La factura real de Bavosi está a nombre del CUIT `23-35678242-9`, así que la bandeja avisa "esta factura no es nuestra" en **todas** las facturas. Cargar el CUIT real apaga el falso aviso y deja el control sirviendo para lo que es: detectar la factura que el proveedor emitió a otra razón social.',
               '**La lectura del QR desde una foto no se pudo probar end-to-end acá.** El mapeo de códigos de ARCA sí está verificado (9 casos: factura A/B/C, notas de crédito y débito, FCE MiPyME, moneda extranjera, código desconocido, QR ajeno) y el circuito completo también, con la factura real de Bavosi. Lo que falta confirmar es el **decodificado de píxeles**, porque no se pudo generar un QR válido sin internet. Con la primera foto de una factura real se sabe: si el encabezado aparece solo, anda. Dato importante del camino: **`BarcodeDetector`, la API nativa del navegador, NO existe en Chrome para Windows** — por eso el lector usa `jsQR` (JavaScript puro, nada sale de la máquina) y deja la nativa solo como camino rápido en Android.',
               '**Alta masiva de formato de venta.** Cambiar markups en tanda ya está («Actualizar márgenes» sobre los filtrados, con selección por fila). Lo que falta es el ALTA masiva: habilitar una lista que el producto no tiene (tipo "poner Mayorista 1 al 30% en toda la categoría X") sin entrar producto por producto.',
+              '**Control de stock, fase 2: la planilla de papel.** Contar con una planilla impresa (el motor de impresión ya existe) y cargar los números después, para quien prefiere el papel en la góndola. La fase 1 —sesiones ciegas por diferencia con lector— quedó construida el 15/8/2026.',
               '**El código propio no se autogenera todavía.** Está el campo y la unicidad, falta el botón "crear un código" correlativo.',
               '**Alícuotas de IVA por producto sin validar contra ARCA.** Hoy es una lista cerrada nuestra; cuando entre la facturación hay que cruzarla.',
               '**Sin paginación en la evolución de precios.** Trae hasta 2.000 filas y filtra en memoria. Anda bien ahora; con años de historia va a haber que paginar del lado del servidor.',
@@ -2817,6 +2852,7 @@ export const MANUAL = [
     ],
   },
 ];
+
 
 
 

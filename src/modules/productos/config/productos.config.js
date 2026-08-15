@@ -22,6 +22,7 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import LocalCafeIcon from '@mui/icons-material/LocalCafe';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
+import FactCheckIcon from '@mui/icons-material/FactCheck';
 
 /**
  * Menú interno del módulo COMPRAS.
@@ -46,6 +47,13 @@ export const COMPRAS_PANELS = [
 /** Menú interno del módulo ALMACÉN. */
 export const ALMACEN_PANELS = [
   { id: 'existencias',    label: 'Existencias',    icon: WarehouseIcon,      permiso: 'almacen.existencias' },
+  /*
+   * El físico contra el virtual (0066): sesiones de conteo con la lista
+   * congelada, ciegas por defecto, que se aplican por diferencia. Vive al lado
+   * de Existencias porque es su contraparte: una muestra lo que el sistema
+   * cree, la otra lo verifica contra la góndola.
+   */
+  { id: 'conteos',        label: 'Control de stock', icon: FactCheckIcon,    permiso: 'almacen.conteos' },
   { id: 'fraccionamiento', label: 'Fraccionamiento', icon: CallSplitIcon,    permiso: 'almacen.fraccionamiento' },
   { id: 'transferencias', label: 'Transferencias', icon: SwapHorizIcon,      permiso: 'almacen.transferencias', badge: 'transferencias' },
   { id: 'operaciones',    label: 'Operaciones',    icon: ReceiptLongIcon,    permiso: 'almacen.operaciones' },

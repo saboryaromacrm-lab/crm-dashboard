@@ -23,6 +23,7 @@ import { IncidenciasPanel } from '../panels/IncidenciasPanel.jsx';
 import { CafeteriaPanel } from '../panels/CafeteriaPanel.jsx';
 import { CafeteriaPedidosPanel } from '../panels/CafeteriaPedidosPanel.jsx';
 import { VencimientosPanel } from '../panels/VencimientosPanel.jsx';
+import { ConteosPanel } from '../panels/ConteosPanel.jsx';
 
 /** Registro de paneles disponibles. Cada módulo elige cuáles muestra (config). */
 const PANEL_COMPONENTS = {
@@ -43,6 +44,8 @@ const PANEL_COMPONENTS = {
   'cafeteria-pedidos': CafeteriaPedidosPanel,
   // El vigía de fechas: lógica de la app externa, datos 100% del sistema.
   vencimientos: VencimientosPanel,
+  // El físico contra el virtual (0066): sesiones de conteo por diferencia.
+  conteos: ConteosPanel,
 };
 
 /**

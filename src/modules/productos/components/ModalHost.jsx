@@ -11,6 +11,7 @@ import {
 } from './modals/StockModals.jsx';
 import { TransferenciaModal, DetalleTransferModal, RecibirTransferModal, PrepararTransferModal } from './modals/TransferModals.jsx';
 import { IncidenciaModal, ResolverIncidenciaModal, DetalleIncidenciaModal } from './modals/IncidenciaModals.jsx';
+import { ConteoNuevoModal, ConteoModal } from './modals/ConteosModals.jsx';
 import { ProveedorFormModal, DetalleProveedorModal } from './modals/ProveedorModals.jsx';
 import { ComprobanteFormModal, ComprobanteDetalleModal } from './modals/ComprobanteModals.jsx';
 import {
@@ -250,6 +251,9 @@ const REGISTRY = {
   incidencia: IncidenciaModal,
   resolverIncidencia: ResolverIncidenciaModal,
   detalleIncidencia: DetalleIncidenciaModal,
+  /* Control de stock (0066): el alta con filtros y la sesión de conteo. */
+  conteoNuevo: ConteoNuevoModal,
+  conteo: ConteoModal,
 };
 
 /** Renderiza el modal activo según el estado del contexto. */
