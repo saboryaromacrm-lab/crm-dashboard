@@ -36,24 +36,29 @@ export function GastoFormModal({ gastoId, onChange }) {
     { enabled: editando },
   );
 
+  /*
+   * EL FORMULARIO SIMPLE (0067, pedido del dueño): sin "anotalo a mano", sin
+   * "descripción", sin "negocio". El gasto se carga como se lee del papel:
+   * CONCEPTOS con su monto final, y el total es la suma. `iva` quedó como el
+   * "IVA incluido" opcional de la factura A — informativo, no cambia el total.
+   * Los campos que se fueron siguen en la base (gastos viejos, fijos
+   * generados): solo dejaron de pedirse acá.
+   */
   const [f, setF] = useState({
     fecha: hoyISO(),
     tipoDoc: 'factura',
     letra: 'B',
     numero: '',
     proveedorId: '',
-    proveedorTexto: '',
     categoriaId: '',
     sucursalId: '',
-    negocio: 'distribuidora',
-    descripcion: '',
     condicionPago: 'contado',
     vencimiento: '',
-    neto: '',
     iva: '',
-    otros: '',
     observaciones: '',
   });
+  /** Los renglones: concepto + monto final. Siempre queda al menos una fila. */
+  const [items, setItems] = useState([{ concepto: '', monto: '' }]);
 
   useEffect(() => {
     if (!original) return;
@@ -63,22 +68,35 @@ export function GastoFormModal({ gastoId, onChange }) {
       letra: original.letra,
       numero: original.numero ?? '',
       proveedorId: original.proveedorId ?? '',
-      proveedorTexto: original.proveedorTexto ?? '',
       categoriaId: original.categoriaId ?? '',
       sucursalId: original.sucursalId ?? '',
-      negocio: original.negocio ?? 'distribuidora',
-      descripcion: original.descripcion ?? '',
       condicionPago: original.condicionPago,
       vencimiento: original.vencimiento ? String(original.vencimiento).slice(0, 10) : '',
-      neto: original.neto || '',
       iva: original.iva || '',
-      otros: original.otros || '',
       observaciones: original.observaciones ?? '',
     });
+    /* Un gasto viejo no tiene renglones: se le arma UNO con su descripción y
+     * su total, así editarlo lo migra al formato nuevo sin perder nada. */
+    setItems(original.items?.length
+      ? original.items.map((i) => ({ concepto: i.concepto, monto: String(i.monto) }))
+      : [{ concepto: original.descripcion || 'Gasto', monto: String(original.total || '') }]);
   }, [original]);
 
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
-  const total = r2(Number(f.neto || 0) + Number(f.iva || 0) + Number(f.otros || 0));
+  const setItem = (i, k) => (e) => setItems((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)));
+  const filasValidas = items.filter((i) => i.concepto.trim() && Number(i.monto) > 0);
+  const total = r2(filasValidas.reduce((a, i) => a + Number(i.monto), 0));
+
+  /**
+   * LA LETRA VIENE DEL PROVEEDOR. Al elegirlo, si su ficha dice qué letra
+   * factura, se precarga — y queda editable, porque la excepción existe. Se
+   * pisa solo al CAMBIAR de proveedor: corregirla a mano después vale.
+   */
+  const alElegirProveedor = (e) => {
+    const id = e.target.value;
+    const p = proveedores.find((x) => x.id === Number(id));
+    setF((x) => ({ ...x, proveedorId: id, ...(p?.letraGasto ? { letra: p.letraGasto } : {}) }));
+  };
 
   // "Lo pagué y lo cargo": el caso más común de todos. Se registra el pago
   // junto con el gasto en vez de obligar a un segundo paso.
@@ -136,7 +154,8 @@ export function GastoFormModal({ gastoId, onChange }) {
   const resto = r2(Math.max(0, total - totalTomado));
   const toggleTomar = (p) => setTomados((m) => {
     if (m[p.id] != null) {
-      const { [p.id]: _, ...sinEl } = m;
+      const sinEl = { ...m };
+      delete sinEl[p.id];
       return sinEl;
     }
     const yaTomado = Object.values(m).reduce((a, v) => a + (Number(v) || 0), 0);
@@ -162,7 +181,12 @@ export function GastoFormModal({ gastoId, onChange }) {
   const guardar = async () => {
     if (guardando) return;
     if (!f.categoriaId) { toast('Elegí el rubro al que se imputa.', 'err'); return; }
+    if (!filasValidas.length) { toast('Cargá al menos un concepto con su monto.', 'err'); return; }
     if (!(total > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return; }
+    if (Number(f.iva || 0) > total + 0.009) {
+      toast('El IVA incluido no puede superar el total.', 'err');
+      return;
+    }
     // No se puede tomar más de lo que dice el gasto: sería inventar plata.
     if (totalTomado - total > 0.009) {
       toast(`Estás tomando ${money(r2(totalTomado - total))} más de lo que dice el gasto.`, 'err');
@@ -174,8 +198,6 @@ export function GastoFormModal({ gastoId, onChange }) {
 
     const payload = {
       categoriaId: Number(f.categoriaId),
-      negocio: f.negocio,
-      descripcion: f.descripcion.trim(),
       vencimiento: f.vencimiento || undefined,
       observaciones: f.observaciones.trim(),
       usuarioId: ctx.usuarioId ?? undefined,
@@ -201,9 +223,11 @@ export function GastoFormModal({ gastoId, onChange }) {
         letra: f.letra,
         numero: f.numero.trim(),
         proveedorId: f.proveedorId ? Number(f.proveedorId) : undefined,
-        proveedorTexto: f.proveedorTexto.trim(),
         condicionPago: f.condicionPago,
-        neto: r2(f.neto), iva: r2(f.iva), otros: r2(f.otros),
+        /* Los RENGLONES mandan (0067): el servidor suma el total, acota el IVA
+         * incluido y arma la descripción con los conceptos. */
+        items: filasValidas.map((i) => ({ concepto: i.concepto.trim(), monto: r2(i.monto) })),
+        iva: r2(f.iva),
       }),
       // "Se paga ahora" cubre EL RESTO: lo que los pagos tomados no explican.
       ...(pagaAhora && !editando && resto > 0.009
@@ -324,37 +348,29 @@ export function GastoFormModal({ gastoId, onChange }) {
         </div>
       </div>
 
-      <div className={s['section-title']}>Quién y de qué</div>
+      {/* Sin "Quién y de qué", sin "anotalo a mano", sin "negocio" y sin
+          "descripción" (0067, pedido del dueño): quedaron las tres decisiones
+          reales — proveedor, rubro y sucursal — y los CONCEPTOS de abajo
+          cuentan la historia que antes iba en texto libre. */}
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Proveedor</label>
           {/* Solo los de GASTOS: a los de mercadería se les carga factura en
-              Compras. Si uno de mercadería también factura gastos (flete,
-              servicio), se le tilda "provee gastos" en su ficha — el padrón es
-              uno y las banderas conviven. El elegido actual se conserva aunque
-              sea de mercadería (gastos viejos). */}
-          <select value={f.proveedorId} onChange={set('proveedorId')} disabled={bloqueado}>
+              Compras. Elegirlo precarga la LETRA de arriba con la de su ficha
+              (editable — la excepción existe). */}
+          <select value={f.proveedorId} onChange={alElegirProveedor} disabled={bloqueado}>
             <option value="">Sin proveedor del padrón</option>
             {proveedores
               .filter((p) => p.proveeGastos || p.id === Number(f.proveedorId))
               .map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.nombre}{p.proveeGastos ? '' : ' (mercadería)'}
+                  {p.nombre}{p.letraGasto ? ` · factura ${p.letraGasto}` : ''}{p.proveeGastos ? '' : ' (mercadería)'}
                 </option>
               ))}
           </select>
           <div className={s.hint} style={{ margin: '6px 0 0' }}>
-            Solo proveedores de gastos. ¿Falta uno? Tildale "provee gastos" en Proveedores.
+            ¿Falta uno? Tildale «provee gastos» en Proveedores — y ahí se le define qué factura hace.
           </div>
-        </div>
-        <div className={s.field}>
-          <label>O anotalo a mano</label>
-          <input
-            value={f.proveedorTexto}
-            placeholder="Ej: kiosco de la esquina"
-            onChange={set('proveedorTexto')}
-            disabled={bloqueado || !!f.proveedorId}
-          />
         </div>
         <div className={s.field}>
           <label>Rubro <span className={s.req}>*</span></label>
@@ -371,7 +387,7 @@ export function GastoFormModal({ gastoId, onChange }) {
               opción que la API va a corregir por atrás. */}
           {esJefe ? (
             <select value={f.sucursalId} onChange={set('sucursalId')}>
-              <option value="">Toda la empresa</option>
+              <option value="">General (toda la empresa)</option>
               {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
             </select>
           ) : (
@@ -383,39 +399,50 @@ export function GastoFormModal({ gastoId, onChange }) {
             </>
           )}
         </div>
-        <div className={s.field}>
-          <label>Negocio</label>
-          {/* Mismo CUIT, dos negocios: imputar acá es lo que permite saber
-              cuánto cuesta la cafetería (Almacén › Cafetería lo suma). */}
-          <select value={f.negocio} onChange={set('negocio')}>
-            <option value="distribuidora">Distribuidora</option>
-            <option value="cafeteria">Cafetería</option>
-          </select>
+      </div>
+
+      {/* ---- Los renglones: concepto + monto, como se lee del papel ---- */}
+      <div className={s['section-title']}>Conceptos</div>
+      {items.map((it, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+          <input
+            value={it.concepto}
+            placeholder={i === 0 ? 'Ej: factura de luz de julio' : 'Otro concepto…'}
+            onChange={setItem(i, 'concepto')}
+            disabled={bloqueado}
+            style={{ flex: 1 }}
+          />
+          <input
+            type="number" min="0" step="0.01"
+            value={it.monto}
+            placeholder="Monto"
+            onChange={setItem(i, 'monto')}
+            disabled={bloqueado}
+            style={{ width: 130, textAlign: 'right' }}
+          />
+          {!bloqueado && items.length > 1 && (
+            <Btn small onClick={() => setItems((xs) => xs.filter((_, j) => j !== i))}>×</Btn>
+          )}
         </div>
-      </div>
+      ))}
+      {!bloqueado && (
+        <div style={{ marginBottom: 4 }}>
+          <Btn small onClick={() => setItems((xs) => [...xs, { concepto: '', monto: '' }])}>
+            + Agregar concepto
+          </Btn>
+        </div>
+      )}
 
-      <div className={s.field}>
-        <label>Descripción</label>
-        <input
-          value={f.descripcion}
-          placeholder="Ej: factura de luz de julio · arreglo de la cortina"
-          onChange={set('descripcion')}
-        />
-      </div>
-
-      <div className={s['section-title']}>Importes</div>
       <div className={s['form-grid']}>
         <div className={s.field}>
-          <label>Neto</label>
-          <input type="number" min="0" step="0.01" value={f.neto} onChange={set('neto')} disabled={bloqueado} />
-        </div>
-        <div className={s.field}>
-          <label>IVA</label>
-          <input type="number" min="0" step="0.01" value={f.iva} onChange={set('iva')} disabled={bloqueado} />
-        </div>
-        <div className={s.field}>
-          <label>Otros (percepciones)</label>
-          <input type="number" min="0" step="0.01" value={f.otros} onChange={set('otros')} disabled={bloqueado} />
+          <label>IVA incluido (si la factura lo discrimina)</label>
+          <input
+            type="number" min="0" step="0.01" value={f.iva} onChange={set('iva')}
+            placeholder="Opcional" disabled={bloqueado}
+          />
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            Informativo: no cambia el total, ya está adentro de los montos.
+          </div>
         </div>
         <div className={s.field}>
           <label>Total</label>

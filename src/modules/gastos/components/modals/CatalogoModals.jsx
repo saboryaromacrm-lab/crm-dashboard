@@ -120,7 +120,7 @@ export function BorrarCategoriaModal({ categoriaId }) {
     >
       <div className={cx(s.callout, s.warn)}>
         Solo se puede eliminar un rubro que <strong>no tenga ningún gasto imputado</strong>. Si
-        tiene historia, la API lo va a rechazar: en ese caso editalo y destildá "Activo" para que
+        tiene historia, la API lo va a rechazar: en ese caso editalo y destildá «Activo» para que
         deje de aparecer sin romper los informes viejos.
       </div>
     </ModalShell>
@@ -287,7 +287,7 @@ export function BorrarRecurrenteModal({ recurrenteId, onChange }) {
         comprobantes reales y quedan intactos en el historial.
       </div>
       <div className={s.hint}>
-        Si solo querés pausarlo un tiempo, editalo y destildá "Activo".
+        Si solo querés pausarlo un tiempo, editalo y destildá «Activo».
       </div>
     </ModalShell>
   );
@@ -311,6 +311,8 @@ export function ProveedorFormModal({ proveedor: original = null, onChange }) {
   const [f, setF] = useState({
     nombre: '', cuit: '', condicionIva: 'responsable_inscripto', direccion: '', telefono: '', email: '',
     proveeMercaderia: false, proveeGastos: true,
+    /** La letra que factura (0067): la carga de gastos la precarga. '' = sin definir. */
+    letraGasto: '',
   });
 
   useEffect(() => {
@@ -324,6 +326,7 @@ export function ProveedorFormModal({ proveedor: original = null, onChange }) {
       email: original.email ?? '',
       proveeMercaderia: !!original.proveeMercaderia,
       proveeGastos: !!original.proveeGastos,
+      letraGasto: original.letraGasto ?? '',
     });
   }, [original]);
 
@@ -364,6 +367,19 @@ export function ProveedorFormModal({ proveedor: original = null, onChange }) {
         <div className={s.field}>
           <label>CUIT</label>
           <input value={f.cuit} placeholder="30-12345678-9" onChange={set('cuit')} />
+        </div>
+        <div className={s.field}>
+          <label>Qué factura hace</label>
+          {/* La respuesta que hace simple la carga: se contesta UNA vez acá y
+              el formulario de gasto precarga la letra en cada factura de este
+              proveedor (editable — la excepción existe). */}
+          <select value={f.letraGasto} onChange={set('letraGasto')}>
+            <option value="">No sé todavía</option>
+            <option value="A">Factura A</option>
+            <option value="B">Factura B</option>
+            <option value="C">Factura C</option>
+            <option value="X">X / sin letra</option>
+          </select>
         </div>
         <div className={s.field}>
           <label>Condición de IVA</label>
