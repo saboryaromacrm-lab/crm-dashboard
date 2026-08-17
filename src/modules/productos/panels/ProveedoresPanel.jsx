@@ -2,8 +2,14 @@ import { useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { Table, PanelHead, Btn, usePaginado, s } from '../components/ui.jsx';
 
+/**
+ * Lo OPERATIVO de compras por proveedor: operaciones, costos por producto
+ * (con la regla masiva), percepciones y cuenta. El ABM de la ficha (alta,
+ * edición, baja, cta cte, echeq) vive en el MÓDULO Proveedores desde 0068 —
+ * por eso acá no hay botones de alta ni edición.
+ */
 export function ProveedoresPanel() {
-  const { store, isAdmin, openModal } = useProductos();
+  const { store, openModal } = useProductos();
   const [q, setQ] = useState('');
 
   const ql = q.toLowerCase();
@@ -27,14 +33,7 @@ export function ProveedoresPanel() {
       <td className={s.num}>{usoDe(p.id)}</td>
       <td className={s['actions-col']}>
         <div className={s['row-actions']} onClick={stop}>
-          {isAdmin ? (
-            <>
-              <Btn variant="btn-edit" small onClick={() => openModal('proveedorForm', { provId: p.id })}>Editar</Btn>
-              <Btn variant="btn-delete" small onClick={() => openModal('eliminarProveedor', { provId: p.id })}>Eliminar</Btn>
-            </>
-          ) : (
-            <span className={s.muted}>—</span>
-          )}
+          <Btn small onClick={() => openModal('detalleProveedor', { provId: p.id })}>Ver</Btn>
         </div>
       </td>
     </tr>
@@ -43,9 +42,8 @@ export function ProveedoresPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
-        title="Proveedores"
-        desc="Clic en una fila para ver el detalle del proveedor (operaciones, productos, cuenta). Alta, edición y baja con los botones."
-        actions={isAdmin && <Btn variant="btn-primary" onClick={() => openModal('proveedorForm', {})}>+ Nuevo proveedor</Btn>}
+        title="Costos y percepciones"
+        desc="Clic en una fila: operaciones, productos y costos (con la regla masiva), percepciones y cuenta. La ficha del proveedor (alta, edición, cómo cobra) se administra en el módulo Proveedores."
       />
       <div className={s.toolbar}>
         <input type="search" placeholder="Buscar por nombre o CUIT..." value={q} onChange={(e) => setQ(e.target.value)} />

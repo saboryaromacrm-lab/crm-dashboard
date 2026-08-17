@@ -20,6 +20,7 @@ import { ventasModule } from './ventas';
 import { almacenModule } from './almacen';
 import { webModule } from './web';
 import { gastosModule } from './gastos';
+import { proveedoresModule } from './proveedores';
 import { gerenciaModule } from './gerencia';
 import { sistemaModule } from './sistema';
 import { manualModule } from './manual';
@@ -28,6 +29,7 @@ import { manualModule } from './manual';
 export const appModules = [
   dashboardModule,
   comprasModule,
+  proveedoresModule,
   ventasModule,
   almacenModule,
   webModule,

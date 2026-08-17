@@ -269,6 +269,14 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const [sucId, setSucId] = useState(lectura?.sucursalId ?? sucOperativa() ?? '');
   const [venc, setVenc] = useState('');
   const [obs, setObs] = useState('');
+  /* COMPROMISOS (0068): el proveedor diferido (cta cte / echeq) promete cuándo
+   * paga. Se ofrecen prellenados —vencimiento = fecha + días de su ficha— y
+   * editables, en cuotas si la factura viene partida. Nunca nacen en silencio:
+   * el tilde permite no generar. `cuotasTocadas` congela el prellenado en
+   * cuanto el usuario edita, para que el recálculo del saldo no le pise nada. */
+  const [genComp, setGenComp] = useState(true);
+  const [cuotasComp, setCuotasComp] = useState([]);
+  const [cuotasTocadas, setCuotasTocadas] = useState(false);
   // El renglón nace VACÍO: preseleccionar el primer producto del catálogo era
   // una bomba silenciosa (un "+ ítem" distraído registraba harina en la
   // factura de gaseosas). El ítem sin producto no viaja al guardar.
@@ -698,6 +706,19 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
    */
   const condicionPago = generaDeuda && saldoFinal > 0.009 ? 'cuenta_corriente' : 'contado';
 
+  /* El compromiso es de FACTURA o LIQUIDACIÓN de un proveedor diferido (la
+   * misma regla que la API). La ND ajusta una factura: no promete nada. */
+  const esDiferido = (tipo === 'factura' || tipo === 'liquidacion')
+    && (provElegido?.medioHabitual === 'cta_cte' || provElegido?.medioHabitual === 'echeq');
+
+  useEffect(() => {
+    if (cuotasTocadas) return;
+    if (!esDiferido || saldoFinal <= 0.009) { setCuotasComp([]); return; }
+    const base = fecha ? new Date(`${fecha}T00:00:00`) : new Date();
+    base.setDate(base.getDate() + (Number(provElegido?.diasPago) || 0));
+    setCuotasComp([{ importe: String(saldoFinal), fechaVenc: isoDate(base) }]);
+  }, [cuotasTocadas, esDiferido, saldoFinal, fecha, provElegido]);
+
   /**
    * Solo se ofrecen los pagos de LA SUCURSAL DE RECEPCIÓN de esta factura: la
    * plata que salió de la caja de Express 2 explica mercadería que entró en
@@ -873,6 +894,18 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       toast(`Estás pagando ${money(Math.abs(saldoFinal))} más de lo que dice el comprobante.`, 'err');
       return;
     }
+    /* Las cuotas del compromiso tienen que cubrir EXACTO el saldo que queda
+     * en cuenta corriente — misma validación que la API, avisada acá. */
+    const compFilas = (esDiferido && genComp && saldoFinal > 0.009)
+      ? cuotasComp.filter((k) => Number(k.importe) > 0 && k.fechaVenc)
+      : [];
+    if (compFilas.length) {
+      const sumaK = r2(compFilas.reduce((a, k) => a + Number(k.importe), 0));
+      if (Math.abs(sumaK - saldoFinal) > 0.009) {
+        toast(`Las cuotas del compromiso suman ${money(sumaK)} y el saldo en cuenta corriente es ${money(saldoFinal)}.`, 'err');
+        return;
+      }
+    }
     const tomarPagos = generaDeuda
       ? Object.entries(tomados)
         .map(([pagoId, v]) => ({ pagoId: Number(pagoId), importe: r2(v) }))
@@ -920,6 +953,12 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
           cajaSesionId: origenPago ? Number(origenPago) : undefined,
           referencia: refPago.trim() || undefined,
         }
+        : undefined,
+      // El compromiso (0068): la promesa del diferido, en cuotas que cubren
+      // el saldo. Si el proveedor cobra con echeq, la API crea también el
+      // echeq "a completar" en la cartera.
+      compromisos: compFilas.length
+        ? compFilas.map((k) => ({ importe: r2(k.importe), fechaVenc: k.fechaVenc }))
         : undefined,
     });
     if (!res.ok) { toast(res.error || 'No se pudo registrar el comprobante.', 'err'); return; }
@@ -1885,6 +1924,75 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* COMPROMISO DE PAGO (0068): la promesa con fecha del proveedor
+          diferido — prellenada con los días de su ficha, editable y en
+          cuotas. Nunca nace en silencio: el tilde decide. */}
+      {esDiferido && saldoFinal > 0.009 && (
+        <>
+          <div className={s['section-title']}>
+            Compromiso de pago · {provElegido?.medioHabitual === 'echeq'
+              ? 'Echeq'
+              : `Cta cte${provElegido?.diasPago ? ` ${provElegido.diasPago}` : ''}`}
+          </div>
+          <div className={s.field}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={genComp} onChange={(e) => setGenComp(e.target.checked)} />
+              Generar el compromiso por el saldo en cuenta corriente
+            </label>
+            <div className={s.hint} style={{ margin: '6px 0 0' }}>
+              Aparece en Proveedores › Cuentas corrientes y se cierra solo cuando el pago
+              salda la factura.
+              {provElegido?.medioHabitual === 'echeq'
+                ? ' Como cobra con echeq, nace también el echeq "a completar" en la cartera.'
+                : ''}
+            </div>
+          </div>
+          {genComp && (
+            <>
+              {cuotasComp.map((k, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                  <span className={s.hint} style={{ width: 70, margin: 0 }}>
+                    {cuotasComp.length > 1 ? `Cuota ${i + 1}` : 'Único'}
+                  </span>
+                  <input
+                    type="number" min="0" step="0.01" value={k.importe}
+                    onChange={(e) => {
+                      setCuotasTocadas(true);
+                      setCuotasComp((xs) => xs.map((x, j) => (j === i ? { ...x, importe: e.target.value } : x)));
+                    }}
+                    style={{ width: 140, textAlign: 'right' }}
+                  />
+                  <input
+                    type="date" value={k.fechaVenc}
+                    onChange={(e) => {
+                      setCuotasTocadas(true);
+                      setCuotasComp((xs) => xs.map((x, j) => (j === i ? { ...x, fechaVenc: e.target.value } : x)));
+                    }}
+                  />
+                  {cuotasComp.length > 1 && (
+                    <Btn small onClick={() => {
+                      setCuotasTocadas(true);
+                      setCuotasComp((xs) => xs.filter((_, j) => j !== i));
+                    }}>×</Btn>
+                  )}
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
+                <Btn small onClick={() => {
+                  setCuotasTocadas(true);
+                  setCuotasComp((xs) => [...xs, { importe: '', fechaVenc: xs[xs.length - 1]?.fechaVenc || '' }]);
+                }}>
+                  + Cuota
+                </Btn>
+                <span className={s.hint} style={{ margin: 0 }}>
+                  Suman {money(r2(cuotasComp.reduce((a, k) => a + (Number(k.importe) || 0), 0)))} de {money(saldoFinal)}
+                </span>
+              </div>
+            </>
+          )}
+        </>
       )}
 
       <div className={s.field} style={{ marginTop: 14 }}>

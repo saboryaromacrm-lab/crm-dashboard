@@ -12,9 +12,9 @@
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import SellIcon from '@mui/icons-material/Sell';
-import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import DocumentScannerIcon from '@mui/icons-material/DocumentScanner';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
 import HistoryIcon from '@mui/icons-material/History';
@@ -38,7 +38,12 @@ export const COMPRAS_PANELS = [
   { id: 'dashboard',      label: 'Dashboard',      icon: SpaceDashboardIcon, permiso: 'compras.dashboard' },
   { id: 'productos',      label: 'Productos',      icon: Inventory2Icon,     permiso: 'compras.productos' },
   { id: 'catalogos',      label: 'Catálogos',      icon: SellIcon,           permiso: 'compras.catalogos' },
-  { id: 'proveedores',    label: 'Proveedores',    icon: LocalShippingIcon,  permiso: 'compras.proveedores' },
+  /*
+   * El ABM de la ficha se mudó al MÓDULO Proveedores (0068). Acá queda solo lo
+   * OPERATIVO de compras que no tiene reemplazo allá: los costos por producto
+   * (con la regla masiva), las percepciones y la cuenta del proveedor.
+   */
+  { id: 'proveedores',    label: 'Costos y percepciones', icon: LocalShippingIcon, permiso: 'compras.proveedores' },
   { id: 'lecturas',       label: 'Por procesar',   icon: DocumentScannerIcon, permiso: 'compras.lecturas', badge: 'lecturas' },
   { id: 'facturacion',    label: 'Facturación',    icon: ReceiptLongIcon,    permiso: 'compras.facturacion' },
   { id: 'historial',      label: 'Historial',      icon: HistoryIcon,        permiso: 'compras.historial' },

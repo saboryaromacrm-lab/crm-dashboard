@@ -748,6 +748,14 @@ function _cleanComprobante(o) {
     tomarPagos: (o.tomarPagos || [])
       .map((x) => ({ pagoId: Number(x.pagoId), importe: Number(x.importe) || 0 }))
       .filter((x) => x.pagoId && x.importe > 0),
+    /*
+     * COMPROMISOS (0068): las cuotas con que el proveedor diferido promete
+     * pagar el saldo. Esta lista YA se tragó seis campos por olvidarse de
+     * agregarlos acá — que no sea el séptimo.
+     */
+    compromisos: (o.compromisos || [])
+      .map((k) => ({ importe: Number(k.importe) || 0, fechaVenc: k.fechaVenc, obs: k.obs || undefined }))
+      .filter((k) => k.importe > 0 && k.fechaVenc),
     pagoContado: o.pagoContado && Number(o.pagoContado.importe) > 0
       ? {
         importe: Number(o.pagoContado.importe),

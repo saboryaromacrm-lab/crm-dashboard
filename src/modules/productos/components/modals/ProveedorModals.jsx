@@ -103,7 +103,7 @@ export function ProveedorFormModal({ provId }) {
 /* ============================== DETALLE DE PROVEEDOR ============================== */
 
 export function DetalleProveedorModal({ provId }) {
-  const { store, isAdmin, closeModal, openModal } = useProductos();
+  const { store, closeModal } = useProductos();
   useSeccion('comprobantes');
   const prov = store.getProveedor(provId);
   const [tab, setTab] = useState(0);
@@ -120,9 +120,9 @@ export function DetalleProveedorModal({ provId }) {
   ];
   const Active = (tabDefs[tab] || tabDefs[0]).C;
 
-  const footer = [];
-  if (isAdmin) footer.push({ texto: 'Editar', clase: 'btn-primary', onClick: () => openModal('proveedorForm', { provId }) });
-  footer.push({ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal });
+  // Sin botón Editar: la ficha (identidad, clasificación, cómo cobra) se
+  // administra en el MÓDULO Proveedores desde 0068 — acá solo lo operativo.
+  const footer = [{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }];
 
   return (
     /*

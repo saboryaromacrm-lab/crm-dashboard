@@ -4,40 +4,33 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
 import { FullScreenLoader } from '@shared/components/FullScreenLoader/FullScreenLoader.jsx';
 import { cx } from '@shared/utils/classNames.js';
-import { useGastos } from '../context/GastosContext.jsx';
+import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { ModalHost } from '../components/ModalHost.jsx';
 import { Btn, s } from '../components/ui.jsx';
 
-import { GastosPanel } from '../panels/GastosPanel.jsx';
-import { CuentasAPagarPanel } from '../panels/CuentasAPagarPanel.jsx';
-import { FijosPanel } from '../panels/FijosPanel.jsx';
-import { CategoriasPanel } from '../panels/CategoriasPanel.jsx';
-import { ResumenPanel } from '../panels/ResumenPanel.jsx';
+import { PedidosPanel } from '../panels/PedidosPanel.jsx';
+import { CtasCtesPanel } from '../panels/CtasCtesPanel.jsx';
+import { EcheqsPanel } from '../panels/EcheqsPanel.jsx';
+import { EdocPanel } from '../panels/EdocPanel.jsx';
+import { PadronPanel } from '../panels/PadronPanel.jsx';
 
-/** Los `id` coinciden con `GASTOS_PANELS` (config/gastos.config.js). El ABM
- *  de proveedores vive en el módulo Proveedores desde 0068. */
+/** Los `id` coinciden con `PROVEEDORES_PANELS` (config). */
 const PANEL_COMPONENTS = {
-  gastos: GastosPanel,
-  cuentas: CuentasAPagarPanel,
-  fijos: FijosPanel,
-  categorias: CategoriasPanel,
-  resumen: ResumenPanel,
+  pedidos: PedidosPanel,
+  ctasctes: CtasCtesPanel,
+  echeqs: EcheqsPanel,
+  edoc: EdocPanel,
+  padron: PadronPanel,
 };
 
-/**
- * Shell del módulo Gastos: cabecera + sub-sidebar + panel activo. Misma
- * estructura que Ventas y que el shell de inventario, para que moverse entre
- * módulos no cambie de idioma visual.
- */
-export function GastosShell({ title, subtitle }) {
+/** Shell del módulo Proveedores: misma estructura que Gastos y Ventas. */
+export function ProveedoresShell({ title, subtitle }) {
   const {
     loaded, loadError, recargar, panels, panel, goPanel, contadores,
     toastState, closeToast, toast,
-  } = useGastos();
+  } = useProveedores();
   const [refrescando, setRefrescando] = useState(false);
 
-  // Solo se renderiza lo PERMITIDO: si el panel pedido no está en el menú del
-  // rol (link viejo, URL a mano), cae al primero visible — nunca a uno oculto.
   const primero = panels[0]?.id;
   const visible = panels.some((x) => x.id === panel) ? panel : primero;
   const ActivePanel = (visible && PANEL_COMPONENTS[visible]) || null;
@@ -49,7 +42,7 @@ export function GastosShell({ title, subtitle }) {
     finally { setRefrescando(false); }
   };
 
-  if (!loaded) return <FullScreenLoader label="Cargando gastos…" />;
+  if (!loaded) return <FullScreenLoader label="Cargando proveedores…" />;
 
   if (loadError) {
     return (
@@ -59,9 +52,6 @@ export function GastosShell({ title, subtitle }) {
           No se pudo cargar la información desde la API: <strong>{loadError}</strong>
           <div style={{ marginTop: 10 }}>
             <Btn variant="btn-primary" small onClick={onRefresh}>Reintentar</Btn>
-          </div>
-          <div className={s.hint} style={{ marginTop: 8 }}>
-            Verificá que el backend esté corriendo (crm-api: <code>npm run start:dev</code>) en http://localhost:3001/api.
           </div>
         </div>
       </div>

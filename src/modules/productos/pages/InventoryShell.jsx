@@ -11,8 +11,9 @@ import { Btn, s } from '../components/ui.jsx';
 import { DashboardPanel } from '../panels/DashboardPanel.jsx';
 import { ProductosPanel } from '../panels/ProductosPanel.jsx';
 import { CatalogosPanel } from '../panels/CatalogosPanel.jsx';
-import { ProveedoresPanel } from '../panels/ProveedoresPanel.jsx';
+
 import { FacturacionPanel } from '../panels/FacturacionPanel.jsx';
+import { ProveedoresPanel } from '../panels/ProveedoresPanel.jsx';
 import { LecturasPanel } from '../panels/LecturasPanel.jsx';
 import { ExistenciasPanel } from '../panels/ExistenciasPanel.jsx';
 import { FraccionamientoPanel } from '../panels/FraccionamientoPanel.jsx';
@@ -30,6 +31,9 @@ const PANEL_COMPONENTS = {
   dashboard: DashboardPanel,
   productos: ProductosPanel,
   catalogos: CatalogosPanel,
+
+  // Solo lo OPERATIVO de compras (costos por producto, percepciones, cuenta):
+  // el ABM de la ficha vive en el módulo Proveedores (0068).
   proveedores: ProveedoresPanel,
   lecturas: LecturasPanel,
   facturacion: FacturacionPanel,

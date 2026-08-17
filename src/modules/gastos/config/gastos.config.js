@@ -11,7 +11,6 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import AutorenewIcon from '@mui/icons-material/Autorenew';
 import CategoryIcon from '@mui/icons-material/Category';
-import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import InsightsIcon from '@mui/icons-material/Insights';
 
 export const GASTOS_PANELS = [
@@ -22,6 +21,7 @@ export const GASTOS_PANELS = [
   { id: 'cuentas', label: 'Cuentas a pagar', icon: EventBusyIcon, permiso: 'gastos.pagos', badge: 'vencidos' },
   { id: 'fijos', label: 'Gastos fijos', icon: AutorenewIcon, permiso: 'gastos.fijos' },
   { id: 'categorias', label: 'Rubros', icon: CategoryIcon, permiso: 'gastos.categorias' },
-  { id: 'proveedores', label: 'Proveedores', icon: LocalShippingIcon, permiso: 'gastos.proveedores' },
+  // El ABM de Proveedores se fue al MÓDULO Proveedores (0068): la ficha única
+  // con lo comercial completo vive allá. Acá quedó solo lo que es de gastos.
   { id: 'resumen', label: 'Resumen', icon: InsightsIcon, permiso: 'gastos.resumen' },
 ];
