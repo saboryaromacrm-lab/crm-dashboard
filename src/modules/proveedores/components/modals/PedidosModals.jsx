@@ -47,19 +47,50 @@ export function SolicitarPedidosModal({ onChange, directo = false }) {
         <label>Buscar proveedor</label>
         <input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Escribí para filtrar…" autoFocus />
       </div>
-      <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--border, #ddd)', borderRadius: 8, padding: 8, marginBottom: 10 }}>
-        {lista.map((p) => (
-          <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 4px' }}>
-            <input
-              type="checkbox"
-              checked={!!tildados[p.id]}
-              onChange={(e) => setTildados((m) => ({ ...m, [p.id]: e.target.checked }))}
-            />
-            {p.nombre}
-          </label>
-        ))}
+      {/* Grilla de columnas y estilos EXPLÍCITOS (alineado, tilde pegado al
+          nombre): con 169 proveedores, una columna heredando estilos ajenos
+          era una lista kilométrica y torcida. */}
+      <div
+        style={{
+          maxHeight: 340, overflowY: 'auto', border: '1px solid var(--crm-color-border)',
+          borderRadius: 8, padding: 6, marginBottom: 10,
+        }}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 2 }}>
+          {lista.map((p) => {
+            const marcado = !!tildados[p.id];
+            return (
+              <label
+                key={p.id}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 8,
+                  padding: '4px 8px', borderRadius: 6, cursor: 'pointer', minWidth: 0,
+                  textAlign: 'left',
+                  background: marcado ? 'var(--crm-color-primary-soft)' : 'transparent',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  style={{ flex: 'none', margin: 0 }}
+                  checked={marcado}
+                  onChange={(e) => setTildados((m) => ({ ...m, [p.id]: e.target.checked }))}
+                />
+                <span style={{ fontSize: 13, lineHeight: 1.25, fontWeight: marcado ? 600 : 400 }}>
+                  {p.nombre}
+                </span>
+              </label>
+            );
+          })}
+        </div>
         {!lista.length && <div className={s.hint}>Sin resultados.</div>}
       </div>
+      {/* Sale del padrón COMPLETO: lo tildado no desaparece del resumen al
+          seguir filtrando con el buscador. */}
+      {ids.length > 0 && (
+        <div className={s.hint} style={{ margin: '-4px 0 10px' }}>
+          {ids.length} tildado(s): {proveedores.filter((p) => tildados[p.id]).map((p) => p.nombre).join(' · ')}
+        </div>
+      )}
       <div className={s.field}>
         <label>Notas del pedido</label>
         <textarea
