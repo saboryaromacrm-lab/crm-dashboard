@@ -3,9 +3,11 @@ import { FichaProveedorModal } from './modals/FichaModals.jsx';
 import { SolicitarPedidosModal, PedidoNotasModal } from './modals/PedidosModals.jsx';
 import { CompromisoModal, PagarCompromisoModal } from './modals/CompromisosModals.jsx';
 import { EcheqModal } from './modals/EcheqsModals.jsx';
-import { EdocDetalleModal, AjusteModal } from './modals/EdocModals.jsx';
+import { AjusteModal } from './modals/EdocModals.jsx';
+import { PagoProveedorModal, AnularPagoModal } from './modals/PagosModals.jsx';
 
-/** Un solo host: el contexto dice qué modal está abierto y con qué props. */
+/** Un solo host: el contexto dice qué modal está abierto y con qué props.
+ *  El estado de cuenta ya NO es un modal: es la pantalla EdocProveedorPage. */
 const MODALS = {
   ficha: FichaProveedorModal,
   solicitarPedidos: SolicitarPedidosModal,
@@ -13,8 +15,9 @@ const MODALS = {
   compromiso: CompromisoModal,
   pagarCompromiso: PagarCompromisoModal,
   echeq: EcheqModal,
-  edocDetalle: EdocDetalleModal,
   ajuste: AjusteModal,
+  pagoProveedor: PagoProveedorModal,
+  anularPago: AnularPagoModal,
 };
 
 export function ModalHost() {

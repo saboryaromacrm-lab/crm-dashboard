@@ -75,6 +75,15 @@ export const provApi = {
   conciliar: (proveedorId) => httpClient.post(`/proveedores-edoc/${proveedorId}/conciliar`),
   desconciliar: (proveedorId) => httpClient.delete(`/proveedores-edoc/${proveedorId}/conciliar`),
 
+  /*
+   * PAGOS. No hay endpoint propio del módulo a propósito: el pago a proveedor
+   * es UNO en todo el sistema (`/pagos-proveedor`), con su candado de caja, su
+   * arqueo y su bandeja. Acá se lo crea desde el estado de cuenta y se lo
+   * anula; imputar de más y desimputar siguen viviendo en el DOCUMENTO.
+   */
+  crearPago: (data) => httpClient.post('/pagos-proveedor', data),
+  anularPago: (id, motivo) => httpClient.post(`/pagos-proveedor/${id}/anular`, { motivo }),
+
   /* La caja de la sucursal (para el pago en efectivo desde el cajón) */
   cajaActual: (sucursalId) => httpClient.get(`/caja/actual/${sucursalId}`),
 };
