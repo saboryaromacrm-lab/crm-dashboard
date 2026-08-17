@@ -21,6 +21,9 @@ export function SolicitarPedidosModal({ onChange, directo = false }) {
     return t ? base.filter((p) => p.nombre.toLowerCase().includes(t)) : base;
   }, [proveedores, buscar]);
   const ids = Object.keys(tildados).filter((k) => tildados[k]).map(Number);
+  /** Del padrón completo: los chips no desaparecen al seguir filtrando. */
+  const elegidos = proveedores.filter((p) => tildados[p.id]);
+  const alternar = (id) => setTildados((m) => ({ ...m, [id]: !m[id] }));
 
   const guardar = async () => {
     if (!ids.length) { toast('Tildá al menos un proveedor.', 'err'); return; }
@@ -47,50 +50,85 @@ export function SolicitarPedidosModal({ onChange, directo = false }) {
         <label>Buscar proveedor</label>
         <input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Escribí para filtrar…" autoFocus />
       </div>
-      {/* Grilla de columnas y estilos EXPLÍCITOS (alineado, tilde pegado al
-          nombre): con 169 proveedores, una columna heredando estilos ajenos
-          era una lista kilométrica y torcida. */}
-      <div
-        style={{
-          maxHeight: 340, overflowY: 'auto', border: '1px solid var(--crm-color-border)',
-          borderRadius: 8, padding: 6, marginBottom: 10,
-        }}
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 2 }}>
-          {lista.map((p) => {
-            const marcado = !!tildados[p.id];
-            return (
-              <label
-                key={p.id}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 8,
-                  padding: '4px 8px', borderRadius: 6, cursor: 'pointer', minWidth: 0,
-                  textAlign: 'left',
-                  background: marcado ? 'var(--crm-color-primary-soft)' : 'transparent',
-                }}
+      {/* Los elegidos como CHIPS, arriba y siempre a la vista: no dependen del
+          scroll de la lista ni desaparecen al seguir filtrando. */}
+      {elegidos.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '0 0 8px' }}>
+          {elegidos.map((p) => (
+            <span
+              key={p.id}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%',
+                padding: '3px 8px 3px 10px', borderRadius: 999, fontSize: 12.5, fontWeight: 600,
+                background: 'var(--crm-color-primary-soft)', color: 'var(--crm-color-text)',
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {p.nombre}
+              </span>
+              <button
+                type="button"
+                aria-label={`Quitar ${p.nombre}`}
+                onClick={() => alternar(p.id)}
+                style={{ all: 'unset', cursor: 'pointer', fontWeight: 700, padding: '0 2px', lineHeight: 1 }}
               >
-                <input
-                  type="checkbox"
-                  style={{ flex: 'none', margin: 0 }}
-                  checked={marcado}
-                  onChange={(e) => setTildados((m) => ({ ...m, [p.id]: e.target.checked }))}
-                />
-                <span style={{ fontSize: 13, lineHeight: 1.25, fontWeight: marcado ? 600 : 400 }}>
-                  {p.nombre}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-        {!lista.length && <div className={s.hint}>Sin resultados.</div>}
-      </div>
-      {/* Sale del padrón COMPLETO: lo tildado no desaparece del resumen al
-          seguir filtrando con el buscador. */}
-      {ids.length > 0 && (
-        <div className={s.hint} style={{ margin: '-4px 0 10px' }}>
-          {ids.length} tildado(s): {proveedores.filter((p) => tildados[p.id]).map((p) => p.nombre).join(' · ')}
+                ×
+              </button>
+            </span>
+          ))}
         </div>
       )}
+
+      {/* La lista es de FILAS-BOTÓN con el tilde dibujado, sin <label> ni
+          checkbox nativo: el CSS global de formularios les pone width 100% a
+          los input y cualquier checkbox real termina flotando en 240px. */}
+      <div
+        style={{
+          maxHeight: 300, overflowY: 'auto', overflowX: 'hidden',
+          border: '1px solid var(--crm-color-border)', borderRadius: 8, marginBottom: 10,
+        }}
+      >
+        {lista.map((p) => {
+          const marcado = !!tildados[p.id];
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => alternar(p.id)}
+              style={{
+                all: 'unset', boxSizing: 'border-box', display: 'flex', alignItems: 'center',
+                gap: 10, width: '100%', padding: '7px 10px', cursor: 'pointer',
+                font: 'inherit', fontSize: 13, lineHeight: 1.3, textAlign: 'left',
+                borderBottom: '1px solid var(--crm-color-border)',
+                background: marcado ? 'var(--crm-color-primary-soft)' : 'transparent',
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 16, height: 16, flex: 'none', borderRadius: 4,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 700,
+                  border: marcado ? '1.5px solid var(--crm-color-primary)' : '1.5px solid var(--crm-color-border)',
+                  background: marcado ? 'var(--crm-color-primary)' : 'transparent',
+                  color: 'var(--crm-color-primary-contrast)',
+                }}
+              >
+                {marcado ? '✓' : ''}
+              </span>
+              <span
+                style={{
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  fontWeight: marcado ? 600 : 400, minWidth: 0,
+                }}
+              >
+                {p.nombre}
+              </span>
+            </button>
+          );
+        })}
+        {!lista.length && <div className={s.hint} style={{ padding: 8 }}>Sin resultados.</div>}
+      </div>
       <div className={s.field}>
         <label>Notas del pedido</label>
         <textarea
