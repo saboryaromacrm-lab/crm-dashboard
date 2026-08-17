@@ -21,6 +21,53 @@ function Seccion({ children }) {
   return <div className={s.seccion}>{children}</div>;
 }
 
+/** Las dos etapas del alta, con el mismo lenguaje visual que el comprobante. */
+const ETAPAS_PRODUCTO = ['El producto', 'El proveedor'];
+function EtapasProducto({ paso, irA }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+      {ETAPAS_PRODUCTO.map((label, i) => {
+        const n = i + 1;
+        const activo = n === paso;
+        const hecho = n < paso;
+        return (
+          <button
+            key={n}
+            type="button"
+            disabled={!hecho}
+            onClick={hecho ? () => irA(n) : undefined}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+              border: '1px solid ' + (activo ? 'var(--crm-color-primary)' : 'var(--crm-color-border)'),
+              borderRadius: 8, background: activo ? 'var(--crm-color-primary-soft)' : 'var(--crm-color-surface)',
+              cursor: hecho ? 'pointer' : 'default', textAlign: 'left', minWidth: 0,
+            }}
+          >
+            <span
+              style={{
+                width: 22, height: 22, borderRadius: '50%', display: 'inline-flex', alignItems: 'center',
+                justifyContent: 'center', fontSize: 12, fontWeight: 700, flex: 'none',
+                background: activo || hecho ? 'var(--crm-color-primary)' : 'var(--crm-color-border)',
+                color: activo || hecho ? 'var(--crm-color-primary-contrast)' : 'var(--crm-color-text-secondary)',
+              }}
+            >
+              {hecho ? '✓' : n}
+            </span>
+            <span
+              style={{
+                fontSize: 12.5, fontWeight: activo ? 700 : 500, minWidth: 0,
+                color: activo ? 'var(--crm-color-text)' : 'var(--crm-color-text-secondary)',
+              }}
+            >
+              {label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ProductoFormModal({ prodId }) {
   const { store, act, closeModal, toast } = useProductos();
   const prod = prodId != null ? store.getProducto(prodId) : null;
@@ -42,12 +89,18 @@ export function ProductoFormModal({ prodId }) {
     iva: prod?.iva != null ? String(prod.iva) : '21',
     // '' = heredar el redondeo de configuración, que es el caso normal.
     redondeo: prod?.redondeo == null ? '' : String(prod.redondeo),
+    // Se conserva tal cual (lo asigna la tienda): ya no tiene campo visible.
     idExterno: prod?.idExterno || '',
-    // Solo alta: crea la relación producto/proveedor de entrada, así el
-    // producto ya aparece al cargar la factura de ese proveedor.
+    // Solo alta (etapa 2): crea el Formato de Compra de entrada — con el
+    // código del proveedor, su escala y su flete el producto nace completo.
     proveedorId: '',
     costoInicial: '',
+    codigoProveedor: '',
+    d1: '', d2: '', d3: '', d4: '',
+    flete: '',
   }));
+  /** Alta en DOS etapas: 1 = el producto en sí, 2 = con quién llega. */
+  const [paso, setPaso] = useState(1);
   /** Granel que NO se vende suelto: existe solo para fraccionarse. */
   const [soloFraccionar, setSoloFraccionar] = useState(!!prod?.soloFraccionar);
   /** Catálogo que se está administrando encima del formulario (o null). */
@@ -82,9 +135,14 @@ export function ProductoFormModal({ prodId }) {
     }
   };
 
+  const continuar = () => {
+    if (!f.nombre.trim()) { toast('El concepto es obligatorio.', 'err'); return; }
+    setPaso(2);
+  };
+
   const guardar = () => {
     const nombre = f.nombre.trim();
-    if (!nombre) { toast('El nombre es obligatorio.', 'err'); return; }
+    if (!nombre) { toast('El concepto es obligatorio.', 'err'); return; }
     const o = {
       nombre,
       descripcion: f.descripcion.trim(),
@@ -105,6 +163,12 @@ export function ProductoFormModal({ prodId }) {
     if (!ed && f.proveedorId) {
       o.proveedorId = parseInt(f.proveedorId, 10);
       o.costoInicial = Number(f.costoInicial) || 0;
+      o.codigoProveedor = f.codigoProveedor.trim();
+      o.descuento = Number(f.d1) || 0;
+      o.descuento2 = Number(f.d2) || 0;
+      o.descuento3 = Number(f.d3) || 0;
+      o.descuento4 = Number(f.d4) || 0;
+      o.flete = Number(f.flete) || 0;
     }
     act(
       prod ? store.editarProducto(prod.id, o) : store.crearProducto(o),
@@ -112,17 +176,38 @@ export function ProductoFormModal({ prodId }) {
     );
   };
 
+  /* El pie cambia con la etapa: en el alta se avanza y se vuelve; la edición
+   * sigue siendo una sola pantalla (el proveedor ya vive en su Formato). */
+  const footer = ed
+    ? [
+      { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+      { texto: 'Guardar', clase: 'btn-primary', onClick: guardar },
+    ]
+    : paso === 1
+      ? [
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+        { texto: 'Continuar', clase: 'btn-primary', onClick: continuar },
+      ]
+      : [
+        { texto: 'Volver', clase: 'btn-ghost', onClick: () => setPaso(1) },
+        { texto: 'Crear', clase: 'btn-primary', onClick: guardar },
+      ];
+
   return (
     <>
       <ModalShell
         title={ed ? `Editar producto #${prod.id}` : 'Nuevo producto'}
+        subtitle={ed ? undefined : (paso === 1
+          ? 'Etapa 1 de 2 · El producto en sí'
+          : 'Etapa 2 de 2 · Con quién llega')}
         wide
         onClose={closeModal}
-        footer={[
-          { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-          { texto: ed ? 'Guardar' : 'Crear', clase: 'btn-primary', onClick: guardar },
-        ]}
+        footer={footer}
       >
+        {!ed && <EtapasProducto paso={paso} irA={setPaso} />}
+
+        {(ed || paso === 1) && (
+          <>
         <label className={s['granel-toggle']}>
           <input type="checkbox" checked={esGranel} disabled={ed} onChange={(e) => setEsGranel(e.target.checked)} />
           <span>
@@ -268,9 +353,33 @@ export function ProductoFormModal({ prodId }) {
           producto necesite otra cosa.
         </div>
 
-        {/* --- Proveedor (solo alta) --- */}
-        {!ed && (
+        {/* --- Tienda: SOLO informativo, sin campos (decisión del dueño 17/8) --- */}
+        <Seccion>Tienda</Seccion>
+        <div className={s.hint} style={{ marginBottom: 10 }}>
+          Acá no se completa nada: el producto aparece en el sitio web cuando tiene
+          <strong> precio en la lista Mayorista</strong> — no hay switch de publicación. El
+          destacado y la foto se manejan en el módulo <strong>Web</strong>.
+        </div>
+
+        <div className={cx(s.callout, s.info)}>
+          El <strong>precio de venta</strong> se define en <strong>Formato de Venta</strong>, dentro del
+          detalle.
+          {esGranel && <> Las <strong>presentaciones</strong> se cargan en su propia pestaña.</>}
+          {' '}El <strong>stock</strong> entra por <strong>Facturación</strong>.
+        </div>
+          </>
+        )}
+
+        {/* --- Etapa 2 (solo alta): con quién llega --- */}
+        {!ed && paso === 2 && (
           <>
+            <div className={cx(s.callout, s.info)}>
+              <strong>{f.nombre.trim() || 'El producto'}</strong> nace con su Formato de Compra: el
+              proveedor con el que llega, <strong>el código con el que ÉL lo llama</strong>, su escala
+              de descuentos y su flete. Al ser el primero, <strong>fija el precio</strong>. Los demás
+              proveedores se suman después en el Formato de Compra del detalle.
+            </div>
+
             <Seccion>Proveedor</Seccion>
             <div className={s['form-grid']}>
               <div className={s.field}>
@@ -283,47 +392,65 @@ export function ProductoFormModal({ prodId }) {
                 </select>
               </div>
               <div className={s.field}>
+                <label>Código del proveedor</label>
+                <input
+                  value={f.codigoProveedor}
+                  disabled={!f.proveedorId}
+                  onChange={(e) => set('codigoProveedor', e.target.value)}
+                  placeholder="Cómo lo llama él (su lista, su factura)"
+                />
+              </div>
+            </div>
+            <div className={s.hint}>
+              El código del proveedor es el que aparece en <strong>su</strong> lista y su factura: con
+              él, la lectura del PDF reconoce el renglón sola.
+            </div>
+
+            <Seccion>Costo</Seccion>
+            <div className={s['form-grid']}>
+              <div className={s.field}>
                 <label>Costo de lista (neto)</label>
                 <input
                   type="number" min="0" step="0.01"
                   value={f.costoInicial}
                   disabled={!f.proveedorId}
                   onChange={(e) => set('costoInicial', e.target.value)}
-                  placeholder="Opcional"
+                  placeholder="Si no lo sabés, lo trae la primera factura"
+                />
+              </div>
+              <div className={s.field}>
+                <label>Flete %</label>
+                <input
+                  type="number" min="0" max="100" step="0.1"
+                  value={f.flete}
+                  disabled={!f.proveedorId}
+                  onChange={(e) => set('flete', e.target.value)}
+                  placeholder="0"
                 />
               </div>
             </div>
+
+            <div className={s.field}>
+              <label>Escala de descuentos (se aplican en cascada)</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                {['d1', 'd2', 'd3', 'd4'].map((k) => (
+                  <input
+                    key={k}
+                    type="number" min="0" max="100" step="0.1"
+                    value={f[k]}
+                    disabled={!f.proveedorId}
+                    onChange={(e) => set(k, e.target.value)}
+                    placeholder="0"
+                  />
+                ))}
+              </div>
+            </div>
             <div className={s.hint}>
-              Crea la relación con ese proveedor de entrada: el producto ya aparece al cargar su
-              factura, y al ser el primero fija el precio. Los demás proveedores se suman después
-              en el <strong>Formato de Compra</strong> del producto.
+              En cascada, no sumados: 30 y 10 es 37%, no 40% — se cargan tal como los da el
+              proveedor. Todo esto se puede ajustar después en el Formato de Compra.
             </div>
           </>
         )}
-
-        {/* --- Tienda --- */}
-        <Seccion>Tienda</Seccion>
-        <div className={s.hint} style={{ marginBottom: 10 }}>
-          El producto aparece en el sitio web cuando tiene <strong>precio en la lista Mayorista</strong> —
-          no hay switch de publicación. El destacado y la foto se manejan en el módulo <strong>Web</strong>.
-        </div>
-        <div className={s['form-grid']}>
-          <div className={s.field}>
-            <label>Id en la tienda</label>
-            <input
-              value={f.idExterno}
-              onChange={(e) => set('idExterno', e.target.value)}
-              placeholder="Lo asigna la tienda"
-            />
-          </div>
-        </div>
-
-        <div className={cx(s.callout, s.info)}>
-          El <strong>precio de venta</strong> se define en <strong>Formato de Venta</strong>, y el costo y el
-          código del proveedor en <strong>Formato de Compra</strong>, dentro del detalle.
-          {esGranel && <> Las <strong>presentaciones</strong> se cargan en su propia pestaña.</>}
-          {' '}El <strong>stock</strong> entra por <strong>Facturación</strong>.
-        </div>
       </ModalShell>
 
       {/* Va montado ENCIMA: el formulario sigue vivo y no se pierde nada. */}
