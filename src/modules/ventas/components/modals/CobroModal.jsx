@@ -18,7 +18,7 @@ import p from '../../styles/Pos.module.css';
  *
  * Dos formas de cerrar, con su atajo:
  *  - **Liquidar (F10)**: comprobante interno (ticket), siempre al contado.
- *  - **Facturar (F7)**: comprobante fiscal; la letra la resuelve el backend
+ *  - **Facturar (F8)**: comprobante fiscal; la letra la resuelve el backend
  *    según la condición de IVA de la empresa y la del cliente. Admite contado o
  *    cuenta corriente.
  *
@@ -114,7 +114,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   /** `tipo`: 'ticket' liquida, 'factura' emite comprobante fiscal. */
   const confirmar = async (tipo) => {
     if (tipo === 'ticket' && condicionPago !== 'contado') {
-      toast('Liquidar es al contado. Para cuenta corriente, facturá (F7).', 'err');
+      toast('Liquidar es al contado. Para cuenta corriente, facturá (F8).', 'err');
       return;
     }
     if (condicionPago === 'contado' && Math.abs(faltante) > 0.01) {
@@ -166,7 +166,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'F10') { e.preventDefault(); if (puedeLiquidar) confirmar('ticket'); }
-      else if (e.key === 'F7') { e.preventDefault(); if (puedeFacturar) confirmar('factura'); }
+      else if (e.key === 'F8') { e.preventDefault(); if (puedeFacturar) confirmar('factura'); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -183,7 +183,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
         // Los botones nunca son un no-op silencioso: si no se puede cerrar,
         // `confirmar` avisa POR QUÉ (falta plata, es cta. cte., excede crédito).
         {
-          texto: enviando ? 'Registrando…' : 'Facturar · F7',
+          texto: enviando ? 'Registrando…' : 'Facturar · F8',
           clase: puedeFacturar ? 'btn-ingreso' : 'btn-ghost',
           onClick: () => confirmar('factura'),
         },

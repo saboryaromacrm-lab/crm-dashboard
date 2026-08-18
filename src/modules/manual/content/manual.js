@@ -1269,10 +1269,10 @@ export const MANUAL = [
               ['F2', 'Cobrar'],
               ['F4', 'Volver al buscador'],
               ['Ins', 'Carga rápida de producto'],
-              ['Shift + Ins', 'Búsqueda masiva (categoría / marca / producto)'],
+              ['Shift + Ins', 'Búsqueda de productos (categoría / marca / producto) — stock de TU sucursal y precio por lista'],
               ['Esc', 'Salir de la registradora a la lista (guardando)'],
               ['F10', 'Liquidar — ticket interno, al contado'],
-              ['F7', 'Facturar — comprobante fiscal'],
+              ['F8', 'Facturar — comprobante fiscal'],
               ['Alt + F5', 'Cambios de precio — **desde cualquier pantalla del sistema**'],
               ['Alt + F3', 'Existencias por sucursal — **desde cualquier pantalla del sistema**'],
             ],
@@ -1299,6 +1299,11 @@ export const MANUAL = [
             tono: 'info',
             texto: 'Esc es escalonado: con un modal abierto, ese Esc es del modal; con texto en el buscador, lo limpia. Recién sin nada de eso sale de la registradora.',
           },
+          {
+            t: 'nota',
+            tono: 'ok',
+            texto: '**LA BÚSQUEDA DE PRODUCTOS MUESTRA TU SUCURSAL (18/8/2026, pedido tuyo).** El Shift+Ins traía una columna de stock por CADA sucursal: seis columnas que empujaban el precio fuera de la pantalla, y que además invitan a prometer mercadería que está en otro local. Ahora sale **una sola: la de la caja con la que entraste** (Fontana ve Fontana). Las columnas de precio quedaron **agrupadas por modalidad: primero Minorista, después Mayorista**, y adentro de cada una por número de lista. El orden sale de la configuración —el mismo `orden` que ordena las modalidades en Formato de Venta—, así que una modalidad nueva entra sola en su lugar sin tocar código.',
+          },
         ],
       },
       {
@@ -1311,7 +1316,7 @@ export const MANUAL = [
             cols: ['Forma', 'Comprobante', 'Condición'],
             filas: [
               ['Liquidar (F10)', 'Ticket interno', 'Siempre contado'],
-              ['Facturar (F7)', 'Fiscal — la letra la resuelve el backend', 'Admite cuenta corriente'],
+              ['Facturar (F8)', 'Fiscal — la letra la resuelve el backend', 'Admite cuenta corriente'],
             ],
           },
           {
@@ -2705,6 +2710,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**18/8/2026**', '**LA BÚSQUEDA DEL POS MIRA TU SUCURSAL, Y FACTURAR PASA A F8.** Dos pedidos tuyos. (1) El Shift+Ins abría una columna de stock por cada sucursal —seis— y el precio quedaba fuera de la pantalla; ahora muestra **solo la de la caja con la que entraste** y el pie lo dice con nombre y apellido. No es solo espacio: con las seis a la vista, el cajero de Fontana termina prometiendo mercadería que está en la Distribuidora. (2) Las columnas de precio quedaron **agrupadas por modalidad, Minorista primero y Mayorista después**, y adentro por número de lista. El orden lo decide la **configuración** (el `orden` de las modalidades en Formato de Venta), no una lista escrita en el código: si mañana agregás una modalidad, entra sola donde corresponde. (3) **Facturar es F8** (antes F7) en el cobro: cambia el atajo, el cartel del botón y el mensaje que aparece cuando querés liquidar una cuenta corriente. F10 sigue siendo Liquidar.'],
               ['**18/8/2026**', '**EL PIE DE LA FACTURA DE GASTO: el IVA se calcula solo, y entran Impuestos internos, D.G.I. y D.G.R. (migración 0071).** Lo probaste y reportaste que "no suma el IVA": **el importe estaba bien, lo que faltaba era el CONCEPTO**. El renglón necesita el texto para contar, y sin él se descartaba **en silencio** —Neto en $0,00 y ninguna explicación—, así que el número terminó tipeado en la casilla del IVA y el total salió de ahí. Ahora ese caso avisa al lado del Neto y no deja guardar. Lo pedido: **el IVA se saca solo del neto** con una alícuota al lado (21 · 10,5 · **27** · sin IVA · a mano); el 27 % está porque luz, gas, agua y teléfono a responsable inscripto van a esa alícuota. Escribirlo a mano lo congela: el papel manda. En modo "ya incluyen el IVA" lo desagrega y el total no cambia. Y el pie se abrió en **tres campos propios** —Impuestos internos, Percepción D.G.I. y Percepción D.G.R.— que suman al total: separados a propósito, porque cada uno se computa después contra un impuesto distinto (D.G.R. contra Ingresos Brutos, D.G.I. contra el nacional) y los internos no se recuperan. En una sola bolsa no se puede reclamar ninguno. El detalle se ve en el gasto y el candado del gasto ya pagado también los cubre.'],
               ['**18/8/2026**', '**LA PLANILLA DE PAPEL DEL CONTROL DE STOCK.** Pedido tuyo, y era el pendiente "fase 2" de esta pantalla. Adentro del control apareció **🖨 Imprimir planilla (N)**: la hoja con membrete, alcance y sucursal, un renglón por producto con su presentación, código y unidad, el **casillero en blanco** para el lápiz y el cuadrito de tildar. Imprime **lo que muestra la pestaña** (Pendientes / Contados / Todos) y el número del botón es el del papel — el buscador no la recorta, que es el campo del lector y se vacía a cada rato. Lo que **no** lleva, a propósito: la cantidad del sistema, ni siquiera cuando el control no es ciego y la pantalla la muestra, porque un número impreso al lado del casillero es el número que se copia y ahí el control deja de controlar. Lo que **sí** lleva, también a propósito: los **apartados en negrita** con el aviso de no contarlos, que es el error que la pantalla ya evitaba y en papel se repetía. El formato se elige en **Sistema › Impresión → "Planilla del control de stock"** (arranca en A4; en rollo de 80 mm no queda lugar para escribir) y tiene vista previa.'],
               ['**18/8/2026**', '**SE CIERRA EL INGRESO DE MERCADERÍA A MANO: la mercadería entra por la factura.** Pedido tuyo. Almacén › Existencias tenía arriba a la derecha un botón **"+ Compra (ingreso)"** que sumaba stock cargando producto, cantidad y sucursal, sin papel detrás. Convivía con el circuito real —la **factura de compra**, que es la que trae el costo, el proveedor y la deuda— y esa convivencia era el problema: el mismo kilo podía entrar dos veces (una a mano y otra con la factura), el costo del producto no se actualizaba, y el proveedor quedaba sin la deuda que sí existía. **Se sacó el botón, la pantalla que abría y también la puerta del servidor** (`POST /operaciones/compra`): ya no hay forma de sumar stock salteando el papel, ni desde la pantalla ni tocando la API. Existencias queda como lo que es, **consulta pura**. Si aparece un faltante o un sobrante contando la góndola, eso es **Control de stock**; si algo se rompió o venció, **Incidencias** o **Vencimientos**. El motor de ingreso sigue vivo adentro: es el que usa la factura al confirmarse.'],

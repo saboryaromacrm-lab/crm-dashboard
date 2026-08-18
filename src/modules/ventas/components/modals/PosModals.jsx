@@ -111,12 +111,16 @@ export function CargaRapidaModal({ catalogo, config, onAgregar }) {
 
 /**
  * Para cuando el cajero no sabe el código: filtra por categoría, marca y
- * nombre, y muestra la ficha completa de cada artículo — el stock repartido
- * por sucursal y las tres listas de precio— para poder responderle al cliente
- * sin salir de la pantalla.
+ * nombre, y muestra la ficha del artículo —el stock y las listas de precio—
+ * para poder responderle al cliente sin salir de la pantalla.
+ *
+ * EL STOCK ES EL DE SU SUCURSAL Y NADA MÁS (18/8/2026, pedido del dueño). El
+ * cajero de Fontana vende lo que tiene Fontana: las otras cinco columnas eran
+ * ruido en la fila —empujaban el precio fuera de la pantalla— y encima invitan
+ * a prometer mercadería que está en otro local.
  */
 export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
-  const { closeModal, toast } = useVentas();
+  const { closeModal, toast, ctx } = useVentas();
   const [categoria, setCategoria] = useState('');
   const [marca, setMarca] = useState('');
   const [texto, setTexto] = useState('');
@@ -134,15 +138,32 @@ export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
    * Columnas de las cabeceras agrupadas. Se calculan una vez por catálogo (que
    * se pide una sola vez al abrir la caja), no por fila ni por tecla.
    */
-  const sucursalesCols = useMemo(
-    () => catalogo[0]?.stockSucursales?.map((x) => ({ sucursalId: x.sucursalId, nombre: x.nombre })) ?? [],
-    [catalogo],
-  );
-  /** Listas que aparecen como columna, en su orden de preferencia. */
+  const sucursalesCols = useMemo(() => {
+    const todas = catalogo[0]?.stockSucursales?.map((x) => ({ sucursalId: x.sucursalId, nombre: x.nombre })) ?? [];
+    // Solo la sucursal de la sesión. Si no está en el desglose (sesión rara,
+    // catálogo viejo) se muestran todas: mejor de más que una tabla sin stock.
+    const mia = todas.filter((x) => x.sucursalId === ctx.sucursalId);
+    return mia.length ? mia : todas;
+  }, [catalogo, ctx.sucursalId]);
+
+  /**
+   * Listas que aparecen como columna, **agrupadas por modalidad**: primero
+   * todo Minorista, después Mayorista (pedido del dueño). El orden sale de la
+   * configuración —`modalidadOrden`, el mismo que ordena las modalidades en
+   * Formato de Venta—, no de una lista escrita a mano acá: si mañana se agrega
+   * una modalidad, entra sola en el lugar que le corresponde. Adentro de cada
+   * modalidad manda el NÚMERO de la lista (Minorista 1, Minorista 2…), que es
+   * como se las nombra en el mostrador.
+   */
   const listasCols = useMemo(() => {
     const presentes = new Set();
     for (const i of catalogo) for (const x of i.precios || []) presentes.add(x.listaId);
-    return (listas ?? []).filter((l) => presentes.has(l.listaId));
+    return (listas ?? [])
+      .filter((l) => presentes.has(l.listaId))
+      .slice()
+      .sort((a, b) => (a.modalidadOrden ?? 0) - (b.modalidadOrden ?? 0)
+        || (a.numero ?? 0) - (b.numero ?? 0)
+        || a.listaId - b.listaId);
   }, [catalogo, listas]);
   const totalCols = 4 + sucursalesCols.length + listasCols.length;
 
@@ -276,8 +297,9 @@ export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
       </div>
 
       <div className={s.hint} style={{ marginTop: 10 }}>
-        {resultados.length} resultado(s). El stock se abre por sucursal y el precio por lista;
-        un <strong>—</strong> en una lista significa que ese producto no la tiene.
+        {resultados.length} resultado(s). El stock es el de <strong>tu sucursal</strong>
+        {sucursalesCols.length === 1 ? ` (${sucursalesCols[0].nombre})` : ''} y el precio se abre
+        por lista; un <strong>—</strong> en una lista significa que ese producto no la tiene.
       </div>
     </ModalShell>
   );
