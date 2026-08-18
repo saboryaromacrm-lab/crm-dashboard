@@ -52,6 +52,7 @@ const FILTROS = [
   ['nc', 'Notas de crédito'],
   ['gasto', 'Gastos'],
   ['pago', 'Pagos'],
+  ['flete', 'Solo fletes adelantados'],
   ['ajuste', 'Ajustes manuales'],
 ];
 
@@ -88,6 +89,9 @@ const pasaFiltroTipo = (m, f) => {
   if (f === 'deuda') return m.debe > EPS;
   if (f === 'haber') return m.haber > EPS;
   if (f === 'ajuste') return m.kind === 'ajuste_debe' || m.kind === 'ajuste_haber';
+  // El flete es un pago con una naturaleza propia, no un tipo de movimiento
+  // aparte: filtrarlo responde "¿cuánto le adelanté de fletes a este proveedor?".
+  if (f === 'flete') return m.kind === 'pago' && !!m.esFlete;
   return m.kind === f;
 };
 
@@ -233,7 +237,16 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
             ? `${money(d.totales.ajustesDebe)} al debe · ${money(d.totales.ajustesHaber)} al haber`
             : '—'}
         </Di>
-        <Di label="Pagado">{d.totales.pagos > EPS ? `− ${money(d.totales.pagos)}` : '—'}</Di>
+        <Di label="Pagado">
+          {d.totales.pagos > EPS ? `− ${money(d.totales.pagos)}` : '—'}
+          {/* El flete va DENTRO de lo pagado, no se suma aparte: es lo que
+              explica por qué a una factura de $100.000 se le pagaron $80.000. */}
+          {d.totales.fletes > EPS && (
+            <div className={s.hint} style={{ margin: 0 }}>
+              de eso, {money(d.totales.fletes)} en fletes adelantados
+            </div>
+          )}
+        </Di>
         <Di label="Saldo"><Saldo valor={d.saldo}><strong>{money(d.saldo)}</strong></Saldo></Di>
       </div>
       {d.totales.gastos > EPS && (

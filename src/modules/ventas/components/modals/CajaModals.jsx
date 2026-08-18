@@ -98,6 +98,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
   const [tipoProveedor, setTipoProveedor] = useState('');
   const [proveedorId, setProveedorId] = useState('');
   const [referencia, setReferencia] = useState('');
+  const [esFlete, setEsFlete] = useState(false);
 
   const esPagoProveedor = tipo === 'egreso' && destino === 'proveedor';
 
@@ -118,6 +119,9 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
     setTipoProveedor(valor);
     // El proveedor elegido puede no existir en la lista nueva: se limpia.
     setProveedorId('');
+    // El flete que el proveedor descuenta solo existe del lado de mercadería:
+    // el que se le paga a un fletero propio es un gasto y va por su módulo.
+    if (valor !== 'mercaderia') setEsFlete(false);
   };
 
   const elegido = proveedores.find((pv) => pv.id === Number(proveedorId));
@@ -138,10 +142,13 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
           usuarioId: ctx.usuarioId ?? undefined,
           concepto: motivo.trim(),
           referencia: referencia.trim(),
+          esFlete: esFlete || undefined,
         }),
-        tipoProveedor === 'mercaderia'
-          ? 'Pago registrado. Queda a cuenta en Compras › Pagos en sucursal hasta que se cargue la factura.'
-          : 'Pago registrado. Queda a cuenta en Gastos › Pagos en sucursal hasta que se cargue el comprobante.',
+        esFlete
+          ? 'Flete registrado. Se le descuenta de su factura cuando se cargue.'
+          : tipoProveedor === 'mercaderia'
+            ? 'Pago registrado. Queda a cuenta en Compras › Pagos en sucursal hasta que se cargue la factura.'
+            : 'Pago registrado. Queda a cuenta en Gastos › Pagos en sucursal hasta que se cargue el comprobante.',
         { recargar: false },
       );
       if (ok) onChange?.();
@@ -227,6 +234,26 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
               egreso no se puede aplicar después a una factura.
             </div>
           </div>
+
+          {/* EL FLETE QUE EL PROVEEDOR DESCUENTA. Llega la mercadería por
+              $100.000, el flete sale $20.000 y se le paga al fletero del cajón:
+              esa plata NO es un gasto nuestro, es de la cuenta del proveedor,
+              que la reconoce restándola de su factura. Tildarlo es lo que hace
+              que después se pueda tomar en la factura sin que el candado del
+              modo "por facturas" lo rechace por ser un pago parcial. */}
+          {tipoProveedor === 'mercaderia' && (
+            <div className={s.field}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
+                <input type="checkbox" checked={esFlete} onChange={(e) => setEsFlete(e.target.checked)} />
+                Es el flete de esta entrega
+              </label>
+              <div className={s.hint} style={{ margin: '6px 0 0' }}>
+                Tildalo si el flete lo paga el proveedor y te lo descuenta de la factura: se le
+                resta de lo que se le debe. Si el flete es nuestro y nadie lo reintegra, dejalo
+                sin tildar — eso es un gasto y va por Gastos.
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -251,7 +278,9 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
         <label>{esPagoProveedor ? 'Concepto' : 'Motivo'} {!esPagoProveedor && <span className={s.req}>*</span>}</label>
         <input
           value={motivo}
-          placeholder={esPagoProveedor ? 'Ej: pedido de gaseosas · arreglo del baño' : 'Ej: refuerzo de cambio'}
+          placeholder={esFlete
+            ? 'Ej: flete del pedido del martes · transportista'
+            : esPagoProveedor ? 'Ej: pedido de gaseosas · arreglo del baño' : 'Ej: refuerzo de cambio'}
           onChange={(e) => setMotivo(e.target.value)}
         />
       </div>
@@ -259,10 +288,13 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
       {esPagoProveedor && (
         <div className={s.callout}>
           Se registra el <strong>egreso de caja</strong> con la hora exacta y tu nombre, y queda
-          como pago a cuenta de {elegido ? <strong>{elegido.nombre}</strong> : 'ese proveedor'}
+          {esFlete ? ' como flete a cuenta de ' : ' como pago a cuenta de '}
+          {elegido ? <strong>{elegido.nombre}</strong> : 'ese proveedor'}
           {tipoProveedor === 'mercaderia' && <> en <strong>Compras › Pagos en sucursal</strong></>}
           {tipoProveedor === 'gastos' && <> en <strong>Gastos › Pagos en sucursal</strong></>}.
-          El administrador lo aplica cuando carga {tipoProveedor === 'gastos' ? 'el comprobante del gasto' : 'la factura'}.
+          {esFlete
+            ? ' Al cargar la factura de esa entrega se toma este flete y el proveedor queda debiendo el resto.'
+            : ` El administrador lo aplica cuando carga ${tipoProveedor === 'gastos' ? 'el comprobante del gasto' : 'la factura'}.`}
         </div>
       )}
     </ModalShell>

@@ -107,7 +107,10 @@ export function PagosSucursalTab({ proveedorId = '' }) {
             >
               <td>{fmtFechaHora(x.fecha)}</td>
               <td>
-                <div>{x.proveedorNombre}</div>
+                <div>
+                  {x.esFlete && <><Pill pill="est-recibida" label="Flete" />{' '}</>}
+                  {x.proveedorNombre}
+                </div>
                 {x.concepto && <div className={s.hint} style={{ margin: 0 }}>{x.concepto}</div>}
               </td>
               <td>
@@ -144,6 +147,12 @@ export function PagosSucursalTab({ proveedorId = '' }) {
           );
         })}
       </Table>
+
+      <div className={s.hint}>
+        Los marcados <strong>Flete</strong> son la plata que se le adelantó al fletero por cuenta
+        del proveedor: al cargar la factura de esa entrega se toman igual que cualquier otro pago
+        y el proveedor queda debiendo el resto.
+      </div>
 
       <div className={s.hint}>
         Un pago se <strong>aplica cargando la factura</strong> que lo explica: en el alta del

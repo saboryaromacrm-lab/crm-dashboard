@@ -5,7 +5,7 @@ import { money, num, fmtFecha, isoDate } from '../../domain/format.js';
 import { TIPOS_COMPROBANTE, ESTADOS_COMPROBANTE, LETRAS_COMPROBANTE, CONDICIONES_PAGO } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
-import { Table, Btn, s } from '../ui.jsx';
+import { Table, Btn, Pill, s } from '../ui.jsx';
 
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 /** Tres decimales: los kg de una bolsa vienen con coma (22,68 kg). */
@@ -733,6 +733,21 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   }, [pagosACuenta, sucId]);
   const aCuentaSuc = pagosOfrecidos.reduce((a, x) => a + x.saldo, 0);
   const aCuentaOtras = r2(aCuenta - aCuentaSuc);
+  /** Los fletes esperando: se nombran aparte porque no son "un pago a cuenta"
+   *  cualquiera — son plata del proveedor que él descuenta de esta factura. */
+  const fletesOfrecidos = useMemo(() => pagosOfrecidos.filter((p) => p.esFlete), [pagosOfrecidos]);
+  /*
+   * EL FLETE QUE SE TOMA POR MENOS DE LO QUE SALIÓ DEL CAJÓN. Pasa cuando el
+   * proveedor reconoce menos de lo que se pagó (pagamos $20.000 y él admite
+   * $18.000): la diferencia NO es plata suya, es un costo que absorbemos. El
+   * sistema no puede decidirlo solo —hay que mirar el papel—, pero tampoco lo
+   * deja pasar en silencio: si no se avisara, quedaría un resto sin aplicar
+   * que nadie vuelve a mirar y el saldo del proveedor cerraría mal.
+   */
+  const fleteNoReconocido = useMemo(() => r2(fletesOfrecidos.reduce((a, p) => {
+    const tomado = tomados[p.id] != null ? r2(tomados[p.id]) : null;
+    return a + (tomado != null && p.saldo - tomado > 0.009 ? p.saldo - tomado : 0);
+  }, 0)), [fletesOfrecidos, tomados]);
 
   /**
    * Tomar un pago es una DECISIÓN, no un default: a veces la factura que se
@@ -1781,6 +1796,10 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
                 sin aplicar. Tildá los que esta factura explica: tomarlos es lo que los{' '}
                 <strong>aplica</strong> — no vuelve a mover plata. Si esta factura se pagó por otro
                 lado, no tildes nada y usá «Se paga ahora».
+                {fletesOfrecidos.length > 0 && (
+                  <> <strong>Hay flete esperando</strong>: si vino con esta entrega, tomalo —
+                  el proveedor lo descuenta de esta misma factura y queda debiendo el resto.</>
+                )}
               </div>
               <Table
                 cols={[
@@ -1801,6 +1820,10 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
                         />
                       </td>
                       <td>
+                        {/* El flete se distingue del resto: no es "algo que se
+                            le adelantó", es plata del proveedor que él descuenta
+                            de esta misma factura. */}
+                        {p.esFlete && <><Pill pill="est-recibida" label="Flete" />{' '}</>}
                         {fmtFecha(p.fecha)}
                         {p.concepto && <div className={s.hint} style={{ margin: 0 }}>{p.concepto}</div>}
                       </td>
@@ -1830,6 +1853,16 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
                 })}
               </Table>
             </>
+          )}
+
+          {fleteNoReconocido > 0.009 && (
+            <div className={cx(s.callout, s.warn)}>
+              Del flete quedan <strong>{money(fleteNoReconocido)}</strong> sin tomar. Si el
+              proveedor reconoció menos de lo que se le pagó al fletero, esa diferencia es un
+              costo nuestro: cerrala con un <strong>ajuste DEBE</strong> en su estado de cuenta
+              (Proveedores › Estados de cuenta › + Ajuste), con el motivo escrito. Si en cambio
+              te olvidaste de tomarlo entero, corregí el importe acá.
+            </div>
           )}
 
           {/* Pagos que esperan en OTRAS sucursales: se avisan, no se ofrecen —
@@ -2380,7 +2413,11 @@ export function ComprobanteDetalleModal({ id }) {
             {(c.pagos ?? []).map((p) => (
               <tr key={p.pagoId}>
                 <td>{fmtFecha(p.fecha)}</td>
-                <td>{p.medio}</td>
+                <td>
+                  {/* Que se pueda leer de un vistazo por qué a esta factura se
+                      le pagó menos: parte fue el flete adelantado al fletero. */}
+                  {p.esFlete ? <Pill pill="est-recibida" label="Flete" /> : p.medio}
+                </td>
                 <td>
                   {p.cajaSesionId
                     ? `${p.sucursalNombre || 'sucursal'} · turno #${p.cajaSesionId}${p.usuarioNombre ? ` · ${p.usuarioNombre}` : ''}`

@@ -147,6 +147,7 @@ export function TomarPagosComprobanteModal({ comprobanteId, proveedorId, onChang
         {lista.map((x) => (
           <tr key={x.id}>
             <td>
+              {x.esFlete && <><Pill pill="est-recibida" label="Flete" />{' '}</>}
               {fmtFechaHora(x.fecha)}
               {x.concepto && <div className={s.hint} style={{ margin: 0 }}>{x.concepto}</div>}
             </td>
@@ -237,7 +238,10 @@ export function PagoSucursalDetalleModal({ pagoId, onChange }) {
         <Di label="Importe"><strong>{money(pago.importe)}</strong></Di>
         <Di label="Sin aplicar">{money(pago.saldo)}</Di>
         <Di label="Referencia">{pago.referencia || '—'}</Di>
-        <Di label="Bandeja">Compras (mercadería)</Di>
+        <Di label="Bandeja">
+          Compras (mercadería)
+          {pago.esFlete && <div className={s.hint} style={{ margin: 0 }}>Flete que el proveedor descuenta</div>}
+        </Di>
       </div>
 
       <div className={s['section-title']}>Aplicado a</div>
