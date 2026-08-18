@@ -3,15 +3,22 @@ import { useProductos } from '../context/ProductosContext.jsx';
 import { money } from '../domain/format.js';
 import { ESTADOS_STOCK } from '../domain/constants.js';
 import { sucursalOptions, productoOptions } from '../components/selectOptions.jsx';
-import { Table, PanelHead, TipoBadge, StockPill, Btn, usePaginado, s } from '../components/ui.jsx';
+import { Table, PanelHead, TipoBadge, StockPill, usePaginado, s } from '../components/ui.jsx';
 
 /**
  * Existencias es CONSULTA pura: acá se mira el stock, no se opera. Vender es
  * del POS, mover mercadería es de Transferencias y las anomalías se cargan en
  * Incidencias — cada acción vive en su circuito, con sus validaciones.
+ *
+ * Tampoco se ingresa mercadería (18/8/2026, pedido del dueño): la mercadería
+ * entra por la FACTURA en Compras, que es la que trae el costo, el proveedor y
+ * la deuda. El botón "+ Compra (ingreso)" que había acá sumaba stock sin papel
+ * detrás: el mismo kilo podía entrar dos veces —una a mano y otra con la
+ * factura— y el costo quedaba sin actualizar. Para el faltante o el sobrante
+ * que aparece contando la góndola está Control de stock.
  */
 export function ExistenciasPanel() {
-  const { store, isAdmin, openModal } = useProductos();
+  const { store } = useProductos();
   const [sucF, setSucF] = useState('');
   const [prodF, setProdF] = useState('');
   const [estadoF, setEstadoF] = useState('');
@@ -47,7 +54,6 @@ export function ExistenciasPanel() {
       <PanelHead
         title="Existencias · Movimientos de stock"
         desc="Stock real por Producto × Sucursal × Presentación × Estado. Toda baja o alta genera un movimiento."
-        actions={isAdmin && <Btn variant="btn-ingreso" onClick={() => openModal('compra', {})}>+ Compra (ingreso)</Btn>}
       />
       <div className={s.toolbar}>
         <select className={s['select-inline']} value={sucF} onChange={(e) => setSucF(e.target.value)}>

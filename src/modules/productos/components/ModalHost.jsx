@@ -7,7 +7,7 @@ import { ModalShell } from './Modal.jsx';
 import { s } from './ui.jsx';
 import { ProductoFormModal, DetalleProductoModal, FraccionadoModal } from './modals/ProductoModals.jsx';
 import {
-  CompraModal, VenderModal, FraccionarModal, CorregirFraccionadoModal, MovimientoModal,
+  VenderModal, FraccionarModal, CorregirFraccionadoModal, MovimientoModal,
 } from './modals/StockModals.jsx';
 import { TransferenciaModal, DetalleTransferModal, RecibirTransferModal, PrepararTransferModal } from './modals/TransferModals.jsx';
 import { IncidenciaModal, ResolverIncidenciaModal, DetalleIncidenciaModal } from './modals/IncidenciaModals.jsx';
@@ -238,7 +238,7 @@ const REGISTRY = {
   // La pantalla propia del fraccionado (el Ajo X500G): resumen + Producto madre.
   fraccionado: FraccionadoModal,
   importarCatalogo: ImportarCatalogoModal,
-  compra: CompraModal,
+  /* Sin `compra`: la mercadería entra por la factura en Compras (18/8/2026). */
   vender: VenderModal,
   fraccionar: FraccionarModal,
   /** "Puse 20 paquetes y son 19": ajusta los paquetes Y el granel de una vez. */

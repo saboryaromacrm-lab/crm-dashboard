@@ -4,74 +4,14 @@ import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num } from '../../domain/format.js';
 import { TIPOS_MOV } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
-import { sucursalOptions, productoOptions, presentacionOptions, proveedorOptions } from '../selectOptions.jsx';
+import { sucursalOptions, presentacionOptions } from '../selectOptions.jsx';
 import { s } from '../ui.jsx';
 
-/* ============================== COMPRA ============================== */
-export function CompraModal({ prodId }) {
-  const { store, act, closeModal, sucOperativa } = useProductos();
-  const [pid, setPid] = useState(prodId ?? store.state.productos[0]?.id ?? '');
-  const [sucId, setSucId] = useState(sucOperativa() ?? '');
-  const [cant, setCant] = useState('');
-  const [venc, setVenc] = useState('');
-  const [provId, setProvId] = useState('');
-
-  const prod = store.getProducto(parseInt(pid, 10));
-  const unidad = prod && prod.tipo === 'granel' ? 'kg' : 'u.';
-
-  const registrar = () =>
-    act(
-      store.opCompra({
-        productoId: parseInt(pid, 10),
-        sucursalId: parseInt(sucId, 10),
-        cantidad: cant,
-        // Mediodía local: `yyyy-mm-dd` suelto se lee como UTC y retrocede un día.
-        fechaVencimiento: venc ? `${venc}T12:00:00` : null,
-        proveedorId: provId ? parseInt(provId, 10) : null,
-      }),
-      'Compra registrada.',
-    );
-
-  return (
-    <ModalShell
-      title="Compra / ingreso de mercadería"
-      onClose={closeModal}
-      footer={[
-        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Registrar compra', clase: 'btn-primary', onClick: registrar },
-      ]}
-    >
-      <div className={s['form-grid']}>
-        <div className={s.field}>
-          <label>Producto <span className={s.req}>*</span></label>
-          <select value={pid} onChange={(e) => setPid(e.target.value)}>{productoOptions(store, false)}</select>
-        </div>
-        <div className={s.field}>
-          <label>Sucursal de ingreso <span className={s.req}>*</span></label>
-          <select value={sucId} onChange={(e) => setSucId(e.target.value)}>{sucursalOptions(store, false)}</select>
-          <div className={s.hint}>La mercadería ingresa normalmente por la Distribuidora.</div>
-        </div>
-      </div>
-      <div className={s['form-grid']}>
-        <div className={s.field}>
-          <label>Cantidad ({unidad}) <span className={s.req}>*</span></label>
-          {/* step="any": decimales libres pero las flechas suben de a 1 (con
-              0.001 el spinner hacía 1 → 1.001). */}
-          <input type="number" min="0" step="any" value={cant} placeholder="Ej: 25" onChange={(e) => setCant(e.target.value)} />
-        </div>
-        <div className={s.field}>
-          <label>Proveedor</label>
-          <select value={provId} onChange={(e) => setProvId(e.target.value)}>{proveedorOptions(store)}</select>
-        </div>
-      </div>
-      <div className={s.field}>
-        <label>Vencimiento (informativo)</label>
-        <input type="date" value={venc} onChange={(e) => setVenc(e.target.value)} />
-        <div className={s.hint}>Se registra en el historial del movimiento.</div>
-      </div>
-    </ModalShell>
-  );
-}
+/*
+ * SIN modal de compra (18/8/2026, pedido del dueño): la mercadería entra por la
+ * FACTURA en Compras, que es la que trae el costo, el proveedor y la deuda. El
+ * ingreso a mano sumaba stock sin papel detrás y el costo quedaba viejo.
+ */
 
 /* ============================== VENDER ============================== */
 export function VenderModal({ prodId, sucId: sucInit, pre = {} }) {

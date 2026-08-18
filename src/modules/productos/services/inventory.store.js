@@ -586,7 +586,7 @@ const crearProveedor = (o) => _mutate(() => httpClient.post('/proveedores', o));
 const editarProveedor = (id, o) => _mutate(() => httpClient.patch('/proveedores/' + id, o));
 const eliminarProveedor = (id) => _mutate(() => httpClient.delete('/proveedores/' + id));
 
-const opCompra = (o) => _mutate(() => httpClient.post('/operaciones/compra', o));
+/* Sin `opCompra`: el ingreso de mercadería es la factura de Compras (18/8/2026). */
 const opVenta = (o) => _mutate(() => httpClient.post('/operaciones/venta', o));
 const opFraccionar = (o) => _mutate(() => httpClient.post('/operaciones/fraccionar', o));
 
@@ -926,7 +926,7 @@ export const inventoryStore = {
   getProducto, getSucursal, getProveedor, getUsuario, presDe, distribuidora,
   unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry,
   rolActual, can, tiposMovPermitidos, setCtx,
-  opCompra, opFraccionar, opCorregirFraccionado, opVenta, opSimple,
+  opFraccionar, opCorregirFraccionado, opVenta, opSimple,
   avanzarTransferencia, cancelarTransferencia,
   abrirBorradorPedido, guardarBorradorPedido, enviarBorradorPedido, descartarBorradorPedido,
   listarConteos, crearConteo, getConteo, contarItemConteo, cerrarConteo, reabrirConteo,
