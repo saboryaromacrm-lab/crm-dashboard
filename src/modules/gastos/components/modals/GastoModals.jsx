@@ -55,8 +55,24 @@ export function GastoFormModal({ gastoId, onChange }) {
     condicionPago: 'contado',
     vencimiento: '',
     iva: '',
+    /* El pie abierto (0071): los tres del papel, cada uno a su columna. */
+    impInternos: '',
+    percDgi: '',
+    percDgr: '',
+    /* Solo para un gasto viejo con `otros` sin desglosar: ver `sinDetallar`. */
+    otros: '',
     observaciones: '',
   });
+  /**
+   * LA ALÍCUOTA CON LA QUE SE CALCULA EL IVA (0071, pedido del dueño: "poner el
+   * neto y que calcule solo el IVA"). `manual` = lo escribió a mano y no se
+   * vuelve a tocar — el papel manda, y hay facturas que mezclan alícuotas o
+   * traen un redondeo propio de un centavo.
+   *
+   * 27% no es un adorno: la luz, el gas, el agua y el teléfono a un responsable
+   * inscripto van a 27, y son justo los gastos de todos los meses.
+   */
+  const [alicuota, setAlicuota] = useState('21');
   /** Los renglones: concepto + monto final. Siempre queda al menos una fila. */
   const [items, setItems] = useState([{ concepto: '', monto: '' }]);
 
@@ -81,6 +97,13 @@ export function GastoFormModal({ gastoId, onChange }) {
       condicionPago: original.condicionPago,
       vencimiento: original.vencimiento ? String(original.vencimiento).slice(0, 10) : '',
       iva: original.iva || '',
+      impInternos: original.impInternos || '',
+      percDgi: original.percDgi || '',
+      percDgr: original.percDgr || '',
+      /* Lo que quedó en `otros` sin detallar (gasto viejo, o generado por la
+       * API): se despeja restando los tres, y el campo aparece solo si hay. */
+      otros: r2((original.otros || 0) - (original.impInternos || 0)
+        - (original.percDgi || 0) - (original.percDgr || 0)) || '',
       observaciones: original.observaciones ?? '',
     });
     /* Un gasto viejo no tiene renglones: se le arma UNO con su descripción y
@@ -97,14 +120,28 @@ export function GastoFormModal({ gastoId, onChange }) {
     } else {
       setIvaAparte(false);
     }
+    /* Al EDITAR nunca se recalcula el IVA: el que está guardado salió de un
+     * papel. Elegir una alícuota lo recalcula, pero es una decisión de quien
+     * edita, no algo que pase solo al abrir. */
+    setAlicuota('manual');
   }, [original]);
 
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const setItem = (i, k) => (e) => setItems((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)));
   const filasValidas = items.filter((i) => i.concepto.trim() && Number(i.monto) > 0);
+  /**
+   * UN IMPORTE SIN CONCEPTO NO SE SUMA — y hasta hoy no lo decía nadie: el
+   * renglón se descartaba en silencio, el Neto se quedaba en $0,00 y el que
+   * cargaba no tenía forma de saber por qué. Es el caso real que reportó el
+   * dueño. Ahora se avisa al lado del Neto y el guardado se planta.
+   */
+  const importeSinConcepto = items.some((i) => !i.concepto.trim() && Number(i.monto) > 0);
   /** La suma de los renglones: el TOTAL en modo final, el NETO en modo aparte. */
   const suma = r2(filasValidas.reduce((a, i) => a + Number(i.monto), 0));
-  const total = ivaAparte ? r2(suma + (Number(f.iva) || 0)) : suma;
+  /** El pie: impuestos internos + percepciones. SIEMPRE suma, en los dos modos. */
+  const extras = r2((Number(f.impInternos) || 0) + (Number(f.percDgi) || 0)
+    + (Number(f.percDgr) || 0) + (Number(f.otros) || 0));
+  const total = r2((ivaAparte ? suma + (Number(f.iva) || 0) : suma) + extras);
 
   /**
    * LA LETRA VIENE DEL PROVEEDOR. Al elegirlo, si su ficha dice qué letra
@@ -205,9 +242,37 @@ export function GastoFormModal({ gastoId, onChange }) {
   /** Con pagos registrados solo se tocan los campos descriptivos (lo dice el cartel). */
   const bloqueado = editando && original?.pagado > 0.009;
 
+  /**
+   * EL IVA SE CALCULA SOLO (0071). Con una alícuota elegida, cada vez que
+   * cambian los conceptos o el modo, el IVA se rehace:
+   *   · montos NETOS (factura A): IVA = neto × alícuota, y suma al total.
+   *   · montos FINALES (ticket, B/C): el IVA ya está adentro, así que se
+   *     DESAGREGA (total − total/(1+alícuota)) y el total no se mueve.
+   * `manual` apaga todo esto y no vuelve a tocar el campo.
+   */
+  useEffect(() => {
+    if (alicuota === 'manual' || bloqueado) return;
+    const r = Number(alicuota) / 100;
+    const calc = ivaAparte ? r2(suma * r) : r2(suma - suma / (1 + r));
+    const texto = calc > 0 ? String(calc) : '';
+    setF((x) => (String(x.iva) === texto ? x : { ...x, iva: texto }));
+  }, [suma, alicuota, ivaAparte, bloqueado]);
+
+  /** Tocar el IVA a mano manda: el papel gana sobre la cuenta. */
+  const setIvaAMano = (e) => {
+    setAlicuota('manual');
+    setF((x) => ({ ...x, iva: e.target.value }));
+  };
+
   const guardar = async () => {
     if (guardando) return;
     if (!f.categoriaId) { toast('Elegí el rubro al que se imputa.', 'err'); return; }
+    // Antes que "cargá un concepto": si YA hay un importe escrito, el problema
+    // no es que falte cargar algo sino que lo cargado no se está sumando.
+    if (importeSinConcepto) {
+      toast('Hay un importe sin concepto: escribí de qué es o el renglón no se suma.', 'err');
+      return;
+    }
     if (!filasValidas.length) { toast('Cargá al menos un concepto con su monto.', 'err'); return; }
     if (!(total > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return; }
     // En modo aparte el IVA CAMBIA el total, así que el error corta antes de
@@ -263,6 +328,13 @@ export function GastoFormModal({ gastoId, onChange }) {
         items: filasValidas.map((i) => ({ concepto: i.concepto.trim(), monto: r2(i.monto) })),
         iva: r2(f.iva),
         ivaAparte,
+        /* El pie abierto (0071). Van SIEMPRE los cuatro, incluso en 0: si un
+         * campo no viaja, el servidor conserva el guardado y sacarle una
+         * percepción a un gasto sería imposible. */
+        impInternos: r2(f.impInternos),
+        percDgi: r2(f.percDgi),
+        percDgr: r2(f.percDgr),
+        otros: r2(f.otros),
       }),
       // "Se paga ahora" cubre EL RESTO: lo que los pagos tomados no explican.
       ...(pagaAhora && !editando && resto > 0.009
@@ -485,47 +557,99 @@ export function GastoFormModal({ gastoId, onChange }) {
         </div>
       )}
 
-      {/* El pie, como el del papel. En modo aparte el IVA SE SUMA (neto + IVA
-          = total); en modo incluido es el desglose informativo de siempre. */}
-      {ivaAparte ? (
-        <div className={s['form-grid']}>
-          <div className={s.field}>
-            <label>Neto (suma de conceptos)</label>
-            <input value={money(suma)} readOnly tabIndex={-1} />
-          </div>
-          <div className={s.field}>
-            <label>IVA (del pie de la factura)</label>
-            <input
-              type="number" min="0" step="0.01" value={f.iva} onChange={set('iva')}
-              placeholder="0,00" disabled={bloqueado}
-            />
-            <div className={s.hint} style={{ margin: '6px 0 0' }}>
-              Copialo tal cual del papel: se suma al total y cuadra centavo a centavo.
+      {/* ---- El pie, como el del papel ----------------------------------
+          Neto · IVA (calculado por alícuota, editable) · impuestos internos y
+          percepciones · Total. En modo "netos" el IVA SE SUMA; en modo
+          "finales" ya está adentro y solo se desagrega. El resto del pie suma
+          en los dos modos: se liquida abajo del subtotal. */}
+      <div className={s['section-title']}>Pie de la factura</div>
+      <div className={s['form-grid']}>
+        <div className={s.field}>
+          <label>{ivaAparte ? 'Neto (suma de conceptos)' : 'Subtotal (suma de conceptos)'}</label>
+          <input value={money(suma)} readOnly tabIndex={-1} />
+          {importeSinConcepto && (
+            <div className={s.hint} style={{ margin: '6px 0 0', color: 'var(--crm-color-danger)', fontWeight: 700 }}>
+              ⚠ Hay un importe sin concepto: escribí de qué es o no se suma.
             </div>
+          )}
+        </div>
+        <div className={s.field}>
+          <label>IVA</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {/* La alícuota primero: es lo que se elige, el número sale solo. */}
+            <select
+              value={alicuota}
+              onChange={(e) => setAlicuota(e.target.value)}
+              disabled={bloqueado}
+              style={{ width: 118, flex: '0 0 auto' }}
+              aria-label="Alícuota de IVA"
+            >
+              <option value="21">21 %</option>
+              <option value="10.5">10,5 %</option>
+              <option value="27">27 %</option>
+              <option value="0">Sin IVA</option>
+              <option value="manual">A mano</option>
+            </select>
+            <input
+              type="number" min="0" step="0.01" value={f.iva} onChange={setIvaAMano}
+              placeholder="0,00" disabled={bloqueado} style={{ flex: 1, textAlign: 'right' }}
+            />
           </div>
-          <div className={s.field}>
-            <label>Total</label>
-            <input value={money(total)} readOnly tabIndex={-1} />
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            {alicuota === 'manual'
+              ? 'A mano: se copia tal cual del papel.'
+              : ivaAparte
+                ? `Se calcula sobre el neto y se suma al total. Si el papel dice otro número, escribilo: manda el papel.`
+                : `Se desagrega de los montos (ya lo tienen adentro): no cambia el total.`}
+            {' '}Luz, gas, agua y teléfono a responsable inscripto van al 27 %.
           </div>
         </div>
-      ) : (
-        <div className={s['form-grid']}>
+        <div className={s.field}>
+          <label>Total</label>
+          <input value={money(total)} readOnly tabIndex={-1} />
+        </div>
+      </div>
+
+      {/* Los tres del pie. Van aparte del IVA porque terminan en lugares
+          distintos: D.G.R. se computa contra Ingresos Brutos, D.G.I. contra el
+          impuesto nacional, y los internos no se recuperan — son costo. */}
+      <div className={s['form-grid']}>
+        <div className={s.field}>
+          <label>Impuestos internos</label>
+          <input
+            type="number" min="0" step="0.01" value={f.impInternos}
+            onChange={set('impInternos')} placeholder="0,00" disabled={bloqueado}
+          />
+        </div>
+        <div className={s.field}>
+          <label>Percepción D.G.I.</label>
+          <input
+            type="number" min="0" step="0.01" value={f.percDgi}
+            onChange={set('percDgi')} placeholder="0,00" disabled={bloqueado}
+          />
+        </div>
+        <div className={s.field}>
+          <label>Percepción D.G.R. (Ingresos Brutos)</label>
+          <input
+            type="number" min="0" step="0.01" value={f.percDgr}
+            onChange={set('percDgr')} placeholder="0,00" disabled={bloqueado}
+          />
+        </div>
+        {/* Solo aparece si el gasto YA traía algo en la bolsa vieja `otros`:
+            sin este campo, editarlo lo borraría y el total cambiaría solo. */}
+        {Number(f.otros) > 0.009 && (
           <div className={s.field}>
-            <label>IVA incluido (si la factura lo discrimina)</label>
+            <label>Otros (sin detallar)</label>
             <input
-              type="number" min="0" step="0.01" value={f.iva} onChange={set('iva')}
-              placeholder="Opcional" disabled={bloqueado}
+              type="number" min="0" step="0.01" value={f.otros}
+              onChange={set('otros')} placeholder="0,00" disabled={bloqueado}
             />
             <div className={s.hint} style={{ margin: '6px 0 0' }}>
-              Informativo: no cambia el total, ya está adentro de los montos.
+              Venía cargado junto, antes de que el pie se abriera. Repartilo arriba si sabés de qué era.
             </div>
           </div>
-          <div className={s.field}>
-            <label>Total</label>
-            <input value={money(total)} readOnly tabIndex={-1} />
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ---- Tomar pagos a cuenta: la puerta del caso "la cajera ya pagó" ---- */}
       {!editando && !!f.proveedorId && (pagosOfrecidos.length > 0 || aCuentaOtras > 0.009) && (
@@ -770,7 +894,15 @@ export function DetalleGastoModal({ gastoId, onChange }) {
       <div className={s['detalle-grid']}>
         <Di label="Neto">{money(g.neto)}</Di>
         <Di label="IVA">{money(g.iva)}</Di>
-        <Di label="Otros">{money(g.otros)}</Di>
+        {/* El pie abierto (0071). Cada uno solo si tiene importe: un detalle en
+            $0,00 repetido cuatro veces tapa lo que sí pasó. `Otros` aparece
+            únicamente cuando queda algo sin detallar. */}
+        {g.impInternos > 0.009 && <Di label="Impuestos internos">{money(g.impInternos)}</Di>}
+        {g.percDgi > 0.009 && <Di label="Percepción D.G.I.">{money(g.percDgi)}</Di>}
+        {g.percDgr > 0.009 && <Di label="Percepción D.G.R.">{money(g.percDgr)}</Di>}
+        {r2(g.otros - g.impInternos - g.percDgi - g.percDgr) > 0.009 && (
+          <Di label="Otros">{money(r2(g.otros - g.impInternos - g.percDgi - g.percDgr))}</Di>
+        )}
         <Di label="Total"><strong>{money(g.total)}</strong></Di>
         <Di label="Pagado">{money(g.pagado)}</Di>
         <Di label="Saldo"><Saldo valor={g.saldo}>{money(g.saldo)}</Saldo></Di>
