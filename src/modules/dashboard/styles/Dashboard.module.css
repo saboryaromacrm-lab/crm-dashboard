@@ -1,7 +1,8 @@
 /* ==========================================================================
-   DASHBOARD — mobile-first module styles (CSS Module, scoped to this module).
-   Uses only design tokens; no hard-coded colors. Cards stack on mobile and
-   flow into a responsive grid on larger screens.
+   DASHBOARD — estilos del módulo (CSS Module, con alcance propio).
+   La pantalla es el resumen del inventario: sus tarjetas y tablas vienen del
+   subsistema de inventario y traen su propio CSS. Acá queda solo el armado de
+   la página, que es lo único que le pertenece.
    ========================================================================== */
 
 .page {
@@ -10,82 +11,10 @@
   gap: var(--crm-space-6);
 }
 
-/* ---- Metric cards grid ----
-   Mobile: 1 column (stacked). Auto-fit fills 2 then 4 columns as space allows. */
-.metricsGrid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--crm-space-4);
-}
-
-@media (min-width: 480px) {
-  .metricsGrid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (min-width: 1024px) {
-  .metricsGrid {
-    grid-template-columns: repeat(4, 1fr);
-  }
-}
-
-/* ---- Metric card ---- */
-.metricCard {
-  position: relative;
-  overflow: hidden;
-  padding: var(--crm-space-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--crm-space-2);
-  border-radius: var(--crm-radius-lg) !important;
-}
-
-.metricAccentBar {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  background: var(--crm-color-primary);
-}
-
-.accent_primary .metricAccentBar { background: var(--crm-color-primary); }
-.accent_info .metricAccentBar { background: var(--crm-color-info); }
-.accent_success .metricAccentBar { background: var(--crm-color-success); }
-.accent_accent .metricAccentBar { background: var(--crm-color-accent); }
-
-.metricLabel {
-  font-weight: 500;
-}
-
-.metricValue {
-  font-size: var(--crm-font-size-2xl);
-  font-weight: 700;
-  line-height: 1.1;
-  color: var(--crm-color-text);
-}
-
-.metricTrend {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--crm-space-1);
-  font-size: var(--crm-font-size-xs);
-  font-weight: 600;
-}
-
-.trendUp {
-  color: var(--crm-color-success);
-}
-
-.trendDown {
-  color: var(--crm-color-danger);
-}
-
-/* ---- Activity table card ---- */
-.activityCard {
-  border-radius: var(--crm-radius-lg) !important;
-  overflow: hidden;
-}
-
-.activityHeader {
-  padding: var(--crm-space-5) var(--crm-space-5) var(--crm-space-3);
+/* Para el usuario cuyo rol no llega al inventario: el Dashboard existe, pero
+   no tiene nada que mostrarle. */
+.sinAcceso {
+  margin: 0;
+  color: var(--crm-color-text-secondary);
+  font-size: var(--crm-font-size-sm);
 }

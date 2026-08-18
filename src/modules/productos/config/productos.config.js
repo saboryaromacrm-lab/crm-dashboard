@@ -9,7 +9,6 @@
  * Vencimientos y Trazabilidad (eran por lote). Sucursales, Transferencias e
  * Incidencias viven en Almacén.
  */
-import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import SellIcon from '@mui/icons-material/Sell';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
@@ -35,7 +34,12 @@ import FactCheckIcon from '@mui/icons-material/FactCheck';
  * clave no ve el panel, y sin ninguna del módulo no ve el módulo entero.
  */
 export const COMPRAS_PANELS = [
-  { id: 'dashboard',      label: 'Dashboard',      icon: SpaceDashboardIcon, permiso: 'compras.dashboard' },
+  /*
+   * SIN "Dashboard" (18/8/2026, pedido del dueño): el resumen del inventario se
+   * mudó al **Dashboard del menú principal**, que hasta entonces mostraba
+   * métricas de ejemplo. Tener el resumen real escondido adentro de Compras y
+   * datos inventados en la puerta de entrada era exactamente al revés.
+   */
   { id: 'productos',      label: 'Productos',      icon: Inventory2Icon,     permiso: 'compras.productos' },
   { id: 'catalogos',      label: 'Catálogos',      icon: SellIcon,           permiso: 'compras.catalogos' },
   /*

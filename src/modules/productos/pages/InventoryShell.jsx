@@ -8,7 +8,6 @@ import { useProductos } from '../context/ProductosContext.jsx';
 import { ModalHost } from '../components/ModalHost.jsx';
 import { Btn, s } from '../components/ui.jsx';
 
-import { DashboardPanel } from '../panels/DashboardPanel.jsx';
 import { ProductosPanel } from '../panels/ProductosPanel.jsx';
 import { CatalogosPanel } from '../panels/CatalogosPanel.jsx';
 
@@ -26,9 +25,13 @@ import { CafeteriaPedidosPanel } from '../panels/CafeteriaPedidosPanel.jsx';
 import { VencimientosPanel } from '../panels/VencimientosPanel.jsx';
 import { ConteosPanel } from '../panels/ConteosPanel.jsx';
 
-/** Registro de paneles disponibles. Cada módulo elige cuáles muestra (config). */
+/**
+ * Registro de paneles disponibles. Cada módulo elige cuáles muestra (config).
+ *
+ * Ya no hay `dashboard`: el resumen del inventario se mudó al **Dashboard del
+ * menú principal** (18/8/2026) y vive en `panels/ResumenInventario.jsx`.
+ */
 const PANEL_COMPONENTS = {
-  dashboard: DashboardPanel,
   productos: ProductosPanel,
   catalogos: CatalogosPanel,
 
