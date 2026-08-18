@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
+import { cuerpoPlanillaConteo, imprimirDocumento } from '@core/services/imprimir.js';
 import { money } from '../../domain/format.js';
 import { norm } from '../CatalogoPicker.jsx';
 import { ModalShell } from '../Modal.jsx';
@@ -207,6 +208,40 @@ export function ConteoModal({ conteoId, alTerminar }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, q, vista]);
 
+  /*
+   * LA PLANILLA — el papel que se lleva a la góndola.
+   *
+   * Sale lo que muestra la PESTAÑA elegida (Pendientes / Contados / Todos),
+   * NO lo que dejó el buscador: ese campo es el lector, se llena y se vacía a
+   * cada rato, y una hoja de un solo renglón porque quedó texto tipeado es
+   * exactamente el papel que nadie quiere descubrir en el estante. Por eso el
+   * botón lleva el número adelante: lo que dice es lo que sale.
+   *
+   * El "sistema dice" no viaja acá ni cuando el control no es ciego: ver
+   * `cuerpoPlanillaConteo`.
+   */
+  const paraImprimir = useMemo(() => items.filter((it) => {
+    if (vista === 'pendientes') return it.contado == null || it.recontar;
+    if (vista === 'contados') return it.contado != null;
+    return true;
+  }), [items, vista]);
+
+  const imprimirPlanilla = async () => {
+    const ok = await imprimirDocumento('planillaConteo', {
+      titulo: data.nombre || `Control #${data.id}`,
+      cuerpo: cuerpoPlanillaConteo({
+        titulo: data.nombre || `Control #${data.id}`,
+        alcance: data.alcance,
+        sucursal: store.getSucursal(data.sucursalId)?.nombre ?? '',
+        impresa: new Date().toLocaleString('es-AR'),
+        hoja: vista === 'pendientes' ? 'pendientes de contar'
+          : vista === 'contados' ? 'ya contados' : 'lista completa',
+        filas: paraImprimir.map((it) => ({ ...it, codigo: codigoDe(it) })),
+      }),
+    });
+    if (!ok) toast('El navegador bloqueó la ventana de impresión. Permitila y probá de nuevo.', 'err');
+  };
+
   const alBuscar = (e) => {
     if (e.key !== 'Enter') return;
     const cod = q.trim();
@@ -320,6 +355,11 @@ export function ConteoModal({ conteoId, alTerminar }) {
                   {v === 'pendientes' ? `Pendientes (${data.total - data.contados})` : v === 'contados' ? `Contados (${data.contados})` : 'Todos'}
                 </Btn>
               ))}
+              {/* Imprime la pestaña elegida, no el buscador: el número del botón
+                  es el del papel. */}
+              <Btn small variant="btn-ghost" onClick={imprimirPlanilla} disabled={paraImprimir.length === 0}>
+                🖨 Imprimir planilla ({paraImprimir.length})
+              </Btn>
             </div>
             {/* La pestaña Pendientes muestra también lo marcado "recontar":
                 para el contador ES trabajo pendiente, venga de donde venga. */}

@@ -15,8 +15,8 @@ import { httpClient } from '@core/services/httpClient.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import {
-  FORMATOS_LABEL, cuerpoEtiquetas, esFormatoEtiqueta, formatoPorDefecto,
-  htmlDocumento, imprimirDocumento, invalidarConfigImpresion,
+  FORMATOS_LABEL, cuerpoEtiquetas, cuerpoPlanillaConteo, esFormatoEtiqueta,
+  formatoPorDefecto, htmlDocumento, imprimirDocumento, invalidarConfigImpresion,
 } from '@core/services/imprimir.js';
 import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 import { SISTEMA_SECCIONES } from '../config/sistema.config.js';
@@ -33,6 +33,7 @@ const DOCUMENTOS = [
   { clave: 'hojaArmado', label: 'Hoja de armado (presupuestos)', hint: 'Sin precios, con columna en blanco para el lápiz.' },
   { clave: 'listaPreparacion', label: 'Listas de preparación (envíos)', hint: 'Enteros y Fraccionados de las transferencias.' },
   { clave: 'remitoCafeteria', label: 'Remito a Cafetería', hint: 'El papel que acompaña la mercadería que sale para el café, valorizada a costo.' },
+  { clave: 'planillaConteo', label: 'Planilla del control de stock', hint: 'La hoja que se lleva a la góndola: casillero en blanco para anotar a lápiz. Papel grande — en rollo no queda lugar para escribir.' },
   {
     clave: 'etiquetaFraccionado',
     label: 'Etiquetas del fraccionado (autoadhesivas)',
@@ -62,6 +63,22 @@ function cuerpoMuestra(clave) {
       </tbody></table>
       <div class="tot"><strong>TOTAL $14.740,00</strong></div>
       <div class="fiscal">DOCUMENTO NO FISCAL</div>`;
+  }
+  if (clave === 'planillaConteo') {
+    // La MISMA función que imprime la planilla de verdad: una vista previa que
+    // se arma aparte es la que después no se parece a lo que sale.
+    return cuerpoPlanillaConteo({
+      titulo: 'Góndola CUMANA',
+      alcance: 'Marca CUMANA · solo con stock',
+      sucursal: 'Distribuidora',
+      impresa: '18/08/2026 21:40',
+      hoja: 'pendientes de contar',
+      filas: [
+        { nombre: 'Avena Tradicional CUMANA x400g', presLabel: '', unidad: 'u', codigo: '7790040001234', apartados: 0 },
+        { nombre: 'Ajo en Polvo', presLabel: '500 g', unidad: 'u', codigo: '6850000001491', apartados: 12 },
+        { nombre: 'Ajo en Polvo', presLabel: '', unidad: 'kg', codigo: '', apartados: 0, recontar: true },
+      ],
+    });
   }
   return `
     <h1>Presupuesto PR0001</h1>

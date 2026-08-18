@@ -256,6 +256,50 @@ export function cuerpoEtiquetas({ nombre, peso, precio, codigo, vencimiento, can
 }
 
 /**
+ * PLANILLA DEL CONTROL DE STOCK — la hoja que se lleva a la góndola.
+ *
+ * Es la MISMA función que alimenta la vista previa de Sistema y la impresora.
+ *
+ * Dos decisiones que no son cosméticas:
+ *
+ *  · **No lleva la cantidad del sistema. Nunca**, ni siquiera cuando el control
+ *    no es ciego y la pantalla la muestra. El sentido de la hoja es escribir lo
+ *    que hay en el estante; un número impreso al lado del casillero es el número
+ *    que se termina copiando, y entonces el control no controla nada. La
+ *    comparación la hace el sistema después, que para eso guarda el instante.
+ *
+ *  · **Los apartados SÍ van**, y en negrita. Es mercadería que está físicamente
+ *    ahí pero ya separada para un envío: si el que cuenta la suma, la diferencia
+ *    da un sobrante que no existe. La hoja tiene que decir "de estos, N no los
+ *    cuentes" o repite en papel el error que la pantalla evita.
+ *
+ * `filas` = renglones del conteo tal como los devuelve la API, más el `codigo`
+ * que resuelve la pantalla desde el catálogo.
+ */
+export function cuerpoPlanillaConteo({ titulo, alcance, sucursal, filas, impresa, hoja = '' }) {
+  const rows = filas.map((f) => `
+    <tr>
+      <td>${esc(f.nombre)}${f.presLabel ? ` <strong>· ${esc(f.presLabel)}</strong>` : ''}${
+        f.recontar ? ' <strong>⟳ RECONTAR</strong>' : ''}</td>
+      <td class="chica">${esc(f.codigo || '')}</td>
+      <td class="chica">${esc(f.unidad || '')}</td>
+      <td class="chica n">${f.apartados > 1e-9 ? `<strong>${esc(f.apartados)} ⚠</strong>` : '—'}</td>
+      <td class="prep"></td>
+      <td class="c">&#9744;</td>
+    </tr>`).join('');
+  return `
+    <h1>${esc(titulo)} — control de stock</h1>
+    <div class="sub">${esc(alcance)} · ${esc(sucursal)} · ${filas.length} renglón(es)${
+      hoja ? ` · ${esc(hoja)}` : ''} · impresa ${esc(impresa)}</div>
+    <div class="sub">Contó: ______________________ &nbsp;&nbsp; Fecha y hora: ______________
+      &nbsp;&nbsp; <strong>Anotá lo que HAY en el estante.</strong> La columna
+      <strong>Apartados</strong> es mercadería ya separada para un envío: NO la cuentes.</div>
+    <table><thead><tr>
+      <th>Producto</th><th>Código</th><th>Unidad</th><th>Apartados</th><th>Contado</th><th>&#10003;</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+/**
  * Abre la ventana e imprime. `tipoDoc` = clave de la config de impresión.
  *
  * Devuelve `false` si el navegador BLOQUEÓ la ventana emergente: sin eso la
