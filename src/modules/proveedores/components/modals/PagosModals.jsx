@@ -26,12 +26,21 @@ const claveDoc = (d) => `${d.tipo}-${d.docId}`;
  * puede sobrepasar lo que el documento debe. Para entregar una cifra suelta
  * —una entrega a cuenta— no se tilda nada: el pago baja el saldo del proveedor
  * y se imputa después desde la factura.
+ *
+ * Y ACÁ SE DESCUENTAN LOS FLETES (0069, 18/8). La factura de mercadería se
+ * cargó tal cual dice el papel; el flete que la cajera le adelantó al fletero
+ * por cuenta del proveedor se resta en ESTE momento, que es cuando se decide
+ * cuánto transferir. Tildás la factura de $100.000 y el flete de $20.000, y lo
+ * que sale de la cuenta son $80.000 — la factura igual queda saldada, porque
+ * el flete se imputa contra ella en el mismo acto (y primero, para que el pago
+ * caiga por el saldo exacto que queda).
  */
 export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], onChange }) {
   const { ctx, act, closeModal, toast } = useProveedores();
   const [tildados, setTildados] = useState(
     () => Object.fromEntries((preseleccion ?? []).map((k) => [k, true])),
   );
+  const [fletesTildados, setFletesTildados] = useState({});
   const [importeLibre, setImporteLibre] = useState('');
   const [modo, setModo] = useState('simple');
   const [medio, setMedio] = useState('transferencia');
@@ -48,9 +57,56 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
   );
   const hayTurno = !!caja?.id && caja.estado === 'abierta';
 
+  /* Los fletes que este proveedor todavía no descontó. Se piden siempre: si no
+   * tiene, la sección no se dibuja y nadie se entera de que existe. */
+  const { data: fletesData } = useResource(
+    `fletes-prov:${proveedor.id}`,
+    () => provApi.fletesPendientes(proveedor.id),
+  );
+  const fletes = useMemo(
+    () => (fletesData ?? []).filter((f) => f.saldo > EPS)
+      .sort((a, b) => new Date(a.fecha) - new Date(b.fecha) || a.id - b.id),
+    [fletesData],
+  );
+
   const elegidos = useMemo(() => docs.filter((d) => tildados[claveDoc(d)]), [docs, tildados]);
   const sumaElegidos = r2(elegidos.reduce((a, d) => a + d.saldo, 0));
-  const importe = elegidos.length ? sumaElegidos : r2(importeLibre);
+  const fletesElegidos = useMemo(() => fletes.filter((f) => fletesTildados[f.id]), [fletes, fletesTildados]);
+  const sumaFletes = r2(fletesElegidos.reduce((a, f) => a + f.saldo, 0));
+
+  /*
+   * EL REPARTO DE LOS FLETES entre los documentos tildados, del más viejo al
+   * más nuevo hasta cubrir cada uno. Se calcula acá y viaja explícito: dejar
+   * que el servidor "adivine" contra qué documento va cada flete sería la clase
+   * de decisión silenciosa que después nadie puede explicar mirando el mayor.
+   */
+  const repartoFletes = useMemo(() => {
+    const restante = new Map(elegidos.map((d) => [claveDoc(d), d.saldo]));
+    const out = [];
+    for (const f of fletesElegidos) {
+      let falta = f.saldo;
+      for (const d of elegidos) {
+        if (falta <= EPS) break;
+        const queda = restante.get(claveDoc(d)) ?? 0;
+        if (queda <= EPS) continue;
+        const toma = r2(Math.min(falta, queda));
+        out.push({
+          pagoId: f.id,
+          ...(d.tipo === 'gasto' ? { gastoId: d.docId } : { comprobanteId: d.docId }),
+          importe: toma,
+        });
+        restante.set(claveDoc(d), r2(queda - toma));
+        falta = r2(falta - toma);
+      }
+    }
+    return { lineas: out, restantePorDoc: restante };
+  }, [elegidos, fletesElegidos]);
+
+  /** Lo que de verdad sale de la cuenta: lo tildado menos los fletes ya pagados. */
+  const importe = elegidos.length ? r2(sumaElegidos - sumaFletes) : r2(importeLibre);
+  /* Los fletes no pueden superar lo tildado: sobraría flete sin documento
+   * contra el cual imputarse y el pago quedaría en cero o negativo. */
+  const fleteExcedido = elegidos.length > 0 && sumaFletes - sumaElegidos > EPS;
   /* Un pago vive en UNA bandeja (mercadería o gastos) y solo se aplica a
    * documentos de esa bandeja: mezclar los dos termina en un rechazo de la API
    * a mitad de camino, así que se corta acá con una explicación. */
@@ -72,6 +128,28 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
       toast('Un pago va a facturas de mercadería O a gastos, no a los dos: son bandejas distintas. Hacé un pago para cada uno.', 'err');
       return;
     }
+    if (fleteExcedido) {
+      toast('Los fletes tildados superan lo que se está pagando: destildá alguno o sumá otra factura.', 'err');
+      return;
+    }
+    /*
+     * LOS FLETES SOLOS, sin plata nueva. Pasa cuando lo adelantado alcanza para
+     * cubrir todo lo tildado (la factura es de $20.000 y el flete fue de
+     * $20.000): no hay nada que transferir, pero la factura tiene que quedar
+     * saldada igual. Va por su endpoint, que hace la misma transacción.
+     */
+    if (elegidos.length && importe <= EPS && repartoFletes.lineas.length) {
+      const res = await act(
+        provApi.descontarFletes({
+          proveedorId: proveedor.id,
+          fletes: repartoFletes.lineas,
+          usuarioId: ctx.usuarioId ?? undefined,
+        }),
+        `Se descontó el flete: ${money(sumaFletes)} aplicados. No hubo plata que transferir.`,
+      );
+      if (res) onChange?.();
+      return;
+    }
     if (!(importe > 0)) {
       toast(elegidos.length ? 'Los documentos tildados no suman nada.' : 'Poné el importe del pago.', 'err');
       return;
@@ -85,11 +163,18 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
       referencia: referencia.trim() || undefined,
       sucursalId: ctx.sucursalId ?? undefined,
       usuarioId: ctx.usuarioId ?? undefined,
+      /* Lo que cubre el pago nuevo es lo que queda de cada documento DESPUÉS de
+       * los fletes: si el flete ya tapó un renglón entero, ese renglón no entra
+       * (imputar 0 sería un error de la API, y con razón). */
       imputaciones: elegidos.length
-        ? elegidos.map((d) => (d.tipo === 'gasto'
-          ? { gastoId: d.docId, importe: d.saldo }
-          : { comprobanteId: d.docId, importe: d.saldo }))
+        ? elegidos
+          .map((d) => ({ d, importe: r2(repartoFletes.restantePorDoc.get(claveDoc(d)) ?? d.saldo) }))
+          .filter((x) => x.importe > EPS)
+          .map(({ d, importe: imp }) => (d.tipo === 'gasto'
+            ? { gastoId: d.docId, importe: imp }
+            : { comprobanteId: d.docId, importe: imp }))
         : undefined,
+      fletes: repartoFletes.lineas.length ? repartoFletes.lineas : undefined,
     };
     if (modo === 'simple') {
       body.medio = medio;
@@ -124,10 +209,12 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
         {
-          texto: importe > 0 ? `Pagar ${money(importe)}` : 'Pagar',
+          texto: elegidos.length && importe <= EPS && sumaFletes > EPS
+            ? `Descontar ${money(sumaFletes)} de flete`
+            : importe > 0 ? `Pagar ${money(importe)}` : 'Pagar',
           clase: 'btn-primary',
           onClick: pagar,
-          disabled: mezcla,
+          disabled: mezcla || fleteExcedido,
         },
       ]}
     >
@@ -195,14 +282,97 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
         </div>
       )}
 
+      {/* ============ FLETES YA PAGADOS, a descontar de lo que se transfiere ==== */}
+      {fletes.length > 0 && (
+        <>
+          <div className={s['section-title']}>Fletes ya pagados de caja</div>
+          <div className={s.hint} style={{ marginTop: 0 }}>
+            Plata que la cajera le adelantó al fletero <strong>por cuenta de este proveedor</strong>.
+            Tildalos para restarlos de lo que hay que transferir: la factura igual queda saldada.
+          </div>
+          <div
+            style={{
+              maxHeight: 150, overflowY: 'auto', overflowX: 'hidden',
+              border: '1px solid var(--crm-color-border)', borderRadius: 8, marginBottom: 8,
+            }}
+          >
+            {fletes.map((f) => {
+              const marcado = !!fletesTildados[f.id];
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setFletesTildados((m) => ({ ...m, [f.id]: !m[f.id] }))}
+                  disabled={!elegidos.length}
+                  style={{
+                    all: 'unset', boxSizing: 'border-box', display: 'flex', alignItems: 'center',
+                    gap: 10, width: '100%', padding: '7px 10px',
+                    cursor: elegidos.length ? 'pointer' : 'not-allowed',
+                    opacity: elegidos.length ? 1 : 0.5,
+                    font: 'inherit', fontSize: 13, lineHeight: 1.3, textAlign: 'left',
+                    borderBottom: '1px solid var(--crm-color-border)',
+                    background: marcado ? 'var(--crm-color-primary-soft)' : 'transparent',
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 16, height: 16, flex: 'none', borderRadius: 4,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 11, fontWeight: 700,
+                      border: marcado ? '1.5px solid var(--crm-color-primary)' : '1.5px solid var(--crm-color-border)',
+                      background: marcado ? 'var(--crm-color-primary)' : 'transparent',
+                      color: 'var(--crm-color-primary-contrast)',
+                    }}
+                  >
+                    {marcado ? '✓' : ''}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontWeight: marcado ? 600 : 400 }}>Flete</span>
+                    <span style={{ opacity: 0.65 }}>
+                      {' · '}{fmtFecha(f.fecha)}
+                      {f.referencia ? ` · ${f.referencia}` : ''}
+                      {f.sucursalNombre ? ` · ${f.sucursalNombre}` : ''}
+                    </span>
+                  </span>
+                  <span style={{ flex: 'none', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                    − {money(f.saldo)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {!elegidos.length && (
+            <div className={s.hint}>
+              Primero tildá contra qué factura se descuenta: un flete se resta de un documento,
+              no del aire.
+            </div>
+          )}
+          {fleteExcedido && (
+            <div className={cx(s.callout, s.warn)}>
+              Los fletes tildados suman <strong>{money(sumaFletes)}</strong> y lo que se está
+              pagando es <strong>{money(sumaElegidos)}</strong>. Destildá alguno, o sumá otra
+              factura para descontarlo entero.
+            </div>
+          )}
+        </>
+      )}
+
       <div className={s['form-grid']}>
         <div className={s.field}>
-          <label>Importe</label>
+          <label>{sumaFletes > EPS ? 'A transferir (ya con el flete descontado)' : 'Importe'}</label>
           {elegidos.length ? (
             <>
-              <input value={money(sumaElegidos)} disabled />
+              <input value={money(importe)} disabled />
               <div className={s.hint} style={{ margin: '6px 0 0' }}>
-                Es la suma exacta de lo tildado. Para entregar otra cifra, destildá todo y queda a cuenta.
+                {sumaFletes > EPS ? (
+                  <>
+                    {money(sumaElegidos)} de documentos − {money(sumaFletes)} de flete ya pagado.
+                    Los documentos quedan saldados igual.
+                  </>
+                ) : (
+                  <>Es la suma exacta de lo tildado. Para entregar otra cifra, destildá todo y queda a cuenta.</>
+                )}
               </div>
             </>
           ) : (

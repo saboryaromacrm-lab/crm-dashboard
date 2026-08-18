@@ -60,11 +60,16 @@ export function TomarPagosComprobanteModal({ comprobanteId, proveedorId, onChang
    * cargando o abriendo la factura de esa sucursal.
    */
   const sucComp = store.getComprobante(comprobanteId)?.sucursalId ?? null;
+  /* Los FLETES no se ofrecen acá (18/8): la factura se paga por su total y el
+   * flete se descuenta al pagar la cuenta corriente, desde el estado de cuenta.
+   * Mismo criterio que el alta del comprobante. */
   const lista = useMemo(() => {
-    const todos = pagos ?? [];
+    const todos = (pagos ?? []).filter((x) => !x.esFlete);
     return sucComp ? todos.filter((x) => x.sucursalId === sucComp) : todos;
   }, [pagos, sucComp]);
-  const enOtras = r2((pagos ?? []).reduce((a, x) => a + x.saldo, 0) - lista.reduce((a, x) => a + x.saldo, 0));
+  const sinFlete = useMemo(() => (pagos ?? []).filter((x) => !x.esFlete), [pagos]);
+  const enOtras = r2(sinFlete.reduce((a, x) => a + x.saldo, 0) - lista.reduce((a, x) => a + x.saldo, 0));
+  const enFletes = r2((pagos ?? []).filter((x) => x.esFlete).reduce((a, x) => a + x.saldo, 0));
   const totalAAplicar = useMemo(
     () => Object.values(montos).reduce((a, v) => a + (Number(v) || 0), 0),
     [montos],
@@ -147,7 +152,6 @@ export function TomarPagosComprobanteModal({ comprobanteId, proveedorId, onChang
         {lista.map((x) => (
           <tr key={x.id}>
             <td>
-              {x.esFlete && <><Pill pill="est-recibida" label="Flete" />{' '}</>}
               {fmtFechaHora(x.fecha)}
               {x.concepto && <div className={s.hint} style={{ margin: 0 }}>{x.concepto}</div>}
             </td>
@@ -175,6 +179,14 @@ export function TomarPagosComprobanteModal({ comprobanteId, proveedorId, onChang
           sea la que pagó.
         </div>
       )}
+
+      {enFletes > 0.009 && (
+        <div className={s.hint}>
+          Tiene también <strong>{money(enFletes)}</strong> de <strong>flete</strong> pagados de
+          caja. No se toman contra la factura: se descuentan al pagarle la cuenta corriente,
+          desde Proveedores › Estados de cuenta › Registrar un pago.
+        </div>
+      )}
     </ModalShell>
   );
 }
@@ -187,13 +199,25 @@ export function PagoSucursalDetalleModal({ pagoId, onChange }) {
   const { store, act, closeModal, toast } = useProductos();
   const [pago, setPago] = useState(null);
   const [motivoAnular, setMotivoAnular] = useState('');
+  const [papel, setPapel] = useState(null);
 
   const cargar = useCallback(async () => {
-    try { setPago(await store.pagoSucursal(pagoId)); }
-    catch { toast('No se pudo cargar el pago.', 'err'); }
+    try {
+      const p = await store.pagoSucursal(pagoId);
+      setPago(p);
+      setPapel({ referencia: p.referencia ?? '', concepto: p.concepto ?? '' });
+    } catch { toast('No se pudo cargar el pago.', 'err'); }
   }, [store, pagoId, toast]);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  /* EL PAPEL, completado después. La cajera paga el flete con el camión en la
+   * puerta y el remito lo tiene el administrativo al otro día: esto deja
+   * cargarlo sin tocar un solo peso (ni importe, ni medio, ni aplicaciones). */
+  const guardarPapel = async () => {
+    const ok = await act(store.actualizarPapelPago(pagoId, papel), 'Datos del papel guardados.');
+    if (ok) { await cargar(); onChange?.(); }
+  };
 
   const quitar = async (imputacionId) => {
     const ok = await act(store.quitarImputacionPago(imputacionId), 'Aplicación quitada.');
@@ -243,6 +267,39 @@ export function PagoSucursalDetalleModal({ pagoId, onChange }) {
           {pago.esFlete && <div className={s.hint} style={{ margin: 0 }}>Flete que el proveedor descuenta</div>}
         </Di>
       </div>
+
+      {vivo && papel && (
+        <>
+          <div className={s['section-title']}>
+            {pago.esFlete ? 'El remito del flete' : 'El papel'}
+          </div>
+          <div className={s.hint} style={{ marginTop: 0 }}>
+            {pago.esFlete
+              ? 'La cajera pagó con el camión en la puerta; el remito lo tenés vos. Cargalo acá — no toca el importe ni la caja.'
+              : 'Número de comprobante y concepto. No toca el importe ni la caja.'}
+          </div>
+          <div className={s['form-grid']}>
+            <div className={s.field}>
+              <label>{pago.esFlete ? 'Nº de remito / transportista' : 'Referencia'}</label>
+              <input
+                value={papel.referencia}
+                placeholder={pago.esFlete ? 'Ej: Remito 0012 · Transporte Gómez' : 'Nº de transferencia, recibo…'}
+                onChange={(e) => setPapel((p) => ({ ...p, referencia: e.target.value }))}
+              />
+            </div>
+            <div className={s.field}>
+              <label>Concepto</label>
+              <input
+                value={papel.concepto}
+                onChange={(e) => setPapel((p) => ({ ...p, concepto: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className={s.toolbar} style={{ marginBottom: 12 }}>
+            <Btn small onClick={guardarPapel}>Guardar el papel</Btn>
+          </div>
+        </>
+      )}
 
       <div className={s['section-title']}>Aplicado a</div>
       <Table

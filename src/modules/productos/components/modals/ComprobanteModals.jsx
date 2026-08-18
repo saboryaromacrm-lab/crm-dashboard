@@ -726,28 +726,31 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
    * el pago equivocado. Los de otras sucursales se avisan aparte: se toman
    * cargando la factura que corresponde a esa sucursal.
    */
+  /*
+   * LA FACTURA SE CARGA TAL CUAL DICE EL PAPEL (decisión del dueño, 18/8).
+   * ------------------------------------------------------------------------
+   * Los FLETES quedan fuera de lo que se ofrece tomar acá, aunque sean pagos a
+   * cuenta del mismo proveedor. El circuito real es otro: la factura de
+   * mercadería entra por su total, y el flete que la cajera le adelantó al
+   * fletero se descuenta **al pagar la cuenta corriente**, que es cuando se
+   * decide cuánto transferir. Ofrecerlo acá invitaba a mezclar dos papeles
+   * distintos —la factura y el remito del flete— en un mismo renglón.
+   */
   const pagosOfrecidos = useMemo(() => {
     const sid = parseInt(sucId, 10);
-    const lista = sid ? pagosACuenta.filter((p) => p.sucursalId === sid) : pagosACuenta;
+    const lista = (sid ? pagosACuenta.filter((p) => p.sucursalId === sid) : pagosACuenta)
+      .filter((p) => !p.esFlete);
     return [...lista].sort((a, b) => new Date(a.fecha) - new Date(b.fecha) || a.id - b.id);
   }, [pagosACuenta, sucId]);
   const aCuentaSuc = pagosOfrecidos.reduce((a, x) => a + x.saldo, 0);
-  const aCuentaOtras = r2(aCuenta - aCuentaSuc);
-  /** Los fletes esperando: se nombran aparte porque no son "un pago a cuenta"
-   *  cualquiera — son plata del proveedor que él descuenta de esta factura. */
-  const fletesOfrecidos = useMemo(() => pagosOfrecidos.filter((p) => p.esFlete), [pagosOfrecidos]);
-  /*
-   * EL FLETE QUE SE TOMA POR MENOS DE LO QUE SALIÓ DEL CAJÓN. Pasa cuando el
-   * proveedor reconoce menos de lo que se pagó (pagamos $20.000 y él admite
-   * $18.000): la diferencia NO es plata suya, es un costo que absorbemos. El
-   * sistema no puede decidirlo solo —hay que mirar el papel—, pero tampoco lo
-   * deja pasar en silencio: si no se avisara, quedaría un resto sin aplicar
-   * que nadie vuelve a mirar y el saldo del proveedor cerraría mal.
-   */
-  const fleteNoReconocido = useMemo(() => r2(fletesOfrecidos.reduce((a, p) => {
-    const tomado = tomados[p.id] != null ? r2(tomados[p.id]) : null;
-    return a + (tomado != null && p.saldo - tomado > 0.009 ? p.saldo - tomado : 0);
-  }, 0)), [fletesOfrecidos, tomados]);
+  const aCuentaOtras = r2(aCuenta - aCuentaSuc
+    - pagosACuenta.filter((p) => p.esFlete).reduce((a, x) => a + x.saldo, 0));
+  /** Fletes esperando: no se ofrecen, se AVISAN — para que quien carga la
+   *  factura sepa que existen y no los busque. */
+  const fletesEsperando = useMemo(
+    () => r2(pagosACuenta.filter((p) => p.esFlete).reduce((a, x) => a + x.saldo, 0)),
+    [pagosACuenta],
+  );
 
   /**
    * Tomar un pago es una DECISIÓN, no un default: a veces la factura que se
@@ -1796,10 +1799,6 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
                 sin aplicar. Tildá los que esta factura explica: tomarlos es lo que los{' '}
                 <strong>aplica</strong> — no vuelve a mover plata. Si esta factura se pagó por otro
                 lado, no tildes nada y usá «Se paga ahora».
-                {fletesOfrecidos.length > 0 && (
-                  <> <strong>Hay flete esperando</strong>: si vino con esta entrega, tomalo —
-                  el proveedor lo descuenta de esta misma factura y queda debiendo el resto.</>
-                )}
               </div>
               <Table
                 cols={[
@@ -1820,10 +1819,6 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
                         />
                       </td>
                       <td>
-                        {/* El flete se distingue del resto: no es "algo que se
-                            le adelantó", es plata del proveedor que él descuenta
-                            de esta misma factura. */}
-                        {p.esFlete && <><Pill pill="est-recibida" label="Flete" />{' '}</>}
                         {fmtFecha(p.fecha)}
                         {p.concepto && <div className={s.hint} style={{ margin: 0 }}>{p.concepto}</div>}
                       </td>
@@ -1855,13 +1850,13 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
             </>
           )}
 
-          {fleteNoReconocido > 0.009 && (
-            <div className={cx(s.callout, s.warn)}>
-              Del flete quedan <strong>{money(fleteNoReconocido)}</strong> sin tomar. Si el
-              proveedor reconoció menos de lo que se le pagó al fletero, esa diferencia es un
-              costo nuestro: cerrala con un <strong>ajuste DEBE</strong> en su estado de cuenta
-              (Proveedores › Estados de cuenta › + Ajuste), con el motivo escrito. Si en cambio
-              te olvidaste de tomarlo entero, corregí el importe acá.
+          {/* El flete NO se toma acá: se avisa que existe y dónde se usa. */}
+          {fletesEsperando > 0.009 && (
+            <div className={s.hint}>
+              {provElegido?.nombre || 'El proveedor'} tiene <strong>{money(fletesEsperando)}</strong> de
+              <strong> flete</strong> ya pagados de caja. <strong>No se toman acá</strong>: la factura se
+              carga tal cual dice el papel, y el flete se descuenta al pagarle la cuenta corriente
+              (Proveedores › Estados de cuenta › Registrar un pago).
             </div>
           )}
 

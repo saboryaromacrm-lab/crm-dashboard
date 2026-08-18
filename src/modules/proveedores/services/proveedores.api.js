@@ -83,6 +83,16 @@ export const provApi = {
    */
   crearPago: (data) => httpClient.post('/pagos-proveedor', data),
   anularPago: (id, motivo) => httpClient.post(`/pagos-proveedor/${id}/anular`, { motivo }),
+  /**
+   * Los FLETES que este proveedor todavía no descontó: plata que la cajera le
+   * adelantó al fletero por su cuenta. Se listan al pagarle, para restarlos de
+   * lo que hay que transferir — la factura entró por su total.
+   */
+  fletesPendientes: (proveedorId) => httpClient.get(
+    `/pagos-proveedor?proveedorId=${proveedorId}&destino=mercaderia&sinAplicar=true&esFlete=true`,
+  ),
+  /** Descontar fletes SIN pago nuevo: lo adelantado cubre todo lo que se paga. */
+  descontarFletes: (data) => httpClient.post('/pagos-proveedor/descontar-fletes', data),
 
   /* La caja de la sucursal (para el pago en efectivo desde el cajón) */
   cajaActual: (sucursalId) => httpClient.get(`/caja/actual/${sucursalId}`),

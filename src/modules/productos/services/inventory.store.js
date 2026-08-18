@@ -816,6 +816,9 @@ const imputarPago = (id, imputaciones, usuarioId) => _mutate(() => httpClient.po
 const quitarImputacionPago = (imputacionId) => _mutate(() => httpClient.delete('/pagos-proveedor/imputaciones/' + imputacionId));
 const anularPago = (id, motivo) => _mutate(() => httpClient.post(`/pagos-proveedor/${id}/anular`, { motivo }));
 const moverDestinoPago = (id, destino) => _mutate(() => httpClient.patch(`/pagos-proveedor/${id}/destino`, { destino }));
+/** El PAPEL del pago (nº de remito y concepto). No toca plata: la cajera paga
+ *  el flete con el camión en la puerta y el remito lo tiene el administrativo. */
+const actualizarPapelPago = (id, datos) => _mutate(() => httpClient.patch(`/pagos-proveedor/${id}/papel`, datos));
 
 /* ---- Cafetería (coffit) ----
  * El envío es un PUNTO DE SALIDA a costo: el CRM no lleva el stock del café
@@ -950,7 +953,7 @@ export const inventoryStore = {
   pedidosCafeteria, pedidoCafeteria, crearPedidoCafeteria, tomarPedidoCafeteria, anularPedidoCafeteria,
   vencimientos, resumenVencimientos, reportesVencimientos, crearSesionVencimientos,
   editarVencimiento, eliminarVencimiento, procesarVencimiento, ofertasVencimientos,
-  imputarPago, quitarImputacionPago, anularPago, moverDestinoPago,
+  imputarPago, quitarImputacionPago, anularPago, moverDestinoPago, actualizarPapelPago,
   actualizarCostos, actualizarMargenes, historialPrecios, evolucionPrecios, revertirLotePrecios,
   stockBajo, incidenciasAbiertas, transferenciasPendientes, borradorDeRuta, misBorradores,
   recibirTransferencia, operacionesAlmacen,
