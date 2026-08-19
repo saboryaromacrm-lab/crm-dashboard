@@ -28,7 +28,9 @@ export function CargaRapidaModal({ catalogo, config, onAgregar }) {
   const agregar = (item, cantidad = 1) => {
     if (item.precio <= 0) { toast(`${item.nombre} no tiene precio cargado.`, 'err'); return; }
     onAgregar(item, cantidad);
-    setUltimo({ nombre: `${item.nombre} · ${item.detalle}`, cantidad, precio: item.precio });
+    // El "Agregado" muestra el FINAL con IVA: es lo que el cliente paga por
+    // unidad. El neto viaja al renglón por onAgregar, como siempre.
+    setUltimo({ nombre: `${item.nombre} · ${item.detalle}`, cantidad, precio: item.precioFinal });
     setQ('');
     setActivo(0);
     inputRef.current?.focus();
@@ -39,7 +41,11 @@ export function CargaRapidaModal({ catalogo, config, onAgregar }) {
     if (etiqueta) {
       const item = catalogo.find((i) => i.codigoBarras && i.codigoBarras.endsWith(etiqueta.codigoItem));
       if (item) {
-        const cantidad = etiqueta.cantidad ?? (item.precio > 0 ? r2(etiqueta.importe / item.precio) : 0);
+        /* El importe de la etiqueta de balanza es el precio AL PÚBLICO (con
+         * IVA impreso): se divide por el precio FINAL. Dividirlo por el neto
+         * inflaba la cantidad un 21% — el error que nadie ve porque el peso
+         * casi siempre viene en la etiqueta y este es solo el fallback. */
+        const cantidad = etiqueta.cantidad ?? (item.precioFinal > 0 ? r2(etiqueta.importe / item.precioFinal) : 0);
         if (cantidad > 0) { agregar(item, cantidad); return; }
       }
     }
@@ -87,7 +93,7 @@ export function CargaRapidaModal({ catalogo, config, onAgregar }) {
                   {' · '}<span className={item.stock <= 0 ? p.sinStock : undefined}>{num(item.stock)} {item.unidad}</span>
                 </span>
               </span>
-              <span className={p.resultadoPrecio}>{money(item.precio)}</span>
+              <span className={p.resultadoPrecio}>{money(item.precioFinal)}</span>
             </button>
           ))}
         </div>
@@ -257,7 +263,9 @@ export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
             )}
             {resultados.map((i) => {
               const stockPorSuc = new Map(i.stockSucursales.map((x) => [x.sucursalId, x.cantidad]));
-              const precioPorLista = new Map(i.precios.map((x) => [x.listaId, x.precio]));
+              // El FINAL con IVA: esta pantalla existe para contestarle el
+              // precio al cliente, y el cliente paga el de la etiqueta.
+              const precioPorLista = new Map(i.precios.map((x) => [x.listaId, x.precioFinal]));
               return (
                 <tr key={i.key}>
                   {/* CÓDIGO INTERNO (el "código" del negocio), no el de barras. */}
@@ -299,7 +307,8 @@ export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
       <div className={s.hint} style={{ marginTop: 10 }}>
         {resultados.length} resultado(s). El stock es el de <strong>tu sucursal</strong>
         {sucursalesCols.length === 1 ? ` (${sucursalesCols[0].nombre})` : ''} y el precio se abre
-        por lista; un <strong>—</strong> en una lista significa que ese producto no la tiene.
+        por lista (finales, <strong>IVA incluido</strong>); un <strong>—</strong> en una lista
+        significa que ese producto no la tiene.
       </div>
     </ModalShell>
   );

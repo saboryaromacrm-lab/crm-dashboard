@@ -28,7 +28,7 @@ const CONSULTAS = {
   stock: {
     tecla: 'F3',
     titulo: 'Existencias',
-    ayuda: 'Stock de cada artículo en todas las sucursales, con sus precios.',
+    ayuda: 'Stock de cada artículo en todas las sucursales, con sus precios finales (IVA incluido).',
     Vista: ExistenciasVista,
   },
 };

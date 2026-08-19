@@ -423,14 +423,18 @@ export function ExistenciasVista({ compacto = false }) {
                   <td className={cx(c.num, c.mono, c.total, c.totalCol, total <= 0 && c.cero)}>
                     {num(total)}{i.unidad === 'kg' ? ' kg' : ''}
                   </td>
+                  {/* PRECIO FINAL, con el IVA adentro (19/8/2026, decisión del
+                      dueño): acá se contesta "¿cuánto está?", y la respuesta
+                      es lo que el cliente paga — el mismo número que la
+                      etiqueta y el Formato de Venta. El neto es del motor. */}
                   <td className={cx(c.num, c.mono, c.precioBase, c.grupo)}>
-                    {i.precio > 0 ? money(i.precio) : '—'}
+                    {i.precioFinal > 0 ? money(i.precioFinal) : '—'}
                   </td>
                   <td>
                     {otras.length
                       ? otras.map((p) => (
                         <span key={p.listaId} className={c.chipLista}>
-                          {listas.get(p.listaId) ?? `Lista ${p.listaId}`} <b>{money(p.precio)}</b>
+                          {listas.get(p.listaId) ?? `Lista ${p.listaId}`} <b>{money(p.precioFinal)}</b>
                         </span>
                       ))
                       : <span className={c.alta}>—</span>}

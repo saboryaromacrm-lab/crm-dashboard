@@ -118,7 +118,9 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
                 </span>
               </span>
               <span className={p.resultadoPrecio}>
-                {item.precio > 0 ? money(item.precio) : <span className={p.sinStock}>sin precio</span>}
+                {/* El FINAL con IVA: acá se le contesta el precio al cliente.
+                    El neto es la moneda del renglón, no la del mostrador. */}
+                {item.precioFinal > 0 ? money(item.precioFinal) : <span className={p.sinStock}>sin precio</span>}
               </span>
             </button>
           ))}
