@@ -60,7 +60,8 @@ function aplicarRegla(actual, modo, valor) {
  * sistema, y devuelve las dos escalas con nombre. Era la quinta copia de esta
  * cadena; ahora son cuatro.
  */
-const costoNetoDe = (store, e, iva) => store.costosFormato(e, iva).costoNetoUnitario;
+// La BASE del precio (0072), no el costo real: esta columna proyecta góndola.
+const costoNetoDe = (store, e, iva) => store.costosFormato(e, iva).costoPrecioUnitario;
 
 export function ProveedorCostosTab({ prov }) {
   const { store, isAdmin, openModal, toast, act } = useProductos();
@@ -84,7 +85,8 @@ export function ProveedorCostosTab({ prov }) {
       if (!entry) return null;
       // Markup EQUIVALENTE del piso (vale también con precio definido): la
       // referencia de cuánto se movería la góndola si cambia este costo.
-      const cnHoy = store.costoNeto(p);
+      // Sobre la BASE del precio (0072): el markup multiplica esa, no el real.
+      const cnHoy = store.costoPrecio(p);
       const ganancia = cnHoy > 0 ? (store.precioBaseVenta(p) / cnHoy - 1) * 100 : 0;
       // "Activo" = el formato que manda el precio hoy es de ESTE proveedor.
       return { p, entry, ganancia, activo: store.formatoActivo(p)?.proveedorId === prov.id };

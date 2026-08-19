@@ -19,6 +19,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { ModalShell } from '@modules/productos/components/Modal.jsx';
 import { Table, PanelHead, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
 import { GERENCIA_SECCIONES } from '../config/gerencia.config.js';
+import { RentabilidadPanel } from '../panels/RentabilidadPanel.jsx';
 
 /** Placeholder honesto: dice qué va a haber acá cuando se construya. */
 function Proximamente({ seccion }) {
@@ -462,7 +463,9 @@ export function GerenciaPage() {
         </nav>
 
         <div className={s.content}>
-          {activa.pronto ? <Proximamente seccion={activa} /> : panelUsuarios}
+          {/* Cada sección construida tiene su panel; lo agendado dice "pronto". */}
+          {activa.id === 'rentabilidad' ? <RentabilidadPanel />
+            : activa.pronto ? <Proximamente seccion={activa} /> : panelUsuarios}
         </div>
       </div>
 

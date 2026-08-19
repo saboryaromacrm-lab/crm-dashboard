@@ -120,7 +120,7 @@ export const MANUAL = [
               ['Ventas', 'Punto de venta, clientes, cobranzas, caja, formato de venta, ofertas, cambios de precio'],
               ['Consultas', 'Las dos consultas globales de teclado (Alt+F5 y Alt+F3). No aparece en el menú: se monta en el layout'],
               ['Info de sistema', 'Esta documentación'],
-              ['Gerencia', 'Reservado'],
+              ['Gerencia', 'Usuarios y roles, y **Rentabilidad** (19/8/2026): el margen real del período —con el IVA absorbido por la mercadería sin factura a la vista—, la posición fiscal y el control por proveedor. Las demás secciones siguen en agenda'],
             ],
           },
           {
@@ -479,6 +479,45 @@ export const MANUAL = [
             tono: 'warn',
             texto: 'Es un **interruptor visible**, y eso es deliberado. El sistema anterior cambiaba de modo cuando el costo de lista quedaba en 0: alguien lo borraba para corregir un tipeo y cambiaba el cálculo de todo el producto sin enterarse.',
           },
+        ],
+      },
+      {
+        id: 'sin-factura',
+        actualizado: '2026-08-19',
+        titulo: 'La mercadería sin factura (liquidación)',
+        bloques: [
+          {
+            t: 'p',
+            texto: 'El producto comprado en liquidación (total o parcial) **no puede trasladarle al cliente un IVA que nunca se pagó**: al facturar la venta, ese IVA lo absorbe el negocio. En el sistema viejo se resolvía descontándole a mano el 17,36% al costo (o 8,36% para el mitad y mitad). Ahora es un campo: **"Sin factura %"** en el Formato de Compra — 100 = liquidación pura, 50 = mitad y mitad — y la cuenta la hace el sistema, exacta y para cualquier alícuota.',
+          },
+          {
+            t: 'p',
+            texto: 'El costo se parte en dos, porque hay dos preguntas distintas: el **costo real** (lo que la mercadería cuesta: valúa stock, pérdidas y transferencias) y la **base del precio** (lo que multiplica el markup: a la parte sin factura se le quita el IVA que se va a absorber). La diferencia es el **IVA absorbido** — plata que sale del margen al vender, y el dato central de Gerencia › Rentabilidad.',
+          },
+          {
+            t: 'ejemplo',
+            titulo: 'Compra de $100 toda en negro, IVA 21%, markup 40%',
+            lineas: [
+              'Costo real                  $100,00   ← lo que pagaste',
+              'Base del precio              $82,64   ← ÷ 1,21 (el "17,36%" de antes)',
+              'IVA absorbido                $17,36   ← lo pierde el margen al vender',
+              'Le pagás al proveedor       $100,00   ← base × 1,21: la prueba',
+              '',
+              'Precio final (markup 40%)   $140,00   ← el cliente no paga IVA ajeno',
+              'Venta neta                  $115,70',
+              'Ganancia real          $15,70 (15,7%)  ← no 40: la diferencia es el IVA',
+            ],
+          },
+          {
+            t: 'p',
+            texto: 'El % se **precarga desde la ficha del proveedor** ("Qué emite" + su número: liquidación pura = 100 aunque no lo tipees) y se ajusta por producto — el que manda para el costo es siempre el del formato. El mitad y mitad real (mercadería de $100: $50 en liquidación, $50 facturados con IVA) da **8,68%**: desembolsás $110,50 y la base queda en $91,32.',
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: 'El markup se sigue cargando como siempre, pero sobre estos productos **deja de ser tu ganancia**: poné 40 y ganás 15,7 real. Gerencia › Rentabilidad te muestra las dos columnas —margen aparente y real— para que esa diferencia tenga cara. Y cada venta **congela** su costo real, su IVA absorbido y el % del momento: el margen de marzo no cambia porque en julio subió el catálogo.',
+          },
+          { t: 'ruta', texto: 'Compras › Productos → detalle → Formato de Compra → "Sin factura %" · Proveedores › Padrón → Ficha → "Sin factura %" · Gerencia › Rentabilidad (permiso gerencia.rentabilidad)' },
         ],
       },
       {
@@ -2699,7 +2738,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-17',
+        actualizado: '2026-08-19',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -2710,6 +2749,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**19/8/2026**', '**LA MERCADERÍA SIN FACTURA, Y GERENCIA › RENTABILIDAD (migración 0072).** Lo pediste con tu truco del sistema viejo: comprás en liquidación a $100, le descontás 17,36%, el sistema le suma el 21% y quedás en $100 — así el cliente no paga un IVA que vos nunca pagaste, y ese IVA lo absorbés vos. Ahora es una **cuenta, no un número de memoria**: el Formato de Compra tiene **"Sin factura %"** (100 = liquidación pura, 50 = mitad y mitad) y el sistema parte el costo en dos — el **costo real** (valúa stock, pérdidas y transferencias: lo que pagaste) y la **base del precio** (lo que multiplica el markup, con la parte sin factura despojada del IVA que vas a absorber). Vale para **cualquier alícuota** (el 10,5 da su propio número, no el 17,36) y la cadena de la pantalla muestra todo: base, costo real, IVA absorbido y **lo que le pagás al proveedor** — que es exactamente base × 1,21, la prueba de que la cuenta es la tuya. El % se **precarga de la ficha del proveedor** ("Qué emite" ganó su número: liquidación = 100 solo) y se ajusta por producto; tu 50/50 real da **8,68%**, no el 8,36 aproximado de antes. **El markup se sigue cargando igual** — lo que cambia es que ahora se ve la verdad: con 40% de markup en un producto todo en negro la **ganancia real es 15,7%**, y esa diferencia dejó de estar invisible. Para eso, **cada renglón de venta congela su costo** al confirmarse (costo real + IVA absorbido + el %) — sin eso no hay margen medible, porque el costo de hoy no es el de la venta de marzo. Y sobre ese dato se construyó **Gerencia › Rentabilidad** (el permiso ya existía): margen real contra aparente, IVA absorbido del período, venta y stock de lo sin factura (con el IVA que falta absorber si se vende todo), débito vs. crédito fiscal, la tabla por **producto / marca / categoría / proveedor** con su filtro, y el **control por proveedor**: lo que facturó de verdad (facturas vs. liquidaciones) contra el % declarado en su ficha — si difieren en serio, avisa que el costo de sus productos está mal partido. Los renglones anteriores a hoy no tienen costo congelado y el panel **lo dice en vez de inventar** (se saltean del margen; el aviso muere solo a medida que se vende). Verificado de punta a punta con un circuito real: liquidación que ingresa stock → venta → congelado exacto ($100 real / $17,36 absorbido) → panel con todos los números cruzados a mano → control del desvío saltando (declaró 50%, entró 100% por liquidación). Los precios de todo lo facturado **no se movieron ni un centavo** (con 0% las dos columnas son el mismo número de siempre)'],
               ['**18/8/2026**', '**LA BÚSQUEDA DEL POS MIRA TU SUCURSAL, Y FACTURAR PASA A F8.** Dos pedidos tuyos. (1) El Shift+Ins abría una columna de stock por cada sucursal —seis— y el precio quedaba fuera de la pantalla; ahora muestra **solo la de la caja con la que entraste** y el pie lo dice con nombre y apellido. No es solo espacio: con las seis a la vista, el cajero de Fontana termina prometiendo mercadería que está en la Distribuidora. (2) Las columnas de precio quedaron **agrupadas por modalidad, Minorista primero y Mayorista después**, y adentro por número de lista. El orden lo decide la **configuración** (el `orden` de las modalidades en Formato de Venta), no una lista escrita en el código: si mañana agregás una modalidad, entra sola donde corresponde. (3) **Facturar es F8** (antes F7) en el cobro: cambia el atajo, el cartel del botón y el mensaje que aparece cuando querés liquidar una cuenta corriente. F10 sigue siendo Liquidar.'],
               ['**18/8/2026**', '**EL PIE DE LA FACTURA DE GASTO: el IVA se calcula solo, y entran Impuestos internos, D.G.I. y D.G.R. (migración 0071).** Lo probaste y reportaste que "no suma el IVA": **el importe estaba bien, lo que faltaba era el CONCEPTO**. El renglón necesita el texto para contar, y sin él se descartaba **en silencio** —Neto en $0,00 y ninguna explicación—, así que el número terminó tipeado en la casilla del IVA y el total salió de ahí. Ahora ese caso avisa al lado del Neto y no deja guardar. Lo pedido: **el IVA se saca solo del neto** con una alícuota al lado (21 · 10,5 · **27** · sin IVA · a mano); el 27 % está porque luz, gas, agua y teléfono a responsable inscripto van a esa alícuota. Escribirlo a mano lo congela: el papel manda. En modo "ya incluyen el IVA" lo desagrega y el total no cambia. Y el pie se abrió en **tres campos propios** —Impuestos internos, Percepción D.G.I. y Percepción D.G.R.— que suman al total: separados a propósito, porque cada uno se computa después contra un impuesto distinto (D.G.R. contra Ingresos Brutos, D.G.I. contra el nacional) y los internos no se recuperan. En una sola bolsa no se puede reclamar ninguno. El detalle se ve en el gasto y el candado del gasto ya pagado también los cubre.'],
               ['**18/8/2026**', '**LA PLANILLA DE PAPEL DEL CONTROL DE STOCK.** Pedido tuyo, y era el pendiente "fase 2" de esta pantalla. Adentro del control apareció **🖨 Imprimir planilla (N)**: la hoja con membrete, alcance y sucursal, un renglón por producto con su presentación, código y unidad, el **casillero en blanco** para el lápiz y el cuadrito de tildar. Imprime **lo que muestra la pestaña** (Pendientes / Contados / Todos) y el número del botón es el del papel — el buscador no la recorta, que es el campo del lector y se vacía a cada rato. Lo que **no** lleva, a propósito: la cantidad del sistema, ni siquiera cuando el control no es ciego y la pantalla la muestra, porque un número impreso al lado del casillero es el número que se copia y ahí el control deja de controlar. Lo que **sí** lleva, también a propósito: los **apartados en negrita** con el aviso de no contarlos, que es el error que la pantalla ya evitaba y en papel se repetía. El formato se elige en **Sistema › Impresión → "Planilla del control de stock"** (arranca en A4; en rollo de 80 mm no queda lugar para escribir) y tiene vista previa.'],
@@ -2820,6 +2860,8 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Qué', 'Por qué importa'],
             filas: [
+              ['**Marcar los productos que se compran sin factura** (19/8/2026, carga de datos tuya — la función ya está)', 'La cuenta del 17,36% ya la hace el sistema (Formato de Compra → "Sin factura %", y el default en la ficha del proveedor), pero **ningún producto real lo tiene puesto todavía**: los formatos importados del sistema viejo no traían el dato (no había ningún 17,36 ni 8,36 tipeado en los descuentos — se ve que la vuelta la hacías antes de cargar). Hasta que lo cargues, esos productos cotizan como facturados: precio más alto del que venías cobrando y ninguna métrica en Gerencia › Rentabilidad. El camino corto: en la ficha de cada proveedor de liquidación poné "Qué emite" y su %, y después abrí sus productos y poné el % en el formato (o pedime la pasada masiva por proveedor, que es un rato).'],
+              ['**Rentabilidad: el margen viejo no existe** (19/8/2026, estado — muere solo)', 'El costo se congela en cada venta desde la migración 0072: **las ventas anteriores no tienen costo congelado** y el panel las excluye del margen avisándolo (la venta sí se cuenta). No es un bug y no hay nada que hacer: a medida que se venda, la cobertura llega al 100% sola. Se anota para que el primer vistazo al panel no se lea como "faltan números".'],
               ['**Proveedores: completar los CUIT del padrón importado** (17/8/2026, carga de datos tuya — sin apuro)', 'El CSV de la app vieja traía CUIT en solo 6 de los 169 (y uno era basura y se descartó). El reconocimiento automático de la bandeja de facturas matchea **por CUIT**: cada proveedor al que le saques una foto de factura conviene que tenga el suyo cargado en la ficha. Se pueden ir completando a medida que llegan las primeras facturas reales. Ojo con NUEVO COSMOS: el CUIT ficticio de desarrollo se vació — cargale el real del papel.'],
               ['**La revisión de seguridad terminó: los SIETE módulos auditados** (14/8/2026, estado, no tarea)', 'Compras, Ventas, Almacén, Web, Gerencia, Sistema y Gastos pasaron los dos pases (auditoría de seguridad + depuración) y **nada está commiteado todavía**: son ~50 archivos por repositorio esperando. Lo que sigue no es "otro módulo" sino lo que quedó anotado en esta misma lista, y tres cosas que cruzan el sistema entero: los **permisos exigidos en el servidor** que quedan sin cubrir (tarea vieja), la tabla de **sucursales por usuario** que ya decidiste, y los índices del motor de stock. El resto de esta lista son decisiones tuyas.'],
               ['**Tres consultas que dan 403 en cada carga para los roles chicos** (14/8/2026, apareció verificando Gastos)', 'El armazón del dashboard pregunta siempre por los pedidos de Cafetería, el último cambio de precios y las órdenes web pendientes, sin mirar si el rol tiene permiso para eso. Un usuario de mostrador se come **tres 403 en cada carga de página**, con el error en la consola y ningún aviso visible. No es un agujero —el servidor está haciendo lo correcto, que es negar—, es ruido y trabajo al pedo: es exactamente el mismo caso que ya se arregló para Gerencia el 14/8, y el mismo que se acaba de cortar en el contador de Gastos (que ahora deja de reintentar tras un 403). Falta hacerlo en esos tres.'],

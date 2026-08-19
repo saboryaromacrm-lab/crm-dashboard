@@ -20,6 +20,11 @@
  *   · El **Costo Final lleva IVA y es informativo** — sirve para conciliar
  *     contra la factura. El precio se calcula desde el neto; usar el final
  *     contaría el IVA dos veces y el número resultante sería plausible.
+ *   · El **% sin factura** (0072) parte el costo en dos: el REAL (valúa stock
+ *     y pérdidas) y la BASE DEL PRECIO, con la parte sin factura despojada del
+ *     IVA que el negocio absorbe al vender. Es el "descuento del 17,36%" del
+ *     sistema viejo hecho cuenta — por alícuota, sin tipear nada. Se precarga
+ *     del proveedor (su ficha declara qué emite) y acá se ajusta por producto.
  */
 import { useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
@@ -42,7 +47,19 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
   const c = store.costosFormato(fila, prod.iva);
   const porLista = fila.modoCosto !== 'final';
   const unidad = prod.tipo === 'granel' ? '/kg' : '/u';
+  const sinFactura = c.porcSinFactura > 0;
   const set = (patch) => onChange(i, patch);
+
+  /*
+   * Cambiar el proveedor precarga SU % sin factura (la ficha declara qué
+   * emite: liquidación pura = 100 aunque nadie haya tipeado el número). Solo
+   * al cambiar — un guardado no puede pisar lo que se ajustó a mano.
+   */
+  const setProveedor = (proveedorId) => {
+    const pv = proveedores.find((x) => x.id === proveedorId);
+    const porc = Number(pv?.porcSinFactura) || (pv?.condicionCompra === 'liquidacion' ? 100 : 0);
+    set({ proveedorId, porcSinFactura: porc ? String(porc) : '' });
+  };
 
   return (
     <div className={cx(s.card, s.cardPad, fila.usarParaPrecio && s.formatoActivo)}>
@@ -62,7 +79,7 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
         <select
           value={fila.proveedorId}
           disabled={!esAdmin}
-          onChange={(e) => set({ proveedorId: Number(e.target.value) })}
+          onChange={(e) => setProveedor(Number(e.target.value))}
         >
           {proveedores.map((pv) => <option key={pv.id} value={pv.id}>{pv.nombre}</option>)}
         </select>
@@ -75,8 +92,14 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
         />
 
         <div className={s.formatoNeto}>
-          <div className={s['mini-label']}>Costo neto unitario</div>
-          <strong className={s.mono}>{money(c.costoNetoUnitario)} {unidad}</strong>
+          {/* Con % sin factura los dos costos difieren: el fuerte es la BASE
+              del precio (lo que multiplica el markup) y el real queda al lado
+              — mostrarlos juntos es lo que hace visible el IVA absorbido. */}
+          <div className={s['mini-label']}>{sinFactura ? 'Base del precio' : 'Costo neto unitario'}</div>
+          <strong className={s.mono}>{money(c.costoPrecioUnitario)} {unidad}</strong>
+          {sinFactura && (
+            <div className={s.hint} style={{ margin: 0 }}>real {money(c.costoNetoUnitario)} {unidad}</div>
+          )}
         </div>
 
         {esAdmin && (
@@ -138,26 +161,49 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
                   />
                 ))}
               </div>
-              <div className={s.field} style={{ marginTop: 12 }}>
-                <label>Flete %</label>
-                <input
-                  type="number" min="0" step="0.01" value={fila.flete} placeholder="0" disabled={!esAdmin}
-                  onChange={(e) => set({ flete: e.target.value })}
-                />
+              <div className={s['form-grid']} style={{ marginTop: 12 }}>
+                <div className={s.field}>
+                  <label>Flete %</label>
+                  <input
+                    type="number" min="0" step="0.01" value={fila.flete} placeholder="0" disabled={!esAdmin}
+                    onChange={(e) => set({ flete: e.target.value })}
+                  />
+                </div>
+                <div className={s.field}>
+                  <label>Sin factura %</label>
+                  <input
+                    type="number" min="0" max="100" step="0.01" value={fila.porcSinFactura} placeholder="0" disabled={!esAdmin}
+                    onChange={(e) => set({ porcSinFactura: e.target.value })}
+                  />
+                  <div className={s.hint} style={{ margin: '6px 0 0' }}>
+                    Qué parte viene en liquidación: 100 = todo, 50 = mitad y mitad. A esa parte el
+                    sistema le quita el IVA que vas a absorber al vender — el "{prod.iva === 21 ? '17,36' : 'X'}%" de antes, calculado.
+                  </div>
+                </div>
               </div>
             </>
           ) : (
             <>
               <div className={s.field}>
-                <label>Costo final del bulto (con IVA)</label>
+                <label>{sinFactura ? 'Lo que pagás por el bulto (papeles sumados)' : 'Costo final del bulto (con IVA)'}</label>
                 <input
                   type="number" min="0" step="0.001" value={fila.costoFinal} placeholder="0" disabled={!esAdmin}
                   onChange={(e) => set({ costoFinal: e.target.value })}
                 />
               </div>
+              <div className={s.field}>
+                <label>Sin factura %</label>
+                <input
+                  type="number" min="0" max="100" step="0.01" value={fila.porcSinFactura} placeholder="0" disabled={!esAdmin}
+                  onChange={(e) => set({ porcSinFactura: e.target.value })}
+                />
+                <div className={s.hint} style={{ margin: '6px 0 0' }}>
+                  Qué parte viene en liquidación. Solo la parte facturada trae IVA adentro del número.
+                </div>
+              </div>
               <div className={cx(s.callout, s.warn)}>
                 En este modo <strong>los descuentos y el flete no se aplican</strong>: se toma el
-                número tal como viene y el neto se deriva sacándole el IVA.
+                número tal como viene y el neto se deriva sacándole el IVA de la parte facturada.
               </div>
             </>
           )}
@@ -182,15 +228,30 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
           )}
 
           <Paso label="Costo neto (con flete)" valor={money(c.costoNeto)} fuerte />
-          <Paso label={`IVA (${num(prod.iva, 1)}%)`} valor={`+ ${money(c.costoFinal - c.costoNeto)}`} tenue />
-          <Paso label="Costo final" valor={money(c.costoFinal)} tenue />
-          <Paso label="Costo final unitario" valor={money(c.costoFinalUnitario)} tenue />
+          {sinFactura ? (
+            <>
+              {/* El desglose del truco: el costo real, lo que se le paga al
+                  proveedor, y la base que queda para el markup. */}
+              <Paso label={`Sin factura (${num(c.porcSinFactura, 2)}%)`} valor={`− ${money(c.ivaAbsorbido)}`} />
+              <Paso label="Base del precio (bulto)" valor={money(c.costoPrecio)} fuerte />
+              <Paso label="Le pagás al proveedor" valor={money(c.desembolso)} tenue />
+            </>
+          ) : (
+            <>
+              <Paso label={`IVA (${num(prod.iva, 1)}%)`} valor={`+ ${money(c.costoFinal - c.costoNeto)}`} tenue />
+              <Paso label="Costo final" valor={money(c.costoFinal)} tenue />
+              <Paso label="Costo final unitario" valor={money(c.costoFinalUnitario)} tenue />
+            </>
+          )}
 
           <div className={s.cadenaCierre}>
-            <div className={s['mini-label']}>Costo neto unitario</div>
-            <strong className={s.mono}>{money(c.costoNetoUnitario)} {unidad}</strong>
+            <div className={s['mini-label']}>{sinFactura ? 'Base del precio (unitaria)' : 'Costo neto unitario'}</div>
+            <strong className={s.mono}>{money(c.costoPrecioUnitario)} {unidad}</strong>
             <div className={s.hint} style={{ margin: '4px 0 0' }}>
-              El único que alimenta el precio de venta.
+              {sinFactura
+                ? <>La única que alimenta el markup. El costo real es {money(c.costoNetoUnitario)} {unidad}:
+                  la diferencia ({money(c.ivaAbsorbidoUnitario)} {unidad}) es IVA que absorbés al vender.</>
+                : 'El único que alimenta el precio de venta.'}
             </div>
           </div>
         </div>
@@ -219,6 +280,7 @@ export function FormatoCompraTab({ prod: p }) {
       flete: String(e.flete ?? ''),
       modoCosto: e.modoCosto ?? 'lista',
       costoFinal: String(e.costoFinal ?? ''),
+      porcSinFactura: e.porcSinFactura ? String(e.porcSinFactura) : '',
       usarParaPrecio: !!e.usarParaPrecio,
     })),
   );
@@ -236,10 +298,14 @@ export function FormatoCompraTab({ prod: p }) {
 
   const agregar = () => {
     if (!proveedores.length) { toast('Primero creá proveedores en el menú Proveedores.', 'err'); return; }
+    // El % sin factura arranca con el del proveedor: su ficha declara qué emite.
+    const pv = proveedores[0];
+    const porc = Number(pv?.porcSinFactura) || (pv?.condicionCompra === 'liquidacion' ? 100 : 0);
     setRows((r) => [...r, {
-      proveedorId: proveedores[0].id, codigoProveedor: '', cantidad: '1',
+      proveedorId: pv.id, codigoProveedor: '', cantidad: '1',
       costo: '', descuento: '', descuento2: '', descuento3: '', descuento4: '', flete: '',
-      modoCosto: 'lista', costoFinal: '', usarParaPrecio: r.length === 0,
+      modoCosto: 'lista', costoFinal: '', porcSinFactura: porc ? String(porc) : '',
+      usarParaPrecio: r.length === 0,
     }]);
   };
 

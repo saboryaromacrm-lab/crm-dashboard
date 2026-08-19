@@ -128,20 +128,46 @@ function costosFormato(e, iva) {
   const vacio = {
     cantidad: 1, costoLista: 0, costoListaUnitario: 0, descuentoEfectivo: 0,
     costoBruto: 0, costoNeto: 0, costoFinal: 0, costoNetoUnitario: 0, costoFinalUnitario: 0,
+    porcSinFactura: 0, costoPrecio: 0, costoPrecioUnitario: 0,
+    ivaAbsorbido: 0, ivaAbsorbidoUnitario: 0, desembolso: 0, desembolsoUnitario: 0,
   };
   if (!e) return vacio;
   // Una cantidad en 0 dividiría por cero y dejaría los precios en Infinity.
   const cantidad = Math.max(Number(e.cantidad) || 1, 1e-9);
   const factorIva = 1 + (Number(iva) || 0) / 100;
+  /*
+   * MERCADERÍA SIN FACTURA (0072): el costo se parte en dos. `costoNeto` es el
+   * REAL (la parte facturada en neto porque su IVA se recupera + la parte sin
+   * factura entera); `costoPrecio` es la base del markup, con la parte sin
+   * factura despojada del IVA que el negocio absorbe al vender (÷ factor). La
+   * diferencia es `ivaAbsorbido`. Prueba: costoPrecio × factor = desembolso.
+   */
+  const q = Math.min(Math.max(Number(e.porcSinFactura) || 0, 0), 100) / 100;
+  const partir = (costoNeto) => {
+    const costoPrecio = costoNeto * ((1 - q) + q / factorIva);
+    const desembolso = costoNeto * ((1 - q) * factorIva + q);
+    return {
+      porcSinFactura: q * 100,
+      costoPrecio,
+      costoPrecioUnitario: costoPrecio / cantidad,
+      ivaAbsorbido: costoNeto - costoPrecio,
+      ivaAbsorbidoUnitario: (costoNeto - costoPrecio) / cantidad,
+      desembolso,
+      desembolsoUnitario: desembolso / cantidad,
+    };
+  };
 
   if (e.modoCosto === 'final') {
+    // Lo cargado es el DESEMBOLSO (lo que se paga): solo la parte facturada
+    // trae IVA adentro. Con q=0 es el ÷factor de siempre.
     const costoFinal = Number(e.costoFinal) || 0;
-    const costoNeto = costoFinal / factorIva;
+    const costoNeto = costoFinal / ((1 - q) * factorIva + q);
     return {
       cantidad, costoLista: 0, costoListaUnitario: 0, descuentoEfectivo: 0,
       costoBruto: costoNeto, costoNeto, costoFinal,
       costoNetoUnitario: costoNeto / cantidad,
       costoFinalUnitario: costoFinal / cantidad,
+      ...partir(costoNeto),
     };
   }
 
@@ -160,11 +186,14 @@ function costosFormato(e, iva) {
     costoFinal,
     costoNetoUnitario: costoNeto / cantidad,
     costoFinalUnitario: costoFinal / cantidad,
+    ...partir(costoNeto),
   };
 }
 
-/** El costo que alimenta el precio de venta: neto y unitario. */
+/** El costo REAL unitario: valuación de stock y pérdidas. NO cotiza. */
 function costoNetoEntry(e, iva) { return costosFormato(e, iva).costoNetoUnitario; }
+/** La BASE del precio de venta: lo único que puede multiplicar el markup. */
+function costoPrecioEntry(e, iva) { return costosFormato(e, iva).costoPrecioUnitario; }
 
 /**
  * El formato que fija el precio. Una sola definición, igual que en el backend:
@@ -177,6 +206,8 @@ function formatoActivo(prod) {
   return arr.find((e) => e.usarParaPrecio) || arr[0];
 }
 function costoNeto(prod) { return costoNetoEntry(formatoActivo(prod), prod?.iva); }
+/** La base del precio del producto (0072): con todo facturado, = costoNeto. */
+function costoPrecio(prod) { return costoPrecioEntry(formatoActivo(prod), prod?.iva); }
 
 /**
  * REDONDEO DE GÓNDOLA — espejo exacto de `pricing.ts` del backend.
@@ -230,7 +261,8 @@ function ventaFormato(prod, fila, costo) {
       finalFormato,
     };
   }
-  const base = costo != null ? Number(costo) || 0 : costoNeto(prod);
+  // La BASE del precio (0072), no el costo real: acá se cotiza.
+  const base = costo != null ? Number(costo) || 0 : costoPrecio(prod);
   const bruto = base * (1 + (Number(fila?.markup) || 0) / 100);
   const netoUnitario = redondeo > 0 ? money(redondearPrecio(bruto * (1 + iva / 100), redondeo) / (1 + iva / 100)) : money(bruto);
   const finalUnitario = redondeo > 0 ? redondearPrecio(netoUnitario * (1 + iva / 100), redondeo) : money(netoUnitario * (1 + iva / 100));
@@ -238,7 +270,8 @@ function ventaFormato(prod, fila, costo) {
 }
 
 function preciosVenta(prod) {
-  const cn = costoNeto(prod);
+  // La BASE del precio (0072), no el costo real: acá se cotiza.
+  const cn = costoPrecio(prod);
   // `prod.listas` es el FORMATO DE VENTA: solo las listas en las que este
   // producto se vende, cada una con SU markup. Acá solo se aplica el redondeo.
   return (prod.listas || []).map((l) => ({
@@ -263,9 +296,11 @@ function filaPiso(prod) {
 
 function precioBaseVenta(prod) {
   const piso = filaPiso(prod);
-  if (!piso) return costoNeto(prod);
+  // La BASE del precio (0072): sin lista cargada, "el precio" es el costo — y
+  // el costo que cotiza es la base, no el real.
+  if (!piso) return costoPrecio(prod);
   if (piso.precio != null) return piso.precio;
-  return ajustarNeto(costoNeto(prod) * (1 + (Number(piso.markup) || 0) / 100), prod.iva);
+  return ajustarNeto(costoPrecio(prod) * (1 + (Number(piso.markup) || 0) / 100), prod.iva);
 }
 /**
  * PRECIO FINAL DE UN PAQUETE, con IVA. Lo trae la API en cada presentación
@@ -940,7 +975,7 @@ export const inventoryStore = {
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,
   guardarFormatosCompra, guardarListasProducto, guardarListasPresentacion,
-  costoNeto, costoNetoEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPaquete,
+  costoNeto, costoNetoEntry, costoPrecio, costoPrecioEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPaquete,
   precioFinal, redondearPrecio,
   crearComprobante, getComprobante, comprobantesDe, cuentaProveedor, saldoTotalProveedores,
   facturasReferenciables,

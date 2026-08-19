@@ -22,8 +22,10 @@ export const GERENCIA_SECCIONES = [
     desc: 'Ventas por día, sucursal y cajero; tickets, medios de pago y comparativas entre períodos.',
   },
   {
-    id: 'rentabilidad', label: 'Rentabilidad', icon: TrendingUpIcon, permiso: 'gerencia.rentabilidad', pronto: true,
-    desc: 'Margen por producto, categoría y proveedor: qué deja plata y qué conviene dejar de vender.',
+    /* Construida el 19/8/2026 (0072): margen real vs aparente, IVA absorbido
+     * por la mercadería sin factura, posición fiscal y control por proveedor. */
+    id: 'rentabilidad', label: 'Rentabilidad', icon: TrendingUpIcon, permiso: 'gerencia.rentabilidad',
+    desc: 'Margen real por producto, marca, categoría y proveedor — con el IVA absorbido por la mercadería sin factura a la vista.',
   },
   {
     id: 'valorizacion', label: 'Valorización de stock', icon: Inventory2Icon, permiso: 'gerencia.valorizacion', pronto: true,

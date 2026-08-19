@@ -867,11 +867,13 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
     const base = d.entry || { costo: 0, descuento: 0, flete: 0, cantidad: 1 };
     // Costo y tamaño del bulto van JUNTOS: proyectar el precio de la bolsa
     // nueva con los kilos de la vieja daría un $/kg — y una góndola — falsos.
-    const cn = store.costoNetoEntry(usaCosto || !d.entry
+    // La BASE del precio (0072): el formato conserva su % sin factura, así que
+    // la proyección parte el costo facturado igual que lo hará el catálogo.
+    const cn = store.costoPrecioEntry(usaCosto || !d.entry
       ? { ...base, costo: d.costoBultoFacturado, cantidad: d.bultoFacturado || 1 }
       : base);
     // Markup equivalente del piso: proyecta la góndola con el costo facturado.
-    const cnHoy = store.costoNeto(d.prod);
+    const cnHoy = store.costoPrecio(d.prod);
     const ganancia = cnHoy > 0 ? (store.precioBaseVenta(d.prod) / cnHoy - 1) * 100 : 0;
     return store.precioFinal(cn * (1 + ganancia / 100), d.iva);
   };

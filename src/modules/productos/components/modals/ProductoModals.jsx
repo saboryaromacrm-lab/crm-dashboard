@@ -869,7 +869,11 @@ function EvolucionPreciosTab({ prod: p }) {
 function VentaTab({ prod: p, pres = null }) {
   const { store, isAdmin, toast } = useProductos();
   const esPaquete = !!pres;
-  const neto = esPaquete ? (Number(pres.costoNeto) || 0) : store.costoNeto(p);
+  /* La BASE del precio (0072), no el costo real: acá vive el markup, y con
+   * mercadería sin factura las dos difieren — el paquete la hereda del kilo. */
+  const neto = esPaquete
+    ? store.costoPrecio(p) * (Number(pres.tamKg) || 0)
+    : store.costoPrecio(p);
   const unidad = esPaquete ? '/paquete' : (p.tipo === 'granel' ? '/kg' : '/u');
   /** El código del artículo en sí: el del paquete es el de su etiqueta. */
   const codigoPropio = esPaquete ? pres.codigoBarras : p.codigoBarras;

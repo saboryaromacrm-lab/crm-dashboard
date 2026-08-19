@@ -21,6 +21,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
     condicionIva: 'responsable_inscripto',
     proveeMercaderia: true, proveeGastos: false, letraGasto: '',
     condicionCompra: 'factura', medioHabitual: '', diasPago: '', modoCuenta: 'facturas',
+    porcSinFactura: '',
   });
   const [cuentas, setCuentas] = useState([{ cbuAlias: '', descripcion: '' }]);
 
@@ -36,6 +37,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       medioHabitual: original.medioHabitual ?? '',
       diasPago: original.diasPago ?? '',
       modoCuenta: original.modoCuenta ?? 'facturas',
+      porcSinFactura: original.porcSinFactura ? String(original.porcSinFactura) : '',
     });
   }, [original]);
 
@@ -72,6 +74,11 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       medioHabitual: f.medioHabitual,
       diasPago: f.diasPago === '' ? null : Number(f.diasPago),
       modoCuenta: f.modoCuenta,
+      /* El % sin factura del proveedor: liquidación pura sin número = 100 (es
+       * lo único que puede querer decir), factura pura = 0 siempre. */
+      porcSinFactura: f.condicionCompra === 'factura'
+        ? 0
+        : (f.porcSinFactura === '' ? (f.condicionCompra === 'liquidacion' ? 100 : 0) : Number(f.porcSinFactura)),
     };
     const res = await act(
       editando ? provApi.editarProveedor(proveedorId, payload) : provApi.crearProveedor(payload),
@@ -124,6 +131,20 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
           <select value={f.condicionCompra} onChange={set('condicionCompra')}>
             {Object.entries(CONDICIONES_COMPRA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
+        </div>
+        <div className={s.field}>
+          <label>Sin factura %</label>
+          <input
+            type="number" min="0" max="100" step="0.01"
+            value={f.condicionCompra === 'factura' ? '' : f.porcSinFactura}
+            onChange={set('porcSinFactura')}
+            placeholder={f.condicionCompra === 'liquidacion' ? '100' : f.condicionCompra === 'mixto' ? 'Ej: 50' : 'Solo liquidación/mixto'}
+            disabled={f.condicionCompra === 'factura'}
+          />
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            Qué parte del valor viene sin factura. Precarga los formatos de compra nuevos
+            de este proveedor; el que manda para cada producto es el del formato.
+          </div>
         </div>
         <div className={s.field}>
           <label>Cómo cobra habitualmente</label>
