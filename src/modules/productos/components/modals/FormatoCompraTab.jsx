@@ -176,8 +176,9 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
                     onChange={(e) => set({ porcSinFactura: e.target.value })}
                   />
                   <div className={s.hint} style={{ margin: '6px 0 0' }}>
-                    Qué parte viene en liquidación: 100 = todo, 50 = mitad y mitad. A esa parte el
-                    sistema le quita el IVA que vas a absorber al vender — el "{prod.iva === 21 ? '17,36' : 'X'}%" de antes, calculado.
+                    Qué parte de la <strong>mercadería</strong> viene en liquidación: 100 = todo, 50 = mitad y mitad.
+                    A esa parte el sistema le quita el IVA que vas a absorber al vender — el
+                    "{prod.iva === 21 ? '17,36' : 'X'}%" de antes, calculado. El flete no entra: es tuyo.
                   </div>
                 </div>
               </div>
@@ -231,10 +232,14 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
           {sinFactura ? (
             <>
               {/* El desglose del truco: el costo real, lo que se le paga al
-                  proveedor, y la base que queda para el markup. */}
-              <Paso label={`Sin factura (${num(c.porcSinFactura, 2)}%)`} valor={`− ${money(c.ivaAbsorbido)}`} />
+                  proveedor, y la base que queda para el markup. El % corre
+                  SOLO sobre la mercadería — el flete es tuyo y entra entero. */}
+              <Paso label={`Sin factura (${num(c.porcSinFactura, 2)}%${c.costoNeto - c.costoBruto > 0.005 ? ', solo mercadería' : ''})`} valor={`− ${money(c.ivaAbsorbido)}`} />
               <Paso label="Base del precio (bulto)" valor={money(c.costoPrecio)} fuerte />
               <Paso label="Le pagás al proveedor" valor={money(c.desembolso)} tenue />
+              {c.costoNeto - c.costoBruto > 0.005 && (
+                <Paso label="Y el flete lo pagás vos, aparte" valor={money(c.costoNeto - c.costoBruto)} tenue />
+              )}
             </>
           ) : (
             <>

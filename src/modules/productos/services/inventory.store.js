@@ -138,28 +138,36 @@ function costosFormato(e, iva) {
   /*
    * MERCADERÍA SIN FACTURA (0072): el costo se parte en dos. `costoNeto` es el
    * REAL (la parte facturada en neto porque su IVA se recupera + la parte sin
-   * factura entera); `costoPrecio` es la base del markup, con la parte sin
-   * factura despojada del IVA que el negocio absorbe al vender (÷ factor). La
-   * diferencia es `ivaAbsorbido`. Prueba: costoPrecio × factor = desembolso.
+   * factura entera + el flete); `costoPrecio` es la base del markup, con la
+   * parte sin factura despojada del IVA que el negocio absorbe al vender
+   * (÷ factor). La diferencia es `ivaAbsorbido`.
+   *
+   * EL % CORRE SOLO SOBRE LA MERCADERÍA, NUNCA SOBRE EL FLETE (19/8/2026): el
+   * flete es un costo PROPIO — se paga aparte, a un tercero, ajeno al
+   * proveedor de la liquidación — así que no hay IVA que absorber ahí. Por eso
+   * `partir()` recibe mercadería y flete por separado. La identidad de control
+   * es de la mercadería: (base − flete) × factor = lo que se le paga al
+   * proveedor.
    */
   const q = Math.min(Math.max(Number(e.porcSinFactura) || 0, 0), 100) / 100;
-  const partir = (costoNeto) => {
-    const costoPrecio = costoNeto * ((1 - q) + q / factorIva);
-    const desembolso = costoNeto * ((1 - q) * factorIva + q);
+  const partir = (mercaderia, flete) => {
+    const baseMercaderia = mercaderia * ((1 - q) + q / factorIva);
+    const costoPrecio = baseMercaderia + flete;
+    const desembolso = mercaderia * ((1 - q) * factorIva + q);
     return {
       porcSinFactura: q * 100,
       costoPrecio,
       costoPrecioUnitario: costoPrecio / cantidad,
-      ivaAbsorbido: costoNeto - costoPrecio,
-      ivaAbsorbidoUnitario: (costoNeto - costoPrecio) / cantidad,
+      ivaAbsorbido: mercaderia - baseMercaderia,
+      ivaAbsorbidoUnitario: (mercaderia - baseMercaderia) / cantidad,
       desembolso,
       desembolsoUnitario: desembolso / cantidad,
     };
   };
 
   if (e.modoCosto === 'final') {
-    // Lo cargado es el DESEMBOLSO (lo que se paga): solo la parte facturada
-    // trae IVA adentro. Con q=0 es el ÷factor de siempre.
+    // Lo cargado es el DESEMBOLSO al proveedor (lo que se paga): solo la parte
+    // facturada trae IVA adentro. Sin flete acá: queda fuera del cálculo.
     const costoFinal = Number(e.costoFinal) || 0;
     const costoNeto = costoFinal / ((1 - q) * factorIva + q);
     return {
@@ -167,7 +175,7 @@ function costosFormato(e, iva) {
       costoBruto: costoNeto, costoNeto, costoFinal,
       costoNetoUnitario: costoNeto / cantidad,
       costoFinalUnitario: costoFinal / cantidad,
-      ...partir(costoNeto),
+      ...partir(costoNeto, 0),
     };
   }
 
@@ -186,7 +194,8 @@ function costosFormato(e, iva) {
     costoFinal,
     costoNetoUnitario: costoNeto / cantidad,
     costoFinalUnitario: costoFinal / cantidad,
-    ...partir(costoNeto),
+    // La mercadería es el bruto (post descuentos); el flete, la diferencia.
+    ...partir(costoBruto, costoNeto - costoBruto),
   };
 }
 
