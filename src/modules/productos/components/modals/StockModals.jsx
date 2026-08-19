@@ -276,11 +276,13 @@ export function CorregirFraccionadoModal({ prodId, presId, sucId: sucInit }) {
 
 /* ============================== MOVIMIENTO SIMPLE ============================== */
 export function MovimientoModal({ prodId, sucId: sucInit, pre = {} }) {
-  const { store, act, closeModal, sucOperativa } = useProductos();
+  const { store, act, closeModal, toast, sucOperativa } = useProductos();
   const prod = store.getProducto(prodId);
   const tipos = store.tiposMovPermitidos();
 
-  const [tipo, setTipo] = useState(tipos[0] || '');
+  // `pre.tipo` viene de quien abre (el "Ajustar" de Existencias preselecciona
+  // el ajuste); si el rol no tiene ese tipo, cae al primero permitido.
+  const [tipo, setTipo] = useState(pre.tipo && tipos.includes(pre.tipo) ? pre.tipo : (tipos[0] || ''));
   const [dir, setDir] = useState('-1');
   const [sucId, setSucId] = useState(sucInit || sucOperativa());
   const [presId, setPresId] = useState(pre.presId != null ? String(pre.presId) : '');
@@ -301,14 +303,25 @@ export function MovimientoModal({ prodId, sucId: sucInit, pre = {} }) {
   const resultante = disp + signo * c;
   const bad = resultante < -1e-9 && signo < 0;
 
-  const registrar = () =>
-    act(
+  const registrar = () => {
+    /* El ajuste EXIGE el motivo (la API también lo rechaza sin él): un número
+     * corregido sin porqué es el que nadie puede explicar en el historial. */
+    if (tipo === 'ajuste' && !motivo.trim()) {
+      toast('Contá en una línea por qué se ajusta: es lo que queda en el historial.', 'err');
+      return;
+    }
+    /* NÚMEROS, no el texto del input: el DTO del servidor valida estricto
+     * (@IsNumber/@IsInt) y un "2" en string rebota con un error que habla de
+     * constraints. Este modal quedó sin puerta de entrada un tiempo y el
+     * desajuste no se vio hasta reabrirla (19/8/2026). */
+    return act(
       store.opSimple({
         tipo, productoId: prod.id, sucursalId: parseInt(sucId, 10), presId: presNum,
-        cantidad: cant, signo: dir, motivo: motivo.trim(),
+        cantidad: Number(cant), signo: Number(dir), motivo: motivo.trim(),
       }),
       'Movimiento registrado.',
     );
+  };
 
   return (
     <ModalShell
@@ -353,8 +366,12 @@ export function MovimientoModal({ prodId, sucId: sucInit, pre = {} }) {
         <input type="number" min="0" step={unidad === 'kg' ? '0.001' : '1'} value={cant} placeholder="0" onChange={(e) => setCant(e.target.value)} />
       </div>
       <div className={s.field}>
-        <label>Motivo / referencia</label>
-        <input value={motivo} placeholder="Ej: cliente, N° remito, observación…" onChange={(e) => setMotivo(e.target.value)} />
+        <label>Motivo / referencia {tipo === 'ajuste' && <span className={s.req}>*</span>}</label>
+        <input
+          value={motivo}
+          placeholder={tipo === 'ajuste' ? 'Obligatorio: por qué se corrige este número' : 'Ej: cliente, N° remito, observación…'}
+          onChange={(e) => setMotivo(e.target.value)}
+        />
       </div>
       <div className={cx(s.callout, bad ? s.warn : c > 0 ? s.ok : undefined)}>
         {bad

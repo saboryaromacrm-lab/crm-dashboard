@@ -3,22 +3,30 @@ import { useProductos } from '../context/ProductosContext.jsx';
 import { money } from '../domain/format.js';
 import { ESTADOS_STOCK } from '../domain/constants.js';
 import { sucursalOptions, productoOptions } from '../components/selectOptions.jsx';
-import { Table, PanelHead, TipoBadge, StockPill, usePaginado, s } from '../components/ui.jsx';
+import { Table, PanelHead, TipoBadge, StockPill, Btn, usePaginado, s } from '../components/ui.jsx';
 
 /**
- * Existencias es CONSULTA pura: acá se mira el stock, no se opera. Vender es
- * del POS, mover mercadería es de Transferencias y las anomalías se cargan en
- * Incidencias — cada acción vive en su circuito, con sus validaciones.
+ * Existencias es consulta, con UNA excepción: el AJUSTE por fila (19/8/2026,
+ * pedido del dueño). Vender es del POS, mover mercadería es de Transferencias
+ * y las anomalías se cargan en Incidencias — cada acción vive en su circuito.
  *
  * Tampoco se ingresa mercadería (18/8/2026, pedido del dueño): la mercadería
  * entra por la FACTURA en Compras, que es la que trae el costo, el proveedor y
  * la deuda. El botón "+ Compra (ingreso)" que había acá sumaba stock sin papel
  * detrás: el mismo kilo podía entrar dos veces —una a mano y otra con la
- * factura— y el costo quedaba sin actualizar. Para el faltante o el sobrante
- * que aparece contando la góndola está Control de stock.
+ * factura— y el costo quedaba sin actualizar. Para el conteo sistemático de la
+ * góndola está Control de stock.
+ *
+ * EL AJUSTE es otra cosa: la corrección puntual de UN número ("hay 11 y el
+ * sistema dice 12") hecha por quien tiene la llave `inventario`, mirándolo.
+ * Abre el movimiento manual de siempre —el del historial— prellenado con la
+ * fila: producto, sucursal y presentación. Solo en filas DISPONIBLES: lo
+ * comprometido/vencido/defectuoso tiene sus propios circuitos (transferencias,
+ * vencimientos, incidencias) y ajustarlo desde acá los descuadraría.
  */
 export function ExistenciasPanel() {
-  const { store } = useProductos();
+  const { store, openModal } = useProductos();
+  const puedeAjustar = store.can('inventario');
   const [sucF, setSucF] = useState('');
   const [prodF, setProdF] = useState('');
   const [estadoF, setEstadoF] = useState('');
@@ -45,6 +53,20 @@ export function ExistenciasPanel() {
           <td><StockPill estado={st.estado} /></td>
           <td className={s.num}>{store.fmtCant(p, st.presentacionId, st.cantidad)}</td>
           <td className={s.num}>{money(store.valorEntry(st))}</td>
+          <td className={s['actions-col']}>
+            {puedeAjustar && st.estado === 'disponible' && (
+              <Btn
+                small
+                onClick={() => openModal('movimiento', {
+                  prodId: st.productoId,
+                  sucId: st.sucursalId,
+                  pre: { presId: st.presentacionId, tipo: 'ajuste' },
+                })}
+              >
+                Ajustar
+              </Btn>
+            )}
+          </td>
         </tr>
       );
     });
@@ -73,6 +95,7 @@ export function ExistenciasPanel() {
         cols={[
           { h: 'Producto' }, { h: 'Sucursal' }, { h: 'Present.' },
           { h: 'Estado' }, { h: 'Cantidad', num: true }, { h: 'Valor', num: true },
+          { h: '', cls: 'actions-col' },
         ]}
         empty="Sin existencias con esos filtros."
         pag={pag}
