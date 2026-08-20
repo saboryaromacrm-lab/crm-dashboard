@@ -4,6 +4,7 @@ import { useVentas } from '../context/VentasContext.jsx';
 import { ventasApi } from '../services/ventas.api.js';
 import { CONDICIONES_IVA, MEDIOS_PAGO, OPCIONES_REDONDEO, OPCIONES_REDONDEO_PRECIO } from '../domain/constants.js';
 import { PanelHead, Btn, s } from '../components/ui.jsx';
+import { PanelArca } from '../components/PanelArca.jsx';
 
 /* ------------------------------------------------------------------ *
  * Piezas de formulario. Locales a propósito: solo esta pantalla las usa.
@@ -385,7 +386,7 @@ export function ConfiguracionPanel() {
           </Campo>
           <Interruptor
             label="Facturación electrónica (ARCA)"
-            hint="Prendida, cada factura pide CAE — y si ARCA no contesta, la venta sale igual como ticket provisorio y queda en Ventas › Sin facturar para reintentar. OJO: la integración todavía no está conectada, así que hoy prenderla manda TODAS las facturas a ese circuito (sirve para ensayarlo)."
+            hint="Prendida, cada factura pide CAE — y si ARCA no contesta, la venta sale igual como ticket provisorio y queda en Ventas › Sin facturar para reintentar. Este interruptor es la INTENCIÓN; si además se puede o no, lo dice el panel de diagnóstico de abajo."
             checked={draft.arcaHabilitado}
             onChange={set('arcaHabilitado')}
           />
@@ -608,6 +609,19 @@ export function ConfiguracionPanel() {
             </select>
           </Campo>
         </Seccion>
+
+        {/* A LO ANCHO DE LAS DOS COLUMNAS: lleva tablas (los pasos de la prueba
+            y las ventas trabadas con su motivo), y media pantalla las parte.
+            Va último porque es diagnóstico, no configuración: acá no se toca
+            nada, se mira si lo de arriba puede funcionar. */}
+        <div style={{ gridColumn: '1 / -1' }}>
+          <Seccion
+            titulo="Facturación electrónica — diagnóstico"
+            desc="El interruptor de arriba es la intención; esto es la capacidad. Lo que ARCA necesita (CUIT, punto de venta y certificado) se configura en el servidor, no acá."
+          >
+            <PanelArca habilitado={!!draft.arcaHabilitado} />
+          </Seccion>
+        </div>
       </div>
     </div>
   );

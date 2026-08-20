@@ -57,6 +57,15 @@ export const ventasApi = {
   anularVenta: (id, motivo) => httpClient.post(`/ventas/${id}/anular`, { motivo }),
   /** Emite la factura de un ticket provisorio (ARCA caído al cobrar). Inocuo si falla. */
   facturarVenta: (id) => httpClient.post(`/ventas/${id}/facturar`, {}),
+  /* ---- ARCA: el panel de diagnóstico (Ventas › Configuración) ----
+   *
+   * Son DOS y no uno a propósito: `arcaEstado` lee entorno y disco (barato, se
+   * pide al abrir la pantalla) y `arcaProbar` sale a la red contra ARCA — hasta
+   * unos 10 segundos si hay que pedir un ticket de acceso nuevo, así que lo
+   * dispara el usuario apretando el botón, nunca la carga de la pantalla. */
+  arcaEstado: () => httpClient.get('/arca/estado'),
+  arcaProbar: () => httpClient.post('/arca/probar', {}),
+
   /**
    * NOTA DE CRÉDITO: la única forma de deshacer una factura con CAE.
    * `items` vacío = nota TOTAL (toda la venta, con sus otros cargos).
