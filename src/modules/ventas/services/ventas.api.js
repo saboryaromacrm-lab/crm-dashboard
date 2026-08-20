@@ -65,6 +65,14 @@ export const ventasApi = {
    * dispara el usuario apretando el botón, nunca la carga de la pantalla. */
   arcaEstado: () => httpClient.get('/arca/estado'),
   arcaProbar: () => httpClient.post('/arca/probar', {}),
+  /**
+   * EL TRÁMITE DEL CERTIFICADO. La clave privada se genera y se queda EN EL
+   * SERVIDOR: de acá solo vuelve el pedido (`.csr`), que es público — está
+   * hecho para dárselo a ARCA. Una clave que pasara por el navegador quedaría
+   * en el historial, en Descargas y en cualquier proxy del camino.
+   */
+  arcaPedido: (datos) => httpClient.post('/arca/certificado/pedido', datos),
+  arcaInstalarCert: (certificado) => httpClient.post('/arca/certificado/instalar', { certificado }),
 
   /**
    * NOTA DE CRÉDITO: la única forma de deshacer una factura con CAE.

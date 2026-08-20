@@ -28,6 +28,7 @@ import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
 import { TIPOS_VENTA } from '../domain/constants.js';
+import { CertificadoArca } from './CertificadoArca.jsx';
 import { Table, Btn, Di, money, fmtFechaHora, s } from './ui.jsx';
 
 /** '30715556667' → '30-71555666-7'. Como se lee en un papel. */
@@ -71,8 +72,15 @@ export function PanelArca({ habilitado }) {
     }
   };
 
-  if (loading) return <div className={s.hint}>Leyendo la configuración de ARCA…</div>;
-  if (error) return <div className={cx(s.callout, s.warn)}>No se pudo leer el estado de ARCA: <strong>{error}</strong></div>;
+  /*
+   * EL CARTEL DE CARGANDO SOLO EN LA PRIMERA VEZ (`!est`), y no es cosmética:
+   * cada recarga desmontaba este panel entero, y con él el pedido de
+   * certificado recién generado. O sea que apretar "Generar clave y pedido"
+   * creaba la clave y BORRABA de la pantalla el `.csr` que había que copiar.
+   * Mientras haya datos previos se sigue mostrando lo que hay.
+   */
+  if (loading && !est) return <div className={s.hint}>Leyendo la configuración de ARCA…</div>;
+  if (error && !est) return <div className={cx(s.callout, s.warn)}>No se pudo leer el estado de ARCA: <strong>{error}</strong></div>;
   if (!est) return null;
 
   const trab = est.trabadas ?? { cantidad: 0, filas: [] };
@@ -209,6 +217,23 @@ export function PanelArca({ habilitado }) {
       {(est.avisos ?? []).map((a) => (
         <div key={a} className={cx(s.callout, s.warn)}>{a}</div>
       ))}
+
+      {/* --------------------- El trámite del certificado ---------------------
+          Va después del estado y antes de la prueba, que es el orden real: sin
+          certificado no hay nada que probar. Solo aparece si las rutas están
+          configuradas — sin ellas no hay dónde escribir. */}
+      {est.certPath && est.keyPath ? (
+        <div className={cx(s.card, s.cardPad)}>
+          <CertificadoArca est={est} onCambio={reload} />
+        </div>
+      ) : (
+        <div className={cx(s.callout, s.info)}>
+          Para tramitar el certificado desde acá faltan{' '}
+          <span className={s.mono}>ARCA_CERT_PATH</span> y{' '}
+          <span className={s.mono}>ARCA_KEY_PATH</span>: son las rutas del volumen montado donde
+          se guardan, y se configuran en el servidor.
+        </div>
+      )}
 
       {/* ------------------------ Probar conexión ------------------------ */}
       <div>
