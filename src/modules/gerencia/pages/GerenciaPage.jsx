@@ -233,6 +233,9 @@ export function GerenciaPage() {
   const [usuarios, setUsuarios] = useState(null);
   const [roles, setRoles] = useState([]);
   const [catalogo, setCatalogo] = useState([]);
+  const [sucursales, setSucursales] = useState([]);
+  /** Ediciones sin guardar de la tabla de sucursales: { [id]: {puntoVenta, direccion} }. */
+  const [edits, setEdits] = useState({});
   const [aviso, setAviso] = useState(null);
   const [modal, setModal] = useState(null); // {tipo:'usuario'|'rol', datos}
 
@@ -246,11 +249,13 @@ export function GerenciaPage() {
   const cargar = useCallback(async () => {
     if (!can('gerencia.usuarios')) { setUsuarios([]); return; }
     try {
-      const [us, rs] = await Promise.all([
+      const [us, rs, sc] = await Promise.all([
         httpClient.get('/usuarios'),
         httpClient.get('/roles'),
+        httpClient.get('/sucursales'),
       ]);
-      setUsuarios(us); setRoles(rs);
+      setUsuarios(us); setRoles(rs); setSucursales(sc);
+      setEdits({});
     } catch (e) {
       setAviso({ tipo: 'err', texto: e?.data?.message || 'No se pudo conectar con la API.' });
       setUsuarios([]);
@@ -313,15 +318,21 @@ export function GerenciaPage() {
         desc={`Sesión de ${user?.name ?? '—'} (superadmin). Los usuarios entran con su contraseña; cada rol define qué puede hacer cada uno.`}
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
-            {tab === 'usuarios'
-              ? <Btn variant="btn-primary" onClick={() => setModal({ tipo: 'usuario', datos: null })}>+ Nuevo usuario</Btn>
-              : <Btn variant="btn-primary" onClick={() => setModal({ tipo: 'rol', datos: null })}>+ Nuevo rol</Btn>}
+            {/* Las sucursales no se crean desde acá: son estructura de la
+                empresa y se editan las que hay. Sin este `null`, la pestaña
+                ofrecía "+ Nuevo rol", que no es lo que se está mirando. */}
+            {tab === 'usuarios' && (
+              <Btn variant="btn-primary" onClick={() => setModal({ tipo: 'usuario', datos: null })}>+ Nuevo usuario</Btn>
+            )}
+            {tab === 'roles' && (
+              <Btn variant="btn-primary" onClick={() => setModal({ tipo: 'rol', datos: null })}>+ Nuevo rol</Btn>
+            )}
           </div>
         }
       />
 
       <div style={{ display: 'flex', gap: 8 }}>
-        {[['usuarios', 'Usuarios'], ['roles', 'Roles y permisos']].map(([id, label]) => (
+        {[['usuarios', 'Usuarios'], ['roles', 'Roles y permisos'], ['sucursales', 'Sucursales']].map(([id, label]) => (
           <button
             key={id}
             type="button"
@@ -426,6 +437,80 @@ export function GerenciaPage() {
             );
           })}
         </div>
+      )}
+
+      {tab === 'sucursales' && (
+        <>
+          <div className={cx(s.callout, s.info)}>
+            Cada local tiene <strong>su propio punto de venta de ARCA</strong>, declarado contra su
+            domicilio y con su numeración correlativa aparte. El <strong>domicilio</strong> de acá
+            es el que sale impreso en la factura de ese local — no el de la empresa.
+          </div>
+          <Table
+            cols={[
+              { h: 'Sucursal' }, { h: 'Tipo' }, { h: 'Punto de venta' },
+              { h: 'Domicilio del comprobante' }, { h: 'Acciones', cls: 'actions-col' },
+            ]}
+            empty="Sin sucursales."
+          >
+            {sucursales.map((su) => {
+              const ed = edits[su.id] ?? {};
+              const pv = ed.puntoVenta ?? su.puntoVenta ?? '';
+              const dir = ed.direccion ?? su.direccion ?? '';
+              const sucio = pv !== (su.puntoVenta ?? '') || dir !== (su.direccion ?? '');
+              const set = (campo) => (e) => setEdits((p) => ({
+                ...p, [su.id]: { ...(p[su.id] ?? {}), [campo]: e.target.value },
+              }));
+              return (
+                <tr key={su.id}>
+                  <td><strong>{su.nombre}</strong></td>
+                  <td className={s.muted}>{su.tipo === 'distribuidora' ? 'Distribuidora' : 'Express'}</td>
+                  <td>
+                    <input
+                      value={pv}
+                      onChange={set('puntoVenta')}
+                      maxLength={5}
+                      placeholder="00028"
+                      style={{ width: 90, fontFamily: 'var(--crm-font-mono, monospace)' }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={dir}
+                      onChange={set('direccion')}
+                      maxLength={200}
+                      placeholder="Calle 123, Formosa"
+                      style={{ width: '100%', minWidth: 220 }}
+                    />
+                  </td>
+                  <td className={s['actions-col']}>
+                    <Btn
+                      variant="btn-primary"
+                      small
+                      disabled={!sucio}
+                      onClick={() => mutar(
+                        /* Se manda el nombre y el tipo porque el DTO los exige:
+                         * esta pantalla edita dos campos, no la sucursal entera. */
+                        () => httpClient.patch(`/sucursales/${su.id}`, {
+                          nombre: su.nombre, tipo: su.tipo, puntoVenta: pv, direccion: dir,
+                        }),
+                        `${su.nombre}: punto de venta guardado.`,
+                      )}
+                    >
+                      Guardar
+                    </Btn>
+                  </td>
+                </tr>
+              );
+            })}
+          </Table>
+          <div className={s.hint}>
+            Dejarlo vacío es válido con <strong>un solo local</strong>: ahí se usa el punto de venta
+            de la configuración del servidor. Con varios, cada uno necesita el suyo — dos locales
+            no pueden compartirlo. El estado de la conexión y el último número autorizado de cada
+            punto de venta están en <strong>Ventas › Configuración</strong>.
+          </div>
+        </>
       )}
     </div>
   );

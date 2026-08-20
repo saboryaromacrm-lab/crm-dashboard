@@ -475,6 +475,17 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
     ? `${DOC_TEXTO[cli.tipoDoc]} ${esc(cli.numeroDoc || '')}`
     : 'Sin identificar';
 
+  /*
+   * EL DOMICILIO DE LA FACTURA ES EL DEL LOCAL QUE LA EMITIÓ (0077).
+   *
+   * ARCA declara cada punto de venta contra un domicilio, y el comprobante
+   * lleva ESE domicilio comercial: la factura del local de Belgrano 728 no
+   * puede decir el domicilio fiscal de la empresa. Si la sucursal no tiene el
+   * suyo cargado se usa el de la empresa, que es lo correcto mientras haya un
+   * solo local (y es como venía funcionando).
+   */
+  const domicilioEmisor = venta.sucursalDireccion || empresa.direccion || '';
+
   const qr = await qrSvg(venta.qrArca);
   const caeVto = venta.caeVencimiento ? fecha(venta.caeVencimiento) : '';
   /* El motivo de la nota es la PRIMERA línea de las observaciones; la segunda
@@ -498,7 +509,7 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
       <div>
         <div><strong>Emisor:</strong> ${esc(empresa.nombre || '')}</div>
         ${empresa.cuit ? `<div><strong>CUIT:</strong> ${esc(empresa.cuit)}</div>` : ''}
-        ${empresa.direccion ? `<div><strong>Domicilio:</strong> ${esc(empresa.direccion)}</div>` : ''}
+        ${domicilioEmisor ? `<div><strong>Domicilio:</strong> ${esc(domicilioEmisor)}</div>` : ''}
         <div><strong>Cond. IVA:</strong> IVA Responsable Inscripto</div>
       </div>
       <div>

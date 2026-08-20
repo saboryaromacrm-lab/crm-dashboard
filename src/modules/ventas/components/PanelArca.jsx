@@ -102,7 +102,7 @@ export function PanelArca({ habilitado }) {
         <Di label="CUIT del certificado">
           <span className={s.mono}>{cuitLindo(est.cuit)}</span>
         </Di>
-        <Di label="Punto de venta (web services)">
+        <Di label="Punto de venta de la casa">
           <span className={s.mono}>{est.puntoVenta || '—'}</span>
         </Di>
         <Di label="Estado">
@@ -111,6 +111,68 @@ export function PanelArca({ habilitado }) {
             : <strong style={{ color: 'var(--crm-color-danger)' }}>✕ Falta configurar</strong>}
         </Di>
         <Di label="Espera máxima">{Math.round((est.timeoutMs ?? 0) / 1000)} s</Di>
+      </div>
+
+      {/* ---------------- Un punto de venta por sucursal ---------------- */}
+      <div>
+        <div className={s['card-title']}>Punto de venta de cada local</div>
+        <div className={s.hint} style={{ marginBottom: 6 }}>
+          ARCA declara cada punto de venta contra un <strong>domicilio</strong> y cada uno lleva
+          su numeración correlativa aparte. Se cargan en{' '}
+          <strong>Gerencia › Sucursales</strong>, y el último número lo trae Probar conexión.
+        </div>
+        <Table
+          cols={[
+            { h: 'Sucursal' }, { h: 'Punto de venta' }, { h: 'Domicilio del comprobante' },
+            { h: 'Último autorizado', num: true },
+          ]}
+          empty="No hay sucursales cargadas."
+        >
+          {(est.sucursales ?? []).map((su) => {
+            const probado = (prueba?.numeracion ?? []).find((n) => n.sucursalId === su.id);
+            return (
+              <tr key={su.id}>
+                <td>
+                  {su.nombre}
+                  {su.tipo === 'distribuidora' ? <div className={s.hint}>distribuidora</div> : null}
+                </td>
+                <td className={s.mono}>
+                  {su.puntoVenta || (
+                    <span style={{ color: 'var(--crm-color-danger)' }}>
+                      sin cargar{est.puntoVenta ? ` · usa ${est.puntoVenta}` : ''}
+                    </span>
+                  )}
+                </td>
+                <td className={su.direccion ? undefined : s.muted}>
+                  {su.direccion || 'el de la empresa'}
+                </td>
+                <td className={s.num}>
+                  {probado
+                    ? probado.tipos.map((t) => (
+                      <div key={t.tipo} className={s.hint}>
+                        {TIPOS_VENTA[t.tipo]?.label ?? t.tipo}:{' '}
+                        {t.error
+                          ? <span style={{ color: 'var(--crm-color-danger)' }}>✕</span>
+                          : <span className={s.mono}>{t.ultimo}</span>}
+                      </div>
+                    ))
+                    : <span className={s.muted}>—</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </Table>
+        {/* Con UN local, no cargar el punto de venta es lo normal: cae al de la
+            variable de entorno y no hay nada que elegir. Con varios, significa
+            que sus facturas saldrían por la boca de expendio de otro. */}
+        {est.sinPuntoVenta > 0 && (est.sucursales?.length ?? 0) > 1 && (
+          <div className={cx(s.callout, s.warn)} style={{ marginTop: 8 }}>
+            {est.sinPuntoVenta === 1 ? 'Hay 1 local sin' : `Hay ${est.sinPuntoVenta} locales sin`}{' '}
+            punto de venta propio: sus facturas saldrían por el{' '}
+            <strong className={s.mono}>{est.puntoVenta || '(ninguno)'}</strong>, que es la boca de
+            expendio de otro domicilio. Cargáselos en <strong>Gerencia › Sucursales</strong>.
+          </div>
+        )}
       </div>
 
       {/* Lo que falta, dicho con nombre y apellido. Un "no disponible" pelado
@@ -196,29 +258,16 @@ export function PanelArca({ habilitado }) {
             </div>
           )}
 
-          {prueba.numeracion?.length > 0 && (
-            <>
-              <div className={s['card-title']} style={{ marginTop: 'var(--crm-space-3)' }}>
-                Último número autorizado por ARCA
-              </div>
-              <div className={s.hint} style={{ marginBottom: 6 }}>
-                La numeración fiscal la lleva ARCA, no el sistema: el próximo comprobante sale con
-                el siguiente de estos números.
-              </div>
-              <Table cols={[{ h: 'Comprobante' }, { h: 'Último', num: true }]}>
-                {prueba.numeracion.map((n) => (
-                  <tr key={n.tipo}>
-                    <td>{TIPOS_VENTA[n.tipo]?.label ?? n.tipo}</td>
-                    <td className={s.num}>
-                      {n.error
-                        ? <span style={{ color: 'var(--crm-color-danger)' }}>{n.error}</span>
-                        : <span className={s.mono}>{n.ultimo}</span>}
-                    </td>
-                  </tr>
-                ))}
-              </Table>
-            </>
-          )}
+          {/* Los últimos números autorizados van en la tabla de sucursales de
+              arriba, al lado del punto de venta al que pertenecen: son de un
+              punto de venta y de ninguno más. Acá solo lo que no entra ahí —
+              el local que cae al de la variable de entorno. */}
+          {(prueba.numeracion ?? []).filter((n) => !n.propio).map((n) => (
+            <div key={n.puntoVenta} className={s.hint} style={{ marginTop: 6 }}>
+              <strong className={s.mono}>{n.puntoVenta}</strong> (usado por {n.sucursal}):{' '}
+              {n.tipos.map((t) => `${TIPOS_VENTA[t.tipo]?.label ?? t.tipo} ${t.error ? '✕' : t.ultimo}`).join(' · ')}
+            </div>
+          ))}
         </div>
       )}
 
