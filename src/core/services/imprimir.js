@@ -157,8 +157,18 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
   // y cada una es una página del rollo. Sale por su propio camino.
   if (f.etiqueta) return htmlEtiquetas({ f, titulo, cuerpo });
   const color = f.rollo ? '#111' : colorSeguro(empresa.colorMarca, '#166534');
-  const datos = [empresa.cuit && `CUIT ${esc(empresa.cuit)}`, esc(empresa.direccion), esc(empresa.telefono)]
-    .filter(Boolean).join(' · ');
+  /* El nombre GRANDE es el de fantasía, que es con el que el cliente conoce al
+   * negocio. La razón social va abajo, en la línea de datos, y SOLO si es otra:
+   * repetirla cuando coinciden es ruido en un rollo de 58 mm. En la factura la
+   * razón social además figura como "Emisor", que es donde la exige la RG 1415;
+   * acá está para que el papel diga quién cobra aunque no sea fiscal. */
+  const razon = String(empresa.razonSocial || '').trim();
+  const datos = [
+    razon && razon !== String(empresa.nombre || '').trim() && esc(razon),
+    empresa.cuit && `CUIT ${esc(empresa.cuit)}`,
+    esc(empresa.direccion),
+    esc(empresa.telefono),
+  ].filter(Boolean).join(' · ');
   // Una sola vez: la vista previa de Sistema rearma el documento en CADA tecla,
   // y el logo son ~533 KB de base64 — validarlo dos veces era regex y copia por
   // duplicado en cada pulsación.
@@ -507,7 +517,7 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
 
     <div class="fiscalDatos">
       <div>
-        <div><strong>Emisor:</strong> ${esc(empresa.nombre || '')}</div>
+        <div><strong>Emisor:</strong> ${esc(empresa.razonSocial || empresa.nombre || '')}</div>
         ${empresa.cuit ? `<div><strong>CUIT:</strong> ${esc(empresa.cuit)}</div>` : ''}
         ${domicilioEmisor ? `<div><strong>Domicilio:</strong> ${esc(domicilioEmisor)}</div>` : ''}
         <div><strong>Cond. IVA:</strong> IVA Responsable Inscripto</div>

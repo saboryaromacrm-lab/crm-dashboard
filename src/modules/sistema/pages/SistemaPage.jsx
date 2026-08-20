@@ -303,10 +303,28 @@ export function SistemaPage() {
                 <div className={s.field}>
                   <label>Nombre de la empresa <span className={s.req}>*</span></label>
                   <input value={empresa.nombre} onChange={(e) => setEmpresa((x) => ({ ...x, nombre: e.target.value }))} />
+                  <div className={s.hint}>El nombre de fantasía: con el que te conoce el cliente. Va grande en el membrete.</div>
                 </div>
                 <div className={s.field}>
                   <label>CUIT</label>
                   <input value={empresa.cuit} placeholder="30-12345678-9" onChange={(e) => setEmpresa((x) => ({ ...x, cuit: e.target.value }))} />
+                </div>
+              </div>
+              {/* Separada del nombre a propósito: en una factura la razón social
+                  es obligatoria (RG 1415) y puede no ser el nombre de fantasía
+                  — acá se conoce "Sabor y Aroma" y factura una persona. */}
+              <div className={s['form-grid']}>
+                <div className={s.field}>
+                  <label>Razón social (ante ARCA)</label>
+                  <input
+                    value={empresa.razonSocial ?? ''}
+                    placeholder={empresa.nombre || 'Como figura en ARCA'}
+                    onChange={(e) => setEmpresa((x) => ({ ...x, razonSocial: e.target.value }))}
+                  />
+                  <div className={s.hint}>
+                    Quién factura, como figura ante ARCA. Va en las facturas y adentro del
+                    certificado. Si es igual al nombre de arriba, dejala vacía.
+                  </div>
                 </div>
               </div>
               <div className={s['form-grid']}>
