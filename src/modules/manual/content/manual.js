@@ -1352,6 +1352,81 @@ export const MANUAL = [
         ],
       },
       {
+        id: 'arca-facturar',
+        actualizado: '2026-08-20',
+        titulo: 'Facturar con ARCA, paso a paso',
+        bloques: [
+          {
+            t: 'p',
+            texto: 'Dos cosas distintas: **la puesta en marcha**, que se hace una vez por servidor y es casi toda trámite; y **la operación**, que es apretar una tecla. Lo de abajo está en el orden real y probado el 20/8/2026 contra homologación, de punta a punta.',
+          },
+
+          { t: 'p', texto: '**A · La puesta en marcha** (una sola vez, y de nuevo para producción)' },
+          {
+            t: 'pasos',
+            items: [
+              '**El volumen ANTES que nada.** Dokploy › `crm-api` › Advanced › Volumes › Add: *Volume Mount*, nombre `arca-certs`, Mount Path `/certs`. La clave privada tiene que vivir fuera de la imagen, que se reconstruye entera en cada deploy — y el deploy es automático *On Push* a `main`. Una clave generada fuera del volumen se pierde en el próximo merge, en el medio del trámite.',
+              '**Las cinco variables**, en Environment (no en Build Args): `ARCA_ENV`, `ARCA_CUIT`, `ARCA_PTO_VTA`, `ARCA_CERT_PATH=/certs/arca.crt` y `ARCA_KEY_PATH=/certs/arca.key`. **Guardar no aplica nada: hace falta Redeploy.** Sin las dos rutas, los botones del certificado ni aparecen.',
+              '**Generar clave y pedido**, en Ventas › Configuración. La clave privada se genera y se queda en el servidor: nunca pasa por el navegador. Lo que se copia es el pedido (`.csr`), que es público. Elegí bien el **alias** y la **razón social**: quedan adentro del certificado y no se cambian. Poné el entorno en el alias (`saboryaroma-homo`, `saboryaroma-prod`) porque vas a tener los dos en la misma cuenta.',
+              '**Subir el pedido a ARCA.** Homologación: **WSASS** › *Crear DN y certificado*. Producción: **Administración de Certificados Digitales**. Devuelven el `.crt` en el acto.',
+              '**AUTORIZAR EL DN AL SERVICIO `wsfe`.** Es un formulario APARTE (WSASS › *Crear autorización a servicio*): crear el DN **no** lo autoriza. Si falta, WSAA contesta **"Computador no autorizado a acceder al servicio"**, que no menciona la autorización por ningún lado y manda a sospechar del certificado. Solo hace falta `wsfe`.',
+              '**Pegar el `.crt` e instalar** (paso 3 de la pantalla). Antes de guardarlo se controla que sea de esa clave, de ese CUIT y que no esté vencido — los tres errores se manifiestan igual y así se sabe cuál es.',
+              '**Probar conexión** hasta que den los **tres ✔**. No emite nada: pregunta si ARCA responde, si el certificado autentica y el último número de cada punto de venta. **Sin los tres en verde no se sigue**, porque cualquier problema posterior va a parecer del código y es un trámite a medias.',
+              '**Los datos fiscales, en Sistema › Empresa**: CUIT, **razón social** y domicilio. No es opcional y no lo cubre ARCA: el CAE se pide con `ARCA_CUIT`, así que **una factura sin estos datos sale bien para ARCA y mal en el papel**. Si falta algo, el panel avisa.',
+              '**Un punto de venta por sucursal**, en Gerencia › Sucursales. Cada uno se declara ante ARCA contra un domicilio y lleva su numeración aparte. Son de **cinco dígitos**.',
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: 'CON EL CERTIFICADO DE HOMOLOGACIÓN PUESTO, EL INTERRUPTOR VA APAGADO. Prendido, las ventas reales consiguen CAE del ambiente de prueba: facturas sin ningún valor fiscal, guardadas en la base real como facturas legítimas — y **con CAE ya no se anulan**. Para probar alcanza con *Probar conexión*, que no emite nada. Si querés el circuito completo, hacé **una** venta y su nota de crédito, y apagá.',
+          },
+
+          { t: 'p', texto: '**B · Cómo se factura, todos los días**' },
+          { t: 'flujo', items: ['Cargar el ticket', 'Cobrar (F2)', 'Facturar (F8)', 'CAE de ARCA', 'Imprimir'] },
+          {
+            t: 'tabla',
+            cols: ['Qué', 'Cómo'],
+            filas: [
+              ['**Facturar (F8) o Liquidar (F10)**', 'Es LA decisión del cobro. **F8 pide CAE** y emite el comprobante fiscal; **F10 saca ticket interno** y no toca ARCA. El que apura la caja aprieta F10 y después no hay factura'],
+              ['**La letra sale sola**', 'Condición de IVA de la empresa × condición del cliente. Responsable Inscripto contra Consumidor Final da **B**; contra otro Responsable Inscripto da **A**. No se elige a mano'],
+              ['**El punto de venta**', 'El de la **sucursal donde está la caja**, no uno global. Por eso cada local tiene el suyo'],
+              ['**El número**', 'Lo da ARCA (`FECompUltimoAutorizado + 1`), no el contador interno. Se reserva antes de emitir, así que una respuesta perdida no genera dos facturas: el reintento consulta ese número en vez de emitir de nuevo'],
+              ['**El papel**', '**A discrimina el IVA y B no** — es la ley, no una preferencia. Van el CAE con su vencimiento, el QR de la RG 4892 y el domicilio **de la sucursal**'],
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'info',
+            texto: 'SI ARCA NO CONTESTA, LA VENTA NO SE CAE. Sale **ticket provisorio** con el motivo textual guardado, el cliente se lleva la mercadería, y queda en **Ventas › ⚠ Sin facturar** con su botón **Facturar**. El reintento es inocuo: no toca plata, stock ni turno, y si ARCA sigue caído lo dice y deja la venta donde estaba. Al lograrse, la venta **pasa a ser** la factura.',
+          },
+
+          { t: 'p', texto: '**C · Deshacer**' },
+          {
+            t: 'tabla',
+            cols: ['Situación', 'Qué se hace'],
+            filas: [
+              ['La venta **tiene CAE**', '**Nota de crédito** (total o parcial), desde la ficha de la venta. Anular es imposible: el comprobante ya existe para ARCA. La nota es otro comprobante, con su propio CAE y su propia numeración'],
+              ['La venta **no tiene CAE**', '**Anular**, como siempre. Es un comprobante nuestro'],
+              ['Es una **nota de crédito**', 'No se anula ni se acredita: se corrige con una nota de débito (todavía no construida)'],
+              ['Los botones **no aparecen**', 'Están en el **pie de la ficha** de la venta, no en el listado. Y solo para rol `admin` o `superadmin`'],
+            ],
+          },
+
+          { t: 'p', texto: '**D · Homologación y producción son dos mundos**' },
+          {
+            t: 'lista',
+            items: [
+              '**Dos certificados**, cada uno con su trámite y su lugar (WSASS / Administración de Certificados Digitales). El de uno no sirve en el otro.',
+              '**Dos numeraciones.** Lo emitido en homologación no cuenta para nada.',
+              '**Cada máquina, su clave.** La de desarrollo no se copia al servidor: se hace el trámite de nuevo, que es gratis y evita mover un archivo secreto.',
+              '**La clave no está en ningún respaldo** — `backup.sh` hace `pg_dump` y el resto vive en git; el par `.key`/`.crt` no está en ninguno de los dos, a propósito. Perderla no se restaura: se da de baja el certificado y se tramita otro. Las facturas ya emitidas no se pierden (el CAE vive en la venta).',
+            ],
+          },
+          { t: 'ruta', texto: 'Ventas › Configuración (permiso ventas.configuracion) · Sistema › Empresa · Gerencia › Sucursales' },
+        ],
+      },
+      {
         id: 'arca-diagnostico',
         actualizado: '2026-08-20',
         titulo: 'Diagnóstico de ARCA (¿puedo facturar?)',
