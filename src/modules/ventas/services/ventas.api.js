@@ -55,6 +55,8 @@ export const ventasApi = {
   venta: (id) => httpClient.get(`/ventas/${id}`),
   /** El motivo es obligatorio: queda en `anuladoMotivo` junto a quién y cuándo. */
   anularVenta: (id, motivo) => httpClient.post(`/ventas/${id}/anular`, { motivo }),
+  /** Emite la factura de un ticket provisorio (ARCA caído al cobrar). Inocuo si falla. */
+  facturarVenta: (id) => httpClient.post(`/ventas/${id}/facturar`, {}),
 
   /* Ventas abiertas del punto de venta (borradores) */
   ventasAbiertas: (sucursalId) =>

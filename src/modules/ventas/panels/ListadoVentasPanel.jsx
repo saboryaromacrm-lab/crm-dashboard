@@ -67,7 +67,7 @@ function Medios({ medios }) {
 }
 
 export function ListadoVentasPanel() {
-  const { sucursales, usuarios, clientes, ctx, openModal, esJefe } = useVentas();
+  const { sucursales, usuarios, clientes, ctx, openModal, esJefe, toast } = useVentas();
 
   /* La sucursal del puesto manda para todos menos administración. */
   const sucursalFija = esJefe ? null : (ctx.sucursalId ?? null);
@@ -83,6 +83,13 @@ export function ListadoVentasPanel() {
   const [medioPago, setMedioPago] = useState('');
   const [origen, setOrigen] = useState('');
   const [conOferta, setConOferta] = useState(false);
+  /*
+   * LA PESTAÑA "SIN FACTURAR" (0073): los tickets provisorios que salieron con
+   * ARCA caído. Al activarla el rango salta a "Todo" — una venta pendiente
+   * puede ser de la semana pasada, y la pestaña existe justamente para que no
+   * se pierda detrás de un filtro de fecha.
+   */
+  const [soloSinFacturar, setSoloSinFacturar] = useState(false);
   const [busca, setBusca] = useState('');
   const [buscaAplicada, setBuscaAplicada] = useState('');
 
@@ -96,7 +103,8 @@ export function ListadoVentasPanel() {
   /* La firma de los filtros: identifica el pedido y reinicia el paginado. */
   const firma = [
     desde, hasta, sucursalFija ?? sucursalId, usuarioId, clienteId, cajaSesionId,
-    estado, medioPago, sucursalFija ? 'pos' : origen, conOferta ? '1' : '', buscaAplicada,
+    estado, medioPago, sucursalFija ? 'pos' : origen, conOferta ? '1' : '',
+    soloSinFacturar ? 'sf' : '', buscaAplicada,
   ].join('|');
 
   // El total llega en la respuesta, así que el paginado arranca sin saberlo y
@@ -117,6 +125,7 @@ export function ListadoVentasPanel() {
      * los trabaja administración en sus propias pantallas. */
     origen: sucursalFija ? 'pos' : (origen || undefined),
     conOferta: conOferta ? 'true' : undefined,
+    sinFacturar: soloSinFacturar ? 'true' : undefined,
     q: buscaAplicada || undefined,
   };
 
@@ -126,15 +135,36 @@ export function ListadoVentasPanel() {
       .then((r) => { setTotal(r.total); return r; }),
   );
 
+  /*
+   * El GLOBITO de la pestaña es GLOBAL (sin fechas ni filtros): tiene que
+   * avisar que hay tickets provisorios esperando aunque se esté mirando otro
+   * día. Consulta mínima (limit 1, solo el total) con su índice parcial.
+   */
+  const { data: badgeSF, reload: recargarBadge } = useResource(
+    'ventas-sin-facturar-badge',
+    () => ventasApi.listadoVentas({ sinFacturar: 'true', limit: 1 }),
+  );
+  const pendientesGlobal = badgeSF?.total ?? 0;
+
+  const alternarSinFacturar = () => {
+    setSoloSinFacturar((v) => {
+      // Al entrar a la pestaña, el rango se abre a "Todo": lo pendiente no
+      // puede esconderse detrás del filtro "Hoy".
+      if (!v) aplicarRango('todo');
+      return !v;
+    });
+  };
+
   const filas = data?.filas ?? [];
   const t = data?.totales;
 
   const hayFiltro = !!(usuarioId || clienteId || cajaSesionId || estado || medioPago
-    || origen || conOferta || buscaAplicada || (!sucursalFija && sucursalId) || rango !== 'hoy');
+    || origen || conOferta || soloSinFacturar || buscaAplicada
+    || (!sucursalFija && sucursalId) || rango !== 'hoy');
 
   const limpiar = () => {
     setUsuarioId(''); setClienteId(''); setCajaSesionId(''); setEstado('');
-    setMedioPago(''); setOrigen(''); setConOferta(false);
+    setMedioPago(''); setOrigen(''); setConOferta(false); setSoloSinFacturar(false);
     setBusca(''); setBuscaAplicada(''); setSucursalId('');
     aplicarRango('hoy');
   };
@@ -173,6 +203,22 @@ export function ListadoVentasPanel() {
   );
 
   const abrirDetalle = (v) => openModal('detalleVenta', { ventaId: v.id, onCambio: reload });
+
+  /** El reintento de ARCA. El error trae el motivo del servicio, y se muestra tal cual. */
+  const [facturando, setFacturando] = useState(null);
+  const facturarVenta = async (v) => {
+    setFacturando(v.id);
+    try {
+      const r = await ventasApi.facturarVenta(v.id);
+      toast(`Facturada: salió ${nroComprobante(r)} (${TIPOS_VENTA[r.tipo]?.label ?? r.tipo}).`, 'ok');
+      reload();
+      recargarBadge();
+    } catch (e) {
+      toast(e?.data?.message || 'ARCA sigue sin responder: la venta queda en Sin facturar.', 'err');
+    } finally {
+      setFacturando(null);
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
@@ -231,7 +277,7 @@ export function ListadoVentasPanel() {
       )}
 
       {/* ---------------- Filtros ---------------- */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         {RANGOS.map((r) => (
           <button
             key={r.id} type="button" className={s.badge}
@@ -247,6 +293,25 @@ export function ListadoVentasPanel() {
             {r.label}
           </button>
         ))}
+        {/* La pestaña de los tickets provisorios (ARCA caído al cobrar). El
+            globito es GLOBAL: avisa aunque se esté mirando otro día. Aparece
+            solo cuando hay pendientes o la pestaña está activa — el mostrador
+            normal no necesita saber que esto existe. */}
+        {(pendientesGlobal > 0 || soloSinFacturar) && (
+          <button
+            type="button" className={s.badge}
+            style={{
+              cursor: 'pointer', padding: '5px 12px', fontSize: 12, marginLeft: 'auto',
+              fontWeight: 700, borderWidth: 1, borderStyle: 'solid',
+              ...(soloSinFacturar
+                ? { background: 'var(--crm-color-danger)', color: '#fff', borderColor: 'var(--crm-color-danger)' }
+                : { color: 'var(--crm-color-danger)', borderColor: 'var(--crm-color-danger)' }),
+            }}
+            onClick={alternarSinFacturar}
+          >
+            ⚠ Sin facturar ({pendientesGlobal})
+          </button>
+        )}
       </div>
 
       <div className={s.toolbar}>
@@ -337,6 +402,11 @@ export function ListadoVentasPanel() {
             <td>
               <VentaTag tipo={v.tipo} />{' '}
               <span className={s.mono}>{nroComprobante(v)}</span>
+              {v.facturarPendiente && (
+                <div className={s.hint} style={{ color: 'var(--crm-color-danger)', fontWeight: 700 }} title={v.facturarMotivo}>
+                  ⚠ sin facturar
+                </div>
+              )}
               {v.origen === 'presupuesto' && (
                 <div className={s.hint}>de un pedido</div>
               )}
@@ -369,6 +439,13 @@ export function ListadoVentasPanel() {
             <td><VentaEstadoPill estado={v.estado} /></td>
             <td className={s['actions-col']}>
               <div className={s['row-actions']} onClick={(e) => e.stopPropagation()}>
+                {/* El reintento del papel fiscal: no toca plata ni stock, así
+                    que apretar de nuevo con ARCA caído no rompe nada. */}
+                {v.facturarPendiente && v.estado === 'confirmada' && (
+                  <Btn variant="btn-ingreso" small disabled={facturando === v.id} onClick={() => facturarVenta(v)}>
+                    {facturando === v.id ? 'Facturando…' : 'Facturar'}
+                  </Btn>
+                )}
                 <Btn small onClick={() => abrirDetalle(v)}>Ver</Btn>
               </div>
             </td>

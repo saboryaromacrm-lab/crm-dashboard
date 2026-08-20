@@ -385,7 +385,7 @@ export function ConfiguracionPanel() {
           </Campo>
           <Interruptor
             label="Facturación electrónica (ARCA)"
-            hint="Al activarla, la venta pide CAE antes de confirmarse. Requiere certificado y punto de venta habilitado."
+            hint="Prendida, cada factura pide CAE — y si ARCA no contesta, la venta sale igual como ticket provisorio y queda en Ventas › Sin facturar para reintentar. OJO: la integración todavía no está conectada, así que hoy prenderla manda TODAS las facturas a ese circuito (sirve para ensayarlo)."
             checked={draft.arcaHabilitado}
             onChange={set('arcaHabilitado')}
           />

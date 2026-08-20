@@ -334,6 +334,16 @@ export function cuerpoTicket(venta, { moneda, fechaHora, leyendaNoFiscal = true 
   }).join('');
   const pagos = (venta.pagos ?? []).map((p) => `<tr><td>${esc(p.medio)}</td><td class="n">${moneda(p.importe)}</td></tr>`).join('');
   const nro = venta.numero != null ? `${esc(venta.puntoVenta)}-${String(venta.numero).padStart(8, '0')}` : '';
+  /*
+   * ARCA CAÍDO (0073): el ticket provisorio LO DICE, siempre — esta leyenda no
+   * se apaga con la configuración, porque es la explicación que el cliente se
+   * lleva de por qué no recibió su factura. Cuando la venta se facture desde
+   * la pestaña Sin facturar, la reimpresión sale sin esto.
+   */
+  const provisorio = venta.facturarPendiente
+    ? '<div class="fiscal"><strong>SERVICIO DE ARCA NO DISPONIBLE</strong></div>'
+      + '<div class="fiscal">COMPROBANTE PROVISORIO — PENDIENTE DE FACTURACIÓN</div>'
+    : '';
   return `
     <h1>Ticket ${nro}</h1>
     <div class="sub">${esc(fechaHora(venta.fecha))}${venta.clienteNombre ? ` · ${esc(venta.clienteNombre)}` : ''}</div>
@@ -341,5 +351,6 @@ export function cuerpoTicket(venta, { moneda, fechaHora, leyendaNoFiscal = true 
     <div class="tot"><strong>TOTAL ${moneda(venta.total)}</strong></div>
     ${pagos ? `<table><tbody>${pagos}</tbody></table>` : ''}
     ${leyendaNoFiscal ? '<div class="fiscal">DOCUMENTO NO FISCAL</div>' : ''}
+    ${provisorio}
   `;
 }

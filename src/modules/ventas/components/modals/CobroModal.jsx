@@ -156,6 +156,15 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
           ? pagos.filter((x) => Number(x.importe) > 0).map((x) => ({ medio: x.medio, importe: r2(x.importe) }))
           : [],
       });
+      /*
+       * ARCA CAÍDO ≠ VENTA CAÍDA (0073): si se pidió factura y el servicio no
+       * contestó, la venta salió igual como ticket provisorio y quedó en la
+       * pestaña Sin facturar. El cajero se entera ACÁ, con el cliente enfrente
+       * — el ticket que imprime ya lleva la leyenda.
+       */
+      if (tipo === 'factura' && venta.facturarPendiente) {
+        toast('ARCA no respondió: salió un ticket provisorio y la venta quedó en Ventas › Sin facturar para reintentarla.', 'err');
+      }
       // Ticket automático (se apaga en Sistema › Impresión). El último queda
       // guardado para "Reimprimir" desde la registradora.
       try { localStorage.setItem('crm_ultimo_ticket', String(venta.id)); } catch { /* privado */ }
