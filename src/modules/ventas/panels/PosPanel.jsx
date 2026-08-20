@@ -13,7 +13,7 @@ import {
 import { indicePrecios, sugerenciaPorMonto } from '../domain/listas.js';
 import { sugerenciasOfertaTicket } from '../domain/ofertas.js';
 import { Table, PanelHead, Btn, money, num, fmtFechaHora, s } from '../components/ui.jsx';
-import { configImpresion, cuerpoTicket, imprimirDocumento } from '@core/services/imprimir.js';
+import { imprimirVenta } from '@core/services/imprimir.js';
 import { EVENTO_PRECIOS, cambiosPrecio } from '@core/services/cambiosPrecio.js';
 import p from '../styles/Pos.module.css';
 
@@ -937,12 +937,8 @@ export function PosPanel() {
     if (!id) { toast('Todavía no hay un ticket cobrado en este puesto.', 'err'); return; }
     try {
       const venta = await ventasApi.venta(id);
-      const { impresion } = await configImpresion();
-      imprimirDocumento('ticketPos', {
-        titulo: `Ticket ${venta.puntoVenta}-${venta.numero ?? ''}`,
-        esTicket: true,
-        cuerpo: cuerpoTicket(venta, { moneda: money, fechaHora: fmtFechaHora, leyendaNoFiscal: impresion.leyendaNoFiscal }),
-      });
+      // Con CAE sale la factura con su QR; sin CAE, el ticket de siempre.
+      await imprimirVenta(venta, { moneda: money, fechaHora: fmtFechaHora });
     } catch {
       toast('No se pudo reimprimir el ticket.', 'err');
     }

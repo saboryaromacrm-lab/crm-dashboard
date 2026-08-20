@@ -15,10 +15,11 @@ import { httpClient } from '@core/services/httpClient.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import {
-  FORMATOS_LABEL, cuerpoEtiquetas, cuerpoPlanillaConteo, esFormatoEtiqueta,
+  FORMATOS_LABEL, cuerpoEtiquetas, cuerpoFactura, cuerpoPlanillaConteo, esFormatoEtiqueta,
   formatoPorDefecto, htmlDocumento, imprimirDocumento, invalidarConfigImpresion,
 } from '@core/services/imprimir.js';
 import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
+import { money, fmtFechaHora } from '@modules/productos/domain/format.js';
 import { SISTEMA_SECCIONES } from '../config/sistema.config.js';
 
 /**
@@ -29,6 +30,11 @@ import { SISTEMA_SECCIONES } from '../config/sistema.config.js';
  */
 const DOCUMENTOS = [
   { clave: 'ticketPos', label: 'Ticket de venta (POS)', hint: 'Rollo 80 mm recomendado: más texto por línea. 58 mm para posnet/portátil.' },
+  {
+    clave: 'facturaVenta',
+    label: 'Factura electrónica (ARCA)',
+    hint: 'REEMPLAZA al ticket cuando la venta sale con CAE. Arranca en rollo porque sale de la misma impresora del mostrador; pasalo a A4 si el fuerte pasa a ser la Factura A del mayorista.',
+  },
   { clave: 'presupuesto', label: 'Presupuesto (cliente)', hint: 'La hoja formal que se le manda al cliente.' },
   { clave: 'hojaArmado', label: 'Hoja de armado (presupuestos)', hint: 'Sin precios, con columna en blanco para el lápiz.' },
   { clave: 'listaPreparacion', label: 'Listas de preparación (envíos)', hint: 'Enteros y Fraccionados de las transferencias.' },
@@ -44,8 +50,41 @@ const DOCUMENTOS = [
 
 const MAX_LOGO_KB = 400;
 
-/** Documento de muestra para la vista previa (no toca datos reales). */
-function cuerpoMuestra(clave) {
+/**
+ * Documento de muestra para la vista previa (no toca datos reales).
+ *
+ * Es `async` porque la factura dibuja su QR, y eso devuelve una promesa. Los
+ * demás documentos siguen siendo texto y no esperan nada.
+ */
+async function cuerpoMuestra(clave, empresa) {
+  if (clave === 'facturaVenta') {
+    /* La MISMA función que imprime la factura de verdad, con una venta de
+     * mentira: una vista previa armada aparte es la que después no se parece
+     * a lo que sale. El CAE y el QR son inventados — el QR va a existir y a
+     * dibujarse, pero ARCA no lo va a reconocer, que es lo correcto para una
+     * muestra. */
+    /* Los números CIERRAN entre sí (neto + IVA = total, y los renglones suman
+     * el neto): una muestra que no cuadra enseña a desconfiar del documento. */
+    return cuerpoFactura({
+      tipo: 'factura_b',
+      codigoComprobante: 6,
+      puntoVenta: '0003',
+      numero: 42,
+      fecha: '2026-08-19T18:30:00-03:00',
+      clienteNombre: 'Consumidor Final',
+      cliente: { tipoDoc: 'sin_identificar', numeroDoc: '', condicionIva: 'consumidor_final', direccion: '' },
+      items: [
+        { nombre: 'Miel Pura 500g', cantidad: 2, subtotal: 10000, iva: 21 },
+        { nombre: 'Barrita de Cereal Frutal', cantidad: 3, subtotal: 2000, iva: 21 },
+      ],
+      extras: [],
+      subtotalNeto: 12000,
+      total: 14520,
+      cae: '75123456789012',
+      caeVencimiento: '2026-08-29T12:00:00-03:00',
+      qrArca: 'https://www.afip.gob.ar/fe/qr/?p=VISTA_PREVIA_SIN_VALOR_FISCAL',
+    }, { moneda: money, fecha: fmtFechaHora, empresa: empresa ?? {} });
+  }
   if (clave === 'etiquetaFraccionado') {
     // Dos etiquetas para que se vea cómo queda una al lado de la otra en el rollo.
     return cuerpoEtiquetas({
@@ -168,17 +207,30 @@ export function SistemaPage() {
     r.readAsDataURL(file);
   };
 
-  /** Vista previa EN VIVO: el mismo HTML que va a la impresora, en un iframe. */
-  const previewHtml = useMemo(() => {
-    if (!empresa || !impresion) return '';
-    return htmlDocumento({
-      empresa,
-      formato: impresion[previewDoc] || formatoPorDefecto(previewDoc),
-      titulo: 'Vista previa',
-      cuerpo: cuerpoMuestra(previewDoc),
-      pie: previewDoc === 'ticketPos' ? impresion.pieTicket : '',
-      esTicket: previewDoc === 'ticketPos',
-    });
+  /**
+   * Vista previa EN VIVO: el mismo HTML que va a la impresora, en un iframe.
+   *
+   * Es un efecto y no un `useMemo` porque el cuerpo puede ser ASÍNCRONO — la
+   * factura dibuja su QR, y eso devuelve una promesa. El `vivo` corta la
+   * carrera: cambiando de documento rápido, la promesa vieja podía pisar la
+   * nueva y la vista previa quedaba mostrando el documento anterior.
+   */
+  const [previewHtml, setPreviewHtml] = useState('');
+  useEffect(() => {
+    if (!empresa || !impresion) { setPreviewHtml(''); return undefined; }
+    let vivo = true;
+    (async () => {
+      const html = htmlDocumento({
+        empresa,
+        formato: impresion[previewDoc] || formatoPorDefecto(previewDoc),
+        titulo: 'Vista previa',
+        cuerpo: await cuerpoMuestra(previewDoc, empresa),
+        pie: previewDoc === 'ticketPos' ? impresion.pieTicket : '',
+        esTicket: previewDoc === 'ticketPos',
+      });
+      if (vivo) setPreviewHtml(html);
+    })();
+    return () => { vivo = false; };
   }, [empresa, impresion, previewDoc]);
 
   if (!secciones.length) {
@@ -340,7 +392,7 @@ export function SistemaPage() {
                         await guardar('impresion', impresion);
                         imprimirDocumento(previewDoc, {
                           titulo: 'Impresión de prueba',
-                          cuerpo: cuerpoMuestra(previewDoc),
+                          cuerpo: await cuerpoMuestra(previewDoc, empresa),
                           esTicket: previewDoc === 'ticketPos',
                         });
                       }}

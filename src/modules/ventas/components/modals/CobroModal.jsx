@@ -6,7 +6,7 @@ import { ventasApi } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO, nroComprobante } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
 import { Table, Btn, Di, ModalShell, VentaTag, money, fmtFechaHora, s } from '../ui.jsx';
-import { configImpresion, cuerpoTicket, imprimirDocumento } from '@core/services/imprimir.js';
+import { configImpresion, imprimirVenta } from '@core/services/imprimir.js';
 import p from '../../styles/Pos.module.css';
 
 /**
@@ -169,12 +169,10 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
       // guardado para "Reimprimir" desde la registradora.
       try { localStorage.setItem('crm_ultimo_ticket', String(venta.id)); } catch { /* privado */ }
       const { impresion } = await configImpresion();
+      /* Con CAE sale la FACTURA (con su QR) y no el ticket: `imprimirVenta`
+       * decide, para que las tres pantallas que sacan papel coincidan. */
       if (impresion.imprimirTicketAlCobrar) {
-        imprimirDocumento('ticketPos', {
-          titulo: `Ticket ${venta.puntoVenta}-${venta.numero ?? ''}`,
-          esTicket: true,
-          cuerpo: cuerpoTicket(venta, { moneda: money, fechaHora: fmtFechaHora, leyendaNoFiscal: impresion.leyendaNoFiscal }),
-        });
+        await imprimirVenta(venta, { moneda: money, fechaHora: fmtFechaHora });
       }
       onCobrado(venta, vuelto && vuelto > 0 ? vuelto : 0);
     } catch (e) {

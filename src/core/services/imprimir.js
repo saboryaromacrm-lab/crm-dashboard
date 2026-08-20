@@ -14,6 +14,7 @@
  * La impresión sale por el diálogo del navegador (decisión del usuario). En la
  * PC de la caja, Chrome con `--kiosk-printing` imprime directo sin diálogo.
  */
+import QRCode from 'qrcode';
 import { httpClient } from './httpClient.js';
 import { barcodeSvg } from './barcode.js';
 
@@ -186,6 +187,26 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
     .tot { margin-top: ${f.rollo ? '6px' : '12px'}; text-align: right; font-size: ${f.rollo ? '12px' : '15px'}; }
     .nota { margin-top: ${f.rollo ? '8px' : '14px'}; color: #555; font-size: ${f.chica}; ${esTicket ? 'text-align: center;' : ''} }
     .fiscal { margin-top: 6px; text-align: center; font-size: ${f.chica}; color: #555; letter-spacing: 0.06em; }
+
+    /* ---- Comprobante fiscal (RG 1415 y RG 4892) ---- */
+    /* El recuadro de la letra: es lo primero que se mira para saber qué
+       comprobante es, así que va grande y centrado. */
+    .letraBox {
+      border: 2px solid #111; text-align: center; margin: ${f.rollo ? '4px auto 6px' : '0 auto 12px'};
+      width: ${f.rollo ? '18mm' : '24mm'}; padding: ${f.rollo ? '1px 0' : '3px 0'};
+    }
+    .letraBox .letra { font-size: ${f.rollo ? '20px' : '30px'}; font-weight: 800; line-height: 1; }
+    .letraBox .cod { font-size: ${f.chica}; }
+    .fiscalDatos { font-size: ${f.chica}; ${f.rollo ? '' : 'display: flex; gap: 18px;'} }
+    .fiscalDatos > div { flex: 1; }
+    .fiscalDatos strong { display: inline-block; min-width: ${f.rollo ? '0' : '78px'}; }
+    .cajaCae {
+      margin-top: ${f.rollo ? '8px' : '14px'}; border-top: 1px solid #111; padding-top: 6px;
+      ${f.rollo ? 'text-align: center;' : 'display: flex; align-items: center; gap: 14px;'}
+    }
+    .cajaCae .qr { width: ${f.rollo ? '26mm' : '32mm'}; height: ${f.rollo ? '26mm' : '32mm'}; flex: 0 0 auto; }
+    .cajaCae .qr svg { width: 100%; height: 100%; display: block; }
+    .caeNro { font-family: 'Courier New', monospace; font-size: ${f.rollo ? '12px' : '15px'}; font-weight: 700; letter-spacing: 0.04em; }
   </style></head><body>
     <div class="emp">${logo}<div><div class="empNombre">${esc(empresa.nombre || '')}</div>${datos ? `<div class="empDatos">${datos}</div>` : ''}</div></div>
     ${cuerpo}
@@ -320,6 +341,207 @@ export async function imprimirDocumento(tipoDoc, { titulo, cuerpo, pie, esTicket
   w.focus();
   setTimeout(() => w.print(), 250);
   return true;
+}
+
+/* ==================================================================== *
+ * COMPROBANTE FISCAL (RG 1415 · QR de la RG 4892)
+ * ==================================================================== */
+
+const COND_IVA_TEXTO = {
+  responsable_inscripto: 'IVA Responsable Inscripto',
+  monotributo: 'Responsable Monotributo',
+  exento: 'IVA Sujeto Exento',
+  consumidor_final: 'Consumidor Final',
+  no_categorizado: 'Sujeto No Categorizado',
+};
+
+const DOC_TEXTO = { cuit: 'CUIT', cuil: 'CUIL', dni: 'DNI', sin_identificar: '' };
+
+/**
+ * El QR como SVG **en línea**, no como imagen.
+ *
+ * La CSP del documento impreso prohíbe todo script, así que no se puede
+ * generar en la página: se arma acá y se pega ya dibujado. Va inline y no como
+ * `<img src="data:...">` porque un SVG en el marcado escala sin perder nitidez
+ * — en una térmica de 203 dpi un QR rasterizado y reescalado se lee mal.
+ */
+async function qrSvg(url) {
+  if (!url) return '';
+  try {
+    return await QRCode.toString(url, {
+      type: 'svg',
+      margin: 0,
+      // 'M' tolera ~15% de daño: es el nivel que ARCA usa en sus ejemplos y
+      // aguanta que la térmica imprima flojo o que el papel se manche.
+      errorCorrectionLevel: 'M',
+    });
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * LA FACTURA COMO CUERPO DE DOCUMENTO.
+ *
+ * LA DIFERENCIA ENTRE A Y B NO ES COSMÉTICA, es lo que manda la ley:
+ *
+ *  · **Factura A** (a un responsable inscripto): el IVA se DISCRIMINA. Los
+ *    renglones van en NETO y al pie aparecen el neto gravado, el IVA por
+ *    alícuota y el total. El cliente necesita ese desglose porque se computa
+ *    el IVA como crédito fiscal.
+ *  · **Factura B** (a consumidor final, monotributo o exento): el IVA **no se
+ *    discrimina**. Los renglones van con el impuesto adentro y solo se muestra
+ *    el total — que es, además, la regla de la casa: al público, todo con IVA.
+ *
+ * Es `async` porque el QR se dibuja acá (ver `qrSvg`).
+ */
+export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
+  const letra = String(venta.tipo || '').slice(-1).toUpperCase();
+  const discrimina = letra === 'A';
+  const cli = venta.cliente || {};
+  const nro = venta.numero != null
+    ? `${esc(venta.puntoVenta)}-${String(venta.numero).padStart(8, '0')}`
+    : '';
+
+  /* Los renglones. `subtotal` es el neto del renglón (ya con descuentos y
+   * ofertas); el final se deriva con la alícuota del propio renglón, que puede
+   * no ser la misma en todo el comprobante. */
+  /* El importe con IVA se arma como `neto + round(neto × alícuota)`, que es
+   * exactamente como el sistema construyó `ivaTotal` al cobrar. Calcularlo
+   * como `neto × 1,21` puede diferir un centavo, y entonces los renglones del
+   * papel no suman el total — en una factura, eso lo nota el cliente. */
+  const conIva = (neto, alic) => neto + Math.round(neto * alic) / 100;
+
+  const filas = (venta.items ?? []).map((it) => {
+    const neto = Number(it.subtotal) || 0;
+    const alic = it.iva ?? 21;
+    const importe = discrimina ? neto : conIva(neto, alic);
+    const unit = Number(it.cantidad) ? importe / Number(it.cantidad) : importe;
+    return `<tr>
+      <td>${esc(it.nombre ?? `#${it.productoId}`)}</td>
+      <td class="chica n">${Number(it.cantidad)}</td>
+      <td class="chica n">${moneda(unit)}</td>
+      ${discrimina ? `<td class="chica n">${Number(alic)}%</td>` : ''}
+      <td class="chica n">${moneda(importe)}</td>
+    </tr>`;
+  }).join('');
+
+  const extras = (venta.extras ?? []).map((e) => {
+    const neto = Number(e.importe) || 0;
+    const alic = e.iva ?? 21;
+    const importe = discrimina ? neto : conIva(neto, alic);
+    return `<tr>
+      <td>${esc(e.concepto || 'Extra')}</td>
+      <td class="chica n">1</td>
+      <td class="chica n">${moneda(importe)}</td>
+      ${discrimina ? `<td class="chica n">${Number(alic)}%</td>` : ''}
+      <td class="chica n">${moneda(importe)}</td>
+    </tr>`;
+  }).join('');
+
+  /* El desglose por alícuota, solo en A. Se agrupa igual que lo que se le
+   * mandó a ARCA: si el papel dijera otra cosa que el comprobante emitido,
+   * el que mira no podría conciliarlos. */
+  let pieIva = '';
+  if (discrimina) {
+    const porAlic = new Map();
+    for (const x of [...(venta.items ?? []), ...(venta.extras ?? [])]) {
+      const neto = Number(x.subtotal ?? x.importe) || 0;
+      const alic = Number(x.iva ?? 21);
+      porAlic.set(alic, (porAlic.get(alic) ?? 0) + neto * alic / 100);
+    }
+    pieIva = [...porAlic.entries()]
+      .sort((a, b) => b[0] - a[0])
+      .map(([alic, imp]) => `<div>IVA ${alic}%: <strong>${moneda(imp)}</strong></div>`)
+      .join('');
+  }
+
+  const docCliente = DOC_TEXTO[cli.tipoDoc]
+    ? `${DOC_TEXTO[cli.tipoDoc]} ${esc(cli.numeroDoc || '')}`
+    : 'Sin identificar';
+
+  const qr = await qrSvg(venta.qrArca);
+  const caeVto = venta.caeVencimiento ? fecha(venta.caeVencimiento) : '';
+
+  return `
+    <div class="letraBox">
+      <div class="letra">${esc(letra)}</div>
+      <div class="cod">COD. ${String(venta.codigoComprobante ?? '').padStart(2, '0')}</div>
+    </div>
+
+    <h1>FACTURA ${esc(letra)} ${nro}</h1>
+    <div class="sub">Fecha de emisión: ${esc(fecha(venta.fecha))}</div>
+
+    <div class="fiscalDatos">
+      <div>
+        <div><strong>Emisor:</strong> ${esc(empresa.nombre || '')}</div>
+        ${empresa.cuit ? `<div><strong>CUIT:</strong> ${esc(empresa.cuit)}</div>` : ''}
+        ${empresa.direccion ? `<div><strong>Domicilio:</strong> ${esc(empresa.direccion)}</div>` : ''}
+        <div><strong>Cond. IVA:</strong> IVA Responsable Inscripto</div>
+      </div>
+      <div>
+        <div><strong>Cliente:</strong> ${esc(venta.clienteNombre || '')}</div>
+        <div><strong>${esc(docCliente)}</strong></div>
+        ${cli.direccion ? `<div><strong>Domicilio:</strong> ${esc(cli.direccion)}</div>` : ''}
+        <div><strong>Cond. IVA:</strong> ${esc(COND_IVA_TEXTO[cli.condicionIva] || 'Consumidor Final')}</div>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr>
+        <th>Descripción</th><th>Cant.</th><th>P. unit.</th>
+        ${discrimina ? '<th>IVA</th>' : ''}
+        <th>Importe</th>
+      </tr></thead>
+      <tbody>${filas}${extras}</tbody>
+    </table>
+
+    <div class="tot">
+      ${discrimina ? `<div>Neto gravado: <strong>${moneda(venta.subtotalNeto)}</strong></div>${pieIva}` : ''}
+      <div style="font-size:1.2em">TOTAL <strong>${moneda(venta.total)}</strong></div>
+    </div>
+
+    <div class="cajaCae">
+      ${qr ? `<div class="qr">${qr}</div>` : ''}
+      <div>
+        <div>CAE N°</div>
+        <div class="caeNro">${esc(venta.cae || '')}</div>
+        ${caeVto ? `<div>Vencimiento del CAE: ${esc(caeVto)}</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * IMPRIME UNA VENTA, y decide sola qué papel es.
+ *
+ * Existe para que la decisión viva en UN lugar. Hay tres pantallas que sacan
+ * el papel de una venta —el cobro, el "Reimprimir" del punto de venta y el
+ * detalle del listado— y las tres tienen que llegar al mismo resultado:
+ *
+ *   con CAE  →  la FACTURA, con su QR fiscal. **Reemplaza** al ticket: si
+ *               salieran los dos papeles, el cliente no sabría cuál vale.
+ *   sin CAE  →  el ticket interno de siempre (y si la venta quedó pendiente
+ *               de facturar, con su leyenda de provisorio).
+ *
+ * Devuelve `false` si el navegador bloqueó la ventana emergente, igual que
+ * `imprimirDocumento`.
+ */
+export async function imprimirVenta(venta, { moneda, fechaHora }) {
+  const { empresa, impresion } = await configImpresion();
+  const nro = `${venta.puntoVenta}-${String(venta.numero ?? '').padStart(8, '0')}`;
+  if (venta.cae) {
+    return imprimirDocumento('facturaVenta', {
+      titulo: `Factura ${nro}`,
+      cuerpo: await cuerpoFactura(venta, { moneda, fecha: fechaHora, empresa }),
+      pie: '',
+    });
+  }
+  return imprimirDocumento('ticketPos', {
+    titulo: `Ticket ${nro}`,
+    esTicket: true,
+    cuerpo: cuerpoTicket(venta, { moneda, fechaHora, leyendaNoFiscal: impresion.leyendaNoFiscal }),
+  });
 }
 
 /** El ticket del POS como cuerpo de documento (lo usan cobro y reimpresión). */

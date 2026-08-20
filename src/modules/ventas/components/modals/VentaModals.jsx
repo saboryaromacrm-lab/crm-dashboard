@@ -11,7 +11,7 @@
  */
 import { useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
-import { configImpresion, imprimirDocumento, cuerpoTicket } from '@core/services/imprimir.js';
+import { imprimirVenta } from '@core/services/imprimir.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../../services/ventas.api.js';
@@ -32,12 +32,8 @@ export function DetalleVentaModal({ ventaId, onCambio }) {
     if (!v || imprimiendo) return;
     setImprimiendo(true);
     try {
-      const { impresion } = await configImpresion();
-      const salio = await imprimirDocumento('ticketPos', {
-        titulo: `Ticket ${nroComprobante(v)}`,
-        esTicket: true,
-        cuerpo: cuerpoTicket(v, { moneda: money, fechaHora: fmtFechaHora, leyendaNoFiscal: impresion.leyendaNoFiscal }),
-      });
+      // Con CAE sale la factura con su QR; sin CAE, el ticket de siempre.
+      const salio = await imprimirVenta(v, { moneda: money, fechaHora: fmtFechaHora });
       if (!salio) {
         toast('El navegador bloqueó la ventana de impresión. Permitile las ventanas emergentes a este sitio y probá de nuevo.', 'err');
       }
