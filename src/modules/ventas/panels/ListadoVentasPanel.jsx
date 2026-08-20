@@ -27,7 +27,9 @@ import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi } from '../services/ventas.api.js';
-import { MEDIOS_PAGO, ESTADOS_VENTA, TIPOS_VENTA, nroComprobante } from '../domain/constants.js';
+import {
+  MEDIOS_PAGO, ESTADOS_VENTA, TIPOS_VENTA, nroComprobante, esNotaCredito,
+} from '../domain/constants.js';
 import {
   Table, PanelHead, Stat, Btn, Pill, VentaEstadoPill, VentaTag,
   usePaginadoServidor, money, num, fmtFechaHora, isoDate, s,
@@ -273,6 +275,19 @@ export function ListadoVentasPanel() {
               <div className={s.hint}>{money(t.plataAnulada)} que no entraron</div>
             </div>
           )}
+          {/* Las notas de crédito ya están RESTADAS de "Vendido". Se muestran
+              aparte porque es el número que se pregunta solo: cuánto volvió. */}
+          {t.notasCredito > 0 && (
+            <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 180px' }}>
+              <span className={s['mini-label']}>NOTAS DE CRÉDITO</span>
+              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--crm-color-danger)' }}>
+                − {money(t.plataAcreditada)}
+              </div>
+              <div className={s.hint}>
+                {t.notasCredito} {t.notasCredito === 1 ? 'nota' : 'notas'} · ya restadas de lo vendido
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -420,7 +435,12 @@ export function ListadoVentasPanel() {
             <td>
               {v.clienteNombre}
               {v.condicionPago === 'cuenta_corriente' && (
-                <div className={s.hint}>cuenta corriente · saldo {money(v.saldo)}</div>
+                <div className={s.hint}>
+                  {/* Una nota de crédito no tiene saldo: no se cobra, DESCUENTA. */}
+                  {esNotaCredito(v.tipo)
+                    ? `cuenta corriente · descuenta ${money(v.total)}`
+                    : `cuenta corriente · saldo ${money(v.saldo)}`}
+                </div>
               )}
             </td>
             <td className={s.num}>{v.renglones}</td>

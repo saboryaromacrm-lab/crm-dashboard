@@ -357,6 +357,15 @@ const COND_IVA_TEXTO = {
 
 const DOC_TEXTO = { cuit: 'CUIT', cuil: 'CUIL', dni: 'DNI', sin_identificar: '' };
 
+/** Cómo se nombra un comprobante en el papel (para el "asociado" de una nota). */
+const TIPO_TEXTO = {
+  ticket: 'Ticket',
+  factura_a: 'Factura A', factura_b: 'Factura B', factura_c: 'Factura C',
+  nota_credito_a: 'Nota de crédito A',
+  nota_credito_b: 'Nota de crédito B',
+  nota_credito_c: 'Nota de crédito C',
+};
+
 /**
  * El QR como SVG **en línea**, no como imagen.
  *
@@ -398,6 +407,12 @@ async function qrSvg(url) {
 export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
   const letra = String(venta.tipo || '').slice(-1).toUpperCase();
   const discrimina = letra === 'A';
+  /* La misma plantilla imprime la NOTA DE CRÉDITO: mismo emisor, mismo
+   * receptor, mismos renglones y el mismo desglose de IVA — cambia el título,
+   * y que arriba tiene que decir QUÉ COMPROBANTE AJUSTA. Sin esa línea la nota
+   * queda huérfana y el cliente no sabe de qué factura le devolvieron. */
+  const esNota = String(venta.tipo || '').startsWith('nota_credito');
+  const titulo = esNota ? 'NOTA DE CRÉDITO' : 'FACTURA';
   const cli = venta.cliente || {};
   const nro = venta.numero != null
     ? `${esc(venta.puntoVenta)}-${String(venta.numero).padStart(8, '0')}`
@@ -462,6 +477,10 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
 
   const qr = await qrSvg(venta.qrArca);
   const caeVto = venta.caeVencimiento ? fecha(venta.caeVencimiento) : '';
+  /* El motivo de la nota es la PRIMERA línea de las observaciones; la segunda
+   * es el rastro interno ("[Nota de crédito de Factura B …]"), que no va al
+   * papel porque ya está impreso arriba como comprobante asociado. */
+  const motivo = esNota ? String(venta.observaciones || '').split('\n')[0].trim() : '';
 
   return `
     <div class="letraBox">
@@ -469,8 +488,11 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
       <div class="cod">COD. ${String(venta.codigoComprobante ?? '').padStart(2, '0')}</div>
     </div>
 
-    <h1>FACTURA ${esc(letra)} ${nro}</h1>
+    <h1>${titulo} ${esc(letra)} ${nro}</h1>
     <div class="sub">Fecha de emisión: ${esc(fecha(venta.fecha))}</div>
+    ${esNota && venta.origen ? `<div class="sub"><strong>Comprobante asociado:</strong> ${esc(
+    `${TIPO_TEXTO[venta.origen.tipo] || 'Comprobante'} ${venta.origen.puntoVenta}-${String(venta.origen.numero ?? 0).padStart(8, '0')}`,
+  )} del ${esc(fecha(venta.origen.fecha))}</div>` : ''}
 
     <div class="fiscalDatos">
       <div>
@@ -501,14 +523,17 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
       <div style="font-size:1.2em">TOTAL <strong>${moneda(venta.total)}</strong></div>
     </div>
 
-    <div class="cajaCae">
+    ${esNota && motivo ? `<div class="sub"><strong>Motivo:</strong> ${esc(motivo)}</div>` : ''}
+
+    ${venta.cae ? `<div class="cajaCae">
       ${qr ? `<div class="qr">${qr}</div>` : ''}
       <div>
         <div>CAE N°</div>
-        <div class="caeNro">${esc(venta.cae || '')}</div>
+        <div class="caeNro">${esc(venta.cae)}</div>
         ${caeVto ? `<div>Vencimiento del CAE: ${esc(caeVto)}</div>` : ''}
       </div>
-    </div>
+    </div>` : `<div class="fiscal"><strong>SERVICIO DE ARCA NO DISPONIBLE</strong></div>
+    <div class="fiscal">COMPROBANTE PROVISORIO — PENDIENTE DE FACTURACIÓN</div>`}
   `;
 }
 
@@ -524,15 +549,21 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
  *   sin CAE  →  el ticket interno de siempre (y si la venta quedó pendiente
  *               de facturar, con su leyenda de provisorio).
  *
+ * UNA NOTA DE CRÉDITO SIEMPRE VA POR LA PLANTILLA FISCAL, tenga CAE o no: el
+ * ticket del POS es el papel de una VENTA —lleva "cómo se pagó" y da un total
+ * que entró— y usarlo para una devolución diría exactamente lo contrario de lo
+ * que pasó. Sin CAE sale igual, con la leyenda de provisorio.
+ *
  * Devuelve `false` si el navegador bloqueó la ventana emergente, igual que
  * `imprimirDocumento`.
  */
 export async function imprimirVenta(venta, { moneda, fechaHora }) {
   const { empresa, impresion } = await configImpresion();
   const nro = `${venta.puntoVenta}-${String(venta.numero ?? '').padStart(8, '0')}`;
-  if (venta.cae) {
+  const esNota = String(venta.tipo || '').startsWith('nota_credito');
+  if (venta.cae || esNota) {
     return imprimirDocumento('facturaVenta', {
-      titulo: `Factura ${nro}`,
+      titulo: `${esNota ? 'Nota de crédito' : 'Factura'} ${nro}`,
       cuerpo: await cuerpoFactura(venta, { moneda, fecha: fechaHora, empresa }),
       pie: '',
     });

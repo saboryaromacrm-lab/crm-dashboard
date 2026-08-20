@@ -57,6 +57,12 @@ export const ventasApi = {
   anularVenta: (id, motivo) => httpClient.post(`/ventas/${id}/anular`, { motivo }),
   /** Emite la factura de un ticket provisorio (ARCA caído al cobrar). Inocuo si falla. */
   facturarVenta: (id) => httpClient.post(`/ventas/${id}/facturar`, {}),
+  /**
+   * NOTA DE CRÉDITO: la única forma de deshacer una factura con CAE.
+   * `items` vacío = nota TOTAL (toda la venta, con sus otros cargos).
+   * `{ motivo, items?: [{itemId, cantidad}], devuelveMercaderia?, devolverEfectivo? }`
+   */
+  notaCredito: (id, datos) => httpClient.post(`/ventas/${id}/nota-credito`, datos),
 
   /* Ventas abiertas del punto de venta (borradores) */
   ventasAbiertas: (sucursalId) =>

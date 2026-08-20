@@ -38,14 +38,26 @@ export const MEDIOS_PAGO = {
   otro: 'Otro',
 };
 
+/*
+ * ARCA no tiene "nota de crédito" a secas: tiene una POR LETRA, con su código
+ * y su numeración propia, y la letra tiene que ser la misma que la de la
+ * factura que ajusta. Por eso son tres entradas y no una.
+ */
 export const TIPOS_VENTA = {
   ticket: { label: 'Ticket', tag: 'tag-venta' },
   factura_a: { label: 'Factura A', tag: 'tag-ingreso' },
   factura_b: { label: 'Factura B', tag: 'tag-ingreso' },
   factura_c: { label: 'Factura C', tag: 'tag-ingreso' },
-  nota_credito: { label: 'Nota de crédito', tag: 'tag-baja' },
-  nota_debito: { label: 'Nota de débito', tag: 'tag-transf' },
+  nota_credito_a: { label: 'N. crédito A', tag: 'tag-baja' },
+  nota_credito_b: { label: 'N. crédito B', tag: 'tag-baja' },
+  nota_credito_c: { label: 'N. crédito C', tag: 'tag-baja' },
+  nota_debito_a: { label: 'N. débito A', tag: 'tag-transf' },
+  nota_debito_b: { label: 'N. débito B', tag: 'tag-transf' },
+  nota_debito_c: { label: 'N. débito C', tag: 'tag-transf' },
 };
+
+/** ¿Este comprobante RESTA en vez de sumar? Igual que `esNotaCredito` en la API. */
+export const esNotaCredito = (tipo) => String(tipo ?? '').startsWith('nota_credito');
 
 export const ESTADOS_VENTA = {
   borrador: { label: 'Borrador', pill: 'est-pendiente' },

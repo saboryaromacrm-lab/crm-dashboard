@@ -18,7 +18,7 @@ import {
   ReglaMarcaFormModal, BorrarReglaMarcaModal,
 } from './modals/ListaModals.jsx';
 import { OfertaFormModal, BorrarOfertaModal } from './modals/OfertaModals.jsx';
-import { DetalleVentaModal, AnularVentaModal } from './modals/VentaModals.jsx';
+import { DetalleVentaModal, AnularVentaModal, NotaCreditoModal } from './modals/VentaModals.jsx';
 
 /** Un solo modal a la vez: el contexto guarda `{ type, props }`. */
 const REGISTRY = {
@@ -44,6 +44,7 @@ const REGISTRY = {
   borrarOferta: BorrarOfertaModal,
   detalleVenta: DetalleVentaModal,
   anularVenta: AnularVentaModal,
+  notaCredito: NotaCreditoModal,
   verLogica: VerLogicaModal,
   cobro: CobroModal,
   ventaEmitida: VentaEmitidaModal,
