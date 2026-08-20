@@ -70,6 +70,19 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   const pagado = r2(pagos.reduce((a, x) => a + (Number(x.importe) || 0), 0));
   const faltante = r2(totales.total - pagado);
 
+  /**
+   * Medios que EXIGEN factura (configuración, 19/8/2026): un peso cobrado con
+   * uno de estos bloquea "Liquidar" — la venta sale facturada sí o sí. Solo
+   * cuentan los renglones con importe: una transferencia en $0 no obliga.
+   * La API lo revalida al confirmar; acá se avisa ANTES de apretar.
+   */
+  const medioExigeFactura = useMemo(() => {
+    if (condicionPago !== 'contado') return null;
+    const exigen = config.mediosFacturar ?? [];
+    const usado = pagos.find((x) => Number(x.importe) > 0 && exigen.includes(x.medio));
+    return usado ? (MEDIOS_PAGO[usado.medio] ?? usado.medio) : null;
+  }, [pagos, condicionPago, config.mediosFacturar]);
+
   const efectivoAsignado = r2(
     pagos.filter((x) => x.medio === 'efectivo').reduce((a, x) => a + (Number(x.importe) || 0), 0),
   );
@@ -117,6 +130,12 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
       toast('Liquidar es al contado. Para cuenta corriente, facturá (F8).', 'err');
       return;
     }
+    // El botón nunca es un no-op silencioso: si Liquidar está bloqueado, acá
+    // está el porqué (el mismo que muestra el aviso de abajo).
+    if (tipo === 'ticket' && medioExigeFactura) {
+      toast(`${medioExigeFactura} exige factura: facturá (F8) o cambiá el medio de pago.`, 'err');
+      return;
+    }
     if (condicionPago === 'contado' && Math.abs(faltante) > 0.01) {
       toast(faltante > 0 ? `Faltan ${money(faltante)}.` : `Sobran ${money(-faltante)}.`, 'err');
       return;
@@ -159,7 +178,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   const pagosOk = condicionPago === 'cuenta_corriente'
     ? !(excedeCredito && config.ctaCteBloquearSuperado)
     : Math.abs(faltante) <= 0.01;
-  const puedeLiquidar = pagosOk && condicionPago === 'contado' && !enviando;
+  const puedeLiquidar = pagosOk && condicionPago === 'contado' && !medioExigeFactura && !enviando;
   const puedeFacturar = pagosOk && !enviando;
 
   /* ------------------------------ Atajos ------------------------------ */
@@ -294,6 +313,15 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
             <Btn small onClick={agregarPago}>+ Otro medio</Btn>
             {pagos.length > 1 && <Btn small onClick={dividir}>Partes iguales</Btn>}
           </div>
+
+          {/* El aviso del medio que obliga a facturar: aparece apenas se elige,
+              no cuando el Liquidar rebota. */}
+          {medioExigeFactura && (
+            <div className={cx(s.callout, s.warn)} style={{ marginTop: 'var(--crm-space-3)' }}>
+              <strong>{medioExigeFactura} exige factura.</strong> Esta venta no puede salir como
+              ticket: se factura (F8) o se cobra con otro medio.
+            </div>
+          )}
 
           {/* Solo habla cuando algo está mal; si los pagos suman justo, silencio. */}
           {Math.abs(faltante) > 0.01 && (

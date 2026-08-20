@@ -245,43 +245,66 @@ function Campo({ label, hint, children }) {
   );
 }
 
-/** Lista de textos editable (listas de precio, medios de pago habilitados). */
-function ListaEditable({ valores, onChange, placeholder }) {
-  const [nuevo, setNuevo] = useState('');
-  const agregar = () => {
-    const v = nuevo.trim();
-    if (!v || valores.some((x) => x.toLowerCase() === v.toLowerCase())) { setNuevo(''); return; }
-    onChange([...valores, v]);
-    setNuevo('');
+/**
+ * MEDIOS DE PAGO, uno por uno (19/8/2026, pedido del dueño).
+ *
+ * Antes era una lista de texto libre, pero todos los consumidores (cobro,
+ * cobranzas, filtros) filtran contra el catálogo de medios conocidos: un
+ * "chequecito" tipeado no aparecía en ninguna pantalla. Ahora es la tabla del
+ * catálogo real, y cada medio se trabaja individualmente:
+ *
+ *   Habilitado      aparece en el cobro y en las cobranzas.
+ *   Exige factura   un peso cobrado con este medio bloquea "Liquidar": la
+ *                   venta sale facturada sí o sí (la API lo revalida).
+ */
+function MediosPagoEditor({ habilitados, exigenFactura, onChange }) {
+  const setHabilitado = (medio, on) => {
+    const hab = on ? [...habilitados, medio] : habilitados.filter((x) => x !== medio);
+    // Un medio deshabilitado no puede seguir exigiendo nada.
+    const exi = on ? exigenFactura : exigenFactura.filter((x) => x !== medio);
+    onChange(hab, exi);
+  };
+  const setExige = (medio, on) => {
+    onChange(habilitados, on ? [...exigenFactura, medio] : exigenFactura.filter((x) => x !== medio));
   };
   return (
-    <div style={{ display: 'grid', gap: 8 }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {valores.map((v) => (
-          <span key={v} className={s.badge} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {v}
-            <button
-              type="button"
-              className={s['pres-remove']}
-              aria-label={`Quitar ${v}`}
-              onClick={() => onChange(valores.filter((x) => x !== v))}
-            >
-              ×
-            </button>
-          </span>
-        ))}
-        {!valores.length && <span className={s.muted}>Ninguna.</span>}
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input
-          value={nuevo}
-          placeholder={placeholder}
-          onChange={(e) => setNuevo(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } }}
-        />
-        <Btn small onClick={agregar}>Agregar</Btn>
-      </div>
-    </div>
+    <table className={s.tabla} style={{ maxWidth: 560 }}>
+      <thead>
+        <tr>
+          <th>Medio</th>
+          <th style={{ width: 110, textAlign: 'center' }}>Habilitado</th>
+          <th style={{ width: 130, textAlign: 'center' }}>Exige factura</th>
+        </tr>
+      </thead>
+      <tbody>
+        {Object.entries(MEDIOS_PAGO).map(([k, label]) => {
+          const hab = habilitados.includes(k);
+          return (
+            <tr key={k}>
+              <td>{label}</td>
+              <td style={{ textAlign: 'center' }}>
+                <input
+                  type="checkbox"
+                  aria-label={`${label} habilitado`}
+                  checked={hab}
+                  onChange={(e) => setHabilitado(k, e.target.checked)}
+                />
+              </td>
+              <td style={{ textAlign: 'center' }}>
+                <input
+                  type="checkbox"
+                  aria-label={`${label} exige factura`}
+                  checked={exigenFactura.includes(k)}
+                  disabled={!hab}
+                  title={hab ? 'Cobrado con este medio, la venta se factura sí o sí' : 'Primero habilitalo'}
+                  onChange={(e) => setExige(k, e.target.checked)}
+                />
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
@@ -543,8 +566,15 @@ export function ConfiguracionPanel() {
             checked={draft.permitirStockNegativo}
             onChange={set('permitirStockNegativo')}
           />
-          <Campo label="Medios de pago habilitados" hint={`Disponibles: ${Object.values(MEDIOS_PAGO).join(', ')}.`}>
-            <ListaEditable valores={draft.mediosPago ?? []} onChange={set('mediosPago')} placeholder="efectivo, qr, cheque…" />
+          <Campo
+            label="Medios de pago"
+            hint="Exige factura: un peso cobrado con ese medio bloquea Liquidar — la venta sale facturada sí o sí (típico: lo bancarizado, que deja rastro)."
+          >
+            <MediosPagoEditor
+              habilitados={draft.mediosPago ?? []}
+              exigenFactura={draft.mediosFacturar ?? []}
+              onChange={(mediosPago, mediosFacturar) => setDraft((d) => ({ ...d, mediosPago, mediosFacturar }))}
+            />
           </Campo>
         </Seccion>
 
