@@ -118,6 +118,21 @@ export function CertificadoArca({ est, onCambio }) {
         </div>
       )}
 
+      {/* LO QUE SE ESCRIBA ACÁ, ¿SOBREVIVE AL PRÓXIMO DEPLOY?
+          Va arriba de todo y en rojo porque es lo único de esta pantalla que
+          no se puede deshacer: enterarse después es enterarse con el trámite
+          hecho, el certificado emitido y la clave borrada. */}
+      {est?.certPersistente === false && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>Pará: la carpeta de los certificados no es un volumen montado.</strong> Existe,
+          pero es el disco del contenedor y <strong>se borra entero en el próximo deploy</strong>,
+          junto con la clave y el certificado. En Dokploy: <em>Advanced › Volumes › Add</em>, con{' '}
+          <span className={s.mono}>Mount Path</span> apuntando a la carpeta de{' '}
+          <span className={s.mono}>ARCA_KEY_PATH</span>, y después <strong>Redeploy</strong>.
+          Hasta entonces el botón de generar no va a dejarte empezar.
+        </div>
+      )}
+
       {/* --------- Paso 1 --------- */}
       <div>
         <div className={s['card-title']}>1 · La clave y el pedido</div>
