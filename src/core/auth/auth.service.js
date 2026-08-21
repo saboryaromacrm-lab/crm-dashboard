@@ -1,5 +1,6 @@
 import { appConfig } from '@core/config/app.config.js';
 import { httpClient } from '@core/services/httpClient.js';
+import { leerTokenTerminal } from '@core/auth/terminal.js';
 import {
   leerSesion, guardarSesion, actualizarSesion, actualizarCtx, limpiarSesion,
 } from './sesion.js';
@@ -75,10 +76,22 @@ export const authService = {
 
   /** credentials: { usuarioId, password, sucursalId } */
   async login(credentials) {
-    const res = await httpClient.post('/auth/login', credentials);
+    /*
+     * EL TOKEN DEL EQUIPO VIAJA SIEMPRE, y se agrega acá y no en la pantalla
+     * porque es del navegador, no de lo que se tipeó. Si esta máquina está
+     * registrada, **el servidor descarta el `sucursalId` de arriba** y usa la
+     * de la terminal: la cajera no puede entrar en el local equivocado ni
+     * queriendo. Si no está registrada, esto va vacío y todo sigue igual.
+     */
+    const res = await httpClient.post('/auth/login', {
+      ...credentials,
+      terminalToken: leerTokenTerminal() || undefined,
+    });
     // EL TOKEN ES LA SESIÓN. Sin él, guardar usuario y sucursal solo alcanzaría
     // para pintar el menú: la API no contestaría ni una llamada.
-    const sesion = { token: res.token, usuario: res.usuario, sucursal: res.sucursal };
+    const sesion = {
+      token: res.token, usuario: res.usuario, sucursal: res.sucursal, terminal: res.terminal ?? null,
+    };
     guardarSesion(sesion);
     httpClient.reiniciarAvisoDeSesion();
     // La elección del login ES el contexto de trabajo: los módulos arrancan

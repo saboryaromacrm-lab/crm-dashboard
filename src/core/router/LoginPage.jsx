@@ -8,13 +8,23 @@ import PersonIcon from '@mui/icons-material/Person';
 import { useAuth } from '@core/auth/AuthContext.jsx';
 import { appConfig } from '@core/config/app.config.js';
 import { httpClient } from '@core/services/httpClient.js';
+import { leerTokenTerminal } from '@core/auth/terminal.js';
 
 /**
- * LOGIN — usuario + contraseña + LA SUCURSAL con la que se va a operar.
- * La sucursal se elige acá porque es el contexto de TODA la sesión (qué stock
- * ves, desde dónde pedís mercadería, qué caja abrís). Antes de entrar hay un
- * paso de confirmación: entrar como otro usuario o parado en otra sucursal
- * deja historiales a nombre equivocado.
+ * LOGIN — usuario + contraseña, y la sucursal SOLO si hace falta preguntarla.
+ *
+ * LA SUCURSAL LA PONE EL EQUIPO (0081). Si esta máquina está registrada como
+ * terminal, acá no hay desplegable: se muestra "Caja 2 · Distribuidora" y
+ * listo. La cajera elige quién es y su clave, nada más.
+ *
+ * Por qué importaba tanto: este campo venía **precargado con la primera
+ * sucursal de la lista**, así que la que no lo tocaba entraba en la
+ * Distribuidora sin haber decidido nada, y vendía descontando stock del local
+ * equivocado. No lo detecta ni el cierre de caja. La solución no es avisar
+ * mejor: es que no haya nada que elegir.
+ *
+ * SIN TERMINAL REGISTRADA el desplegable vuelve, pero **arranca vacío**: uno
+ * precargado invita a no mirarlo, uno vacío obliga a elegir.
  *
  * Tras el login se recarga la página entera: los motores de los módulos leen
  * su contexto al arrancar, y así TODOS nacen como este usuario en esta sucursal.
@@ -31,8 +41,28 @@ export function LoginPage() {
   const [confirmando, setConfirmando] = useState(false);
   const [error, setError] = useState('');
   const [entrando, setEntrando] = useState(false);
+  /** `null` = todavía no se preguntó; `false` = este equipo no está registrado. */
+  const [terminal, setTerminal] = useState(null);
 
   const from = location.state?.from ?? appConfig.routes.defaultAuthenticatedRoute;
+
+  /*
+   * QUIÉN ES ESTE EQUIPO. Se pregunta ANTES que nada: si está registrado, el
+   * desplegable de sucursales no se dibuja. Por POST y no por `?token=` para
+   * que el token no quede en los logs del proxy ni en el historial.
+   *
+   * Si falla (sin red, servidor caído) se sigue como equipo sin registrar: es
+   * preferible pedir la sucursal a mano que dejar a la cajera sin poder entrar.
+   */
+  useEffect(() => {
+    let vivo = true;
+    const token = leerTokenTerminal();
+    if (!token) { setTerminal(false); return undefined; }
+    httpClient.post('/terminales/actual', { token })
+      .then((r) => vivo && setTerminal(r?.terminal ?? false))
+      .catch(() => vivo && setTerminal(false));
+    return () => { vivo = false; };
+  }, []);
 
   useEffect(() => {
     let vivo = true;
@@ -52,7 +82,10 @@ export function LoginPage() {
         if (!vivo) return;
         setUsuarios(us);
         setSucursales(sucs);
-        if (sucs.length) setSucursalId(String(sucs[0].id));
+        /* NO SE PRESELECCIONA NINGUNA. Acá había un `setSucursalId(sucs[0].id)`
+         * que dejaba el campo en la primera de la lista —la Distribuidora— y
+         * era el origen del problema: la cajera que no lo tocaba entraba ahí
+         * sin haber elegido. Vacío obliga a mirar. */
       })
       .catch(() => vivo && setError('No se pudo conectar con la API. ¿Está levantada?'));
     return () => { vivo = false; };
@@ -62,9 +95,12 @@ export function LoginPage() {
     () => (usuarios ?? []).find((u) => u.id === Number(usuarioId)),
     [usuarios, usuarioId],
   );
+  /* Con el equipo registrado la sucursal sale de la terminal; sin registrar,
+   * del desplegable. Un solo lugar la resuelve para que la confirmación, la
+   * validación y el envío no puedan discrepar entre sí. */
   const sucursal = useMemo(
-    () => sucursales.find((s) => s.id === Number(sucursalId)),
-    [sucursales, sucursalId],
+    () => (terminal ? terminal.sucursal : sucursales.find((s) => s.id === Number(sucursalId))),
+    [terminal, sucursales, sucursalId],
   );
 
   const continuar = (e) => {
@@ -80,6 +116,8 @@ export function LoginPage() {
     setEntrando(true);
     setError('');
     try {
+      /* El `sucursalId` viaja igual, pero cuando hay terminal **el servidor lo
+       * ignora** y usa la del equipo: el candado vive allá, no acá. */
       await login({ usuarioId: usuario.id, password, sucursalId: sucursal.id });
       // Recarga completa a propósito: ver comentario de arriba.
       window.location.replace(from);
@@ -121,14 +159,39 @@ export function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete="current-password"
                   />
-                  <TextField
-                    select fullWidth label="Sucursal donde vas a operar" value={sucursalId}
-                    onChange={(e) => setSucursalId(e.target.value)}
-                  >
-                    {sucursales.map((s) => (
-                      <MenuItem key={s.id} value={String(s.id)}>{s.nombre}</MenuItem>
-                    ))}
-                  </TextField>
+                  {/*
+                    EQUIPO REGISTRADO = NO HAY NADA QUE ELEGIR.
+                    Se muestra dónde está parado y con qué nombre, para que se
+                    note si alguna vez está mal — pero no se ofrece cambiarlo:
+                    eso lo hace un jefe desde Sistema › Este equipo, y así el
+                    cambio queda registrado en vez de pasar en el aire.
+                  */}
+                  {terminal ? (
+                    <Stack
+                      direction="row" spacing={1.5} alignItems="center"
+                      sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}
+                    >
+                      <StorefrontIcon color="primary" />
+                      <div>
+                        <Typography variant="subtitle2">
+                          {terminal.nombre} · {terminal.sucursal.nombre}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          La sucursal la pone este equipo
+                        </Typography>
+                      </div>
+                    </Stack>
+                  ) : (
+                    <TextField
+                      select fullWidth label="Sucursal donde vas a operar" value={sucursalId}
+                      onChange={(e) => setSucursalId(e.target.value)}
+                      helperText="Este equipo no está registrado: elegí a mano dónde estás."
+                    >
+                      {sucursales.map((s) => (
+                        <MenuItem key={s.id} value={String(s.id)}>{s.nombre}</MenuItem>
+                      ))}
+                    </TextField>
+                  )}
                   {error && <Alert severity="error">{error}</Alert>}
                   <Button type="submit" variant="contained" size="large">Continuar</Button>
                 </Stack>
@@ -159,7 +222,11 @@ export function LoginPage() {
                   <StorefrontIcon color="primary" />
                   <div>
                     <Typography variant="subtitle2">{sucursal?.nombre}</Typography>
-                    <Typography variant="caption" color="text.secondary">Sucursal de trabajo de esta sesión</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {terminal
+                        ? `Sucursal de este equipo (${terminal.nombre})`
+                        : 'Sucursal de trabajo de esta sesión'}
+                    </Typography>
                   </div>
                 </Stack>
               </Stack>

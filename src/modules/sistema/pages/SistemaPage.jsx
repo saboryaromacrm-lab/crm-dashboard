@@ -21,6 +21,7 @@ import {
 import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 import { money, fmtFechaHora } from '@modules/productos/domain/format.js';
 import { SISTEMA_SECCIONES } from '../config/sistema.config.js';
+import { EsteEquipoPanel } from './EsteEquipoPanel.jsx';
 
 /**
  * Los documentos configurables. `etiqueta: true` marca los que van a la
@@ -442,6 +443,11 @@ export function SistemaPage() {
               </div>
             </div>
           )}
+
+          {/* FUERA del `cargando`: esta sección no necesita ni empresa ni
+              impresión, y si el rol no tuviera esos dos permisos la carga de
+              arriba falla y el panel no aparecería nunca. */}
+          {seccionActiva === 'terminales' && <EsteEquipoPanel onAviso={setAviso} />}
 
           {!cargando && seccionActiva === 'respaldos' && <Proximamente seccion={secciones.find((x) => x.id === 'respaldos')} />}
         </div>

@@ -8,10 +8,12 @@
 import BusinessIcon from '@mui/icons-material/Business';
 import PrintIcon from '@mui/icons-material/Print';
 import BackupIcon from '@mui/icons-material/Backup';
+import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 
 export const SISTEMA_SECCIONES = [
   { id: 'empresa', label: 'Empresa', icon: BusinessIcon, permiso: 'sistema.empresa' },
   { id: 'impresion', label: 'Impresión', icon: PrintIcon, permiso: 'sistema.impresion' },
+  { id: 'terminales', label: 'Este equipo', icon: PointOfSaleIcon, permiso: 'sistema.terminales' },
   {
     id: 'respaldos', label: 'Respaldos', icon: BackupIcon, permiso: 'sistema.respaldos', pronto: true,
     desc: 'Copias de seguridad de la base de datos y restauración.',
