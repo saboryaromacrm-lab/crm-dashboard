@@ -27,7 +27,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
-import { TIPOS_VENTA } from '../domain/constants.js';
+import { TIPOS_VENTA, esNotaCredito } from '../domain/constants.js';
 import { CertificadoArca } from './CertificadoArca.jsx';
 import { Table, Btn, Di, money, fmtFechaHora, s } from './ui.jsx';
 
@@ -325,9 +325,17 @@ export function PanelArca({ habilitado }) {
                 <td className={s.num}>{money(v.total)}</td>
                 <td className={s.hint}>{v.motivo || '—'}</td>
                 <td>
-                  <Btn small variant="btn-ingreso" disabled={facturando === v.id} onClick={() => facturar(v)}>
-                    {facturando === v.id ? 'Facturando…' : 'Facturar'}
-                  </Btn>
+                  {/* La nota de crédito se ve —quedó sin CAE y hay que
+                      saberlo— pero no se ofrece facturar: este botón resuelve
+                      la letra de una FACTURA y la convertiría en Factura B con
+                      CAE real. Su reintento todavía no existe. */}
+                  {esNotaCredito(v.tipo) ? (
+                    <span className={s.hint}>sin reintento</span>
+                  ) : (
+                    <Btn small variant="btn-ingreso" disabled={facturando === v.id} onClick={() => facturar(v)}>
+                      {facturando === v.id ? 'Facturando…' : 'Facturar'}
+                    </Btn>
+                  )}
                 </td>
               </tr>
             ))}

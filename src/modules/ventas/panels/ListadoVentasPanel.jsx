@@ -488,7 +488,11 @@ export function ListadoVentasPanel() {
               <div className={s['row-actions']} onClick={(e) => e.stopPropagation()}>
                 {/* El reintento del papel fiscal: no toca plata ni stock, así
                     que apretar de nuevo con ARCA caído no rompe nada. */}
-                {v.facturarPendiente && v.estado === 'confirmada' && (
+                {/* Sobre una NOTA DE CRÉDITO no: este botón resuelve la letra
+                    de una factura, y apretado ahí la convertía en Factura B con
+                    CAE real — plata cobrada donde iba plata devuelta. La API
+                    también lo rechaza; acá se esconde para que no se ofrezca. */}
+                {v.facturarPendiente && v.estado === 'confirmada' && !esNotaCredito(v.tipo) && (
                   <Btn variant="btn-ingreso" small disabled={facturando === v.id} onClick={() => facturarVenta(v)}>
                     {facturando === v.id ? 'Facturando…' : 'Facturar'}
                   </Btn>

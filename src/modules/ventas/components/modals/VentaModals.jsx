@@ -10,6 +10,7 @@
  * qué costó lo que costó. Eso es lo que lo hace auditable.
  */
 import { useMemo, useState } from 'react';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import { imprimirVenta } from '@core/services/imprimir.js';
 import { useVentas } from '../../context/VentasContext.jsx';
@@ -26,6 +27,11 @@ import {
 /* ============================== DETALLE ============================== */
 export function DetalleVentaModal({ ventaId, onCambio }) {
   const { closeModal, openModal, toast, esJefe } = useVentas();
+  /* El permiso REAL de emitir notas de crédito (0080). Antes la pantalla usaba
+   * `esJefe` y la API pedía `devoluciones` —que el cajero tiene—, así que el
+   * candado que se veía no era el que mandaba: el botón estaba escondido pero
+   * el endpoint aceptaba. Ahora los dos lados miran la misma llave. */
+  const { can } = usePermissions();
   const [imprimiendo, setImprimiendo] = useState(false);
   const { data: v, loading, error } = useResource(`venta:${ventaId}`, () => ventasApi.venta(ventaId));
 
@@ -64,19 +70,23 @@ export function DetalleVentaModal({ ventaId, onCambio }) {
      * Una nota de crédito no lleva ninguna de las dos: se corrige con una nota
      * de débito, que todavía no existe en el sistema.
      */
-    if (esJefe && v.estado === 'confirmada' && !esNotaCredito(v.tipo)) {
+    if (v.estado === 'confirmada' && !esNotaCredito(v.tipo)) {
       if (v.cae) {
         /* Sin nada por acreditar no hay nota que emitir: la venta ya volvió
          * entera. El botón se apaga en vez de abrir un modal que solo puede
          * terminar en un rechazo. */
-        if (v.acreditable > 0.009) {
+        if (can('nota_credito') && v.acreditable > 0.009) {
           pie.unshift({
             texto: 'Nota de crédito',
             clase: 'btn-delete',
             onClick: () => openModal('notaCredito', { venta: v, onCambio }),
           });
         }
-      } else {
+      } else if (esJefe) {
+        /* Anular sigue con `esJefe` y NO se tocó: la API pide `devoluciones`,
+         * que el cajero tiene, así que cambiarlo a `can('devoluciones')` le
+         * ABRIRÍA la acción al cajero. Es una decisión del dueño, no una
+         * corrección; queda anotada en /info. */
         pie.unshift({
           texto: 'Anular',
           clase: 'btn-delete',
