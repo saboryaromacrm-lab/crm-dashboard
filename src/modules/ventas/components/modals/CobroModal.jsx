@@ -146,16 +146,80 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
     }
     setEnviando(true);
     try {
-      const venta = await ventasApi.confirmarVenta(ventaId, {
-        tipo,
-        condicionPago,
-        cajaSesionId: cajaSesionId ?? undefined,
-        usuarioId: ctx.usuarioId ?? undefined,
-        observaciones,
-        pagos: condicionPago === 'contado'
-          ? pagos.filter((x) => Number(x.importe) > 0).map((x) => ({ medio: x.medio, importe: r2(x.importe) }))
-          : [],
-      });
+      let venta;
+      try {
+        venta = await ventasApi.confirmarVenta(ventaId, {
+          tipo,
+          condicionPago,
+          cajaSesionId: cajaSesionId ?? undefined,
+          usuarioId: ctx.usuarioId ?? undefined,
+          observaciones,
+          pagos: condicionPago === 'contado'
+            ? pagos.filter((x) => Number(x.importe) > 0).map((x) => ({ medio: x.medio, importe: r2(x.importe) }))
+            : [],
+        });
+      } catch (e1) {
+        /*
+         * NO LLEGÓ LA RESPUESTA ≠ LA VENTA NO SE HIZO.
+         *
+         * El cliente corta a los 20 segundos (`timeoutMs`), y facturar llama a
+         * ARCA — pedir un ticket de acceso nuevo ya son unos 10. Colgada de los
+         * datos del celular, pasarse es normal. Cuando eso ocurre el navegador
+         * corta pero **el servidor no se entera y termina la venta igual**, con
+         * CAE incluido si alcanzó a pedirlo.
+         *
+         * Antes acá caía el mismo cartel que un rechazo de verdad ("No se pudo
+         * registrar la venta"), así que la cajera no podía distinguir "no
+         * salió" de "salió y no me enteré" — y con el cliente enfrente lo
+         * natural es rehacerla, que es como se termina con la venta duplicada,
+         * el stock descontado dos veces y DOS CAE para la misma compra. La
+         * duplicación no era técnica sino humana, inducida por el mensaje.
+         *
+         * Así que no se adivina: se le PREGUNTA al servidor cómo quedó el
+         * ticket. Los tres finales posibles se dicen con todas las letras, y el
+         * único que pide acción es el del medio.
+         */
+        if (!e1?.sinRespuesta) throw e1;
+        toast('Se cortó la conexión: averiguando si la venta salió. No toques nada.', 'ok');
+        /*
+         * SE PREGUNTA VARIAS VECES, no una.
+         *
+         * Que el navegador haya cortado a los 20 s no quiere decir que el
+         * servidor haya terminado: puede seguir esperando a ARCA o a un candado
+         * unos segundos más. Preguntando una sola vez se vería "borrador" y se
+         * diría "no salió" **justo antes de que salga** — el peor momento
+         * posible para mandarla a rehacer la venta.
+         *
+         * Cuatro intentos cada 2 s. Si igual se le escapa y la cajera rehace el
+         * cobro, el candado de `confirmar` en la API es la red de abajo: el
+         * segundo cobro se rechaza en vez de duplicar la venta.
+         */
+        let comoQuedo = null;
+        for (let intento = 0; intento < 4; intento += 1) {
+          try { comoQuedo = await ventasApi.venta(ventaId); } catch { comoQuedo = null; }
+          if (comoQuedo && comoQuedo.estado !== 'borrador') break;
+          if (intento < 3) await new Promise((r) => { setTimeout(r, 2000); });
+        }
+
+        if (!comoQuedo) {
+          // Sigue sin haber conexión: NO sabemos. Es el único caso donde el
+          // peor consejo posible sería "volvé a cobrarla".
+          toast(
+            'Se cortó la conexión y todavía no se puede averiguar si la venta salió. '
+            + 'NO la rehagas: buscala en Ventas cuando vuelva internet.',
+            'err',
+          );
+          return;
+        }
+        if (comoQuedo.estado === 'borrador') {
+          toast('Se cortó la conexión y la venta no llegó a registrarse: el ticket sigue abierto, cobralo de nuevo.', 'err');
+          return;
+        }
+        // Estaba hecha. Se sigue con ella como si la respuesta hubiera llegado:
+        // imprime el ticket y cierra la venta en pantalla.
+        venta = comoQuedo;
+        toast('Se cortó la conexión, pero la venta ya se había registrado. Se sigue con esa — no la rehagas.', 'ok');
+      }
       /*
        * ARCA CAÍDO ≠ VENTA CAÍDA (0073): si se pidió factura y el servicio no
        * contestó, la venta salió igual como ticket provisorio y quedó en la
@@ -168,11 +232,26 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
       // Ticket automático (se apaga en Sistema › Impresión). El último queda
       // guardado para "Reimprimir" desde la registradora.
       try { localStorage.setItem('crm_ultimo_ticket', String(venta.id)); } catch { /* privado */ }
-      const { impresion } = await configImpresion();
-      /* Con CAE sale la FACTURA (con su QR) y no el ticket: `imprimirVenta`
-       * decide, para que las tres pantallas que sacan papel coincidan. */
-      if (impresion.imprimirTicketAlCobrar) {
-        await imprimirVenta(venta, { moneda: money, fechaHora: fmtFechaHora });
+      /*
+       * DE ACÁ EN ADELANTE LA VENTA YA ESTÁ HECHA, y lo que falla es el papel.
+       *
+       * `configImpresion()` es OTRA llamada HTTP: con la conexión colgada del
+       * celular puede fallar sola, después de una venta perfectamente
+       * registrada. Antes eso caía en el `catch` de abajo y sacaba "No se pudo
+       * registrar la venta" — mentira, y la misma mentira que se acaba de
+       * arreglar arriba: la cajera la rehacía. Un problema de impresora no
+       * puede parecerse a una venta fallada.
+       *
+       * Con CAE sale la FACTURA (con su QR) y no el ticket: `imprimirVenta`
+       * decide, para que las tres pantallas que sacan papel coincidan.
+       */
+      try {
+        const { impresion } = await configImpresion();
+        if (impresion.imprimirTicketAlCobrar) {
+          await imprimirVenta(venta, { moneda: money, fechaHora: fmtFechaHora });
+        }
+      } catch {
+        toast('La venta se registró bien, pero no se pudo imprimir: reimprimila desde Ventas.', 'err');
       }
       onCobrado(venta, vuelto && vuelto > 0 ? vuelto : 0);
     } catch (e) {

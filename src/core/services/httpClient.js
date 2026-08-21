@@ -15,11 +15,28 @@ import { leerSesion, limpiarSesion } from '@core/auth/sesion.js';
  */
 
 class HttpError extends Error {
-  constructor(message, { status, data } = {}) {
+  constructor(message, { status, data, sinRespuesta = false } = {}) {
     super(message);
     this.name = 'HttpError';
     this.status = status;
     this.data = data;
+    /**
+     * NO LLEGÓ RESPUESTA, que no es lo mismo que "el servidor dijo que no".
+     *
+     * Sin esta marca los dos casos eran indistinguibles para quien llama: un
+     * 400 con su mensaje y un corte de red daban los dos `e.data.message`
+     * vacío, así que el POS mostraba "No se pudo registrar la venta" en los
+     * dos. Y no son lo mismo ni de cerca: si el servidor rechazó, la venta NO
+     * existe; si no llegó la respuesta, **la venta pudo haberse hecho igual**
+     * —el servidor no se entera de que el navegador cortó y sigue— y la cajera
+     * no tiene forma de saberlo. Con la conexión colgada del celular de la
+     * cajera, esto pasa de verdad.
+     *
+     * Lo marca el `catch` del fetch: fetch SOLO rechaza cuando no hubo
+     * respuesta (red caída, DNS, o el `AbortController` del timeout). Un 4xx o
+     * un 5xx no pasan por ahí — esos llegan como respuesta y se tratan abajo.
+     */
+    this.sinRespuesta = sinRespuesta;
   }
 }
 
@@ -60,16 +77,29 @@ async function request(method, path, { body, headers, signal, sinRedirigir = fal
   const token = leerSesion()?.token;
 
   try {
-    const response = await fetch(url, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : null),
-        ...headers,
-      },
-      body: body != null ? JSON.stringify(body) : undefined,
-      signal: signal ?? controller.signal,
-    });
+    let response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : null),
+          ...headers,
+        },
+        body: body != null ? JSON.stringify(body) : undefined,
+        signal: signal ?? controller.signal,
+      });
+    } catch (e) {
+      /* Acá SOLO se cae cuando no hubo respuesta: se cortó la red, el servidor
+       * no contestó, o se agotó el timeout de arriba y abortamos nosotros. Se
+       * re-tira como `HttpError` para que quien llama no tenga que distinguir
+       * un `AbortError` de un `TypeError` de red — lo que necesita saber es
+       * una sola cosa, y es que **no sabe si la operación se hizo o no**. */
+      throw new HttpError(`Sin respuesta del servidor: ${method} ${path}`, {
+        sinRespuesta: true,
+        data: { message: 'No llegó la respuesta del servidor.' },
+      });
+    }
 
     /*
      * 401 = la credencial no sirve → afuera. 403 = la credencial está bien pero
