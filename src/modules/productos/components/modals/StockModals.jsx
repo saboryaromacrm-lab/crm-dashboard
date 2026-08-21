@@ -33,7 +33,12 @@ export function VenderModal({ prodId, sucId: sucInit, pre = {} }) {
   const importe = (parseFloat(cant) || 0) * (precio || 0);
 
   const registrar = async () => {
-    const res = await store.opVenta({ productoId: prod.id, sucursalId: parseInt(sucId, 10), presId: presNum, cantidad: cant });
+    /* Misma trampa que en Fraccionar: `cant` es el texto del input y el DTO
+     * pide `@IsNumber()`. Acá NO se redondea —un granel se vende por peso y
+     * 0,5 kg es una venta válida— y el vacío queda en 0, que el servidor
+     * rechaza por el mínimo con un mensaje que sí se entiende. */
+    const cantidad = Number(cant) || 0;
+    const res = await store.opVenta({ productoId: prod.id, sucursalId: parseInt(sucId, 10), presId: presNum, cantidad });
     if (res.ok) { toast('Venta registrada · ' + money(res.importe), 'ok'); closeModal(); }
     else toast(res.error, 'err');
   };
@@ -99,7 +104,18 @@ export function FraccionarModal({ prodId, sucId: sucInit }) {
   const sinTamanos = !prod.presentaciones.length;
 
   const fraccionar = () => {
-    const asignaciones = prod.presentaciones.map((pr) => ({ presId: pr.id, cant: cants[pr.id] }));
+    /* NÚMEROS, no el texto del input. `cants` guarda strings —arranca en '0' y
+     * el input escribe texto—, y el DTO valida `@IsNumber()`: un "5" rebotaba
+     * con tres constraints por renglón y ni una palabra sobre el fraccionado.
+     * La cuenta de arriba SÍ convertía, así que el modal mostraba bien "total
+     * a fraccionar: 8 kg" y el servidor rechazaba igual — el peor síntoma
+     * posible, porque la pantalla se ve correcta. Misma trampa que `opSimple`
+     * (19/8) y que `opVenta`, acá abajo. Se redondea igual que el total, que
+     * es lo que el usuario leyó antes de apretar. */
+    const asignaciones = prod.presentaciones.map((pr) => ({
+      presId: pr.id,
+      cant: Math.round(Number(cants[pr.id]) || 0),
+    }));
     act(store.opFraccionar({ productoId: prod.id, sucursalId: parseInt(sucId, 10), asignaciones }), 'Fraccionamiento registrado.');
   };
 
