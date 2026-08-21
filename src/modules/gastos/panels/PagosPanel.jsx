@@ -7,6 +7,8 @@ import { MEDIOS_PAGO, inicioDeMes, hoyISO } from '../domain/constants.js';
 import {
   Table, Stat, Btn, Pill, Saldo, usePaginado, money, fmtFechaHora, s,
 } from '../components/ui.jsx';
+import { imprimirDocumento, cuerpoOrdenDePago } from '@core/services/imprimir.js';
+import { leerSesion } from '@core/auth/sesion.js';
 
 /**
  * LA BANDEJA — pestaña "Pagos en sucursal" dentro de Gastos, espejo de la de
@@ -23,7 +25,7 @@ import {
  * llega como prop: es el filtro compartido con la pestaña Gastos.
  */
 export function PagosSucursalTab({ proveedorId, onCambio }) {
-  const { sucursales, openModal, contadores } = useGastos();
+  const { sucursales, openModal, contadores, toast } = useGastos();
   const [sucursalId, setSucursalId] = useState('');
   // Arranca mostrando TODO el período, no solo lo pendiente: un pago recién
   // tomado tiene que seguir viéndose — con su "Aplicado a" — y no esfumarse.
@@ -56,6 +58,35 @@ export function PagosSucursalTab({ proveedorId, onCambio }) {
   }, [pagos]);
 
   const pag = usePaginado(pagos, 'pagos-proveedor', key);
+
+  /* LA ORDEN DE PAGO — el único de los comprobantes nuevos que SALE DE LA CASA.
+   * Por eso lleva el detalle de qué se cancela (sin eso el proveedor no puede
+   * imputarlo en su cuenta) y un lugar para firmar. Se arma con `imputadoA`,
+   * que la fila ya trae: no hace falta pedir nada. */
+  const imprimirOrden = async (p) => {
+    const ok = await imprimirDocumento('ordenPago', {
+      titulo: `Orden de pago #${p.id}`,
+      cuerpo: cuerpoOrdenDePago({
+        pago: {
+          numero: `#${p.id}`,
+          fecha: fmtFechaHora(p.fecha),
+          sucursal: p.sucursalNombre,
+          proveedor: p.proveedorNombre,
+          medio: MEDIOS_PAGO[p.medio] || p.medio,
+          referencia: p.referencia,
+          total: p.importe,
+          observaciones: p.estado === 'anulado' ? 'PAGO ANULADO' : (p.concepto || ''),
+        },
+        imputaciones: (p.imputadoA ?? []).map((d) => ({ concepto: d.etiqueta, importe: d.importe })),
+        moneda: money,
+        ahora: fmtFechaHora(new Date()),
+        // Quién sacó el papel. En un recibo que se entrega, importa: si el
+        // proveedor vuelve con una copia, se sabe de qué mostrador salió.
+        usuario: leerSesion()?.usuario?.nombre,
+      }),
+    });
+    if (!ok) toast('El navegador bloqueó la ventana de impresión. Permitile las ventanas emergentes y probá de nuevo.', 'err');
+  };
 
   const filas = pag.visibles.map((p) => {
     const anulado = p.estado === 'anulado';
@@ -97,6 +128,11 @@ export function PagosSucursalTab({ proveedorId, onCambio }) {
             : p.saldo > 0.009
               ? <Pill pill="est-pendiente" label="Sin aplicar" />
               : <Pill pill="est-recibida" label="Aplicado" />}
+        </td>
+        <td className={s['actions-col']}>
+          <div className={s['row-actions']} onClick={(e) => e.stopPropagation()}>
+            <Btn small onClick={() => imprimirOrden(p)}>Orden</Btn>
+          </div>
         </td>
       </tr>
     );
@@ -148,7 +184,7 @@ export function PagosSucursalTab({ proveedorId, onCambio }) {
         cols={[
           { h: 'Fecha y hora' }, { h: 'Proveedor' }, { h: 'Medio' }, { h: 'Origen' },
           { h: 'Importe', num: true }, { h: 'Aplicado a' }, { h: 'Sin aplicar', num: true },
-          { h: 'Estado' },
+          { h: 'Estado' }, { h: '', cls: 'actions-col' },
         ]}
         empty={loading ? 'Cargando…' : soloSinAplicar ? 'No hay pagos pendientes de aplicar.' : 'No hay pagos con esos filtros.'}
         pag={pag}

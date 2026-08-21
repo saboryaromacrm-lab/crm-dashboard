@@ -4,11 +4,13 @@ import { cx } from '@shared/utils/classNames.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { useGastos } from '../context/GastosContext.jsx';
 import { useResource } from '../hooks/useResource.js';
-import { gastosApi } from '../services/gastos.api.js';
+import { gastosApi, errorMsg } from '../services/gastos.api.js';
 import { TIPOS_DOC_GASTO, inicioDeMes, hoyISO, nombreProveedor } from '../domain/constants.js';
 import {
-  Table, PanelHead, Stat, Btn, GastoEstadoPill, Saldo, usePaginado, money, fmtFecha, s,
+  Table, PanelHead, Stat, Btn, GastoEstadoPill, Saldo, usePaginado, money, fmtFecha, fmtFechaHora, s,
 } from '../components/ui.jsx';
+import { imprimirDocumento, cuerpoComprobanteGasto } from '@core/services/imprimir.js';
+import { leerSesion } from '@core/auth/sesion.js';
 import { PagosSucursalTab } from './PagosPanel.jsx';
 
 /**
@@ -22,7 +24,7 @@ import { PagosSucursalTab } from './PagosPanel.jsx';
  * del pago) viven adentro de la suya.
  */
 export function GastosPanel() {
-  const { categorias, proveedores, sucursales, openModal, nombreSucursal, recargarContadores } = useGastos();
+  const { categorias, proveedores, sucursales, openModal, nombreSucursal, recargarContadores, toast } = useGastos();
   const { can } = usePermissions();
 
   /** Filtro COMPARTIDO por las dos pestañas. */
@@ -89,6 +91,45 @@ export function GastosPanel() {
 
   const abrirDetalle = (g) => openModal('detalleGasto', { gastoId: g.id, onChange: alCambiar });
 
+  /* LA FICHA DEL GASTO, para archivar junto al papel del proveedor.
+   * Pide el detalle en vez de imprimir con lo que tiene la fila: los renglones
+   * (0067) no viajan en el listado, y un comprobante que muestre el total sin
+   * el desglose no sirve para lo único que se usa — cruzarlo contra el papel
+   * cuando algo no cierra. */
+  const imprimirGasto = async (g) => {
+    try {
+      const full = await gastosApi.gasto(g.id);
+      const cat = categorias.find((c) => c.id === full.categoriaId);
+      const ok = await imprimirDocumento('comprobanteGasto', {
+        titulo: `Gasto ${full.numero || `#${full.id}`}`,
+        cuerpo: cuerpoComprobanteGasto({
+          gasto: {
+            numero: full.numero || `#${full.id}`,
+            fecha: fmtFecha(full.fecha),
+            rubro: cat?.nombre,
+            proveedor: nombreProveedor(full, proveedores),
+            comprobante: `${TIPOS_DOC_GASTO[full.tipoDoc] || full.tipoDoc} ${full.letra || ''}`.trim(),
+            sucursal: full.sucursalId ? nombreSucursal(full.sucursalId) : 'Todas',
+            vencimiento: full.vencimiento ? fmtFecha(full.vencimiento) : '',
+            estado: full.estado,
+            total: full.total,
+            // Las dos: `descripcion` es el concepto del gasto y `observaciones`
+            // la nota que dejó quien lo cargó. Son campos distintos y los dos
+            // hacen falta para entender el papel dentro de seis meses.
+            observaciones: [full.descripcion, full.observaciones].filter(Boolean).join(' · '),
+          },
+          filas: (full.items ?? []).map((it) => ({ concepto: it.concepto, importe: it.monto })),
+          moneda: money,
+          ahora: fmtFechaHora(new Date()),
+          usuario: leerSesion()?.usuario?.nombre,
+        }),
+      });
+      if (!ok) toast('El navegador bloqueó la ventana de impresión. Permitile las ventanas emergentes y probá de nuevo.', 'err');
+    } catch (e) {
+      toast(`No se pudo imprimir: ${errorMsg(e)}`, 'err');
+    }
+  };
+
   const filas = pag.visibles.map((g) => {
     const cat = categorias.find((c) => c.id === g.categoriaId);
     const saldo = g.total - g.pagado;
@@ -119,6 +160,7 @@ export function GastosPanel() {
                 Pagar
               </Btn>
             )}
+            <Btn small onClick={() => imprimirGasto(g)}>Imprimir</Btn>
           </div>
         </td>
       </tr>

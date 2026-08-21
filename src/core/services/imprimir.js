@@ -330,6 +330,161 @@ export function cuerpoPlanillaConteo({ titulo, alcance, sucursal, filas, impresa
     </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+/* ==================================================================== *
+ * LOS COMPROBANTES QUE SE REIMPRIMEN
+ * ====================================================================
+ * Cuatro documentos que hasta ahora no existían en papel: el remito de una
+ * transferencia recibida, el vale de un movimiento de stock, la ficha de un
+ * gasto y la orden de pago a un proveedor.
+ *
+ * TODOS SON REIMPRESIONES, y eso cambia una cosa: el papel tiene que decir
+ * **cuándo se imprimió**, porque no sale en el momento del hecho. Un remito
+ * sin fecha de impresión, encontrado dentro de tres meses, no se distingue de
+ * uno emitido el día de la recepción — y si la transferencia cambió de estado
+ * en el medio, el papel viejo miente. Por eso todos llevan el sello abajo.
+ *
+ * Ninguno inventa datos: se arman con lo que la pantalla ya tiene a la vista.
+ * Un documento impreso que muestre algo que la pantalla no muestra es una
+ * segunda fuente de verdad, y a la larga las dos divergen.
+ */
+
+/** El pie de toda reimpresión: quién la sacó y cuándo. */
+function selloReimpresion(usuario, ahora) {
+  return `<div class="fiscal">Reimpreso el ${esc(ahora)}${
+    usuario ? ` por ${esc(usuario)}` : ''} · documento interno, sin valor fiscal</div>`;
+}
+
+/**
+ * REMITO DE UNA TRANSFERENCIA.
+ *
+ * Las tres cantidades van juntas —pedido, enviado, recibido— y no es
+ * redundancia: la diferencia entre ellas ES el documento. Pedido contra
+ * enviado dice qué no había en el depósito; enviado contra recibido, qué se
+ * perdió en el camino. Con una sola columna no se puede reclamar nada.
+ */
+export function cuerpoRemitoTransferencia({
+  transferencia: t, origen, destino, filas, hist, monto, moneda, ahora, usuario,
+}) {
+  const rows = filas.map((f) => {
+    const falto = f.recibido != null && f.enviado != null && f.recibido < f.enviado - 1e-9;
+    return `
+    <tr>
+      <td>${esc(f.nombre)}${f.presLabel ? ` <strong>· ${esc(f.presLabel)}</strong>` : ''}</td>
+      <td class="n">${esc(f.pedido ?? '—')}</td>
+      <td class="n">${esc(f.enviado ?? '—')}</td>
+      <td class="n">${f.recibido != null ? `${falto ? '<strong>' : ''}${esc(f.recibido)}${falto ? ' ⚠</strong>' : ''}` : '—'}</td>
+    </tr>`;
+  }).join('');
+  const pasos = (hist ?? []).map((h) => `${esc(h.estado)} ${esc(h.fecha)}${h.usuario ? ` (${esc(h.usuario)})` : ''}`).join(' · ');
+  return `
+    <h1>Remito ${esc(t.codigo)}</h1>
+    <div class="sub"><strong>${esc(origen)}</strong> → <strong>${esc(destino)}</strong> · ${esc(t.estado)}</div>
+    ${monto != null ? `<div class="sub">Monto a costo: ${esc(moneda(monto))}</div>` : ''}
+    ${t.observaciones ? `<div class="sub">Observaciones: ${esc(t.observaciones)}</div>` : ''}
+    <table><thead><tr>
+      <th>Producto</th><th class="n">Pedido</th><th class="n">Enviado</th><th class="n">Recibido</th>
+    </tr></thead><tbody>${rows}</tbody></table>
+    ${pasos ? `<div class="nota">${pasos}</div>` : ''}
+    <div class="nota">Recibí conforme: ______________________ &nbsp;&nbsp; Aclaración: ______________________</div>
+    ${selloReimpresion(usuario, ahora)}`;
+}
+
+/**
+ * VALE DE UNA OPERACIÓN DE ALMACÉN — el papel que se firma y se archiva.
+ *
+ * `datos` es una lista de pares `[etiqueta, valor]` en vez de campos fijos, y
+ * es a propósito: lo pide **Operaciones** (el libro del almacén, una fila por
+ * documento: código, concepto, monto) y también el **Historial** de Compras
+ * (una fila por movimiento: producto, presentación, cantidad). Son dos formas
+ * distintas de la misma hoja, y con campos fijos habría que inventarle a cada
+ * una los del otro — o duplicar el markup, que es peor.
+ *
+ * Los pares sin valor se caen solos: una etiqueta con la raya al lado no
+ * informa nada y en un rollo de 80 mm ocupa un renglón que sí sirve.
+ */
+export function cuerpoValeOperacion({ titulo, subtitulo, datos, ahora, usuario }) {
+  const filas = (datos ?? [])
+    .filter(([, valor]) => valor != null && String(valor).trim() !== '')
+    .map(([etiqueta, valor]) => `
+      <tr><td class="chica"><strong>${esc(etiqueta)}</strong></td><td>${esc(valor)}</td></tr>`)
+    .join('');
+  return `
+    <h1>${esc(titulo)}</h1>
+    ${subtitulo ? `<div class="sub">${esc(subtitulo)}</div>` : ''}
+    <table><tbody>${filas}</tbody></table>
+    <div class="nota">Firma: ______________________ &nbsp;&nbsp; Aclaración: ______________________</div>
+    ${selloReimpresion(usuario, ahora)}`;
+}
+
+/**
+ * FICHA DE UN GASTO — para archivar junto al papel del proveedor.
+ *
+ * Lleva el desglose de IVA y percepciones porque es lo que se cruza contra el
+ * comprobante original cuando algo no cierra. El total va al final y en grande:
+ * es el número que se compara primero.
+ */
+export function cuerpoComprobanteGasto({ gasto: g, filas, moneda, ahora, usuario }) {
+  const fila = (etiqueta, valor) => (valor
+    ? `<tr><td class="chica"><strong>${esc(etiqueta)}</strong></td><td>${esc(valor)}</td></tr>`
+    : '');
+  const detalle = (filas ?? []).map((f) => `
+    <tr><td>${esc(f.concepto)}</td><td class="n">${esc(moneda(f.importe))}</td></tr>`).join('');
+  return `
+    <h1>Gasto ${esc(g.numero || '')}</h1>
+    <div class="sub">${esc(g.fecha)}${g.rubro ? ` · ${esc(g.rubro)}` : ''}</div>
+    <table><tbody>
+      ${fila('Proveedor', g.proveedor)}
+      ${fila('Comprobante', g.comprobante)}
+      ${fila('Sucursal', g.sucursal)}
+      ${fila('Vencimiento', g.vencimiento)}
+      ${fila('Estado', g.estado)}
+    </tbody></table>
+    ${detalle ? `<table><thead><tr><th>Concepto</th><th class="n">Importe</th></tr></thead><tbody>${detalle}</tbody></table>` : ''}
+    <div class="tot"><strong>TOTAL ${esc(moneda(g.total))}</strong></div>
+    ${g.observaciones ? `<div class="nota">${esc(g.observaciones)}</div>` : ''}
+    ${selloReimpresion(usuario, ahora)}`;
+}
+
+/**
+ * ORDEN DE PAGO — el recibo que se le entrega al proveedor.
+ *
+ * ES EL ÚNICO DE LOS CUATRO QUE SALE DE LA CASA, y por eso lleva dos cosas que
+ * los otros no: el detalle de **qué se está cancelando** (si no, el proveedor
+ * no puede imputarlo en su cuenta) y un lugar para firmar. El total pagado va
+ * separado del detalle porque pueden no coincidir: un pago a cuenta no imputa
+ * a ninguna factura y sigue siendo plata que se entregó.
+ */
+export function cuerpoOrdenDePago({ pago: p, imputaciones, moneda, ahora, usuario }) {
+  const fila = (etiqueta, valor) => (valor
+    ? `<tr><td class="chica"><strong>${esc(etiqueta)}</strong></td><td>${esc(valor)}</td></tr>`
+    : '');
+  const detalle = (imputaciones ?? []).map((i) => `
+    <tr>
+      <td>${esc(i.concepto)}</td>
+      <td class="chica">${esc(i.fecha || '')}</td>
+      <td class="n">${esc(moneda(i.importe))}</td>
+    </tr>`).join('');
+  const imputado = (imputaciones ?? []).reduce((a, i) => a + (Number(i.importe) || 0), 0);
+  const aCuenta = (Number(p.total) || 0) - imputado;
+  return `
+    <h1>Orden de pago ${esc(p.numero || '')}</h1>
+    <div class="sub">${esc(p.fecha)}${p.sucursal ? ` · ${esc(p.sucursal)}` : ''}</div>
+    <table><tbody>
+      ${fila('Proveedor', p.proveedor)}
+      ${fila('Medio de pago', p.medio)}
+      ${fila('Referencia', p.referencia)}
+    </tbody></table>
+    ${detalle ? `
+      <h1 style="font-size:inherit;margin-top:10px">Se cancela</h1>
+      <table><thead><tr><th>Comprobante</th><th>Fecha</th><th class="n">Importe</th></tr></thead>
+      <tbody>${detalle}</tbody></table>` : ''}
+    ${Math.abs(aCuenta) > 0.009 ? `<div class="nota">A cuenta (sin imputar): ${esc(moneda(aCuenta))}</div>` : ''}
+    <div class="tot"><strong>TOTAL PAGADO ${esc(moneda(p.total))}</strong></div>
+    ${p.observaciones ? `<div class="nota">${esc(p.observaciones)}</div>` : ''}
+    <div class="nota">Recibí conforme: ______________________ &nbsp;&nbsp; Aclaración: ______________________</div>
+    ${selloReimpresion(usuario, ahora)}`;
+}
+
 /**
  * Abre la ventana e imprime. `tipoDoc` = clave de la config de impresión.
  *

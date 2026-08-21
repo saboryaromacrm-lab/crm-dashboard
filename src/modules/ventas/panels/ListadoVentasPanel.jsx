@@ -26,7 +26,8 @@ import { cx } from '@shared/utils/classNames.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
-import { ventasApi } from '../services/ventas.api.js';
+import { ventasApi, errorMsg } from '../services/ventas.api.js';
+import { imprimirVenta } from '@core/services/imprimir.js';
 import {
   MEDIOS_PAGO, ESTADOS_VENTA, TIPOS_VENTA, nroComprobante, esNotaCredito,
 } from '../domain/constants.js';
@@ -205,6 +206,32 @@ export function ListadoVentasPanel() {
   );
 
   const abrirDetalle = (v) => openModal('detalleVenta', { ventaId: v.id, onCambio: reload });
+
+  /*
+   * REIMPRIMIR DESDE LA FILA.
+   *
+   * La fila del listado NO alcanza para armar el papel: no trae los renglones,
+   * ni el cliente completo, ni el QR. Así que se pide la venta entera —la misma
+   * llamada que hace la ficha— y recién ahí se imprime. Es un viaje más, pero
+   * el alternativo sería engordar el listado para todos los casos por el que
+   * imprime uno.
+   */
+  const [reimprimiendo, setReimprimiendo] = useState(null);
+  const reimprimir = async (fila) => {
+    setReimprimiendo(fila.id);
+    try {
+      const v = await ventasApi.venta(fila.id);
+      // Con CAE sale la factura con su QR; sin CAE, el ticket de siempre.
+      const salio = await imprimirVenta(v, { moneda: money, fechaHora: fmtFechaHora });
+      if (!salio) {
+        toast('El navegador bloqueó la ventana de impresión. Permitile las ventanas emergentes a este sitio y probá de nuevo.', 'err');
+      }
+    } catch (e) {
+      toast(`No se pudo reimprimir: ${errorMsg(e)}`, 'err');
+    } finally {
+      setReimprimiendo(null);
+    }
+  };
 
   /** El reintento de ARCA. El error trae el motivo del servicio, y se muestra tal cual. */
   const [facturando, setFacturando] = useState(null);
@@ -464,6 +491,16 @@ export function ListadoVentasPanel() {
                 {v.facturarPendiente && v.estado === 'confirmada' && (
                   <Btn variant="btn-ingreso" small disabled={facturando === v.id} onClick={() => facturarVenta(v)}>
                     {facturando === v.id ? 'Facturando…' : 'Facturar'}
+                  </Btn>
+                )}
+                {/* REIMPRIMIR, EN LA FILA. Existe desde el 19/8 pero vivía
+                    solo en el pie de la ficha, y ahí no se encuentra — pasó
+                    dos veces con la nota de crédito. Con CAE sale la factura
+                    con su QR; sin CAE, el ticket. Las anuladas no: el papel de
+                    una venta que no existe más solo puede confundir. */}
+                {v.estado !== 'anulada' && (
+                  <Btn small disabled={reimprimiendo === v.id} onClick={() => reimprimir(v)}>
+                    {reimprimiendo === v.id ? '…' : 'Imprimir'}
                   </Btn>
                 )}
                 <Btn small onClick={() => abrirDetalle(v)}>Ver</Btn>

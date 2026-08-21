@@ -13,6 +13,7 @@ import { useProductos } from '../context/ProductosContext.jsx';
 import { fmtFecha, fmtFechaHora, isoDate, money, num } from '../domain/format.js';
 import { cx } from '@shared/utils/classNames.js';
 import { Table, PanelHead, Btn, usePaginado, s } from '../components/ui.jsx';
+import { imprimirDocumento, cuerpoValeOperacion } from '@core/services/imprimir.js';
 
 const TIPOS_OP = {
   transferencia_enviada: { label: 'Envío', pill: 'tag-transf' },
@@ -66,6 +67,31 @@ export function OperacionesPanel() {
 
   const pag = usePaginado(visibles, 'operaciones', `${desde}|${hasta}|${tipo}|${soloObs}`);
 
+  /* EL VALE DE LA OPERACIÓN — el papel que se firma y se archiva.
+   * Va en TODAS las filas y no solo en las bajas: la regla "solo merma y
+   * ajuste" obliga a explicar por qué esta fila tiene botón y la de al lado no,
+   * y esa explicación no le sirve a nadie. Lo que se imprime es exactamente lo
+   * que muestra la fila — el libro del almacén valuado a costo. */
+  const imprimirVale = async (f, meta) => {
+    const ok = await imprimirDocumento('valeMovimiento', {
+      titulo: `${meta.label} ${f.codigo}`,
+      cuerpo: cuerpoValeOperacion({
+        titulo: `${meta.label} ${f.codigo}`,
+        subtitulo: fmtFecha(f.fecha),
+        datos: [
+          ['Concepto', f.concepto],
+          ['Cantidad', f.cantidad != null ? `${num(f.cantidad)} ${f.unidad || ''}`.trim() : ''],
+          ['Monto a costo', f.monto != null ? money(f.monto) : ''],
+          ['Usuario', f.usuario],
+          ['Observaciones', f.observaciones],
+        ],
+        ahora: fmtFechaHora(new Date()),
+        usuario: store.getUsuario(store.state.ctx.usuarioId)?.nombre,
+      }),
+    });
+    if (!ok) toast('El navegador bloqueó la ventana de impresión. Permitile las ventanas emergentes y probá de nuevo.', 'err');
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
@@ -111,9 +137,12 @@ export function OperacionesPanel() {
               <td>{f.usuario || '—'}</td>
               <td style={{ maxWidth: 220, fontSize: 12.5 }}>{f.observaciones || <span className={s.muted}>—</span>}</td>
               <td className={s['actions-col']}>
-                {f.refTransferenciaId && (
-                  <Btn small variant="btn-edit" onClick={() => openModal('detalleTransfer', { id: f.refTransferenciaId })}>Ver</Btn>
-                )}
+                <div className={s['row-actions']}>
+                  {f.refTransferenciaId && (
+                    <Btn small variant="btn-edit" onClick={() => openModal('detalleTransfer', { id: f.refTransferenciaId })}>Ver</Btn>
+                  )}
+                  <Btn small onClick={() => imprimirVale(f, meta)}>Vale</Btn>
+                </div>
               </td>
             </tr>
           );

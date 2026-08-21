@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { fmtFechaHora, money, num } from '../../domain/format.js';
 import { cx } from '@shared/utils/classNames.js';
-import { esc, imprimirDocumento } from '@core/services/imprimir.js';
+import { esc, imprimirDocumento, cuerpoRemitoTransferencia } from '@core/services/imprimir.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions, sucursalOptionsOtras, presentacionOptions, usuarioOptions } from '../selectOptions.jsx';
@@ -1353,7 +1353,7 @@ export function RecibirTransferModal({ id }) {
 /* ============================== DETALLE ============================== */
 
 export function DetalleTransferModal({ id }) {
-  const { store, isAdmin, act, closeModal, openModal } = useProductos();
+  const { store, isAdmin, act, closeModal, openModal, toast } = useProductos();
   const t = store.state.transferencias.find((x) => x.id === id);
   const miId = store.state.ctx.sucursalId;
   const montos = useMemo(() => {
@@ -1401,9 +1401,46 @@ export function DetalleTransferModal({ id }) {
     </tr>
   ));
 
+  /* EL REMITO, PARA REIMPRIMIR. Se arma con lo que esta misma pantalla ya
+   * muestra —las tres cantidades y el historial— y no con una consulta aparte:
+   * un impreso que diga algo distinto de la pantalla es una segunda fuente de
+   * verdad, y a la larga divergen. */
+  const imprimirRemito = async () => {
+    const filas = t.items.map((it) => {
+      const p = store.getProducto(it.productoId);
+      const enviado = it.cantidadPreparada ?? it.cantidad;
+      return {
+        nombre: p.nombre,
+        presLabel: store.presLabel(p, it.presentacionId),
+        pedido: it.agregado ? null : store.fmtCant(p, it.presentacionId, it.cantidad),
+        enviado: store.fmtCant(p, it.presentacionId, enviado),
+        recibido: it.cantidadRecibida != null ? store.fmtCant(p, it.presentacionId, it.cantidadRecibida) : null,
+      };
+    });
+    const ok = await imprimirDocumento('remitoTransferencia', {
+      titulo: `Remito ${t.codigo}`,
+      cuerpo: cuerpoRemitoTransferencia({
+        transferencia: t,
+        origen: store.getSucursal(t.origenId)?.nombre ?? '—',
+        destino: store.getSucursal(t.destinoId)?.nombre ?? '—',
+        filas,
+        hist: (t.hist ?? []).map((h) => ({
+          estado: h.estado,
+          fecha: fmtFechaHora(h.fecha),
+          usuario: (store.getUsuario(h.usuarioId) || {}).nombre,
+        })),
+        monto: montos.enviado > 0 ? montos.enviado : null,
+        moneda: money,
+        ahora: fmtFechaHora(new Date()),
+        usuario: (store.getUsuario(store.state.ctx.usuarioId) || {}).nombre,
+      }),
+    });
+    if (!ok) toast('El navegador bloqueó la ventana de impresión. Permitile las ventanas emergentes y probá de nuevo.', 'err');
+  };
+
   // Las acciones dependen del LADO: preparar/despachar son del origen, recibir
   // del destino. El detalle ofrece solo lo que corresponde a mi sucursal.
-  const footer = [];
+  const footer = [{ texto: 'Imprimir remito', clase: 'btn-ghost', onClick: imprimirRemito }];
   const puedePreparar = isAdmin || store.can('preparar') || store.can('fraccionar');
   if (puedePreparar && t.origenId === miId && t.estado === 'pendiente') {
     footer.push({
