@@ -53,6 +53,24 @@ function equivalenciaCajas(unidades, porBulto) {
   return `= ${n} caja${n === 1 ? '' : 's'}`;
 }
 
+/**
+ * Lo mismo, para un RENGLÓN ya guardado — el que ve quien prepara y quien
+ * recibe.
+ *
+ * La otra mitad de pedir por caja: sin esto, el que va a buscar la mercadería
+ * lee "36 u." y tiene que dividir de memoria para darse cuenta de que son tres
+ * cajas cerradas que puede llevar tal cual. La cuenta la hace el sistema, que
+ * para eso está, y se deriva de las unidades guardadas: **no hay ningún dato
+ * nuevo, ni hace falta que el pedido recuerde cómo se tipeó**.
+ *
+ * No aplica al granel ni a un renglón con presentación: ahí lo que viaja es el
+ * paquete, y el bulto del DUN es de la unidad de venta.
+ */
+function cajasDeRenglon(prod, presentacionId, cantidad) {
+  if (!prod || prod.tipo === 'granel' || presentacionId) return '';
+  return equivalenciaCajas(cantidad, Number(prod.unidadesPorBulto) || 1);
+}
+
 /* ============================== NUEVO PEDIDO ============================== */
 
 /** Texto comparable: sin mayúsculas ni acentos. */
@@ -1121,7 +1139,12 @@ function imprimirLista(t, store, tipo, filas) {
     <tr>
       <td>${esc(p.nombre)}${it.agregado ? ' <em>(agregado)</em>' : ''}</td>
       <td class="chica">${esc(store.presLabel(p, it.presentacionId))}</td>
-      <td class="chica n">${it.agregado ? '—' : esc(store.fmtCant(p, it.presentacionId, it.cantidad))}</td>
+      ${/* En el PAPEL importa más que en la pantalla: el que camina el depósito
+            con la hoja en la mano no tiene dónde hacer la cuenta. */ ''}
+      <td class="chica n">${it.agregado ? '—' : esc(store.fmtCant(p, it.presentacionId, it.cantidad))}${
+  !it.agregado && cajasDeRenglon(p, it.presentacionId, it.cantidad)
+    ? `<div class="chica">${esc(cajasDeRenglon(p, it.presentacionId, it.cantidad))}</div>`
+    : ''}</td>
       <td class="prep"></td>
       <td class="obs">${esc(it.motivo || '')}</td>
       <td class="c">&#9744;</td>
@@ -1302,7 +1325,16 @@ export function PrepararTransferModal({ id }) {
                   {it.agregado && <span className={cx(s.pill, s['est-transito'])} style={{ marginLeft: 6 }}>Agregado</span>}
                 </td>
                 <td>{store.presLabel(p, it.presentacionId)}</td>
-                <td className={cx(s.num, s.mono)}>{it.agregado ? '—' : store.fmtCant(p, it.presentacionId, it.cantidad)}</td>
+                <td className={cx(s.num, s.mono)}>
+                  {it.agregado ? '—' : store.fmtCant(p, it.presentacionId, it.cantidad)}
+                  {/* Para el que va a buscar la mercadería: tres cajas cerradas
+                      se llevan enteras, 36 unidades sueltas se cuentan de a una. */}
+                  {!it.agregado && cajasDeRenglon(p, it.presentacionId, it.cantidad) && (
+                    <div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
+                      {cajasDeRenglon(p, it.presentacionId, it.cantidad)}
+                    </div>
+                  )}
+                </td>
                 <td className={s.num}>
                   {editable ? (
                     <input
