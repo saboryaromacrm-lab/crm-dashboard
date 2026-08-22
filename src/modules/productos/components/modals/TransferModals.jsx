@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { fmtFechaHora, money, num } from '../../domain/format.js';
 import { cx } from '@shared/utils/classNames.js';
+import { httpClient } from '@core/services/httpClient.js';
 import { esc, imprimirDocumento, cuerpoRemitoTransferencia } from '@core/services/imprimir.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { ModalShell } from '../Modal.jsx';
@@ -163,6 +164,18 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
   const [items, setItems] = useState([]);
   const [q, setQ] = useState('');
   const [soloSinStock, setSoloSinStock] = useState(false);
+  /*
+   * NOVEDADES (0083) — lo que llegó al depósito que este local no sabe.
+   *
+   * El buscador solo encuentra lo que YA SABÉS que existe: un producto nuevo es
+   * invisible porque no se puede buscar un nombre que nunca escuchaste. Esto es
+   * un modo de RECORRER, igual que "solo sin stock": sin escribir nada.
+   *
+   * `mapa` es productoId → { chip, fecha }. Se guarda como Map y no como lista
+   * porque se consulta una vez por fila del buscador, no una vez por pantalla.
+   */
+  const [novedades, setNovedades] = useState(null);
+  const [soloNovedades, setSoloNovedades] = useState(false);
   /** Se abre en el paso 2 cuando se viene a RETOMAR un borrador ya elegido. */
   const [paso, setPaso] = useState(borradorId ? 2 : 1);
   const [abriendo, setAbriendo] = useState(false);
@@ -223,13 +236,49 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
    * Se cuentan igual las coincidencias de la OTRA pestaña (`otros`) para no
    * dejar un "nada coincide" mentiroso cuando el producto existe al lado.
    */
+  /*
+   * Se pide cuando la ruta ya está definida y se está armando el pedido. No al
+   * montar: en el paso 1 todavía se está eligiendo el destino, y la respuesta
+   * es RELATIVA a ese destino ("nunca lo tuviste", "desde tu último pedido").
+   */
+  useEffect(() => {
+    if (paso !== 2 || !origenNum || !destinoNum) return undefined;
+    let vivo = true;
+    setNovedades(null);
+    httpClient.get(`/transferencias/novedades?origenId=${origenNum}&destinoId=${destinoNum}`)
+      .then((r) => {
+        if (!vivo) return;
+        setNovedades({
+          ...r,
+          mapa: new Map((r.items ?? []).map((it) => [it.productoId, it])),
+        });
+      })
+      // Que no haya novedades no puede romper el pedido: es información extra.
+      .catch(() => vivo && setNovedades({ items: [], mapa: new Map() }));
+    return () => { vivo = false; };
+  }, [paso, origenNum, destinoNum]);
+
+  const cuentaNovedades = useMemo(() => {
+    const its = novedades?.items ?? [];
+    return {
+      nuevos: its.filter((x) => x.chip === 'nuevo').length,
+      llego: its.filter((x) => x.chip === 'llego').length,
+      total: its.length,
+    };
+  }, [novedades]);
+
   const busqueda = useMemo(() => {
     const ql = normTxt(q);
-    if (!ql && !soloSinStock) return { lista: [], otros: 0 };
+    if (!ql && !soloSinStock && !soloNovedades) return { lista: [], otros: 0 };
     const cod = q.trim();
+    /* Tipeando alcanza con las primeras coincidencias (se sigue escribiendo
+     * para afinar). Recorriendo novedades NO: la lista es corta y curada, y
+     * cortarla en 8 escondería justo lo que se vino a ver. */
+    const TOPE = soloNovedades && !ql ? 40 : 8;
     const lista = [];
     let otros = 0;
     for (const p of store.state.productos) {
+      if (soloNovedades && !novedades?.mapa?.has(p.id)) continue;
       if (soloSinStock && dispTotal(p, destinoNum) > 1e-9) continue;
       if (ql && !(normTxt(p.nombre).includes(ql) || normTxt(p.marca).includes(ql)
         || (p.codigoBarras || '').includes(cod) || (p.codigoPropio || '').includes(cod)
@@ -237,7 +286,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
         // encontrarlo, y ese código es de la presentación, no de la madre.
         || (p.presentaciones || []).some((pr) => (pr.codigoBarras || '').includes(cod)))) continue;
       if (listaDeProducto(p) !== grupo) { otros += 1; continue; }
-      if (lista.length >= 8) continue;
+      if (lista.length >= TOPE) continue;
 
       /*
        * EN GRANEL SE OFRECEN LOS TAMAÑOS, NO LA MADRE (decisión del dueño,
@@ -254,13 +303,13 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
       const tamanos = grupo === 'granel' ? (p.presentaciones || []) : [];
       if (!tamanos.length) { lista.push({ clave: `p${p.id}`, p, pres: null }); continue; }
       for (const pr of tamanos) {
-        if (lista.length >= 8) break;
+        if (lista.length >= TOPE) break;
         lista.push({ clave: `f${pr.id}`, p, pres: pr });
       }
     }
     return { lista, otros };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.state.productos, store.state.stock, q, soloSinStock, destinoNum, grupo]);
+  }, [store.state.productos, store.state.stock, q, soloSinStock, soloNovedades, novedades, destinoNum, grupo]);
   const resultados = busqueda.lista;
 
   /** Cuántos renglones cayeron en cada pestaña (el pedido sigue siendo UNO). */
@@ -636,6 +685,35 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
       </div>
 
       <div role="tabpanel">
+        {/*
+          EL AVISO. Sin esto la función no existe para quien no la busca: el
+          filtro de abajo es una casilla más entre otras, y nadie tilda una
+          casilla para ver algo que no sabe que hay. Acá se dice el número
+          —"llegaron 9 cosas"— que es lo único que hace que alguien mire.
+          Aparece solo si hay algo: un cartel que dice "0 novedades" todos los
+          días es la forma más rápida de que se deje de leer el cartel.
+        */}
+        {cuentaNovedades.total > 0 && !soloNovedades && (
+          <div className={cx(s.callout, s.info)} style={{ marginTop: 4, marginBottom: 8 }}>
+            <strong>
+              {cuentaNovedades.nuevos > 0 && `${cuentaNovedades.nuevos} producto${cuentaNovedades.nuevos === 1 ? '' : 's'} que ${destino?.nombre ?? 'tu sucursal'} nunca tuvo`}
+              {cuentaNovedades.nuevos > 0 && cuentaNovedades.llego > 0 && ', y '}
+              {cuentaNovedades.llego > 0 && `${cuentaNovedades.llego} repuesto${cuentaNovedades.llego === 1 ? '' : 's'} desde tu último pedido`}
+              .
+            </strong>{' '}
+            <Btn small variant="btn-edit" onClick={() => { setSoloNovedades(true); setQ(''); }}>
+              Ver novedades
+            </Btn>
+          </div>
+        )}
+        {soloNovedades && (
+          <div className={cx(s.callout, s.info)} style={{ marginTop: 4, marginBottom: 8 }}>
+            <strong>Mostrando solo novedades.</strong> Lo que llegó al depósito y{' '}
+            {destino?.nombre ?? 'tu sucursal'} todavía no pidió.
+            {novedades?.ultimoPedido && ` Tu último pedido fue el ${fmtFechaHora(novedades.ultimoPedido)}.`}{' '}
+            <Btn small onClick={() => setSoloNovedades(false)}>Ver todo</Btn>
+          </div>
+        )}
         <div className={s.toolbar} style={{ marginTop: 4 }}>
           <input
             type="search"
@@ -651,6 +729,12 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
             <input type="checkbox" checked={soloSinStock} onChange={(e) => setSoloSinStock(e.target.checked)} />
             Ver solo sin stock en {destino?.nombre ?? 'mi sucursal'}
           </label>
+          {cuentaNovedades.total > 0 && (
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+              <input type="checkbox" checked={soloNovedades} onChange={(e) => setSoloNovedades(e.target.checked)} />
+              Ver solo novedades ({cuentaNovedades.total})
+            </label>
+          )}
           {/* El buscador de arriba sirve si ya sabés qué querés. Esto es para
               RECORRER el catálogo por proveedor, categoría o marca — que es
               como se arma el pedido semanal mirando la góndola. */}
@@ -683,6 +767,33 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                   onClick={() => agregar(p, pres ? pres.id : '')}
                 >
                   <span style={{ flex: 1 }}>
+                    {/*
+                      EL CHIP VA EN LA FILA Y NO SOLO EN LA PESTAÑA porque
+                      también tiene que verse BUSCANDO: si la cajera llega al
+                      producto tipeando su nombre, ahí también le sirve saber
+                      que es nuevo o que se acaba de reponer. Los dos casos son
+                      distintos —"nunca lo tuviste" pesa más que "volvió a
+                      haber"— así que se distinguen por color y no solo por texto.
+                    */}
+                    {novedades?.mapa?.get(p.id) && (
+                      <span
+                        className={s.tag}
+                        style={{
+                          marginRight: 6, fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+                          padding: '1px 6px', borderRadius: 999,
+                          background: novedades.mapa.get(p.id).chip === 'nuevo'
+                            ? 'color-mix(in srgb, var(--crm-color-success) 16%, transparent)'
+                            : 'color-mix(in srgb, var(--crm-color-info) 16%, transparent)',
+                          color: novedades.mapa.get(p.id).chip === 'nuevo'
+                            ? 'var(--crm-color-success)' : 'var(--crm-color-info)',
+                        }}
+                        title={novedades.mapa.get(p.id).chip === 'nuevo'
+                          ? `${destino?.nombre ?? 'Tu sucursal'} nunca tuvo este producto. Llegó al depósito el ${fmtFechaHora(novedades.mapa.get(p.id).fecha)}.`
+                          : `Se repuso en el depósito el ${fmtFechaHora(novedades.mapa.get(p.id).fecha)}, después de tu último pedido.`}
+                      >
+                        {novedades.mapa.get(p.id).chip === 'nuevo' ? 'NUEVO' : 'LLEGÓ'}
+                      </span>
+                    )}
                     <strong>{p.nombre}</strong>
                     {pres && <strong> · {store.presLabel(p, pres.id)}</strong>}
                     <span className={s.muted}> · {p.marca || 'Sin marca'}</span>
@@ -705,12 +816,12 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
         )}
         {/* Un buscador acotado puede decir "no existe" de algo que sí existe: si
             la coincidencia está en la otra pestaña, se avisa y se ofrece ir. */}
-        {(q || soloSinStock) && !resultados.length && (
+        {(q || soloSinStock || soloNovedades) && !resultados.length && (
           <div className={s.hint}>
             {busqueda.otros > 0 ? (
               <>
                 Nada coincide entre los productos {grupo === 'granel' ? 'a granel' : 'enteros'}
-                {soloSinStock ? ' sin stock' : ''}, pero hay {busqueda.otros}{' '}
+                {soloSinStock ? ' sin stock' : ''}{soloNovedades ? ' de las novedades' : ''}, pero hay {busqueda.otros}{' '}
                 {grupo === 'granel' ? 'entre los enteros' : 'a granel'}.{' '}
                 <button
                   type="button"
@@ -721,7 +832,10 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                 </button>
               </>
             ) : (
-              <>Nada coincide{soloSinStock ? ' entre los productos sin stock' : ''}.</>
+              <>
+                Nada coincide{soloSinStock ? ' entre los productos sin stock' : ''}
+                {soloNovedades ? ` entre las novedades ${grupo === 'granel' ? 'a granel' : 'enteras'}` : ''}.
+              </>
             )}
           </div>
         )}
