@@ -37,6 +37,22 @@ export function difiereDelPedido(t) {
   return (t.items || []).some((it) => it.agregado || Math.abs((it.cantidadPreparada ?? it.cantidad) - it.cantidad) > 1e-9);
 }
 
+/**
+ * "= 2 cajas" cuando las unidades dan un bulto JUSTO, y nada cuando no.
+ *
+ * Solo se muestra si divide exacto: decir "2,08 cajas" no le sirve a nadie —
+ * ni a la cajera, que no puede pedir un pedazo de caja, ni al que prepara, que
+ * igual va a tener que contar unidades sueltas. Media verdad prolija es peor
+ * que el silencio.
+ */
+function equivalenciaCajas(unidades, porBulto) {
+  if (!(porBulto > 1) || !(unidades > 0)) return '';
+  const cajas = unidades / porBulto;
+  if (Math.abs(cajas - Math.round(cajas)) > 1e-9) return '';
+  const n = Math.round(cajas);
+  return `= ${n} caja${n === 1 ? '' : 's'}`;
+}
+
 /* ============================== NUEVO PEDIDO ============================== */
 
 /** Texto comparable: sin mayúsculas ni acentos. */
@@ -874,6 +890,17 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                */
               const enOrigen = origenNum ? dispParaEnviar(prod, origenNum) : 0;
               const aca = destinoNum ? store.cant(prod.id, destinoNum, presNum, 'disponible') : 0;
+              /*
+               * CUÁNTAS UNIDADES TRAE LA CAJA. Sale del producto —es el bulto
+               * que identifica el DUN, el mismo que se carga en la ficha— así
+               * que no hay dato nuevo que mantener. En 1 (o sin cargar) el
+               * selector ni aparece: ofrecer "caja ×1" sería un clic al pedo.
+               *
+               * En GRANEL no se ofrece: ahí la unidad de pedido ya es el
+               * paquete, y "una caja de paquetes de 500 g" no es algo que el
+               * sistema sepa (el bulto del DUN es de la unidad de venta).
+               */
+              const porBulto = esGranel ? 1 : (Number(prod.unidadesPorBulto) || 1);
               // Cuántos kg de granel hace falta fraccionar para este renglón.
               const pres = presNum ? (prod.presentaciones || []).find((x) => x.id === presNum) : null;
               const pideKg = esGranel
@@ -913,10 +940,62 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                         "1,001"). Para kg con coma se tipea el número directo. */}
                     <input
                       type="number" min="0" step="1"
-                      value={it.cant}
+                      value={porBulto > 1 && it.modo === 'bulto'
+                        ? String(num((parseFloat(it.cant) || 0) / porBulto, 3))
+                        : it.cant}
                       style={{ width: 90, textAlign: 'right' }}
-                      onChange={(e) => setItem(i, { cant: e.target.value })}
+                      onChange={(e) => {
+                        /*
+                         * `cant` SIEMPRE queda en UNIDADES. El bulto es una
+                         * forma de tipear, no otra unidad de medida: si el
+                         * renglón guardara cajas habría que traducir en el
+                         * autosave, en el envío, en la preparación, en el
+                         * remito y en el stock — cinco lugares donde el mismo
+                         * número significaría dos cosas distintas. Acá se
+                         * multiplica una vez y de la fila para adentro no se
+                         * entera nadie.
+                         */
+                        const v = parseFloat(e.target.value) || 0;
+                        setItem(i, { cant: String(it.modo === 'bulto' ? v * porBulto : v) });
+                      }}
                     />
+                    {porBulto > 1 && !esGranel && (
+                      <>
+                        <select
+                          value={it.modo ?? 'unidad'}
+                          style={{ marginLeft: 4, fontSize: 12 }}
+                          onChange={(e) => {
+                            const modo = e.target.value;
+                            /*
+                             * Al pasar A CAJAS se redondea PARA ARRIBA al bulto
+                             * entero. Dos motivos: pedir "media caja" de algo
+                             * que se pide por caja no significa nada, y sin
+                             * esto el casillero mostraba 0,083 (un alfajor de
+                             * una caja de 12), que parece un error del sistema.
+                             * Volver a unidades no toca el número: lo que se
+                             * pidió, se pidió.
+                             */
+                            if (modo === 'bulto') {
+                              const u = parseFloat(it.cant) || 0;
+                              const cajas = Math.max(1, Math.ceil(u / porBulto));
+                              setItem(i, { modo, cant: String(cajas * porBulto) });
+                            } else setItem(i, { modo });
+                          }}
+                        >
+                          <option value="unidad">u.</option>
+                          <option value="bulto">{`caja ×${num(porBulto, 0)}`}</option>
+                        </select>
+                        {/* La equivalencia SIEMPRE a la vista, en los dos modos:
+                            pidiendo por caja hace falta saber cuántas unidades
+                            entran, y pidiendo por unidad conviene ver cuándo el
+                            número ya es una caja justa. */}
+                        <div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
+                          {it.modo === 'bulto'
+                            ? `= ${num(parseFloat(it.cant) || 0, 0)} u.`
+                            : equivalenciaCajas(parseFloat(it.cant) || 0, porBulto)}
+                        </div>
+                      </>
+                    )}
                   </td>
                   <td className={s['actions-col']}>
                     <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>
