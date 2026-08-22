@@ -259,21 +259,34 @@ function htmlEtiquetas({ f, titulo, cuerpo }) {
     .sincod { font-size: ${f.chica}; color: #444; padding: 1mm 0; }
     .vto { font-size: ${f.chica}; font-weight: 700; }
 
-    /* CARTEL DE GÓNDOLA. Centrado y repartido en alto: la etiqueta del paquete
-       se apoya arriba porque abajo lleva el código de barras; el cartel no
-       tiene código, así que si no se reparte queda todo pegado al techo. */
-    .cartel { text-align: center; justify-content: space-evenly; }
-    .cartel .marca { font-weight: 700; font-size: 1em; letter-spacing: 0.06em; text-transform: uppercase; }
-    /* El nombre GRANDE, que es la razón de ser de este cartel. Dos renglones
-       como máximo: al tercero ya no entra el precio, y un cartel sin precio no
-       sirve para nada. */
-    .cartel .nomGrande {
-      font-weight: 800; font-size: 1.9em; line-height: 1.03;
-      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    /* CARTEL DE GÓNDOLA — copia el que se venía haciendo a mano en
+       ZebraDesigner, porque ese ya está probado en el pasillo: identidad arriba
+       dentro de un recuadro, precios abajo alineados a la izquierda.
+       TODO EN MAYÚSCULAS por CSS: así se escribe normal en la pantalla y sale
+       en caja alta sin que nadie tenga que acordarse. */
+    .cartel { justify-content: space-between; text-transform: uppercase; }
+    /* EL RECUADRO. No es adorno: separa "qué producto es" de "cuánto sale", y
+       es lo que hace que de lejos se lea primero la marca. */
+    .cartel .caja {
+      border: 0.6mm solid #000; border-radius: 0.5mm;
+      padding: 0.6mm 1mm; text-align: center; overflow: hidden;
     }
-    .cartel .fila { justify-content: center; gap: 2mm; }
-    .cartel .rot { font-size: ${f.chica}; text-transform: uppercase; letter-spacing: 0.05em; }
-    .cartel .precio { font-size: 1.6em; }
+    /* La marca manda: es lo que se busca desde el pasillo. */
+    .cartel .marca { font-weight: 900; line-height: 1.02; letter-spacing: 0.04em; white-space: nowrap; }
+    /* El nombre, condensado y en UN renglón: se achica solo según el largo
+       (ver emParaEntrar, más arriba) en vez de cortarse con puntos suspensivos.
+       Ojo con los acentos graves acá adentro: esto vive en un template literal
+       y un par de ellos corta el string en dos. */
+    .cartel .nomGrande {
+      font-weight: 800; line-height: 1.05; white-space: nowrap;
+      font-stretch: condensed; transform: scaleX(0.92); transform-origin: center;
+    }
+    .cartel .precios { display: flex; flex-direction: column; gap: 0.4mm; }
+    /* A la IZQUIERDA y con el rótulo adelante, como el cartel de papel: el ojo
+       baja por la columna de precios sin tener que cruzar el cartel. */
+    .cartel .fila { justify-content: flex-start; gap: 1.5mm; }
+    .cartel .rot { font-weight: 700; font-size: 1.05em; letter-spacing: 0.02em; }
+    .cartel .precio { font-weight: 900; font-size: 1.25em; }
   </style></head><body>${cuerpo}</body></html>`;
 }
 
@@ -325,20 +338,52 @@ export function cuerpoEtiquetas({ nombre, peso, precio, codigo, vencimiento, can
  * Los precios llegan YA FORMATEADOS y con IVA. Acá no se decide ni precio ni
  * redondeo: eso es del catálogo, el mismo que cobra la caja.
  */
+/**
+ * CUÁNTO ACHICAR EL TEXTO PARA QUE ENTRE EN UN RENGLÓN.
+ *
+ * El cartel de papel que se venía haciendo a mano tiene la marca y el nombre
+ * **cada uno en una sola línea, ocupando todo el ancho**: es lo que lo hace
+ * legible de lejos. Para imitarlo hay que achicar la letra según el largo del
+ * texto — no hay CSS que lo haga solo, y `-webkit-line-clamp` cortaba con "…",
+ * que en un cartel es peor que una letra más chica.
+ *
+ * Se calcula por CANTIDAD DE CARACTERES y no midiendo: la medición necesita el
+ * documento ya renderizado, y esto arma HTML para mandar a la impresora. La
+ * cuenta es aproximada a propósito y se queda corta antes que pasarse — con la
+ * fuente condensada entran cómodos los caracteres del tope.
+ */
+const emParaEntrar = (txt, maxEm, caracteresAlTope) => {
+  const n = String(txt ?? '').length;
+  if (!n) return maxEm;
+  const em = maxEm * (caracteresAlTope / n);
+  return Math.round(Math.min(maxEm, Math.max(maxEm * 0.32, em)) * 100) / 100;
+};
+/** La MARCA es lo más grande del cartel: es lo que se ve desde el pasillo. */
+const emMarca = (t) => emParaEntrar(t, 2.6, 7);
+/**
+ * El nombre, abajo y condensado, ocupando el ancho del recuadro.
+ *
+ * El tope de caracteres es CONSERVADOR a propósito (se probó en 26 y "ACEITE
+ * OLIVA INTENSO 500 ML" perdía la L final): entre una letra un punto más chica
+ * y un cartel con el nombre cortado, gana la letra chica. El recorte no se ve
+ * en la pantalla del diseñador, se ve cuando ya salieron cincuenta del rollo.
+ */
+const emNombre = (t) => emParaEntrar(t, 1.5, 20);
+
 export function cuerpoCartelGondola({
-  marca, nombre, precio, precioMayorista, etiquetaPrecio = 'minorista',
-  etiquetaPrecioMayorista = 'mayorista', cantidad = 1,
+  marca, nombre, precio, precioMayorista, etiquetaPrecio = 'Minorista',
+  etiquetaPrecioMayorista = 'Mayorista', cantidad = 1,
 }) {
-  const linea = (clase, txt) => (txt ? `<div class="${clase}">${esc(txt)}</div>` : '');
+  const caja = (marca || nombre)
+    ? `<div class="caja">${
+      marca ? `<div class="marca" style="font-size:${emMarca(marca)}em">${esc(marca)}</div>` : ''}${
+      nombre ? `<div class="nomGrande" style="font-size:${emNombre(nombre)}em">${esc(nombre)}</div>` : ''}</div>`
+    : '';
   const fila = (rot, val) => (val
-    ? `<div class="fila"><span class="rot">${esc(rot)}</span><span class="precio">${esc(val)}</span></div>`
+    ? `<div class="fila"><span class="rot">${esc(rot)}:</span><span class="precio">${esc(val)}</span></div>`
     : '');
-  const una = '<div class="et cartel">'
-    + linea('marca', marca)
-    + linea('nomGrande', nombre)
-    + fila(etiquetaPrecio, precio)
-    + fila(etiquetaPrecioMayorista, precioMayorista)
-    + '</div>';
+  const una = `<div class="et cartel">${caja}<div class="precios">${
+    fila(etiquetaPrecio, precio)}${fila(etiquetaPrecioMayorista, precioMayorista)}</div></div>`;
   const n = Math.min(MAX_ETIQUETAS, Math.max(1, Math.round(Number(cantidad) || 1)));
   return una.repeat(n);
 }
