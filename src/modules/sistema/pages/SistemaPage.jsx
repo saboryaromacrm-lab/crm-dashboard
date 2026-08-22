@@ -15,7 +15,7 @@ import { httpClient } from '@core/services/httpClient.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import {
-  FORMATOS_LABEL, cuerpoEtiquetas, cuerpoFactura, cuerpoPlanillaConteo, esFormatoEtiqueta,
+  FORMATOS_LABEL, cuerpoCartelGondola, cuerpoEtiquetas, cuerpoFactura, cuerpoPlanillaConteo, esFormatoEtiqueta,
   formatoPorDefecto, htmlDocumento, imprimirDocumento, invalidarConfigImpresion,
 } from '@core/services/imprimir.js';
 import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
@@ -49,6 +49,12 @@ const DOCUMENTOS = [
     clave: 'etiquetaFraccionado',
     label: 'Etiquetas del fraccionado (autoadhesivas)',
     hint: 'Impresora térmica de etiquetas: una etiqueta por página, sin membrete. Se sacan en Almacén › Fraccionamiento › Etiquetas.',
+    etiqueta: true,
+  },
+  {
+    clave: 'etiquetaGondola',
+    label: 'Cartel de góndola (autoadhesivas)',
+    hint: 'El precio que el cliente lee en el estante. Misma impresora que las del fraccionado, pero con el nombre más grande y sin código de barras — arranca en la medida más grande porque se lee de lejos. Se sacan en Ventas › Carteles de góndola.',
     etiqueta: true,
   },
 ];
@@ -96,6 +102,15 @@ async function cuerpoMuestra(clave, empresa) {
       nombre: 'Lentejas', peso: '500 g', precio: '$1.850,00',
       codigo: '6850000001491', vencimiento: '15/09/2026', cantidad: 2,
     });
+  }
+  if (clave === 'etiquetaGondola') {
+    /* Dos carteles y a propósito distintos: uno completo con los dos precios y
+     * otro con la marca sola, que es el caso que más sorprende y el que hay que
+     * poder ver antes de mandar cincuenta al rollo. */
+    return cuerpoCartelGondola({
+      marca: 'Zuelo', nombre: 'Aceite Oliva Intenso 500 ml',
+      precio: '$5.000,00', precioMayorista: '$4.300,00',
+    }) + cuerpoCartelGondola({ marca: '', nombre: 'ACEITES', precio: '', precioMayorista: '' });
   }
   if (clave === 'ticketPos') {
     return `

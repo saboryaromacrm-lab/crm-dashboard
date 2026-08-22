@@ -258,6 +258,22 @@ function htmlEtiquetas({ f, titulo, cuerpo }) {
     .cod { font-family: 'Courier New', monospace; font-size: ${f.chica}; letter-spacing: 0.08em; }
     .sincod { font-size: ${f.chica}; color: #444; padding: 1mm 0; }
     .vto { font-size: ${f.chica}; font-weight: 700; }
+
+    /* CARTEL DE GÓNDOLA. Centrado y repartido en alto: la etiqueta del paquete
+       se apoya arriba porque abajo lleva el código de barras; el cartel no
+       tiene código, así que si no se reparte queda todo pegado al techo. */
+    .cartel { text-align: center; justify-content: space-evenly; }
+    .cartel .marca { font-weight: 700; font-size: 1em; letter-spacing: 0.06em; text-transform: uppercase; }
+    /* El nombre GRANDE, que es la razón de ser de este cartel. Dos renglones
+       como máximo: al tercero ya no entra el precio, y un cartel sin precio no
+       sirve para nada. */
+    .cartel .nomGrande {
+      font-weight: 800; font-size: 1.9em; line-height: 1.03;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .cartel .fila { justify-content: center; gap: 2mm; }
+    .cartel .rot { font-size: ${f.chica}; text-transform: uppercase; letter-spacing: 0.05em; }
+    .cartel .precio { font-size: 1.6em; }
   </style></head><body>${cuerpo}</body></html>`;
 }
 
@@ -281,6 +297,47 @@ export function cuerpoEtiquetas({ nombre, peso, precio, codigo, vencimiento, can
       ? `<div class="bc">${svg}</div><div class="cod">${esc(codigo)}</div>`
       : '<div class="sincod">sin código de barras</div>')
     + (vencimiento ? `<div class="vto">Vto ${esc(vencimiento)}</div>` : '')
+    + '</div>';
+  const n = Math.min(MAX_ETIQUETAS, Math.max(1, Math.round(Number(cantidad) || 1)));
+  return una.repeat(n);
+}
+
+/**
+ * CARTEL DE GÓNDOLA (0083) — el que lee el CLIENTE en el estante.
+ *
+ * Misma familia que la etiqueta del fraccionado y a propósito: es el mismo
+ * rollo, la misma impresora y el mismo tamaño de siempre. Tres diferencias, y
+ * las tres salen de para quién es:
+ *
+ *  · **El nombre va grande.** La etiqueta del paquete se lee en la mano; el
+ *    cartel, a un metro. Es la diferencia que se pidió y la razón de que esto
+ *    exista aparte.
+ *  · **No lleva código de barras.** Nadie escanea un cartel: sirve para que el
+ *    cliente vea el precio sin preguntarle al cajero.
+ *  · **Hasta dos precios.** Algunos productos tienen mayorista y minorista;
+ *    otros solo minorista. La segunda línea aparece si hay dato y no si no —
+ *    no hay que configurar nada por producto.
+ *
+ * TODA LÍNEA VACÍA DESAPARECE, y eso no es cosmético: es lo que permite el
+ * cartel de la marca sola para toda una góndola. Sin eso quedaría un hueco
+ * donde debería ir el nombre y el cartel saldría torcido.
+ *
+ * Los precios llegan YA FORMATEADOS y con IVA. Acá no se decide ni precio ni
+ * redondeo: eso es del catálogo, el mismo que cobra la caja.
+ */
+export function cuerpoCartelGondola({
+  marca, nombre, precio, precioMayorista, etiquetaPrecio = 'minorista',
+  etiquetaPrecioMayorista = 'mayorista', cantidad = 1,
+}) {
+  const linea = (clase, txt) => (txt ? `<div class="${clase}">${esc(txt)}</div>` : '');
+  const fila = (rot, val) => (val
+    ? `<div class="fila"><span class="rot">${esc(rot)}</span><span class="precio">${esc(val)}</span></div>`
+    : '');
+  const una = '<div class="et cartel">'
+    + linea('marca', marca)
+    + linea('nomGrande', nombre)
+    + fila(etiquetaPrecio, precio)
+    + fila(etiquetaPrecioMayorista, precioMayorista)
     + '</div>';
   const n = Math.min(MAX_ETIQUETAS, Math.max(1, Math.round(Number(cantidad) || 1)));
   return una.repeat(n);

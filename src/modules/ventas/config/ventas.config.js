@@ -42,5 +42,6 @@ export const VENTAS_PANELS = [
   { id: 'listas', label: 'Formato de venta', icon: SellIcon, permiso: 'ventas.listas' },
   { id: 'ofertas', label: 'Ofertas', icon: LocalOfferIcon, permiso: 'ventas.ofertas' },
   { id: 'cambiosPrecio', label: 'Cambios de precio', icon: TrendingUpIcon, permiso: 'ventas.cambios' },
+  { id: 'carteles', label: 'Carteles de góndola', icon: LocalOfferIcon, permiso: 'ventas.cambios' },
   { id: 'configuracion', label: 'Configuración', icon: SettingsIcon, permiso: 'ventas.configuracion' },
 ];
