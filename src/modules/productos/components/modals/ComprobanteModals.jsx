@@ -1402,16 +1402,33 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
               {/* El modo suelto es SOLO de los enteros (el dueño, 25/8): en el
                   granel el bulto es la bolsa y su tamaño ya es editable por
                   entrega — "kg sueltos" no agregaba nada y confundía. */}
+              {/* "1 · bultos · 12" se leía como tres números sueltos y no se
+                  sabía si entraban 1, 12 o 13 (el dueño, 25/8). La respuesta
+                  es la cuenta YA HECHA debajo de la cantidad: "= 12 u.", lo
+                  que entra al stock. Va acá y no solo en el pie del producto
+                  porque el ojo está en el casillero que se tipea. OJO: el
+                  tamaño NO va dentro de la opción del select ("bultos ×12"):
+                  en el ancho real de la columna se trunca a "bultos ×1", que
+                  es peor que la ambigüedad que se quería arreglar. */}
               {prod && prod.tipo === 'entero' && (
-                <select
-                  value={it.modo || 'bulto'}
-                  style={{ marginTop: 2, fontSize: 12, width: '100%' }}
-                  title="¿La entrega vino en bultos cerrados o suelta, sin completar el bulto?"
-                  onChange={(e) => cambiarModo(i, e.target.value)}
-                >
-                  <option value="bulto">bultos</option>
-                  <option value="unidad">u. sueltas</option>
-                </select>
+                <>
+                  <select
+                    value={it.modo || 'bulto'}
+                    style={{ marginTop: 2, fontSize: 12, width: '100%' }}
+                    title="¿La entrega vino en bultos cerrados o suelta, sin completar el bulto?"
+                    onChange={(e) => cambiarModo(i, e.target.value)}
+                  >
+                    <option value="bulto">bultos</option>
+                    <option value="unidad">u. sueltas</option>
+                  </select>
+                  {/* En los dos modos: la negrita de abajo SIEMPRE es lo que
+                      entra al stock, una sola regla para leer el renglón. */}
+                  {r.cantidadTotal > 0 && (
+                    <div className={s.hint} style={{ margin: 0, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      = <strong>{num(r.cantidadTotal, 0)} u.</strong>
+                    </div>
+                  )}
+                </>
               )}
             </div>
             {it.modo === 'unidad' ? (
