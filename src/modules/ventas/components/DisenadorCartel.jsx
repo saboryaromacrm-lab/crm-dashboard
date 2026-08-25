@@ -81,13 +81,26 @@ export function DisenadorCartel({
     return usar;
   }, [pl, conRecuadro]);
 
+  /* ACÁ SE DISEÑA, no se imprime: si al producto de muestra le falta un dato
+   * (típico: sin precio cargado), igual hay que ver DÓNDE va a caer — así que
+   * todo hueco se rellena con un ejemplo, en el lienzo Y en la vista previa.
+   * En la impresión real la regla sigue intacta: línea sin dato no sale. Sin
+   * esto las dos vistas se contradecían (el lienzo con precios, la vista
+   * previa vacía) y parecía un error de la pantalla. */
+  const datos = useMemo(() => ({
+    marca: muestra.marca || 'MARCA',
+    nombre: muestra.nombre || 'Nombre del producto',
+    precio: muestra.precio || '$9.999,00',
+    precioMayorista: muestra.precioMayorista || '$8.999,00',
+  }), [muestra]);
+
   /* La vista previa DE VERDAD: el mismo código que arma lo que va a la impresora. */
   const previa = useMemo(() => htmlDocumento({
     empresa,
     formato,
     titulo: 'Cartel',
-    cuerpo: cuerpoCartelGondola({ ...muestra, cantidad: 1, plantilla: plParaUsar }),
-  }), [empresa, formato, muestra, plParaUsar]);
+    cuerpo: cuerpoCartelGondola({ ...datos, cantidad: 1, plantilla: plParaUsar }),
+  }), [empresa, formato, datos, plParaUsar]);
 
   /* ---------------- Los elementos sobre el lienzo ---------------- */
   const estiloBase = (key, e) => ({
@@ -107,8 +120,8 @@ export function DisenadorCartel({
     title: `${NOMBRES[key]} — arrastralo a donde va`,
   });
 
-  const fsMarca = tamanoTextoCartel(muestra.marca, pl.marca.size, pl.marca.w, 0.68) * E;
-  const fsNombre = tamanoTextoCartel(muestra.nombre, pl.nombre.size, pl.nombre.w, 0.55) * E;
+  const fsMarca = tamanoTextoCartel(datos.marca, pl.marca.size, pl.marca.w, 0.68) * E;
+  const fsNombre = tamanoTextoCartel(datos.nombre, pl.nombre.size, pl.nombre.w, 0.55) * E;
 
   const filaPrecio = (key, rot, val) => (
     <div
@@ -192,7 +205,7 @@ export function DisenadorCartel({
                 lineHeight: 1,
                 fontSize: fsMarca,
               }}
-            >{muestra.marca || 'MARCA'}</div>
+            >{datos.marca}</div>
             <div
               {...textoProps('nombre')}
               style={{
@@ -207,9 +220,9 @@ export function DisenadorCartel({
                 transformOrigin: 'center',
                 fontSize: fsNombre,
               }}
-            >{muestra.nombre || 'Nombre del producto'}</div>
-            {filaPrecio('minorista', 'Minorista', muestra.precio || '$9.999,00')}
-            {filaPrecio('mayorista', 'Mayorista', muestra.precioMayorista || '$8.999,00')}
+            >{datos.nombre}</div>
+            {filaPrecio('minorista', 'Minorista', datos.precio)}
+            {filaPrecio('mayorista', 'Mayorista', datos.precioMayorista)}
           </div>
           <div className={s.hint} style={{ marginTop: 6, maxWidth: med.anchoMm * E }}>
             La cuadrícula es de 5 mm y todo se mueve de a 0,5 mm. Los precios de muestra son de
