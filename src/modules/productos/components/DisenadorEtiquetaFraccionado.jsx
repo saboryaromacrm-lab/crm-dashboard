@@ -17,6 +17,7 @@
  * 0,25 mm por barra la térmica imprime lindo y el lector no lee nunca.
  */
 import { useMemo, useRef, useState } from 'react';
+import { cx } from '@shared/utils/classNames.js';
 import { barcodeSvg } from '@core/services/barcode.js';
 import {
   cuerpoEtiquetas, htmlDocumento, medidaEtiqueta,
@@ -218,7 +219,7 @@ export function DisenadorEtiquetaFraccionado({
 
         {/* -------- Afinar con números + la vista previa real -------- */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 280, flex: 1 }}>
-          <div className={s.card} style={{ margin: 0 }}>
+          <div className={cx(s.card, s.cardPad)} style={{ margin: 0 }}>
             <div style={{ marginBottom: 8 }}><strong>{NOMBRES[sel]}</strong></div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {campo('X (mm)', 'x', 0, med.anchoMm)}
@@ -234,7 +235,7 @@ export function DisenadorEtiquetaFraccionado({
             )}
           </div>
 
-          <div className={s.card} style={{ margin: 0 }}>
+          <div className={cx(s.card, s.cardPad)} style={{ margin: 0 }}>
             <div style={{ marginBottom: 6 }}><strong>Así sale de la impresora</strong></div>
             <iframe
               title="Vista previa de la etiqueta diseñada"

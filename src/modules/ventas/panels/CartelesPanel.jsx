@@ -242,7 +242,7 @@ export function CartelesPanel() {
       {errorCat && <div className={cx(s.callout, s.warn)}>{errorCat}</div>}
 
       {/* ---- Buscar y agregar ---- */}
-      <div className={s.card}>
+      <div className={cx(s.card, s.cardPad)}>
         <div className={s.toolbar}>
           <input
             type="search" value={q} onChange={(e) => setQ(e.target.value)}
@@ -290,8 +290,8 @@ export function CartelesPanel() {
           para carteles sin producto (&ldquo;ACEITES&rdquo;, la marca sola para toda una góndola).
         </div>
       ) : (
-        <div className={s.card}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+        <div className={cx(s.card, s.cardPad)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
             <h3 className={s['card-title']} style={{ margin: 0 }}>
               {filas.length} renglón(es) · {total} cartel(es)
             </h3>
@@ -346,7 +346,7 @@ export function CartelesPanel() {
 
       {/* ---- Vista previa ---- */}
       {previa && (
-        <div className={s.card}>
+        <div className={cx(s.card, s.cardPad)}>
           <h3 className={s['card-title']} style={{ marginTop: 0 }}>Vista previa del primero</h3>
           <iframe
             title="Vista previa del cartel"

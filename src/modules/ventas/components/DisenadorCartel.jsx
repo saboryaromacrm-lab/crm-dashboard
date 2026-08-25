@@ -19,6 +19,7 @@
  * máquinas, no queda en un navegador.
  */
 import { useMemo, useRef, useState } from 'react';
+import { cx } from '@shared/utils/classNames.js';
 import {
   cuerpoCartelGondola, htmlDocumento, medidaEtiqueta,
   plantillaCartelPorDefecto, tamanoTextoCartel,
@@ -250,7 +251,7 @@ export function DisenadorCartel({
 
         {/* -------- Afinar con números + la vista previa real -------- */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 280, flex: 1 }}>
-          <div className={s.card} style={{ margin: 0 }}>
+          <div className={cx(s.card, s.cardPad)} style={{ margin: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
               <strong>{NOMBRES[sel]}</strong>
               <span style={{ flex: 1 }} />
@@ -277,7 +278,7 @@ export function DisenadorCartel({
             )}
           </div>
 
-          <div className={s.card} style={{ margin: 0 }}>
+          <div className={cx(s.card, s.cardPad)} style={{ margin: 0 }}>
             <div style={{ marginBottom: 6 }}><strong>Así sale de la impresora</strong></div>
             <iframe
               title="Vista previa del cartel diseñado"

@@ -513,7 +513,7 @@ function FormEtiqueta({ p, pr, store, toast, puede, cfg, cant, setCant, venc, se
   };
 
   return (
-    <div className={s.card}>
+    <div className={cx(s.card, s.cardPad)}>
       <h3 className={s['card-title']} style={{ marginTop: 0 }}>
         Etiquetas de {p.nombre} · {peso}
       </h3>
