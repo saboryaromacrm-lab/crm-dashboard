@@ -1344,7 +1344,8 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
         El buscador ofrece los productos de <strong>{provElegido?.nombre || 'este proveedor'}</strong> por
         nombre, código interno o código de barras. Se carga <strong>en bultos</strong>, como habla la
         factura: llegaron 2 bolsas de 25 kg → Cantidad 2, y el sistema ingresa los 50 kg. El tamaño
-        del bulto viene precargado y se corrige solo si esta entrega vino distinta. Si un producto
+        del bulto <strong>sale del Formato de compra del producto</strong> — si cambió, se corrige
+        ahí, no acá. Si un producto
         entero vino <strong>suelto</strong> (unidades que no completan el bulto), el selector del
         renglón lo pasa a &ldquo;u. sueltas&rdquo;: la cantidad y el costo pasan a ser por unidad.
       </div>
@@ -1431,6 +1432,12 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
                 </>
               )}
             </div>
+            {/* El tamaño del bulto es INFO, no un casillero (el dueño, 25/8):
+                vive en el Formato de compra del producto y se cambia ahí. Un
+                campo editable acá invitaba a "corregir" el bulto en cada
+                factura — y ese número, junto con el costo, es el que define
+                el $/u del catálogo: tipearlo distinto en un renglón dejaba
+                la góndola colgada de un dato de paso. */}
             {it.modo === 'unidad' ? (
               <div
                 className={s.hint}
@@ -1438,13 +1445,12 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
                 title="Vino suelto: no cambia el tamaño del bulto que tiene el proveedor"
               >—</div>
             ) : (
-              <div>
-                <input
-                  type="number" min="0" step="any" value={it.porBulto}
-                  title={prod ? `${u === 'kg' ? 'Kg' : 'Unidades'} por bulto de esta entrega` : 'Kg o unidades por bulto'}
-                  onChange={(e) => setItem(i, { porBulto: e.target.value })}
-                />
-                {prod && <div className={s.hint} style={{ margin: 0, textAlign: 'center' }}>{u}/bulto</div>}
+              <div
+                style={{ textAlign: 'center', paddingTop: 8 }}
+                title="El tamaño del bulto viene del Formato de compra del producto: se cambia ahí, no en la factura"
+              >
+                <div style={{ fontWeight: 600 }}>{prod ? (it.porBulto || '—') : ''}</div>
+                {prod && <div className={s.hint} style={{ margin: 0 }}>{u}/bulto</div>}
               </div>
             )}
             <div>
