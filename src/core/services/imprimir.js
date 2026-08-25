@@ -309,6 +309,11 @@ function htmlEtiquetas({ f, titulo, cuerpo }) {
     .cartel .fila { justify-content: flex-start; align-items: baseline; gap: 1.5mm; }
     .cartel .rot { font-weight: 800; font-size: 1em; letter-spacing: 0.02em; }
     .cartel .precio { font-weight: 900; font-size: 1.2em; }
+    /* PLANTILLA PROPIA (25/8): el cartel diseñado a mano en el editor. Cada
+       elemento va ABSOLUTO en los milimetros que el dueno le dio arrastrandolo:
+       la pantalla del disenador y el papel comparten estos mismos numeros. */
+    .cartel.abs { position: relative; padding: 0; display: block; }
+    .cartel.abs .el { position: absolute; margin: 0; line-height: 1; }
   </style></head><body>${cuerpo}</body></html>`;
 }
 
@@ -380,6 +385,58 @@ const emParaEntrar = (txt, maxEm, caracteresAlTope) => {
   const em = maxEm * (caracteresAlTope / n);
   return Math.round(Math.min(maxEm, Math.max(maxEm * 0.32, em)) * 100) / 100;
 };
+/**
+ * PLANTILLA DEL CARTEL (25/8) — el diseño que el dueño arma arrastrando.
+ * ----------------------------------------------------------------------
+ * Los ajustes proporcionales de arriba nunca terminaban de calzar con la
+ * plantilla física del rollo, así que el diseño dejó de adivinarse: hay un
+ * editor (Ventas › Carteles › Diseñar) con el recuadro en las medidas exactas
+ * del formato, y cada elemento guarda su posición EN MILÍMETROS. La impresión
+ * usa esos mismos milímetros — lo que se acomoda en pantalla es lo que sale.
+ *
+ * La plantilla vive en la config de impresión (clave plantillaCartel, un JSON
+ * por formato) y es POR FORMATO: mover los elementos del 64×32 no toca el
+ * diseño de un rollo más grande. Sin plantilla guardada rige el diseño
+ * estándar proporcional de siempre.
+ */
+export function plantillaCartelPorDefecto(formato) {
+  const f = FORMATOS[formato] || FORMATOS.etiqueta64x32;
+  const ancho = f.anchoMm; const alto = f.altoMm;
+  const p = Math.max(1, alto * 0.035);
+  const rr = (n) => Math.round(n * 100) / 100;
+  const hCaja = alto * 0.47;
+  return {
+    recuadro: { x: rr(p), y: rr(p), w: rr(ancho - 2 * p), h: rr(hCaja), grosor: rr(Math.max(0.5, alto * 0.022)) },
+    marca: { x: rr(p + 1), y: rr(p + 1), w: rr(ancho - 2 * p - 2), size: rr(alto * 0.2) },
+    nombre: { x: rr(p + 1), y: rr(p + 1.8 + alto * 0.2), w: rr(ancho - 2 * p - 2), size: rr(alto * 0.11) },
+    minorista: { x: rr(p + 0.5), y: rr(p + hCaja + 1.2), size: rr(alto * 0.1) },
+    mayorista: { x: rr(p + 0.5), y: rr(p + hCaja + 1.2 + alto * 0.145), size: rr(alto * 0.1) },
+  };
+}
+
+/** La plantilla guardada para un formato, o null si no hay (JSON en la config). */
+export function plantillaCartelGuardada(impresion, formato) {
+  try {
+    const todas = JSON.parse(impresion?.plantillaCartel || '');
+    const t = todas && typeof todas === 'object' ? todas[formato] : null;
+    return t && typeof t === 'object' ? t : null;
+  } catch { return null; }
+}
+
+/**
+ * Tamaño de letra (mm) para que un texto entre en un ancho dado (mm). Misma
+ * filosofía que emParaEntrar pero en milímetros absolutos: el factor es el
+ * ancho estimado de un carácter en proporción al tamaño de letra. Se queda
+ * corto antes que pasarse — el recorte no se ve hasta que salieron cincuenta.
+ */
+export function tamanoTextoCartel(txt, sizeMm, anchoMm, factor) {
+  const n = String(txt ?? '').length;
+  const size = Number(sizeMm) || 3;
+  if (!n || !(anchoMm > 0)) return size;
+  const cabe = anchoMm / (n * factor);
+  return Math.round(Math.min(size, Math.max(size * 0.32, cabe)) * 100) / 100;
+}
+
 /** La MARCA es lo más grande del cartel: es lo que se ve desde el pasillo. */
 const emMarca = (t) => emParaEntrar(t, 2.6, 7);
 /**
@@ -394,8 +451,38 @@ const emNombre = (t) => emParaEntrar(t, 1.5, 20);
 
 export function cuerpoCartelGondola({
   marca, nombre, precio, precioMayorista, etiquetaPrecio = 'Minorista',
-  etiquetaPrecioMayorista = 'Mayorista', cantidad = 1,
+  etiquetaPrecioMayorista = 'Mayorista', cantidad = 1, plantilla = null,
 }) {
+  const n = Math.min(MAX_ETIQUETAS, Math.max(1, Math.round(Number(cantidad) || 1)));
+
+  /* CON PLANTILLA: cada elemento en los milímetros que le dio el dueño en el
+   * editor. Las reglas de contenido no cambian: línea vacía no se imprime, y
+   * mayorista solo si el producto tiene ese precio. */
+  if (plantilla && typeof plantilla === 'object') {
+    const mm = (v) => `${Number(v) || 0}mm`;
+    let abs = '';
+    const rq = plantilla.recuadro;
+    if (rq && rq.w > 0 && rq.h > 0) {
+      abs += `<div class="el" style="left:${mm(rq.x)};top:${mm(rq.y)};width:${mm(rq.w)};height:${mm(rq.h)};`
+        + `border:${mm(Math.max(0.2, Number(rq.grosor) || 0.5))} solid #000;border-radius:0.5mm"></div>`;
+    }
+    const texto = (val, e, extra, factor) => {
+      if (!val || !e) return '';
+      const fs = tamanoTextoCartel(val, e.size, e.w, factor);
+      return `<div class="el" style="left:${mm(e.x)};top:${mm(e.y)};width:${mm(e.w)};`
+        + `text-align:center;white-space:nowrap;overflow:hidden;font-size:${fs}mm;${extra}">${esc(val)}</div>`;
+    };
+    abs += texto(marca, plantilla.marca, 'font-weight:900;letter-spacing:0.04em;', 0.68);
+    abs += texto(nombre, plantilla.nombre, 'font-weight:800;font-stretch:condensed;transform:scaleX(0.92);transform-origin:center;', 0.55);
+    const linea = (rot, val, e) => (val && e
+      ? `<div class="el" style="left:${mm(e.x)};top:${mm(e.y)};white-space:nowrap;font-size:${mm(e.size)}">`
+        + `<span class="rot" style="margin-right:1.5mm">${esc(rot)}:</span><span class="precio">${esc(val)}</span></div>`
+      : '');
+    abs += linea(etiquetaPrecio, precio, plantilla.minorista);
+    abs += linea(etiquetaPrecioMayorista, precioMayorista, plantilla.mayorista);
+    return `<div class="et cartel abs">${abs}</div>`.repeat(n);
+  }
+
   const caja = (marca || nombre)
     ? `<div class="caja">${
       marca ? `<div class="marca" style="font-size:${emMarca(marca)}em">${esc(marca)}</div>` : ''}${
@@ -406,7 +493,6 @@ export function cuerpoCartelGondola({
     : '');
   const una = `<div class="et cartel">${caja}<div class="precios">${
     fila(etiquetaPrecio, precio)}${fila(etiquetaPrecioMayorista, precioMayorista)}</div></div>`;
-  const n = Math.min(MAX_ETIQUETAS, Math.max(1, Math.round(Number(cantidad) || 1)));
   return una.repeat(n);
 }
 

@@ -29,9 +29,10 @@ import { cx } from '@shared/utils/classNames.js';
 import { httpClient } from '@core/services/httpClient.js';
 import {
   MAX_ETIQUETAS, configImpresion, cuerpoCartelGondola, formatoPorDefecto,
-  htmlDocumento, imprimirDocumento,
+  htmlDocumento, imprimirDocumento, invalidarConfigImpresion, plantillaCartelGuardada,
 } from '@core/services/imprimir.js';
 import { Btn, s } from '../components/ui.jsx';
+import { DisenadorCartel } from '../components/DisenadorCartel.jsx';
 
 const norm = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const money = (n) => `$${Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -149,13 +150,40 @@ export function CartelesPanel() {
   const total = filas.reduce((a, f) => a + Math.max(1, Math.round(Number(f.cant) || 1)), 0);
   const formato = cfg?.impresion?.etiquetaGondola || formatoPorDefecto('etiquetaGondola');
 
+  /* LA PLANTILLA DISEÑADA A MANO (25/8): posiciones en mm por formato, armadas
+   * arrastrando en el editor. Null = diseño estándar proporcional. */
+  const plantilla = plantillaCartelGuardada(cfg?.impresion, formato);
+  const [disenando, setDisenando] = useState(false);
+  const [guardandoDiseno, setGuardandoDiseno] = useState(false);
+
+  /** Guarda (o borra, con null) la plantilla de ESTE formato, sin tocar las otras. */
+  const guardarPlantilla = async (nueva) => {
+    setGuardandoDiseno(true);
+    try {
+      let todas = {};
+      try { todas = JSON.parse(cfg?.impresion?.plantillaCartel || '') || {}; } catch { todas = {}; }
+      if (nueva) todas[formato] = nueva; else delete todas[formato];
+      const impresion = await httpClient.put('/configuracion/impresion', {
+        plantillaCartel: Object.keys(todas).length ? JSON.stringify(todas) : '',
+      });
+      invalidarConfigImpresion();
+      setCfg((c) => ({ ...c, impresion }));
+      setDisenando(false);
+      toast(nueva
+        ? 'Diseño guardado: todos los carteles de este tamaño salen así.'
+        : 'Se volvió al diseño estándar.', 'ok');
+    } catch (e) {
+      toast(e?.data?.message || 'No se pudo guardar el diseño (hace falta el permiso de Impresión de Sistema).', 'err');
+    } finally { setGuardandoDiseno(false); }
+  };
+
   /* La MISMA función que la impresora, con la primera fila de muestra. */
   const previa = cfg && filas.length
     ? htmlDocumento({
       empresa: cfg.empresa,
       formato,
       titulo: 'Cartel',
-      cuerpo: cuerpoCartelGondola({ ...datosDe(filas[0]), cantidad: 1 }),
+      cuerpo: cuerpoCartelGondola({ ...datosDe(filas[0]), cantidad: 1, plantilla }),
     })
     : '';
 
@@ -192,7 +220,7 @@ export function CartelesPanel() {
   const imprimir = async () => {
     if (!filas.length) { toast('Agregá al menos un producto.', 'err'); return; }
     if (total > MAX_ETIQUETAS) { toast(`Son ${total} carteles y el tope es ${MAX_ETIQUETAS}.`, 'err'); return; }
-    const cuerpo = filas.map((f) => cuerpoCartelGondola(datosDe(f))).join('');
+    const cuerpo = filas.map((f) => cuerpoCartelGondola({ ...datosDe(f), plantilla })).join('');
     const ok = await imprimirDocumento('etiquetaGondola', { titulo: 'Carteles de góndola', cuerpo });
     if (!ok) { toast('El navegador bloqueó la ventana de impresión: permitile abrir ventanas emergentes.', 'err'); return; }
     toast(`${total} cartel(es) a la impresora.`, 'ok');
@@ -220,6 +248,9 @@ export function CartelesPanel() {
             placeholder="Buscar un producto por nombre o marca…"
           />
           <Btn onClick={agregarLibre}>+ Cartel libre</Btn>
+          <Btn onClick={() => setDisenando(true)} title="Acomodar dónde va cada elemento en la etiqueta">
+            Diseñar el cartel
+          </Btn>
         </div>
         {q && (
           <div style={{ marginTop: 6 }}>
@@ -313,8 +344,25 @@ export function CartelesPanel() {
           />
           <div className={s.hint}>
             El tamaño sale de <strong>Sistema › Impresión › Cartel de góndola</strong>.
+            {plantilla && <> Este tamaño usa un <strong>diseño propio</strong> (botón &ldquo;Diseñar el cartel&rdquo;).</>}
           </div>
         </div>
+      )}
+
+      {/* ---- El diseñador: arrastrar cada elemento en la etiqueta real ---- */}
+      {disenando && cfg && (
+        <DisenadorCartel
+          formato={formato}
+          inicial={plantilla}
+          empresa={cfg.empresa}
+          guardando={guardandoDiseno}
+          muestra={filas.length ? datosDe(filas[0]) : {
+            marca: 'CUMANA', nombre: 'Aceite Oliva Intenso 500ml', precio: '$5.000,00', precioMayorista: '$4.500,00',
+          }}
+          onGuardar={guardarPlantilla}
+          onRestaurar={() => guardarPlantilla(null)}
+          onCerrar={() => setDisenando(false)}
+        />
       )}
     </div>
   );
