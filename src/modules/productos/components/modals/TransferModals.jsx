@@ -296,7 +296,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
     const its = novedades?.items ?? [];
     return {
       nuevos: its.filter((x) => x.chip === 'nuevo').length,
-      llego: its.filter((x) => x.chip === 'llego').length,
+      reingresos: its.filter((x) => x.chip === 'reingreso').length,
       total: its.length,
     };
   }, [novedades]);
@@ -744,9 +744,11 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
         {cuentaNovedades.total > 0 && !soloNovedades && (
           <div className={cx(s.callout, s.info)} style={{ marginTop: 4, marginBottom: 8 }}>
             <strong>
-              {cuentaNovedades.nuevos > 0 && `${cuentaNovedades.nuevos} producto${cuentaNovedades.nuevos === 1 ? '' : 's'} que ${destino?.nombre ?? 'tu sucursal'} nunca tuvo`}
-              {cuentaNovedades.nuevos > 0 && cuentaNovedades.llego > 0 && ', y '}
-              {cuentaNovedades.llego > 0 && `${cuentaNovedades.llego} repuesto${cuentaNovedades.llego === 1 ? '' : 's'} desde tu último pedido`}
+              {/* NUEVO = novedad del catálogo (el producto se creó hace poco);
+                  REINGRESO = ya existía y volvió a entrar (25/8/2026). */}
+              {cuentaNovedades.nuevos > 0 && `${cuentaNovedades.nuevos} producto${cuentaNovedades.nuevos === 1 ? ' nuevo' : 's nuevos'} en el catálogo`}
+              {cuentaNovedades.nuevos > 0 && cuentaNovedades.reingresos > 0 && ', y '}
+              {cuentaNovedades.reingresos > 0 && `${cuentaNovedades.reingresos} reingreso${cuentaNovedades.reingresos === 1 ? '' : 's'} desde tu último pedido`}
               .
             </strong>{' '}
             <Btn small variant="btn-edit" onClick={() => { setSoloNovedades(true); setQ(''); }}>
@@ -836,10 +838,10 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                             ? 'var(--crm-color-success)' : 'var(--crm-color-info)',
                         }}
                         title={novedades.mapa.get(p.id).chip === 'nuevo'
-                          ? `${destino?.nombre ?? 'Tu sucursal'} nunca tuvo este producto. Llegó al depósito el ${fmtFechaHora(novedades.mapa.get(p.id).fecha)}.`
-                          : `Se repuso en el depósito el ${fmtFechaHora(novedades.mapa.get(p.id).fecha)}, después de tu último pedido.`}
+                          ? `Producto nuevo en el catálogo: se creó hace poco y entró al depósito el ${fmtFechaHora(novedades.mapa.get(p.id).fecha)}.`
+                          : `Ya existía y volvió a entrar al depósito el ${fmtFechaHora(novedades.mapa.get(p.id).fecha)}, después de tu último pedido.`}
                       >
-                        {novedades.mapa.get(p.id).chip === 'nuevo' ? 'NUEVO' : 'LLEGÓ'}
+                        {novedades.mapa.get(p.id).chip === 'nuevo' ? 'NUEVO' : 'REINGRESO'}
                       </span>
                     )}
                     <strong>{p.nombre}</strong>
