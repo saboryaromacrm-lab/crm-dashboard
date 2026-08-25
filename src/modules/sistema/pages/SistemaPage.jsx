@@ -17,6 +17,7 @@ import { cx } from '@shared/utils/classNames.js';
 import {
   FORMATOS_LABEL, cuerpoCartelGondola, cuerpoEtiquetas, cuerpoFactura, cuerpoPlanillaConteo, esFormatoEtiqueta,
   formatoPorDefecto, htmlDocumento, imprimirDocumento, invalidarConfigImpresion,
+  plantillaCartelGuardada, plantillaFraccionadoGuardada,
 } from '@core/services/imprimir.js';
 import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 import { money, fmtFechaHora } from '@modules/productos/domain/format.js';
@@ -67,7 +68,7 @@ const MAX_LOGO_KB = 400;
  * Es `async` porque la factura dibuja su QR, y eso devuelve una promesa. Los
  * demás documentos siguen siendo texto y no esperan nada.
  */
-async function cuerpoMuestra(clave, empresa) {
+async function cuerpoMuestra(clave, empresa, impresion) {
   if (clave === 'facturaVenta') {
     /* La MISMA función que imprime la factura de verdad, con una venta de
      * mentira: una vista previa armada aparte es la que después no se parece
@@ -97,20 +98,29 @@ async function cuerpoMuestra(clave, empresa) {
     }, { moneda: money, fecha: fmtFechaHora, empresa: empresa ?? {} });
   }
   if (clave === 'etiquetaFraccionado') {
-    // Dos etiquetas para que se vea cómo queda una al lado de la otra en el rollo.
+    // Dos etiquetas para que se vea cómo queda una al lado de la otra en el
+    // rollo — con la plantilla diseñada a mano si este tamaño tiene una.
+    const plantilla = plantillaFraccionadoGuardada(
+      impresion,
+      impresion?.etiquetaFraccionado || formatoPorDefecto('etiquetaFraccionado'),
+    );
     return cuerpoEtiquetas({
       nombre: 'Lentejas', peso: '500 g', precio: '$1.850,00',
-      codigo: '6850000001491', vencimiento: '15/09/2026', cantidad: 2,
+      codigo: '6850000001491', vencimiento: '15/09/2026', cantidad: 2, plantilla,
     });
   }
   if (clave === 'etiquetaGondola') {
     /* Dos carteles y a propósito distintos: uno completo con los dos precios y
      * otro con la marca sola, que es el caso que más sorprende y el que hay que
      * poder ver antes de mandar cincuenta al rollo. */
+    const plantilla = plantillaCartelGuardada(
+      impresion,
+      impresion?.etiquetaGondola || formatoPorDefecto('etiquetaGondola'),
+    );
     return cuerpoCartelGondola({
       marca: 'Zuelo', nombre: 'Aceite Oliva Intenso 500 ml',
-      precio: '$5.000,00', precioMayorista: '$4.300,00',
-    }) + cuerpoCartelGondola({ marca: '', nombre: 'ACEITES', precio: '', precioMayorista: '' });
+      precio: '$5.000,00', precioMayorista: '$4.300,00', plantilla,
+    }) + cuerpoCartelGondola({ marca: '', nombre: 'ACEITES', precio: '', precioMayorista: '', plantilla });
   }
   if (clave === 'ticketPos') {
     return `
@@ -244,7 +254,7 @@ export function SistemaPage() {
         empresa,
         formato: impresion[previewDoc] || formatoPorDefecto(previewDoc),
         titulo: 'Vista previa',
-        cuerpo: await cuerpoMuestra(previewDoc, empresa),
+        cuerpo: await cuerpoMuestra(previewDoc, empresa, impresion),
         pie: previewDoc === 'ticketPos' ? impresion.pieTicket : '',
         esTicket: previewDoc === 'ticketPos',
       });
@@ -430,7 +440,7 @@ export function SistemaPage() {
                         await guardar('impresion', impresion);
                         imprimirDocumento(previewDoc, {
                           titulo: 'Impresión de prueba',
-                          cuerpo: await cuerpoMuestra(previewDoc, empresa),
+                          cuerpo: await cuerpoMuestra(previewDoc, empresa, impresion),
                           esTicket: previewDoc === 'ticketPos',
                         });
                       }}

@@ -13,14 +13,17 @@
 import { useEffect, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { analizarCodigo } from '@core/services/barcode.js';
+import { httpClient } from '@core/services/httpClient.js';
 import {
   MAX_ETIQUETAS, configImpresion, cuerpoEtiquetas, formatoPorDefecto,
-  htmlDocumento, imprimirDocumento, medidaEtiqueta,
+  htmlDocumento, imprimirDocumento, invalidarConfigImpresion, medidaEtiqueta,
+  plantillaFraccionadoGuardada,
 } from '@core/services/imprimir.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { useSeccion } from '../hooks/useSeccion.js';
 import { money, num, fmtFechaHora, fmtFechaVenc } from '../domain/format.js';
 import { Table, PanelHead, Btn, usePaginado, s } from '../components/ui.jsx';
+import { DisenadorEtiquetaFraccionado } from '../components/DisenadorEtiquetaFraccionado.jsx';
 
 /** Texto comparable: sin mayúsculas ni acentos. */
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
@@ -340,6 +343,33 @@ function TabEtiquetas({ puede }) {
 
   useEffect(() => { configImpresion().then(setCfg).catch(() => { /* el shell ya avisa la falta de conexión */ }); }, []);
 
+  /* EL DISEÑADOR (25/8, "hacelo igual" que el cartel): la plantilla en mm por
+   * formato, armada arrastrando. Null = diseño flexible de siempre. */
+  const formatoEt = cfg?.impresion?.etiquetaFraccionado || formatoPorDefecto('etiquetaFraccionado');
+  const plantilla = plantillaFraccionadoGuardada(cfg?.impresion, formatoEt);
+  const [disenando, setDisenando] = useState(false);
+  const [guardandoDiseno, setGuardandoDiseno] = useState(false);
+
+  const guardarPlantilla = async (nueva) => {
+    setGuardandoDiseno(true);
+    try {
+      let todas = {};
+      try { todas = JSON.parse(cfg?.impresion?.plantillaFraccionado || '') || {}; } catch { todas = {}; }
+      if (nueva) todas[formatoEt] = nueva; else delete todas[formatoEt];
+      const impresion = await httpClient.put('/configuracion/impresion', {
+        plantillaFraccionado: Object.keys(todas).length ? JSON.stringify(todas) : '',
+      });
+      invalidarConfigImpresion();
+      setCfg((c) => ({ ...c, impresion }));
+      setDisenando(false);
+      toast(nueva
+        ? 'Diseño guardado: todas las etiquetas de este tamaño salen así.'
+        : 'Se volvió al diseño estándar.', 'ok');
+    } catch (e) {
+      toast(e?.data?.message || 'No se pudo guardar el diseño (hace falta el permiso de Impresión de Sistema).', 'err');
+    } finally { setGuardandoDiseno(false); }
+  };
+
   /* Los FRACCIONADOS del catálogo: cada presentación de un granel activo. Un
    * producto sin presentaciones no aparece — no hay etiqueta que sacarle. */
   const fraccionados = [];
@@ -392,6 +422,9 @@ function TabEtiquetas({ puede }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
+        <Btn onClick={() => setDisenando(true)} title="Acomodar dónde va cada elemento en la etiqueta">
+          Diseñar la etiqueta
+        </Btn>
       </div>
       <Table
         cols={[{ h: 'Producto' }, { h: 'Tamaño' }, { h: 'Precio', num: true }, { h: 'Código de barras' }, { h: '', cls: 'actions-col' }]}
@@ -413,6 +446,27 @@ function TabEtiquetas({ puede }) {
           setCant={setCant}
           venc={venc}
           setVenc={setVenc}
+          plantilla={plantilla}
+        />
+      )}
+
+      {/* ---- El diseñador: arrastrar cada elemento en la etiqueta real ---- */}
+      {disenando && cfg && (
+        <DisenadorEtiquetaFraccionado
+          formato={formatoEt}
+          inicial={plantilla}
+          empresa={cfg.empresa}
+          guardando={guardandoDiseno}
+          muestra={elegido ? {
+            nombre: elegido.p.nombre,
+            peso: store.presLabel(elegido.p, elegido.pr.id),
+            precio: elegido.pr.precioFinal != null ? money(elegido.pr.precioFinal) : '',
+            codigo: analizarCodigo(elegido.pr.codigoBarras).codigo,
+            vencimiento: venc ? fmtFechaVenc(venc) : '',
+          } : null}
+          onGuardar={guardarPlantilla}
+          onRestaurar={() => guardarPlantilla(null)}
+          onCerrar={() => setDisenando(false)}
         />
       )}
     </div>
@@ -420,7 +474,7 @@ function TabEtiquetas({ puede }) {
 }
 
 /** Lo que se imprime, y el aviso de por qué podría no leerse. */
-function FormEtiqueta({ p, pr, store, toast, puede, cfg, cant, setCant, venc, setVenc }) {
+function FormEtiqueta({ p, pr, store, toast, puede, cfg, cant, setCant, venc, setVenc, plantilla }) {
   const formato = cfg?.impresion?.etiquetaFraccionado || formatoPorDefecto('etiquetaFraccionado');
   const medida = medidaEtiqueta(formato);
   const info = analizarCodigo(pr.codigoBarras);
@@ -444,14 +498,14 @@ function FormEtiqueta({ p, pr, store, toast, puede, cfg, cant, setCant, venc, se
 
   /* La MISMA función para la vista previa y para la impresora. */
   const previa = cfg
-    ? htmlDocumento({ empresa: cfg.empresa, formato, titulo: 'Etiqueta', cuerpo: cuerpoEtiquetas({ ...datos, cantidad: 1 }) })
+    ? htmlDocumento({ empresa: cfg.empresa, formato, titulo: 'Etiqueta', cuerpo: cuerpoEtiquetas({ ...datos, cantidad: 1, plantilla }) })
     : '';
 
   const imprimir = async () => {
     if (!cantOk) { toast(`Poné una cantidad de etiquetas entre 1 y ${MAX_ETIQUETAS}.`, 'err'); return; }
     const ok = await imprimirDocumento('etiquetaFraccionado', {
       titulo: `Etiquetas ${p.nombre} ${peso}`,
-      cuerpo: cuerpoEtiquetas({ ...datos, cantidad: n }),
+      cuerpo: cuerpoEtiquetas({ ...datos, cantidad: n, plantilla }),
     });
     if (!ok) { toast('El navegador bloqueó la ventana de impresión: permitile abrir ventanas emergentes.', 'err'); return; }
     toast(`${n} ${n === 1 ? 'etiqueta' : 'etiquetas'} a la impresora. El stock no se tocó.`, 'ok');

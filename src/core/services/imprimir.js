@@ -309,11 +309,12 @@ function htmlEtiquetas({ f, titulo, cuerpo }) {
     .cartel .fila { justify-content: flex-start; align-items: baseline; gap: 1.5mm; }
     .cartel .rot { font-weight: 800; font-size: 1em; letter-spacing: 0.02em; }
     .cartel .precio { font-weight: 900; font-size: 1.2em; }
-    /* PLANTILLA PROPIA (25/8): el cartel diseñado a mano en el editor. Cada
-       elemento va ABSOLUTO en los milimetros que el dueno le dio arrastrandolo:
-       la pantalla del disenador y el papel comparten estos mismos numeros. */
-    .cartel.abs { position: relative; padding: 0; display: block; }
-    .cartel.abs .el { position: absolute; margin: 0; line-height: 1; }
+    /* PLANTILLA PROPIA (25/8): la etiqueta diseñada a mano en el editor (el
+       cartel de gondola Y la del fraccionado). Cada elemento va ABSOLUTO en
+       los milimetros que el dueno le dio arrastrandolo: la pantalla del
+       disenador y el papel comparten estos mismos numeros. */
+    .et.abs { position: relative; padding: 0; display: block; }
+    .et.abs .el { position: absolute; margin: 0; line-height: 1; }
   </style></head><body>${cuerpo}</body></html>`;
 }
 
@@ -328,8 +329,42 @@ export const MAX_ETIQUETAS = 500;
  * Recibe todo ya formateado (precio con separadores, fecha DD/MM/AAAA): acá no
  * se decide ni precio ni redondeo, eso es del catálogo.
  */
-export function cuerpoEtiquetas({ nombre, peso, precio, codigo, vencimiento, cantidad = 1 }) {
+export function cuerpoEtiquetas({ nombre, peso, precio, codigo, vencimiento, cantidad = 1, plantilla = null }) {
   const svg = barcodeSvg(codigo, { alto: 30 });
+  const n = Math.min(MAX_ETIQUETAS, Math.max(1, Math.round(Number(cantidad) || 1)));
+
+  /* CON PLANTILLA (25/8): cada elemento en los milímetros del diseñador de la
+   * pestaña Etiquetas. Mismas reglas de contenido que siempre: dato vacío no
+   * se imprime, y el SVG del código se estira al ancho/alto que se le dio
+   * (preserveAspectRatio none, ojo con barras más finas de 0,25 mm). */
+  if (plantilla && typeof plantilla === 'object') {
+    const mm = (v) => `${Number(v) || 0}mm`;
+    let abs = '';
+    const nomEl = plantilla.nombre;
+    if (nombre && nomEl) {
+      const fs = tamanoTextoCartel(nombre, nomEl.size, nomEl.w, 0.5);
+      abs += `<div class="el" style="left:${mm(nomEl.x)};top:${mm(nomEl.y)};width:${mm(nomEl.w)};`
+        + `text-align:center;white-space:nowrap;overflow:hidden;font-weight:800;font-size:${fs}mm">${esc(nombre)}</div>`;
+    }
+    const linea = (val, e, extra) => (val && e
+      ? `<div class="el" style="left:${mm(e.x)};top:${mm(e.y)};white-space:nowrap;font-size:${mm(e.size)};${extra}">${esc(val)}</div>`
+      : '');
+    abs += linea(peso, plantilla.peso, 'font-weight:700;');
+    abs += linea(precio, plantilla.precio, 'font-weight:800;');
+    const bc = plantilla.barras;
+    if (svg && bc && bc.w > 0 && bc.h > 0) {
+      abs += `<div class="el" style="left:${mm(bc.x)};top:${mm(bc.y)};width:${mm(bc.w)};height:${mm(bc.h)}">${svg}</div>`;
+    }
+    const codEl = plantilla.codigo;
+    if (svg && codigo && codEl) {
+      abs += `<div class="el" style="left:${mm(codEl.x)};top:${mm(codEl.y)};width:${mm(codEl.w)};`
+        + `text-align:center;white-space:nowrap;overflow:hidden;font-family:'Courier New',monospace;`
+        + `letter-spacing:0.08em;font-size:${mm(codEl.size)}">${esc(codigo)}</div>`;
+    }
+    abs += linea(vencimiento ? `Vto ${vencimiento}` : '', plantilla.vencimiento, 'font-weight:700;');
+    return `<div class="et abs">${abs}</div>`.repeat(n);
+  }
+
   const una = `<div class="et">`
     + `<div class="nom">${esc(nombre)}</div>`
     + `<div class="fila"><span class="peso">${esc(peso)}</span><span class="precio">${esc(precio)}</span></div>`
@@ -338,7 +373,6 @@ export function cuerpoEtiquetas({ nombre, peso, precio, codigo, vencimiento, can
       : '<div class="sincod">sin código de barras</div>')
     + (vencimiento ? `<div class="vto">Vto ${esc(vencimiento)}</div>` : '')
     + '</div>';
-  const n = Math.min(MAX_ETIQUETAS, Math.max(1, Math.round(Number(cantidad) || 1)));
   return una.repeat(n);
 }
 
@@ -414,13 +448,42 @@ export function plantillaCartelPorDefecto(formato) {
   };
 }
 
+/**
+ * LA ETIQUETA DEL FRACCIONADO también se diseña arrastrando (25/8, "hacelo
+ * igual"): mismos milímetros, misma clave de config (plantillaFraccionado) y
+ * mismo contrato — sin plantilla guardada rige el diseño flexible de siempre.
+ * Sus elementos: nombre, peso, precio, código de barras (con su alto y ancho),
+ * el número del código y el vencimiento.
+ */
+export function plantillaFraccionadoPorDefecto(formato) {
+  const f = FORMATOS[formato] || FORMATOS.etiqueta50x30;
+  const ancho = f.anchoMm; const alto = f.altoMm;
+  const m = parseFloat(f.margen) || 1.5;
+  const rr = (n) => Math.round(n * 100) / 100;
+  const yBarras = alto * 0.4;
+  return {
+    nombre: { x: rr(m), y: rr(m), w: rr(ancho - 2 * m), size: rr(alto * 0.12) },
+    peso: { x: rr(m), y: rr(m + alto * 0.17), size: rr(alto * 0.1) },
+    precio: { x: rr(ancho * 0.55), y: rr(m + alto * 0.16), size: rr(alto * 0.13) },
+    barras: { x: rr(m + 2), y: rr(yBarras), w: rr(ancho - 2 * m - 4), h: rr(f.bcMm || alto * 0.27) },
+    codigo: { x: rr(m), y: rr(yBarras + (f.bcMm || alto * 0.27) + 0.8), w: rr(ancho - 2 * m), size: rr(alto * 0.08) },
+    vencimiento: { x: rr(m), y: rr(alto - m - alto * 0.09), size: rr(alto * 0.08) },
+  };
+}
+
 /** La plantilla guardada para un formato, o null si no hay (JSON en la config). */
-export function plantillaCartelGuardada(impresion, formato) {
+function plantillaGuardada(impresion, clave, formato) {
   try {
-    const todas = JSON.parse(impresion?.plantillaCartel || '');
+    const todas = JSON.parse(impresion?.[clave] || '');
     const t = todas && typeof todas === 'object' ? todas[formato] : null;
     return t && typeof t === 'object' ? t : null;
   } catch { return null; }
+}
+export function plantillaCartelGuardada(impresion, formato) {
+  return plantillaGuardada(impresion, 'plantillaCartel', formato);
+}
+export function plantillaFraccionadoGuardada(impresion, formato) {
+  return plantillaGuardada(impresion, 'plantillaFraccionado', formato);
 }
 
 /**
