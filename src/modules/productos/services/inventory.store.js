@@ -13,7 +13,6 @@
  * localStorage — no hay auth todavía.
  */
 import { httpClient, HttpError } from '@core/services/httpClient.js';
-import { appConfig } from '@core/config/app.config.js';
 import { leerClave, escribirClave, leerSesion } from '@core/auth/sesion.js';
 import { num, fmtTam } from '../domain/format.js';
 
@@ -941,7 +940,13 @@ const recuperarLecturaFactura = (id) => httpClient.post(`/facturas/lecturas/${id
 /** "Esta factura ya la había cargado a mano": engancha el papel al comprobante. */
 const vincularLecturaFactura = (id, comprobanteId) => _mutate(() => httpClient.post(`/facturas/lecturas/${id}/vincular`, { comprobanteId }));
 /** URL directa del papel: va en un <img src> o se abre en una pestaña. */
-const urlPapelFactura = (archivoId) => `${appConfig.api.baseUrl}/facturas/archivos/${archivoId}`;
+/*
+ * EL PAPEL DE UNA FACTURA, con la credencial (25/8). Desde que la API se cerró,
+ * la URL cruda en un `<img src>` o un `<a href>` recibía 401 — la etiqueta no
+ * puede mandar el token — y la bandeja mostraba miniaturas rotas. Devuelve una
+ * promesa con una URL `blob:` local, bajada con el Bearer y cacheada.
+ */
+const papelFactura = (archivoId) => httpClient.urlProtegida(`/facturas/archivos/${archivoId}`);
 /**
  * La propuesta de carga leída del PDF digital: renglones + pie + encabezado.
  * Solo lectura — no toca nada; el alta la usa para precargar y la persona
@@ -995,7 +1000,7 @@ export const inventoryStore = {
   facturasReferenciables,
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
-  urlPapelFactura, leerRenglonesLectura,
+  papelFactura, leerRenglonesLectura,
   pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
   enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria,
   crearEnvioCafeteria, editarEnvioCafeteria, anularEnvioCafeteria,

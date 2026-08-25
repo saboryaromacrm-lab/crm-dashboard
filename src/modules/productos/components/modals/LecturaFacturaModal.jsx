@@ -209,31 +209,14 @@ export function LecturaFacturaModal({ id }) {
       )}
 
       {/* EL PAPEL. Es la razón de ser de esta pantalla: se mira mientras se
-          revisa, y se abre en grande en otra pestaña para leer la letra chica. */}
+          revisa, y se abre en grande en otra pestaña para leer la letra chica.
+          Las URLs son `blob:` bajadas con la credencial (25/8): la URL cruda de
+          la API en un <img> recibía 401 desde que la API se cerró, y la bandeja
+          mostraba todas las miniaturas rotas. */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: 'var(--crm-space-3) 0' }}>
         {(l.archivos || []).map((a, i) => (
           <div key={a.id} style={{ position: 'relative' }}>
-            <a href={store.urlPapelFactura(a.id)} target="_blank" rel="noreferrer" title="Abrir en grande">
-              {esPdf({ type: a.mime })
-                ? (
-                  <div style={{
-                    width: 120, height: 150, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: '1px solid var(--crm-color-border)', borderRadius: 8, fontSize: 12, textAlign: 'center', padding: 8,
-                  }}>
-                    PDF · página {i + 1}
-                  </div>
-                )
-                : (
-                  <img
-                    src={store.urlPapelFactura(a.id)}
-                    alt={`Página ${i + 1}`}
-                    style={{
-                      width: 120, height: 150, objectFit: 'cover', objectPosition: 'top',
-                      border: '1px solid var(--crm-color-border)', borderRadius: 8, background: '#fff',
-                    }}
-                  />
-                )}
-            </a>
+            <MiniaturaPapel store={store} archivo={a} indice={i} />
             {editable && (l.archivos || []).length > 1 && (
               <button
                 type="button"
@@ -322,5 +305,47 @@ export function LecturaFacturaModal({ id }) {
         {Number(l.total) > 0 && <> · el papel dice {money(l.total)}</>}
       </div>
     </ModalShell>
+  );
+}
+
+/**
+ * La miniatura de UNA página del papel, bajada con la credencial.
+ *
+ * `papelFactura` devuelve una promesa con una URL `blob:` (cacheada en el
+ * httpClient): mientras baja se muestra el marco vacío con "cargando…", y el
+ * clic abre esa URL local en otra pestaña — `window.open` en el `then` y no un
+ * `<a href>` fijo, porque el href no existe hasta que el papel bajó.
+ */
+function MiniaturaPapel({ store, archivo, indice }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    store.papelFactura(archivo.id).then((u) => { if (vivo) setUrl(u); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [store, archivo.id]);
+
+  const marco = {
+    width: 120, height: 150, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    border: '1px solid var(--crm-color-border)', borderRadius: 8, fontSize: 12, textAlign: 'center', padding: 8,
+  };
+  const abrir = () => { if (url) window.open(url, '_blank', 'noopener'); };
+
+  return (
+    <div role="button" tabIndex={0} title="Abrir en grande" style={{ cursor: 'pointer' }} onClick={abrir} onKeyDown={(e) => e.key === 'Enter' && abrir()}>
+      {esPdf({ type: archivo.mime })
+        ? <div style={marco}>PDF · página {indice + 1}</div>
+        : (url
+          ? (
+            <img
+              src={url}
+              alt={`Página ${indice + 1}`}
+              style={{
+                width: 120, height: 150, objectFit: 'cover', objectPosition: 'top',
+                border: '1px solid var(--crm-color-border)', borderRadius: 8, background: '#fff',
+              }}
+            />
+          )
+          : <div style={marco}>cargando…</div>)}
+    </div>
   );
 }

@@ -127,6 +127,39 @@ async function request(method, path, { body, headers, signal, sinRedirigir = fal
   }
 }
 
+/**
+ * UN BINARIO PROTEGIDO (la foto de una factura, un adjunto). Desde que la API
+ * se cerró, un `<img src>` pelado recibe 401: la etiqueta no puede mandar el
+ * token. Esto lo baja CON la credencial y devuelve una **URL de objeto local**
+ * (`blob:`) lista para el `src` o para `window.open`. La URL vive hasta que la
+ * pestaña se cierra o alguien la revoca — para modales que van y vienen es un
+ * costo aceptable y evita re-bajar el mismo papel en cada render.
+ */
+const urlsDeBlob = new Map();
+async function urlProtegida(path) {
+  if (urlsDeBlob.has(path)) return urlsDeBlob.get(path);
+  const url = path.startsWith('http') ? path : `${appConfig.api.baseUrl}${path}`;
+  const token = leerSesion()?.token;
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+  } catch {
+    throw new HttpError(`Sin respuesta del servidor: GET ${path}`, {
+      sinRespuesta: true,
+      data: { message: 'No llegó la respuesta del servidor.' },
+    });
+  }
+  if (response.status === 401) sesionVencida();
+  if (!response.ok) {
+    throw new HttpError(`Request failed: ${response.status}`, { status: response.status });
+  }
+  const objeto = URL.createObjectURL(await response.blob());
+  urlsDeBlob.set(path, objeto);
+  return objeto;
+}
+
 export const httpClient = {
   /** Se llama al entrar: una sesión nueva vuelve a habilitar el aviso. */
   reiniciarAvisoDeSesion: () => { yaAvisado = false; },
@@ -135,6 +168,7 @@ export const httpClient = {
   put: (path, body, opts) => request('PUT', path, { ...opts, body }),
   patch: (path, body, opts) => request('PATCH', path, { ...opts, body }),
   delete: (path, opts) => request('DELETE', path, opts),
+  urlProtegida,
 };
 
 export { HttpError };

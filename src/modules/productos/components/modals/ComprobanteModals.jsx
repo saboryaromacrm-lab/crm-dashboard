@@ -1084,13 +1084,19 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
         <div className={cx(s.callout)} style={{ marginBottom: 'var(--crm-space-3)' }}>
           <strong>Esta factura vino de la bandeja.</strong> El encabezado salió del QR del papel
           {lectura.cae && <> · CAE <span className={s.mono}>{lectura.cae}</span></>}.{' '}
+          {/* `window.open` con la URL blob YA BAJADA (25/8): el href crudo a la
+              API recibía 401 — un link no manda el token de la sesión. */}
           {lectura.archivos.map((a, i) => (
             <a
               key={a.id}
-              href={store.urlPapelFactura(a.id)}
-              target="_blank"
-              rel="noreferrer"
+              href="#papel"
               style={{ marginRight: 10 }}
+              onClick={(e) => {
+                e.preventDefault();
+                store.papelFactura(a.id)
+                  .then((u) => window.open(u, '_blank', 'noopener'))
+                  .catch(() => {});
+              }}
             >
               Ver el papel{lectura.archivos.length > 1 ? ` (${i + 1})` : ''}
             </a>
