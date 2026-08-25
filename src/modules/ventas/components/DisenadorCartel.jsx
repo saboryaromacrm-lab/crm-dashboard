@@ -23,7 +23,7 @@ import {
   cuerpoCartelGondola, htmlDocumento, medidaEtiqueta,
   plantillaCartelPorDefecto, tamanoTextoCartel,
 } from '@core/services/imprimir.js';
-import { ModalShell, s } from './ui.jsx';
+import { Btn, ModalShell, s } from './ui.jsx';
 
 /* A medio milímetro: más fino no se nota en una térmica y el número queda legible. */
 const aMedioMm = (v) => Math.round((Number(v) || 0) * 2) / 2;
@@ -145,6 +145,23 @@ export function DisenadorCartel({
       />
     </div>
   );
+  /* La letra con A− / A+ a la vista (el dueño, 25/8): el campo numérico solo
+   * no se encontraba. Pasos de 0,5 mm — lo que se nota en una térmica. */
+  const pasoLetra = (d) => setElem(sel, { size: Math.min(40, Math.max(1, aMedioMm((e?.size ?? 3) + d))) });
+  const campoLetra = () => (
+    <div className={s.field} style={{ marginBottom: 0 }}>
+      <label>Letra (mm)</label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <Btn small onClick={() => pasoLetra(-0.5)} title="Achicar la letra">A−</Btn>
+        <input
+          type="number" step="0.5" min={1} max={40} value={e?.size ?? ''}
+          style={{ width: 64, textAlign: 'center' }}
+          onChange={(ev) => setElem(sel, { size: Math.min(40, Math.max(1, Number(ev.target.value) || 0)) })}
+        />
+        <Btn small onClick={() => pasoLetra(0.5)} title="Agrandar la letra">A+</Btn>
+      </div>
+    </div>
+  );
 
   return (
     <ModalShell
@@ -251,7 +268,7 @@ export function DisenadorCartel({
               {(sel === 'recuadro' || sel === 'marca' || sel === 'nombre') && campo('Ancho', 'w', 1, med.anchoMm)}
               {sel === 'recuadro' && campo('Alto', 'h', 1, med.altoMm)}
               {sel === 'recuadro' && campo('Borde', 'grosor', 0.2, 3)}
-              {sel !== 'recuadro' && campo('Letra (mm)', 'size', 1, 40)}
+              {sel !== 'recuadro' && campoLetra()}
             </div>
             {(sel === 'marca' || sel === 'nombre') && (
               <div className={s.hint} style={{ margin: '6px 0 0' }}>
