@@ -443,6 +443,23 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const delItem = (i) => setItems((r) => r.filter((_, j) => j !== i));
   const addItem = () => setItems((r) => [...r, nuevoItem()]);
 
+  /*
+   * MODO DEL RENGLÓN (25/8): bultos cerrados o unidades sueltas. A veces la
+   * entrega no completa el bulto ("llegaron 5 alfajores, no la caja de 12") y
+   * obligar a inventar un bulto de 5 mentía dos veces: ensuciaba el tamaño del
+   * bulto del proveedor y el costo por bulto. Al cambiar de modo, el costo
+   * tipeado cambia de significado ($/bulto ↔ $/unidad), así que se convierte
+   * solo usando el tamaño del bulto a la vista — el $/u. real no se mueve.
+   */
+  const cambiarModo = (i, modo) => setItems((rows) => rows.map((row, j) => {
+    if (j !== i || (row.modo || 'bulto') === modo) return row;
+    const pb = Number(row.porBulto) || 0;
+    const c = Number(row.costoBulto) || 0;
+    let costoBulto = row.costoBulto;
+    if (c > 0 && pb > 0) costoBulto = String(+(modo === 'unidad' ? c / pb : c * pb).toFixed(4));
+    return { ...row, modo, costoBulto };
+  }));
+
   // Al elegir el producto: precarga IVA, el costo DE ESTE proveedor (no el del
   // activo) y el tamaño de su bulto. Se carga en BULTOS: "llegaron 2 bolsas".
   const onProducto = (i, prod) => {
@@ -453,6 +470,9 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       costoBulto: entry ? String(entry.costo) : '',
       porBulto: entry ? String(entry.cantidad || 1) : (prod.tipo === 'entero' ? String(prod.unidadesPorBulto || 1) : '1'),
       costoAuto: true,
+      // La precarga habla en bultos: si el renglón venía en modo suelto de un
+      // producto anterior, acá se resetea o el costo precargado mentiría.
+      modo: 'bulto',
     });
   };
 
@@ -482,8 +502,12 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
    * que alimenta el catálogo.
    */
   const calcRow = (it) => {
+    // En modo unidad la cantidad tipeada ES el total que entra al stock y el
+    // costo es POR UNIDAD (o por kg): matemáticamente, bultos de tamaño 1 —
+    // pero sin tocar el tamaño del bulto que el proveedor tiene guardado.
+    const esUnidad = it.modo === 'unidad';
     const bultos = Number(it.bultos) || 0;
-    const porBulto = Number(it.porBulto) || 0;
+    const porBulto = esUnidad ? 1 : (Number(it.porBulto) || 0);
     const costoBulto = Number(it.costoBulto) || 0;
     const desc = Number(it.descuento) || 0;
     const cantidadTotal = r3(bultos * porBulto);
@@ -789,9 +813,11 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
     const out = [];
     for (const it of items) {
       const prodId = parseInt(it.productoId, 10);
+      const esUnidad = it.modo === 'unidad';
       const porBulto = Number(it.porBulto) || 0;
       const costoBulto = Number(it.costoBulto) || 0;
-      const costo = porBulto > 0 ? costoBulto / porBulto : 0; // $/kg o $/u.
+      // $/kg o $/u.: en modo unidad el costo tipeado YA es unitario.
+      const costo = esUnidad ? costoBulto : (porBulto > 0 ? costoBulto / porBulto : 0);
       if (!prodId || vistos.has(prodId)) continue;
       const prod = store.getProducto(prodId);
       if (!prod) continue;
@@ -805,8 +831,14 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
         && Math.abs(dif) >= 0.005
         && (costoCargado <= 0 || Math.abs(dif / costoCargado) >= 0.005);
       // El bulto también cambió: viaja junto con el costo aunque el $/kg dé igual.
-      const bultoCambio = !!entry && porBulto > 0
+      // Una entrega SUELTA no dice nada del tamaño de la caja del proveedor:
+      // en modo unidad el bulto del formato no se compara ni se toca.
+      const bultoCambio = !esUnidad && !!entry && porBulto > 0
         && Math.abs(porBulto - (entry.cantidad || 1)) > 0.0005;
+      // Para actualizar el costo del formato en modo unidad: mismo $/u.,
+      // trasladado al bulto que el proveedor ya tiene declarado.
+      const bultoFacturado = esUnidad ? (entry?.cantidad || 1) : porBulto;
+      const costoBultoFacturado = esUnidad ? +(costo * (entry?.cantidad || 1)).toFixed(4) : costoBulto;
       const variacion = difRelevante && costoCargado > 0 ? (costo / costoCargado - 1) * 100 : null;
 
       // Heurística: si la diferencia es casi exactamente una alícuota de IVA, lo
@@ -823,8 +855,8 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
         unidad: unidadDe(prod),
         costoCargado,
         costoFacturado: costo,
-        bultoFacturado: porBulto,
-        costoBultoFacturado: costoBulto,
+        bultoFacturado,
+        costoBultoFacturado,
         bultoCambio,
         difRelevante: difRelevante || bultoCambio,
         variacion,
@@ -880,7 +912,8 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
 
   const guardar = async () => {
     const parsed = items
-      .filter((it) => it.productoId && Number(it.bultos) > 0 && Number(it.porBulto) > 0)
+      .filter((it) => it.productoId && Number(it.bultos) > 0
+        && (it.modo === 'unidad' || Number(it.porBulto) > 0))
       .map((it) => {
         const r = calcRow(it);
         return {
@@ -895,7 +928,7 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
           descripcionPapel: it.descripcionPapel || undefined,
         };
       });
-    if (!parsed.length) { toast('Agregá al menos un ítem con bultos y tamaño de bulto.', 'err'); return; }
+    if (!parsed.length) { toast('Agregá al menos un ítem completo: cantidad y, si va por bultos, el tamaño del bulto.', 'err'); return; }
 
     /*
      * La nota tiene que decir a qué factura pertenece. No se elige sola: si
@@ -992,8 +1025,9 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
     closeModal();
   };
 
-  /** Renglones completos: con producto, bultos y tamaño de bulto. */
-  const itemsValidos = items.filter((it) => it.productoId && Number(it.bultos) > 0 && Number(it.porBulto) > 0).length;
+  /** Renglones completos: producto + cantidad (+ tamaño del bulto si va por bultos). */
+  const itemsValidos = items.filter((it) => it.productoId && Number(it.bultos) > 0
+    && (it.modo === 'unidad' || Number(it.porBulto) > 0)).length;
 
   const continuar = () => {
     if (paso === 1) {
@@ -1013,7 +1047,7 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       }
       setPaso(2);
     } else if (paso === 2) {
-      if (!itemsValidos) { toast('Agregá al menos un ítem con bultos y tamaño de bulto.', 'err'); return; }
+      if (!itemsValidos) { toast('Agregá al menos un ítem completo: cantidad y, si va por bultos, el tamaño del bulto.', 'err'); return; }
       setPaso(3);
     }
   };
@@ -1308,11 +1342,12 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       <div className={s.hint} style={{ marginTop: 0 }}>
         El buscador ofrece los productos de <strong>{provElegido?.nombre || 'este proveedor'}</strong> por
         nombre, código interno o código de barras. Se carga <strong>en bultos</strong>, como habla la
-        factura: llegaron 2 bolsas de 25 kg → Bultos 2, y el sistema ingresa los 50 kg. El tamaño
-        del bulto viene precargado y se corrige solo si esta entrega vino distinta.
+        factura: llegaron 2 bolsas de 25 kg → Cantidad 2, y el sistema ingresa los 50 kg. Si la
+        entrega vino <strong>suelta</strong> (unidades que no completan el bulto), cambiá el renglón
+        a sueltas: la cantidad y el costo pasan a ser por unidad.
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr .6fr .8fr .9fr .6fr .6fr 1fr auto', gap: 8, marginBottom: 6 }}>
-        {['Producto', 'Bultos', 'Por bulto', 'Costo bulto', 'Desc%', 'IVA%', 'Subtotal', ''].map((h, i) => (
+        {['Producto', 'Cantidad', 'Por bulto', 'Costo', 'Desc%', 'IVA%', 'Subtotal', ''].map((h, i) => (
           <div key={i} className={s['mini-label']}>{h}</div>
         ))}
       </div>
@@ -1330,7 +1365,7 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
                   <span style={{ flex: 1, minWidth: 0, fontWeight: 600 }}>{prod.nombre}</span>
                   <button
                     type="button" className={s['pres-remove']} title="Cambiar producto"
-                    onClick={() => setItem(i, { productoId: '', costoBulto: '', costoAuto: true })}
+                    onClick={() => setItem(i, { productoId: '', costoBulto: '', costoAuto: true, modo: 'bulto' })}
                   >×</button>
                 </div>
                 <div className={s.hint} style={{ margin: 0 }}>
@@ -1354,24 +1389,56 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
                 autoFocus={i > 0}
               />
             )}
-            <input
-              type="number" min="0" step="any" value={it.bultos}
-              title="Cuántos bultos llegaron"
-              onChange={(e) => setItem(i, { bultos: e.target.value })}
-            />
             <div>
               <input
-                type="number" min="0" step="any" value={it.porBulto}
-                title={prod ? `${u === 'kg' ? 'Kg' : 'Unidades'} por bulto de esta entrega` : 'Kg o unidades por bulto'}
-                onChange={(e) => setItem(i, { porBulto: e.target.value })}
+                type="number" min="0" step="any" value={it.bultos}
+                title={it.modo === 'unidad'
+                  ? `Cuánto llegó suelto, en ${u === 'kg' ? 'kg' : 'unidades'}`
+                  : 'Cuántos bultos llegaron'}
+                onChange={(e) => setItem(i, { bultos: e.target.value })}
               />
-              {prod && <div className={s.hint} style={{ margin: 0, textAlign: 'center' }}>{u}/bulto</div>}
+              {prod && (
+                <select
+                  value={it.modo || 'bulto'}
+                  style={{ marginTop: 2, fontSize: 12, width: '100%' }}
+                  title="¿La entrega vino en bultos cerrados o suelta, sin completar el bulto?"
+                  onChange={(e) => cambiarModo(i, e.target.value)}
+                >
+                  <option value="bulto">bultos</option>
+                  <option value="unidad">{u === 'kg' ? 'kg sueltos' : 'u. sueltas'}</option>
+                </select>
+              )}
             </div>
-            <input
-              type="number" min="0" step="any" value={it.costoBulto}
-              title="Costo del bulto, como figura en la factura"
-              onChange={(e) => setItem(i, { costoBulto: e.target.value, costoAuto: false })}
-            />
+            {it.modo === 'unidad' ? (
+              <div
+                className={s.hint}
+                style={{ margin: 0, textAlign: 'center', alignSelf: 'center' }}
+                title="Vino suelto: no cambia el tamaño del bulto que tiene el proveedor"
+              >—</div>
+            ) : (
+              <div>
+                <input
+                  type="number" min="0" step="any" value={it.porBulto}
+                  title={prod ? `${u === 'kg' ? 'Kg' : 'Unidades'} por bulto de esta entrega` : 'Kg o unidades por bulto'}
+                  onChange={(e) => setItem(i, { porBulto: e.target.value })}
+                />
+                {prod && <div className={s.hint} style={{ margin: 0, textAlign: 'center' }}>{u}/bulto</div>}
+              </div>
+            )}
+            <div>
+              <input
+                type="number" min="0" step="any" value={it.costoBulto}
+                title={it.modo === 'unidad'
+                  ? `Costo por ${u === 'kg' ? 'kg' : 'unidad'}, como figura en la factura`
+                  : 'Costo del bulto, como figura en la factura'}
+                onChange={(e) => setItem(i, { costoBulto: e.target.value, costoAuto: false })}
+              />
+              {prod && (
+                <div className={s.hint} style={{ margin: 0, textAlign: 'center' }}>
+                  {it.modo === 'unidad' ? `$/${u.replace('.', '')}` : '$/bulto'}
+                </div>
+              )}
+            </div>
             <input type="number" min="0" step="any" value={it.descuento} onChange={(e) => setItem(i, { descuento: e.target.value })} />
             <input type="number" min="0" step="any" value={it.iva} onChange={(e) => setItem(i, { iva: e.target.value })} />
             <div className={cx(s.mono, s.num)} style={{ fontWeight: 700, alignSelf: 'center' }}>{money(r.neto)}</div>
@@ -2082,6 +2149,8 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
 function nuevoItem() {
   return {
     productoId: '', bultos: '1', porBulto: '', costoBulto: '', descuento: '0', iva: '21', costoAuto: true,
+    // 'bulto' (la factura habla en bultos) o 'unidad' (entrega suelta, 25/8).
+    modo: 'bulto',
     // Del renglón leído del PDF (vacíos si el ítem se cargó a mano). Viajan al
     // guardar y alimentan el mapeo aprendido de artículos del proveedor.
     codigoProveedor: '', descripcionPapel: '',
