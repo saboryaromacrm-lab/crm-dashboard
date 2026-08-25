@@ -259,14 +259,21 @@ export function CartelesPanel() {
               <div
                 key={p.productoId}
                 className={s.clickable}
-                style={{ display: 'flex', gap: 10, padding: '6px 10px', borderBottom: '1px solid var(--crm-color-border)', cursor: 'pointer' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderBottom: '1px solid var(--crm-color-border)', cursor: 'pointer' }}
                 onClick={() => agregar(p)}
+                title="Agregarlo a la lista con su marca y nombre"
               >
                 <span style={{ flex: 1 }}>
                   <strong>{p.nombre}</strong>
                   <span className={s.muted}> · {p.marca || 'Sin marca'}</span>
                 </span>
                 <span className={s.mono}>{precioDe(p, listaMin) == null ? 'sin precio' : money(precioDe(p, listaMin))}</span>
+                {/* La señal de que el renglón ES el botón: el dueño buscó cómo
+                    "escoger el producto" teniendo el buscador adelante (25/8) —
+                    una fila que no parece apretable no existe. */}
+                <span className={cx(s.btn, s['btn-ghost'], s['btn-sm'])} style={{ pointerEvents: 'none' }}>
+                  + Agregar
+                </span>
               </div>
             ))}
           </div>
@@ -276,8 +283,10 @@ export function CartelesPanel() {
       {/* ---- La lista a imprimir ---- */}
       {filas.length === 0 ? (
         <div className={cx(s.callout, s.info)}>
-          Buscá un producto arriba para agregarlo. Con <strong>+ Cartel libre</strong> hacés uno
-          escribiendo el texto a mano — el de la marca sola para toda una góndola, por ejemplo.
+          <strong>Escribí en el buscador de arriba y hacé clic en el producto</strong>: se suma a la
+          lista con su marca, su nombre y su precio, sin tipear nada. Repetí con todos los que
+          quieras — salen todos juntos con un solo Imprimir. <strong>+ Cartel libre</strong> es solo
+          para carteles sin producto (&ldquo;ACEITES&rdquo;, la marca sola para toda una góndola).
         </div>
       ) : (
         <div className={s.card}>
