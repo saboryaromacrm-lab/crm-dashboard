@@ -49,6 +49,13 @@ const FORMATOS = {
   etiqueta50x25: { page: '50mm 25mm', anchoMm: 50, altoMm: 25, margen: '1.5mm', bcMm: 7, font: '8px', chica: '6.5px', etiqueta: true },
   etiqueta40x25: { page: '40mm 25mm', anchoMm: 40, altoMm: 25, margen: '1mm', bcMm: 6.5, font: '7.5px', chica: '6px', etiqueta: true },
   etiqueta60x40: { page: '60mm 40mm', anchoMm: 60, altoMm: 40, margen: '2mm', bcMm: 12, font: '10px', chica: '8px', etiqueta: true },
+  /* Medidas GRANDES, pensadas para el cartel de góndola (la primera impresión
+   * real salió en un rollo más ancho que todo lo que había cargado). La página
+   * TIENE que medir lo que mide el adhesivo: si no coincide, el driver centra
+   * o escala como puede y el precio termina cortado en el borde. */
+  etiqueta80x50: { page: '80mm 50mm', anchoMm: 80, altoMm: 50, margen: '2mm', bcMm: 14, font: '12px', chica: '9px', etiqueta: true },
+  etiqueta100x50: { page: '100mm 50mm', anchoMm: 100, altoMm: 50, margen: '2mm', bcMm: 14, font: '12px', chica: '9px', etiqueta: true },
+  etiqueta100x60: { page: '100mm 60mm', anchoMm: 100, altoMm: 60, margen: '2.5mm', bcMm: 16, font: '13px', chica: '10px', etiqueta: true },
 };
 
 export const FORMATOS_LABEL = {
@@ -60,6 +67,9 @@ export const FORMATOS_LABEL = {
   etiqueta50x25: 'Etiqueta 50 × 25 mm',
   etiqueta40x25: 'Etiqueta 40 × 25 mm (chica)',
   etiqueta60x40: 'Etiqueta 60 × 40 mm (grande)',
+  etiqueta80x50: 'Etiqueta 80 × 50 mm (cartel)',
+  etiqueta100x50: 'Etiqueta 100 × 50 mm (cartel ancho)',
+  etiqueta100x60: 'Etiqueta 100 × 60 mm (cartel grande)',
 };
 
 /** Formato de etiqueta o de papel: decide qué opciones ofrece cada documento. */
@@ -263,13 +273,23 @@ function htmlEtiquetas({ f, titulo, cuerpo }) {
        ZebraDesigner, porque ese ya está probado en el pasillo: identidad arriba
        dentro de un recuadro, precios abajo alineados a la izquierda.
        TODO EN MAYÚSCULAS por CSS: así se escribe normal en la pantalla y sale
-       en caja alta sin que nadie tenga que acordarse. */
-    .cartel { justify-content: space-between; text-transform: uppercase; }
+       en caja alta sin que nadie tenga que acordarse.
+
+       LOS TAMAÑOS VAN EN MILÍMETROS, PROPORCIONALES A LA ETIQUETA — no en el
+       font base del formato, que es para etiquetas de texto chico. La primera
+       impresión real salió con el recuadro enano flotando en el medio por eso:
+       10px son 10px, mida lo que mida el adhesivo. Con la base atada al alto
+       físico, la marca ocupa ~un quinto del cartel en cualquier rollo — la
+       proporción del diseño de referencia. Los em que el cuerpo pone inline
+       (el achique por largo de texto) multiplican sobre estas bases. */
+    .cartel { justify-content: space-between; text-transform: uppercase; padding: ${Math.max(1, (f.altoMm || 30) * 0.035).toFixed(1)}mm; }
     /* EL RECUADRO. No es adorno: separa "qué producto es" de "cuánto sale", y
-       es lo que hace que de lejos se lea primero la marca. */
+       es lo que hace que de lejos se lea primero la marca. A TODO EL ANCHO,
+       como el de la plantilla vieja. */
     .cartel .caja {
-      border: 0.6mm solid #000; border-radius: 0.5mm;
+      border: ${Math.max(0.5, (f.altoMm || 30) * 0.022).toFixed(2)}mm solid #000; border-radius: 0.5mm;
       padding: 0.6mm 1mm; text-align: center; overflow: hidden;
+      font-size: ${((f.altoMm || 30) * 0.085).toFixed(2)}mm;
     }
     /* La marca manda: es lo que se busca desde el pasillo. */
     .cartel .marca { font-weight: 900; line-height: 1.02; letter-spacing: 0.04em; white-space: nowrap; }
@@ -281,12 +301,12 @@ function htmlEtiquetas({ f, titulo, cuerpo }) {
       font-weight: 800; line-height: 1.05; white-space: nowrap;
       font-stretch: condensed; transform: scaleX(0.92); transform-origin: center;
     }
-    .cartel .precios { display: flex; flex-direction: column; gap: 0.4mm; }
+    .cartel .precios { display: flex; flex-direction: column; gap: 0.4mm; font-size: ${((f.altoMm || 30) * 0.1).toFixed(2)}mm; }
     /* A la IZQUIERDA y con el rótulo adelante, como el cartel de papel: el ojo
        baja por la columna de precios sin tener que cruzar el cartel. */
-    .cartel .fila { justify-content: flex-start; gap: 1.5mm; }
-    .cartel .rot { font-weight: 700; font-size: 1.05em; letter-spacing: 0.02em; }
-    .cartel .precio { font-weight: 900; font-size: 1.25em; }
+    .cartel .fila { justify-content: flex-start; align-items: baseline; gap: 1.5mm; }
+    .cartel .rot { font-weight: 800; font-size: 1em; letter-spacing: 0.02em; }
+    .cartel .precio { font-weight: 900; font-size: 1.2em; }
   </style></head><body>${cuerpo}</body></html>`;
 }
 
