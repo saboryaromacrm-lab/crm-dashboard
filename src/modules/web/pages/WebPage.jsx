@@ -30,6 +30,8 @@ import { cx } from '@shared/utils/classNames.js';
 import { Table, PanelHead, Stat, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
 import { WEB_SECCIONES } from '../config/web.config.js';
 import { SubirImagenBtn } from '../components/SubirImagenBtn.jsx';
+import { SubirFotosLoteModal } from '../components/SubirFotosLoteModal.jsx';
+import { RafagaFotosModal } from '../components/RafagaFotosModal.jsx';
 import { PRESETS_IMAGEN } from '../services/imagenes.js';
 
 const money = (n) => new Intl.NumberFormat('es-AR', {
@@ -122,7 +124,10 @@ function MinimoWebInput({ producto, admin, onGuardar }) {
 function ProductosWebPanel({ catalogo, recargar, avisar }) {
   const [q, setQ] = useState('');
   const [ocupado, setOcupado] = useState(0); // id del producto en mutación
-  const [admin, setAdmin] = useState(new Map()); // id → { webStockMin, stockDisp }
+  const [admin, setAdmin] = useState(new Map()); // id → { webStockMin, stockDisp, codigos }
+  const [soloSinFoto, setSoloSinFoto] = useState(false);
+  const [fotosLote, setFotosLote] = useState(false);
+  const [rafaga, setRafaga] = useState(false);
 
   /** Datos que NO viajan en el catálogo público: stock real y piso configurado. */
   const cargarAdmin = useCallback(async () => {
@@ -133,12 +138,17 @@ function ProductosWebPanel({ catalogo, recargar, avisar }) {
   }, []);
   useEffect(() => { cargarAdmin(); }, [cargarAdmin]);
 
+  const sinFoto = useMemo(
+    () => (catalogo?.items ?? []).filter((p) => !p.imagenUrl).length,
+    [catalogo],
+  );
+
   const items = useMemo(() => {
     const norm = (v) => String(v).toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
     const nq = norm(q.trim());
-    const base = catalogo?.items ?? [];
+    const base = (catalogo?.items ?? []).filter((p) => !soloSinFoto || !p.imagenUrl);
     return nq ? base.filter((p) => norm(p.nombre).includes(nq) || norm(p.marca).includes(nq)) : base;
-  }, [catalogo, q]);
+  }, [catalogo, q, soloSinFoto]);
 
   const pag = usePaginado(items, 'webProductos', q);
 
@@ -190,7 +200,48 @@ function ProductosWebPanel({ catalogo, recargar, avisar }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
+        {/* El hueco de fotos se VE, no se descubre fila por fila (25/8): el
+            contador dice cuánto falta y el filtro es la lista de trabajo. */}
+        {sinFoto > 0 && (
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+            <input type="checkbox" checked={soloSinFoto} onChange={(e) => setSoloSinFoto(e.target.checked)} />
+            Ver solo sin foto ({sinFoto})
+          </label>
+        )}
+        <Btn onClick={() => setFotosLote(true)} title="Arrastrar muchas fotos y emparejarlas por el nombre del archivo">
+          Subir fotos en lote
+        </Btn>
+        {sinFoto > 0 && (
+          <Btn onClick={() => setRafaga(true)} title="Recorrer los productos sin foto y soltarle a cada uno la suya — para fotos del celular, sin renombrar">
+            Modo ráfaga ({sinFoto})
+          </Btn>
+        )}
       </div>
+
+      {fotosLote && (
+        <SubirFotosLoteModal
+          productos={(catalogo?.items ?? []).map((p) => ({
+            id: p.id,
+            nombre: p.nombre,
+            marca: p.marca || '',
+            imagenUrl: p.imagenUrl || '',
+            codigoBarras: admin.get(p.id)?.codigoBarras || '',
+            codigoPropio: admin.get(p.id)?.codigoPropio || '',
+          }))}
+          avisar={avisar}
+          onCerrar={() => setFotosLote(false)}
+          onListo={() => { recargar(); cargarAdmin(); }}
+        />
+      )}
+
+      {rafaga && (
+        <RafagaFotosModal
+          productos={catalogo?.items ?? []}
+          avisar={avisar}
+          onCerrar={() => setRafaga(false)}
+          onListo={() => { recargar(); cargarAdmin(); }}
+        />
+      )}
 
       <Table
         cols={[
