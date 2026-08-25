@@ -947,10 +947,20 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                     <strong>{prod.nombre}</strong>
                     <div className={s.hint} style={{ margin: 0 }}>{prod.marca || 'Sin marca'}</div>
                   </td>
+                  {/* La presentación de un ENTERO es info, no un casillero
+                      (25/8, espejo de la factura): el desplegable tenía UNA
+                      sola opción ("Unidad") y en la fila quedaba al lado del
+                      selector "u./caja" — dos controles que decían casi lo
+                      mismo y uno no hacía nada. El granel sí elige de verdad
+                      (kg sueltos o sus paquetes) y conserva el select. */}
                   <td>
-                    <select value={it.presId} onChange={(e) => setItem(i, { presId: e.target.value })}>
-                      {presentacionOptions(prod, true)}
-                    </select>
+                    {esGranel
+                      ? (
+                        <select value={it.presId} onChange={(e) => setItem(i, { presId: e.target.value })}>
+                          {presentacionOptions(prod, true)}
+                        </select>
+                      )
+                      : <span title="El entero se pide por unidad">Unidad</span>}
                   </td>
                   {/* El disponible es informativo: orienta el pedido, no lo limita. */}
                   <td
@@ -995,37 +1005,44 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                     />
                     {porBulto > 1 && !esGranel && (
                       <>
-                        <select
-                          value={it.modo ?? 'unidad'}
-                          style={{ marginLeft: 4, fontSize: 12 }}
-                          onChange={(e) => {
-                            const modo = e.target.value;
-                            /*
-                             * Al pasar A CAJAS se redondea PARA ARRIBA al bulto
-                             * entero. Dos motivos: pedir "media caja" de algo
-                             * que se pide por caja no significa nada, y sin
-                             * esto el casillero mostraba 0,083 (un alfajor de
-                             * una caja de 12), que parece un error del sistema.
-                             * Volver a unidades no toca el número: lo que se
-                             * pidió, se pidió.
-                             */
-                            if (modo === 'bulto') {
-                              const u = parseFloat(it.cant) || 0;
-                              const cajas = Math.max(1, Math.ceil(u / porBulto));
-                              setItem(i, { modo, cant: String(cajas * porBulto) });
-                            } else setItem(i, { modo });
-                          }}
-                        >
-                          <option value="unidad">u.</option>
-                          <option value="bulto">{`caja ×${num(porBulto, 0)}`}</option>
-                        </select>
+                        {/* DEBAJO del casillero y no al costado (25/8, espejo
+                            de la factura): apilado, la celda se lee como una
+                            oración — número, en qué se tipea, y la cuenta ya
+                            hecha en negrita. Al costado eran tres cosas
+                            sueltas compitiendo con la columna de al lado. */}
+                        <div>
+                          <select
+                            value={it.modo ?? 'unidad'}
+                            style={{ marginTop: 2, fontSize: 12, width: 90 }}
+                            onChange={(e) => {
+                              const modo = e.target.value;
+                              /*
+                               * Al pasar A CAJAS se redondea PARA ARRIBA al bulto
+                               * entero. Dos motivos: pedir "media caja" de algo
+                               * que se pide por caja no significa nada, y sin
+                               * esto el casillero mostraba 0,083 (un alfajor de
+                               * una caja de 12), que parece un error del sistema.
+                               * Volver a unidades no toca el número: lo que se
+                               * pidió, se pidió.
+                               */
+                              if (modo === 'bulto') {
+                                const u = parseFloat(it.cant) || 0;
+                                const cajas = Math.max(1, Math.ceil(u / porBulto));
+                                setItem(i, { modo, cant: String(cajas * porBulto) });
+                              } else setItem(i, { modo });
+                            }}
+                          >
+                            <option value="unidad">u.</option>
+                            <option value="bulto">{`caja ×${num(porBulto, 0)}`}</option>
+                          </select>
+                        </div>
                         {/* La equivalencia SIEMPRE a la vista, en los dos modos:
                             pidiendo por caja hace falta saber cuántas unidades
-                            entran, y pidiendo por unidad conviene ver cuándo el
-                            número ya es una caja justa. */}
+                            entran (en negrita: eso es lo que se pide), y por
+                            unidad conviene ver cuándo el número ya es caja justa. */}
                         <div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
                           {it.modo === 'bulto'
-                            ? `= ${num(parseFloat(it.cant) || 0, 0)} u.`
+                            ? <>= <strong>{num(parseFloat(it.cant) || 0, 0)} u.</strong></>
                             : equivalenciaCajas(parseFloat(it.cant) || 0, porBulto)}
                         </div>
                       </>
