@@ -732,7 +732,10 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
         ))}
       </div>
 
-      <div role="tabpanel">
+      {/* Ritmo vertical con UN gap parejo (25/8, "está todo muy pegado"): los
+          márgenes de 4 px sueltos por elemento amontonaban aviso, buscador,
+          filtros y tabla. El gap vive acá y los hijos no traen margen propio. */}
+      <div role="tabpanel" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 12 }}>
         {/*
           EL AVISO. Sin esto la función no existe para quien no la busca: el
           filtro de abajo es una casilla más entre otras, y nadie tilda una
@@ -742,7 +745,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
           días es la forma más rápida de que se deje de leer el cartel.
         */}
         {cuentaNovedades.total > 0 && !soloNovedades && (
-          <div className={cx(s.callout, s.info)} style={{ marginTop: 4, marginBottom: 8 }}>
+          <div className={cx(s.callout, s.info)} style={{ margin: 0 }}>
             <strong>
               {/* NUEVO = novedad del catálogo (el producto se creó hace poco);
                   REINGRESO = ya existía y volvió a entrar (25/8/2026). */}
@@ -757,14 +760,14 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
           </div>
         )}
         {soloNovedades && (
-          <div className={cx(s.callout, s.info)} style={{ marginTop: 4, marginBottom: 8 }}>
+          <div className={cx(s.callout, s.info)} style={{ margin: 0 }}>
             <strong>Mostrando solo novedades.</strong> Lo que llegó al depósito y{' '}
             {destino?.nombre ?? 'tu sucursal'} todavía no pidió.
             {novedades?.ultimoPedido && ` Tu último pedido fue el ${fmtFechaHora(novedades.ultimoPedido)}.`}{' '}
             <Btn small onClick={() => setSoloNovedades(false)}>Ver todo</Btn>
           </div>
         )}
-        <div className={s.toolbar} style={{ marginTop: 4 }}>
+        <div className={s.toolbar} style={{ margin: 0, rowGap: 10 }}>
           <input
             type="search"
             autoFocus
@@ -792,7 +795,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
         </div>
 
         {resultados.length > 0 && (
-          <div className={s.card} style={{ padding: 0, marginTop: 6, overflow: 'hidden' }}>
+          <div className={s.card} style={{ padding: 0, margin: 0, overflow: 'hidden' }}>
             {resultados.map(({ clave, p, pres }) => {
               /*
                * ORIGEN: lo que puede MANDAR, que en un granel es siempre el
@@ -890,7 +893,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
           </div>
         )}
 
-        <div className={s['section-title']} style={{ marginTop: 8 }}>
+        <div className={s['section-title']} style={{ margin: '4px 0 0' }}>
           {grupo === 'granel' ? 'A granel' : 'Enteros'} en el pedido ({porGrupo[grupo]} de {items.length} en
           total) — el último agregado queda arriba
         </div>
@@ -898,9 +901,14 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
             exactamente igual esa parte"): Cantidad y Por bulto JUNTAS después
             del producto — se tipea y al lado está el tamaño del bulto como
             info. Los disponibles quedan después: orientan, no se tipean. */}
+        {/* SIN columna Present. en los enteros (25/8): siempre decía "Unidad",
+            y una columna que dice lo mismo en todas las filas no informa nada.
+            El granel la conserva porque ahí SÍ se elige (kg sueltos o cuál de
+            sus paquetes) — y como cada pestaña tiene su tabla, no se mezclan. */}
         <Table
           cols={[
-            { h: 'Producto' }, { h: 'Present.' },
+            { h: 'Producto' },
+            ...(grupo === 'granel' ? [{ h: 'Present.' }] : []),
             { h: 'Cantidad', num: true }, { h: 'Por bulto', num: true },
             { h: `En ${origen?.nombre ?? 'origen'}`, num: true }, { h: `En ${destino?.nombre ?? 'destino'}`, num: true },
             { h: '', cls: 'actions-col' },
@@ -952,21 +960,13 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                     <strong>{prod.nombre}</strong>
                     <div className={s.hint} style={{ margin: 0 }}>{prod.marca || 'Sin marca'}</div>
                   </td>
-                  {/* La presentación de un ENTERO es info, no un casillero
-                      (25/8, espejo de la factura): el desplegable tenía UNA
-                      sola opción ("Unidad") y en la fila quedaba al lado del
-                      selector "u./caja" — dos controles que decían casi lo
-                      mismo y uno no hacía nada. El granel sí elige de verdad
-                      (kg sueltos o sus paquetes) y conserva el select. */}
-                  <td>
-                    {esGranel
-                      ? (
-                        <select value={it.presId} onChange={(e) => setItem(i, { presId: e.target.value })}>
-                          {presentacionOptions(prod, true)}
-                        </select>
-                      )
-                      : <span title="El entero se pide por unidad">Unidad</span>}
-                  </td>
+                  {esGranel && (
+                    <td>
+                      <select value={it.presId} onChange={(e) => setItem(i, { presId: e.target.value })}>
+                        {presentacionOptions(prod, true)}
+                      </select>
+                    </td>
+                  )}
                   <td className={s.num}>
                     {/* La flechita va DE A 1 (antes sumaba 0.001 y "1" pasaba a
                         "1,001"). Para kg con coma se tipea el número directo. */}
