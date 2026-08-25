@@ -444,7 +444,8 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const addItem = () => setItems((r) => [...r, nuevoItem()]);
 
   /*
-   * MODO DEL RENGLÓN (25/8): bultos cerrados o unidades sueltas. A veces la
+   * MODO DEL RENGLÓN (25/8), solo productos enteros: bultos cerrados o
+   * unidades sueltas. A veces la
    * entrega no completa el bulto ("llegaron 5 alfajores, no la caja de 12") y
    * obligar a inventar un bulto de 5 mentía dos veces: ensuciaba el tamaño del
    * bulto del proveedor y el costo por bulto. Al cambiar de modo, el costo
@@ -502,9 +503,9 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
    * que alimenta el catálogo.
    */
   const calcRow = (it) => {
-    // En modo unidad la cantidad tipeada ES el total que entra al stock y el
-    // costo es POR UNIDAD (o por kg): matemáticamente, bultos de tamaño 1 —
-    // pero sin tocar el tamaño del bulto que el proveedor tiene guardado.
+    // En modo unidad (solo productos enteros) la cantidad tipeada ES el total
+    // que entra al stock y el costo es POR UNIDAD: matemáticamente, bultos de
+    // tamaño 1 — sin tocar el tamaño del bulto que el proveedor tiene guardado.
     const esUnidad = it.modo === 'unidad';
     const bultos = Number(it.bultos) || 0;
     const porBulto = esUnidad ? 1 : (Number(it.porBulto) || 0);
@@ -1342,9 +1343,10 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       <div className={s.hint} style={{ marginTop: 0 }}>
         El buscador ofrece los productos de <strong>{provElegido?.nombre || 'este proveedor'}</strong> por
         nombre, código interno o código de barras. Se carga <strong>en bultos</strong>, como habla la
-        factura: llegaron 2 bolsas de 25 kg → Cantidad 2, y el sistema ingresa los 50 kg. Si la
-        entrega vino <strong>suelta</strong> (unidades que no completan el bulto), cambiá el renglón
-        a sueltas: la cantidad y el costo pasan a ser por unidad.
+        factura: llegaron 2 bolsas de 25 kg → Cantidad 2, y el sistema ingresa los 50 kg. El tamaño
+        del bulto viene precargado y se corrige solo si esta entrega vino distinta. Si un producto
+        entero vino <strong>suelto</strong> (unidades que no completan el bulto), el selector del
+        renglón lo pasa a &ldquo;u. sueltas&rdquo;: la cantidad y el costo pasan a ser por unidad.
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr .6fr .8fr .9fr .6fr .6fr 1fr auto', gap: 8, marginBottom: 6 }}>
         {['Producto', 'Cantidad', 'Por bulto', 'Costo', 'Desc%', 'IVA%', 'Subtotal', ''].map((h, i) => (
@@ -1393,11 +1395,14 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
               <input
                 type="number" min="0" step="any" value={it.bultos}
                 title={it.modo === 'unidad'
-                  ? `Cuánto llegó suelto, en ${u === 'kg' ? 'kg' : 'unidades'}`
+                  ? 'Cuántas unidades sueltas llegaron'
                   : 'Cuántos bultos llegaron'}
                 onChange={(e) => setItem(i, { bultos: e.target.value })}
               />
-              {prod && (
+              {/* El modo suelto es SOLO de los enteros (el dueño, 25/8): en el
+                  granel el bulto es la bolsa y su tamaño ya es editable por
+                  entrega — "kg sueltos" no agregaba nada y confundía. */}
+              {prod && prod.tipo === 'entero' && (
                 <select
                   value={it.modo || 'bulto'}
                   style={{ marginTop: 2, fontSize: 12, width: '100%' }}
@@ -1405,7 +1410,7 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
                   onChange={(e) => cambiarModo(i, e.target.value)}
                 >
                   <option value="bulto">bultos</option>
-                  <option value="unidad">{u === 'kg' ? 'kg sueltos' : 'u. sueltas'}</option>
+                  <option value="unidad">u. sueltas</option>
                 </select>
               )}
             </div>
@@ -1429,14 +1434,12 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
               <input
                 type="number" min="0" step="any" value={it.costoBulto}
                 title={it.modo === 'unidad'
-                  ? `Costo por ${u === 'kg' ? 'kg' : 'unidad'}, como figura en la factura`
+                  ? 'Costo por unidad, como figura en la factura'
                   : 'Costo del bulto, como figura en la factura'}
                 onChange={(e) => setItem(i, { costoBulto: e.target.value, costoAuto: false })}
               />
-              {prod && (
-                <div className={s.hint} style={{ margin: 0, textAlign: 'center' }}>
-                  {it.modo === 'unidad' ? `$/${u.replace('.', '')}` : '$/bulto'}
-                </div>
+              {it.modo === 'unidad' && (
+                <div className={s.hint} style={{ margin: 0, textAlign: 'center' }}>$/u</div>
               )}
             </div>
             <input type="number" min="0" step="any" value={it.descuento} onChange={(e) => setItem(i, { descuento: e.target.value })} />
