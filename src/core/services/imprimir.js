@@ -49,10 +49,11 @@ const FORMATOS = {
   etiqueta50x25: { page: '50mm 25mm', anchoMm: 50, altoMm: 25, margen: '1.5mm', bcMm: 7, font: '8px', chica: '6.5px', etiqueta: true },
   etiqueta40x25: { page: '40mm 25mm', anchoMm: 40, altoMm: 25, margen: '1mm', bcMm: 6.5, font: '7.5px', chica: '6px', etiqueta: true },
   etiqueta60x40: { page: '60mm 40mm', anchoMm: 60, altoMm: 40, margen: '2mm', bcMm: 12, font: '10px', chica: '8px', etiqueta: true },
-  /* Medidas GRANDES, pensadas para el cartel de góndola (la primera impresión
-   * real salió en un rollo más ancho que todo lo que había cargado). La página
-   * TIENE que medir lo que mide el adhesivo: si no coincide, el driver centra
-   * o escala como puede y el precio termina cortado en el borde. */
+  /* Medidas para el CARTEL DE GÓNDOLA. La página TIENE que medir lo que mide
+   * el adhesivo: si no coincide, el driver centra o escala como puede y el
+   * precio termina cortado en el borde (pasó en la primera impresión real).
+   * 64×32 es el rollo que el dueño tiene cargado en la Zebra (25/8). */
+  etiqueta64x32: { page: '64mm 32mm', anchoMm: 64, altoMm: 32, margen: '1.5mm', bcMm: 10, font: '10px', chica: '8px', etiqueta: true },
   etiqueta80x50: { page: '80mm 50mm', anchoMm: 80, altoMm: 50, margen: '2mm', bcMm: 14, font: '12px', chica: '9px', etiqueta: true },
   etiqueta100x50: { page: '100mm 50mm', anchoMm: 100, altoMm: 50, margen: '2mm', bcMm: 14, font: '12px', chica: '9px', etiqueta: true },
   etiqueta100x60: { page: '100mm 60mm', anchoMm: 100, altoMm: 60, margen: '2.5mm', bcMm: 16, font: '13px', chica: '10px', etiqueta: true },
@@ -67,6 +68,7 @@ export const FORMATOS_LABEL = {
   etiqueta50x25: 'Etiqueta 50 × 25 mm',
   etiqueta40x25: 'Etiqueta 40 × 25 mm (chica)',
   etiqueta60x40: 'Etiqueta 60 × 40 mm (grande)',
+  etiqueta64x32: 'Etiqueta 64 × 32 mm (cartel — el rollo actual)',
   etiqueta80x50: 'Etiqueta 80 × 50 mm (cartel)',
   etiqueta100x50: 'Etiqueta 100 × 50 mm (cartel ancho)',
   etiqueta100x60: 'Etiqueta 100 × 60 mm (cartel grande)',
@@ -94,7 +96,7 @@ export function medidaEtiqueta(formato) {
  * NO puede ser A4 —saldría una etiqueta gigante con membrete— así que cada
  * documento de etiqueta declara acá su tamaño de arranque.
  */
-const DEFECTO_DOC = { etiquetaFraccionado: 'etiqueta50x30' };
+const DEFECTO_DOC = { etiquetaFraccionado: 'etiqueta50x30', etiquetaGondola: 'etiqueta64x32' };
 export function formatoPorDefecto(tipoDoc) {
   return DEFECTO_DOC[tipoDoc] || 'a4';
 }
