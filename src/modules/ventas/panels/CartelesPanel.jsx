@@ -32,6 +32,7 @@ import {
   htmlDocumento, imprimirDocumento, invalidarConfigImpresion, plantillaCartelGuardada,
 } from '@core/services/imprimir.js';
 import { Btn, s } from '../components/ui.jsx';
+import { AyudaEncabezadoNavegador } from '@modules/productos/components/AyudaEncabezado.jsx';
 import { DisenadorCartel } from '../components/DisenadorCartel.jsx';
 
 const norm = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -339,6 +340,7 @@ export function CartelesPanel() {
             cartel lo sigue solo. La línea de mayorista aparece solo en los productos que tienen ese
             precio cargado.
           </div>
+          <AyudaEncabezadoNavegador />
         </div>
       )}
 

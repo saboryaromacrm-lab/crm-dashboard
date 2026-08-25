@@ -24,6 +24,7 @@ import { useSeccion } from '../hooks/useSeccion.js';
 import { money, num, fmtFechaHora, fmtFechaVenc } from '../domain/format.js';
 import { Table, PanelHead, Btn, usePaginado, s } from '../components/ui.jsx';
 import { DisenadorEtiquetaFraccionado } from '../components/DisenadorEtiquetaFraccionado.jsx';
+import { AyudaEncabezadoNavegador } from '../components/AyudaEncabezado.jsx';
 
 /** Texto comparable: sin mayúsculas ni acentos. */
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
@@ -602,6 +603,7 @@ function FormEtiqueta({ p, pr, store, toast, puede, cfg, cant, setCant, venc, se
           a UNA etiqueta.
         </div>
       </div>
+      <AyudaEncabezadoNavegador />
     </div>
   );
 }

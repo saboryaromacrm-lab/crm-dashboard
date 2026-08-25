@@ -438,13 +438,20 @@ export function plantillaCartelPorDefecto(formato) {
   const ancho = f.anchoMm; const alto = f.altoMm;
   const p = Math.max(1, alto * 0.035);
   const rr = (n) => Math.round(n * 100) / 100;
-  const hCaja = alto * 0.47;
+  const hCaja = alto * 0.44;
+  /* Los precios se REPARTEN en lo que queda debajo del recuadro, con el mismo
+   * aire arriba, entre líneas y abajo — pegados al recuadro dejaban un hueco
+   * muerto al pie y el cartel se veía amontonado (el dueño, 25/8). */
+  const sPrecio = alto * 0.1;
+  const lineaPrecio = sPrecio * 1.45; // el número va 1.2em sobre el rótulo
+  const finCaja = p + hCaja;
+  const aire = Math.max(1, (alto - finCaja - p - 2 * lineaPrecio) / 3);
   return {
     recuadro: { x: rr(p), y: rr(p), w: rr(ancho - 2 * p), h: rr(hCaja), grosor: rr(Math.max(0.5, alto * 0.022)) },
-    marca: { x: rr(p + 1), y: rr(p + 1), w: rr(ancho - 2 * p - 2), size: rr(alto * 0.2) },
-    nombre: { x: rr(p + 1), y: rr(p + 1.8 + alto * 0.2), w: rr(ancho - 2 * p - 2), size: rr(alto * 0.11) },
-    minorista: { x: rr(p + 0.5), y: rr(p + hCaja + 1.2), size: rr(alto * 0.1) },
-    mayorista: { x: rr(p + 0.5), y: rr(p + hCaja + 1.2 + alto * 0.145), size: rr(alto * 0.1) },
+    marca: { x: rr(p + 1), y: rr(p + 1.2), w: rr(ancho - 2 * p - 2), size: rr(alto * 0.19) },
+    nombre: { x: rr(p + 1), y: rr(p + 2.2 + alto * 0.19), w: rr(ancho - 2 * p - 2), size: rr(alto * 0.105) },
+    minorista: { x: rr(p + 0.5), y: rr(finCaja + aire), size: rr(sPrecio) },
+    mayorista: { x: rr(p + 0.5), y: rr(finCaja + aire + lineaPrecio + aire), size: rr(sPrecio) },
   };
 }
 
