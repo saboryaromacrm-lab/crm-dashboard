@@ -320,7 +320,11 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
         // encontrarlo, y ese código es de la presentación, no de la madre.
         || (p.presentaciones || []).some((pr) => (pr.codigoBarras || '').includes(cod)))) continue;
       if (listaDeProducto(p) !== grupo) { otros += 1; continue; }
-      if (lista.length >= TOPE) continue;
+      /* Con el filtro de novedades NO se corta acá: el recorrido va en el
+       * orden del catálogo, y cortar antes de ordenar dejaría afuera justo lo
+       * último que llegó. La lista la acota el propio mapa (son decenas como
+       * mucho); el tope se aplica DESPUÉS de ordenar por fecha, abajo. */
+      if (!soloNovedades && lista.length >= TOPE) continue;
 
       /*
        * EN GRANEL SE OFRECEN LOS TAMAÑOS, NO LA MADRE (decisión del dueño,
@@ -337,9 +341,19 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
       const tamanos = grupo === 'granel' ? (p.presentaciones || []) : [];
       if (!tamanos.length) { lista.push({ clave: `p${p.id}`, p, pres: null }); continue; }
       for (const pr of tamanos) {
-        if (lista.length >= TOPE) break;
+        if (!soloNovedades && lista.length >= TOPE) break;
         lista.push({ clave: `f${pr.id}`, p, pres: pr });
       }
+    }
+    if (soloNovedades) {
+      /* LO ÚLTIMO QUE ENTRÓ, ARRIBA (25/8/2026) — el mismo orden que devuelve
+       * el endpoint. Sin esto la lista salía en el orden del catálogo y las
+       * novedades de hoy quedaban enterradas entre las de hace tres semanas.
+       * Los tamaños de un mismo granel comparten fecha y quedan juntos solos
+       * (el sort es estable). */
+      const fechaDe = (x) => new Date(novedades?.mapa?.get(x.p.id)?.fecha ?? 0).getTime();
+      lista.sort((a, b) => fechaDe(b) - fechaDe(a));
+      if (lista.length > TOPE) lista.length = TOPE;
     }
     return { lista, otros };
     // eslint-disable-next-line react-hooks/exhaustive-deps
