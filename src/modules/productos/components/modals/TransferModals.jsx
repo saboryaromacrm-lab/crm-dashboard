@@ -894,11 +894,16 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
           {grupo === 'granel' ? 'A granel' : 'Enteros'} en el pedido ({porGrupo[grupo]} de {items.length} en
           total) — el último agregado queda arriba
         </div>
+        {/* MISMO ORDEN QUE EL RENGLÓN DE LA FACTURA (el dueño, 25/8: "hacé
+            exactamente igual esa parte"): Cantidad y Por bulto JUNTAS después
+            del producto — se tipea y al lado está el tamaño del bulto como
+            info. Los disponibles quedan después: orientan, no se tipean. */}
         <Table
           cols={[
             { h: 'Producto' }, { h: 'Present.' },
+            { h: 'Cantidad', num: true }, { h: 'Por bulto', num: true },
             { h: `En ${origen?.nombre ?? 'origen'}`, num: true }, { h: `En ${destino?.nombre ?? 'destino'}`, num: true },
-            { h: 'Cantidad', num: true }, { h: '', cls: 'actions-col' },
+            { h: '', cls: 'actions-col' },
           ]}
           empty={grupo === 'granel'
             ? 'Todavía no agregaste productos a granel. Buscalos con el buscador de esta pestaña.'
@@ -962,23 +967,6 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                       )
                       : <span title="El entero se pide por unidad">Unidad</span>}
                   </td>
-                  {/* El disponible es informativo: orienta el pedido, no lo limita. */}
-                  <td
-                    className={cx(s.num, s.mono)}
-                    style={alcanza && enOrigen > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}
-                  >
-                    {store.fmtCant(prod, esGranel ? null : presNum, enOrigen)}
-                    {esGranel && pideKg > 0 && (
-                      <div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
-                        {alcanza
-                          ? `se fraccionan ${num(pideKg, 3)} kg`
-                          : `faltan ${num(pideKg - enOrigen, 3)} kg`}
-                      </div>
-                    )}
-                  </td>
-                  <td className={cx(s.num, s.mono)} style={aca > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}>
-                    {store.fmtCant(prod, presNum, aca)}
-                  </td>
                   <td className={s.num}>
                     {/* La flechita va DE A 1 (antes sumaba 0.001 y "1" pasaba a
                         "1,001"). Para kg con coma se tipea el número directo. */}
@@ -1032,8 +1020,10 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                               } else setItem(i, { modo });
                             }}
                           >
+                            {/* "caja" a secas: el ×6 vive en la columna Por
+                                bulto de al lado, como en la factura. */}
                             <option value="unidad">u.</option>
-                            <option value="bulto">{`caja ×${num(porBulto, 0)}`}</option>
+                            <option value="bulto">caja</option>
                           </select>
                         </div>
                         {/* La equivalencia SIEMPRE a la vista, en los dos modos:
@@ -1047,6 +1037,37 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                         </div>
                       </>
                     )}
+                  </td>
+                  {/* POR BULTO como INFO, igual que en la factura: el tamaño
+                      no se tipea acá — sale de la ficha del producto (el bulto
+                      del DUN) y se corrige allá. El granel no tiene bulto de
+                      pedido: su "presentación" ya es el paquete. */}
+                  <td className={s.num} style={{ textAlign: 'center' }}>
+                    {!esGranel && porBulto > 1
+                      ? (
+                        <div title="El tamaño del bulto sale de la ficha del producto: se cambia ahí">
+                          <div style={{ fontWeight: 600 }}>{num(porBulto, 0)}</div>
+                          <div className={s.hint} style={{ margin: 0 }}>u./bulto</div>
+                        </div>
+                      )
+                      : <span className={s.hint} style={{ margin: 0 }}>—</span>}
+                  </td>
+                  {/* El disponible es informativo: orienta el pedido, no lo limita. */}
+                  <td
+                    className={cx(s.num, s.mono)}
+                    style={alcanza && enOrigen > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}
+                  >
+                    {store.fmtCant(prod, esGranel ? null : presNum, enOrigen)}
+                    {esGranel && pideKg > 0 && (
+                      <div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
+                        {alcanza
+                          ? `se fraccionan ${num(pideKg, 3)} kg`
+                          : `faltan ${num(pideKg - enOrigen, 3)} kg`}
+                      </div>
+                    )}
+                  </td>
+                  <td className={cx(s.num, s.mono)} style={aca > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}>
+                    {store.fmtCant(prod, presNum, aca)}
                   </td>
                   <td className={s['actions-col']}>
                     <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>
