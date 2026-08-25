@@ -142,24 +142,25 @@ function costosFormato(e, iva) {
    * parte sin factura despojada del IVA que el negocio absorbe al vender
    * (÷ factor). La diferencia es `ivaAbsorbido`.
    *
-   * EL % CORRE SOLO SOBRE LA MERCADERÍA, NUNCA SOBRE EL FLETE (19/8/2026): el
-   * flete es un costo PROPIO — se paga aparte, a un tercero, ajeno al
-   * proveedor de la liquidación — así que no hay IVA que absorber ahí. Por eso
-   * `partir()` recibe mercadería y flete por separado. La identidad de control
-   * es de la mercadería: (base − flete) × factor = lo que se le paga al
-   * proveedor.
+   * EL FLETE SIGUE LA CADENA DEL SISTEMA VIEJO (25/8/2026, espejo exacto de
+   * `pricing.ts` del backend — ahí está el razonamiento completo). El flete
+   * viene facturado y su % es el bruto: su IVA vuelve como crédito, así que a
+   * la base entra × ratio, igual que la mercadería. La base queda
+   * `(mercadería + flete) × ratio`, el absorbido es SOLO de la mercadería
+   * (el IVA del flete no se pierde), y con q=0 el ratio es 1 y nada cambia.
    */
   const q = Math.min(Math.max(Number(e.porcSinFactura) || 0, 0), 100) / 100;
+  const ratio = (1 - q) + q / factorIva;
   const partir = (mercaderia, flete) => {
-    const baseMercaderia = mercaderia * ((1 - q) + q / factorIva);
-    const costoPrecio = baseMercaderia + flete;
+    const costoPrecio = (mercaderia + flete) * ratio;
     const desembolso = mercaderia * ((1 - q) * factorIva + q);
+    const absorbido = mercaderia * (1 - ratio);
     return {
       porcSinFactura: q * 100,
       costoPrecio,
       costoPrecioUnitario: costoPrecio / cantidad,
-      ivaAbsorbido: mercaderia - baseMercaderia,
-      ivaAbsorbidoUnitario: (mercaderia - baseMercaderia) / cantidad,
+      ivaAbsorbido: absorbido,
+      ivaAbsorbidoUnitario: absorbido / cantidad,
       desembolso,
       desembolsoUnitario: desembolso / cantidad,
     };
@@ -182,7 +183,10 @@ function costosFormato(e, iva) {
   const costoLista = Number(e.costo) || 0;
   const desc = descuentoEfectivo(e);
   const costoBruto = costoLista * (1 - desc / 100);
-  const costoNeto = costoBruto * (1 + (Number(e.flete) || 0) / 100);
+  // El flete NOMINAL y su valor real en neto (facturado → su IVA vuelve): con
+  // q=0 son el mismo número y todo queda como siempre.
+  const flete = costoBruto * ((Number(e.flete) || 0) / 100);
+  const costoNeto = costoBruto + flete * ratio;
   const costoFinal = costoNeto * factorIva;
   return {
     cantidad,
@@ -194,8 +198,9 @@ function costosFormato(e, iva) {
     costoFinal,
     costoNetoUnitario: costoNeto / cantidad,
     costoFinalUnitario: costoFinal / cantidad,
-    // La mercadería es el bruto (post descuentos); el flete, la diferencia.
-    ...partir(costoBruto, costoNeto - costoBruto),
+    // La mercadería es el bruto (post descuentos); el flete va NOMINAL — el
+    // ratio se lo aplica `partir` adentro, junto con la mercadería.
+    ...partir(costoBruto, flete),
   };
 }
 

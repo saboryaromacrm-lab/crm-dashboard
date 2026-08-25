@@ -178,7 +178,8 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
                   <div className={s.hint} style={{ margin: '6px 0 0' }}>
                     Qué parte de la <strong>mercadería</strong> viene en liquidación: 100 = todo, 50 = mitad y mitad.
                     A esa parte el sistema le quita el IVA que vas a absorber al vender — el
-                    "{prod.iva === 21 ? '17,36' : 'X'}%" de antes, calculado. El flete no entra: es tuyo.
+                    &ldquo;{prod.iva === 21 ? '17,36' : 'X'}%&rdquo; de antes, calculado. El flete acompaña la
+                    misma cuenta (25/8, como el sistema anterior): viene facturado, así que su IVA vuelve como crédito.
                   </div>
                 </div>
               </div>
@@ -222,7 +223,15 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
                 valor={`− ${money(c.costoLista - c.costoBruto)}`}
               />
               <Paso label="Costo bruto (sin flete)" valor={money(c.costoBruto)} />
-              <Paso label={`Flete (${num(fila.flete || 0, 2)}%)`} valor={`+ ${money(c.costoNeto - c.costoBruto)}`} />
+              {/* El aporte del flete al costo NETO. Con parte sin factura es
+                  menos que lo que se le paga al fletero: el flete viene
+                  facturado y su IVA vuelve como crédito (25/8, la cadena del
+                  sistema anterior) — la diferencia se aclara abajo, en la fila
+                  de lo que se paga aparte. */}
+              <Paso
+                label={`Flete (${num(fila.flete || 0, 2)}%${sinFactura ? ', en neto' : ''})`}
+                valor={`+ ${money(c.costoNeto - c.costoBruto)}`}
+              />
             </>
           ) : (
             <Paso label="Costo final cargado" valor={money(c.costoFinal)} />
@@ -231,15 +240,28 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
           <Paso label="Costo neto (con flete)" valor={money(c.costoNeto)} fuerte />
           {sinFactura ? (
             <>
-              {/* El desglose del truco: el costo real, lo que se le paga al
-                  proveedor, y la base que queda para el markup. El % corre
-                  SOLO sobre la mercadería — el flete es tuyo y entra entero. */}
-              <Paso label={`Sin factura (${num(c.porcSinFactura, 2)}%${c.costoNeto - c.costoBruto > 0.005 ? ', solo mercadería' : ''})`} valor={`− ${money(c.ivaAbsorbido)}`} />
+              {/* El desglose del truco: el absorbido (que es SOLO de la
+                  mercadería — el IVA del flete no se pierde, vuelve como
+                  crédito), la base del markup, y lo que sale del bolsillo por
+                  cada canilla: proveedor y fletero. La del fletero muestra lo
+                  PAGADO (el bruto), no su neto — es la plata que se va, y con
+                  la del proveedor reconstruyen `base × (1+IVA)`. */}
+              <Paso label={`Sin factura (${num(c.porcSinFactura, 2)}%, solo mercadería)`} valor={`− ${money(c.ivaAbsorbido)}`} />
               <Paso label="Base del precio (bulto)" valor={money(c.costoPrecio)} fuerte />
               <Paso label="Le pagás al proveedor" valor={money(c.desembolso)} tenue />
-              {c.costoNeto - c.costoBruto > 0.005 && (
-                <Paso label="Y el flete lo pagás vos, aparte" valor={money(c.costoNeto - c.costoBruto)} tenue />
-              )}
+              {(() => {
+                const fleteNominal = c.costoBruto * ((Number(fila.flete) || 0) / 100);
+                if (fleteNominal <= 0.005) return null;
+                const q = c.porcSinFactura / 100;
+                const fleteBolsillo = fleteNominal * ((1 - q) * (1 + (Number(prod.iva) || 0) / 100) + q);
+                return (
+                  <Paso
+                    label="Y al fletero (su IVA te vuelve)"
+                    valor={money(fleteBolsillo)}
+                    tenue
+                  />
+                );
+              })()}
             </>
           ) : (
             <>
