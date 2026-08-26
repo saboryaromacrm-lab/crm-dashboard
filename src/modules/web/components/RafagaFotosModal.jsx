@@ -19,7 +19,7 @@ import { httpClient } from '@core/services/httpClient.js';
 import { ModalShell } from '@modules/productos/components/Modal.jsx';
 import { Btn, s } from '@modules/productos/components/ui.jsx';
 import {
-  MAX_ENTRADA_MB, PRESETS_IMAGEN, cargarImagen, moldear, exportar,
+  MAX_ENTRADA_MB, PRESETS_IMAGEN, cargarImagen, moldear, quitarFondo, exportar,
 } from '../services/imagenes.js';
 
 export function RafagaFotosModal({ productos, onCerrar, onListo, avisar }) {
@@ -29,6 +29,10 @@ export function RafagaFotosModal({ productos, onCerrar, onListo, avisar }) {
   const [idx, setIdx] = useState(0);
   const [hechas, setHechas] = useState(0);
   const [ocupado, setOcupado] = useState(false);
+  /* Opcional y apagado de fábrica: acá tampoco hay vista previa, y el
+   * flood-fill puede comerse un producto claro que toque el borde. La foto que
+   * salga mal se rehace con el "Subir" de ese producto ("Restaurar fondo"). */
+  const [sacarFondo, setSacarFondo] = useState(false);
   const inputRef = useRef(null);
 
   const actual = pendientes[idx];
@@ -42,7 +46,8 @@ export function RafagaFotosModal({ productos, onCerrar, onListo, avisar }) {
     try {
       const img = await cargarImagen(file);
       const canvas = moldear(img, PRESETS_IMAGEN.producto);
-      const { dataUrl } = exportar(canvas, PRESETS_IMAGEN.producto, { fondoQuitado: false });
+      if (sacarFondo) quitarFondo(canvas);
+      const { dataUrl } = exportar(canvas, PRESETS_IMAGEN.producto, { fondoQuitado: sacarFondo });
       await httpClient.post(`/web/imagenes/producto/${actual.id}`, { data: dataUrl });
       setHechas((n) => n + 1);
       setIdx((i) => i + 1);
@@ -74,6 +79,18 @@ export function RafagaFotosModal({ productos, onCerrar, onListo, avisar }) {
           <div className={s.hint} style={{ margin: '0 0 8px' }}>
             {idx + 1} de {pendientes.length} sin foto ({quedan} por delante) · {hechas} subida(s) en esta pasada
           </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', margin: '0 0 10px' }}>
+            <input
+              type="checkbox"
+              checked={sacarFondo}
+              disabled={ocupado}
+              onChange={(e) => setSacarFondo(e.target.checked)}
+            />
+            <span>
+              <strong>Quitar el fondo</strong>
+              <span className={s.muted}> — para fotos de fondo liso y claro; la que salga mal se rehace con el botón Subir de ese producto.</span>
+            </span>
+          </label>
           <div
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); procesarArchivo(e.dataTransfer?.files?.[0]); }}

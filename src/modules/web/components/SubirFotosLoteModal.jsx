@@ -25,7 +25,7 @@ import { ModalShell } from '@modules/productos/components/Modal.jsx';
 import { Btn, s } from '@modules/productos/components/ui.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import {
-  MAX_ENTRADA_MB, PRESETS_IMAGEN, cargarImagen, moldear, exportar,
+  MAX_ENTRADA_MB, PRESETS_IMAGEN, cargarImagen, moldear, quitarFondo, exportar,
 } from '../services/imagenes.js';
 
 const norm = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
@@ -86,6 +86,12 @@ export function SubirFotosLoteModal({ productos, onCerrar, onListo, avisar }) {
   const [subiendo, setSubiendo] = useState(false);
   const [progreso, setProgreso] = useState(null); // { hecho, total }
   const [termino, setTermino] = useState(false);
+  /* Quitar el fondo EN TANDA es opcional y arranca apagado: acá no hay vista
+   * previa por foto, y el flood-fill puede comerse un producto claro que toque
+   * el borde. Para fondos lisos (la foto de catálogo) anda muy bien; la que
+   * salga mal se corrige después con el "Subir" de esa fila, que tiene el
+   * "Restaurar fondo". */
+  const [sacarFondo, setSacarFondo] = useState(false);
   const inputRef = useRef(null);
 
   /* Las URLs de las miniaturas se liberan al cerrar: son blobs del navegador
@@ -147,7 +153,8 @@ export function SubirFotosLoteModal({ productos, onCerrar, onListo, avisar }) {
       try {
         const img = await cargarImagen(f.file);
         const canvas = moldear(img, PRESETS_IMAGEN.producto);
-        const { dataUrl } = exportar(canvas, PRESETS_IMAGEN.producto, { fondoQuitado: false });
+        if (sacarFondo) quitarFondo(canvas);
+        const { dataUrl } = exportar(canvas, PRESETS_IMAGEN.producto, { fondoQuitado: sacarFondo });
         await httpClient.post(`/web/imagenes/producto/${f.prodId}`, { data: dataUrl });
         ok += 1;
         setFila(f.clave, { resultado: 'ok' });
@@ -211,6 +218,24 @@ export function SubirFotosLoteModal({ productos, onCerrar, onListo, avisar }) {
         <Btn small onClick={() => inputRef.current?.click()} disabled={subiendo}>Elegir archivos</Btn>
         <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={onFiles} />
       </div>
+
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, cursor: 'pointer', margin: '10px 0 0' }}>
+        <input
+          type="checkbox"
+          checked={sacarFondo}
+          disabled={subiendo}
+          onChange={(e) => setSacarFondo(e.target.checked)}
+          style={{ marginTop: 2 }}
+        />
+        <span>
+          <strong>Quitar el fondo de todas las fotos</strong>
+          <span className={s.muted} style={{ display: 'block', fontSize: 12 }}>
+            Para fotos de fondo liso y claro (la típica de catálogo). Acá no hay vista previa:
+            si alguna sale mal, se corrige con el botón Subir de ese producto, que tiene el
+            &ldquo;Restaurar fondo&rdquo;.
+          </span>
+        </span>
+      </label>
 
       {filas.length > 0 && (
         <>

@@ -126,7 +126,24 @@ export function quitarFondo(canvas, tolerancia = 30) {
   };
   for (let x = 0; x < W; x++) { sumar((x) * 4); sumar(((H - 1) * W + x) * 4); }
   for (let y = 0; y < H; y++) { sumar((y * W) * 4); sumar((y * W + W - 1) * 4); }
-  if (!n) return canvas; // todo el contorno ya era transparente: nada que hacer
+  if (!n) {
+    /* La foto entró MÁS CHICA que el molde ('encajar' no agranda): quedó
+     * centrada con margen transparente y el contorno del canvas no dice nada.
+     * Se muestrea entonces el contorno del RECTÁNGULO OPACO — el borde de la
+     * foto real — que es donde vive su fondo. Sin esto, una foto de 600×600
+     * volvía intacta y el "Quitar fondo" parecía no hacer nada. */
+    let x0 = W; let y0 = H; let x1 = -1; let y1 = -1;
+    for (let p = 0; p < W * H; p++) {
+      if (px[p * 4 + 3] < 200) continue;
+      const xx = p % W; const yy = (p / W) | 0;
+      if (xx < x0) x0 = xx; if (xx > x1) x1 = xx;
+      if (yy < y0) y0 = yy; if (yy > y1) y1 = yy;
+    }
+    if (x1 < 0) return canvas; // no hay ni un píxel opaco: nada que hacer
+    for (let xx = x0; xx <= x1; xx++) { sumar((y0 * W + xx) * 4); sumar((y1 * W + xx) * 4); }
+    for (let yy = y0; yy <= y1; yy++) { sumar((yy * W + x0) * 4); sumar((yy * W + x1) * 4); }
+    if (!n) return canvas;
+  }
   r /= n; g /= n; b /= n;
 
   // Distancia máxima al color de fondo para considerarse "fondo".
