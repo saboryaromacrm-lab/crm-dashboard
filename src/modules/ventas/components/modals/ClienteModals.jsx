@@ -271,6 +271,65 @@ export function ClienteFormModal({ clienteId }) {
  * Detalle
  * ==================================================================== */
 
+/**
+ * El cliente opera al contado. Si quien mira tiene la llave del crédito
+ * (`cta_cte`), puede habilitarle la cuenta corriente ACÁ MISMO, sin pasar por
+ * la edición completa del cliente — pedido del dueño del 26/8. Al habilitar,
+ * el modal queda abierto y la pestaña pasa sola a mostrar la cuenta.
+ */
+function TabSinCuenta({ cliente }) {
+  const { config, toast, recargar } = useVentas();
+  const { can } = usePermissions();
+  const [limite, setLimite] = useState(config.ctaCteLimiteDefault || 0);
+  const [dias, setDias] = useState(config.ctaCteDiasPlazo || 0);
+  const [ocupado, setOcupado] = useState(false);
+
+  const habilitar = async () => {
+    if (ocupado) return;
+    setOcupado(true);
+    try {
+      await ventasApi.creditoCliente(cliente.id, {
+        ctaCteHabilitada: true,
+        limiteCredito: Number(limite) || 0,
+        diasPlazo: Number(dias) || 0,
+      });
+      toast(`Cuenta corriente habilitada para ${cliente.nombre}.`, 'ok');
+      await recargar();
+    } catch (e) {
+      toast(e?.data?.message || 'No se pudo habilitar la cuenta corriente.', 'err');
+      setOcupado(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className={cx(s.callout, s.warn)}>
+        Este cliente opera al contado: no tiene cuenta corriente habilitada.
+      </div>
+
+      {can('cta_cte') && !!config.ctaCteHabilitada && !cliente.esConsumidorFinal && (
+        <>
+          <div className={s['section-title']}>Habilitar ahora</div>
+          <div className={s['form-grid']}>
+            <div className={s.field}>
+              <label>Límite de crédito</label>
+              <input type="number" min="0" step="1000" value={limite} onChange={(e) => setLimite(e.target.value)} />
+              <div className={s.hint} style={{ margin: '6px 0 0' }}>0 = sin tope.</div>
+            </div>
+            <div className={s.field}>
+              <label>Plazo de pago (días)</label>
+              <input type="number" min="0" step="1" value={dias} onChange={(e) => setDias(e.target.value)} />
+            </div>
+          </div>
+          <Btn variant="btn-primary" onClick={habilitar} disabled={ocupado}>
+            {ocupado ? 'Habilitando…' : 'Habilitar cuenta corriente'}
+          </Btn>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** Pestaña de cuenta corriente: saldo, crédito disponible y qué se debe. */
 function TabCuenta({ clienteId, cliente }) {
   const { openModal } = useVentas();
@@ -427,7 +486,7 @@ export function DetalleClienteModal({ clienteId }) {
       {tab === 1 && (
         cliente.ctaCteHabilitada
           ? <TabCuenta clienteId={clienteId} cliente={cliente} />
-          : <div className={cx(s.callout, s.warn)}>Este cliente opera al contado: no tiene cuenta corriente habilitada.</div>
+          : <TabSinCuenta cliente={cliente} />
       )}
 
       {tab === 2 && <TabComprobantes clienteId={clienteId} />}

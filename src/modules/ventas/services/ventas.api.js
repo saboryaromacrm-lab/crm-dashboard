@@ -41,6 +41,8 @@ export const ventasApi = {
   /* Clientes */
   crearCliente: (data) => httpClient.post('/clientes', data),
   editarCliente: (id, data) => httpClient.patch(`/clientes/${id}`, data),
+  // El crédito solo (habilitar cta. cte. + límite + plazo): pide la llave `cta_cte`.
+  creditoCliente: (id, data) => httpClient.patch(`/clientes/${id}/credito`, data),
   eliminarCliente: (id) => httpClient.delete(`/clientes/${id}`),
   reactivarCliente: (id) => httpClient.post(`/clientes/${id}/reactivar`, {}),
 
