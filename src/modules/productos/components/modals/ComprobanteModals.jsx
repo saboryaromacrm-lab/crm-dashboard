@@ -259,13 +259,19 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
    * del papel (RG 4892), que es un JSON: es exacto, no una interpretación de la
    * imagen. Igual queda editable — una factura hecha a mano no tiene QR.
    */
-  const [tipo, setTipo] = useState(lectura?.tipo || tipoInit || 'factura');
+  /* TIPO Y PROVEEDOR ARRANCAN VACÍOS a propósito (26/8, pedido del dueño):
+   * precargados con "Factura" y el primer proveedor del padrón, un Continuar
+   * distraído metía la compra en el proveedor equivocado — y NUEVO COSMOS no
+   * es el proveedor de nada por estar primero en orden alfabético. Se
+   * prellenan solo cuando SON un dato: la lectura del QR de la bandeja, o
+   * abrirlo desde la ficha del proveedor. */
+  const [tipo, setTipo] = useState(lectura?.tipo || tipoInit || '');
   const [letra, setLetra] = useState(lectura?.letra || 'A');
   const [puntoVenta, setPuntoVenta] = useState(lectura?.puntoVenta || '0001');
   const [numero, setNumero] = useState(lectura?.numero != null ? String(lectura.numero) : '');
   const [fecha, setFecha] = useState(lectura?.fecha ? String(lectura.fecha).slice(0, 10) : isoDate(new Date()));
   const [fechaCarga, setFechaCarga] = useState(isoDate(new Date()));
-  const [provId, setProvId] = useState(proveedorId || store.state.proveedores[0]?.id || '');
+  const [provId, setProvId] = useState(proveedorId || '');
   const [sucId, setSucId] = useState(lectura?.sucursalId ?? sucOperativa() ?? '');
   const [venc, setVenc] = useState('');
   const [obs, setObs] = useState('');
@@ -1032,6 +1038,7 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
 
   const continuar = () => {
     if (paso === 1) {
+      if (!tipo) { toast('Elegí el tipo de comprobante.', 'err'); return; }
       if (!parseInt(provId, 10)) { toast('Elegí el proveedor del comprobante.', 'err'); return; }
       /*
        * La sucursal pasó a ser OBLIGATORIA en estos tipos desde que la
@@ -1111,6 +1118,9 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
         <div className={s.field}>
           <label>Tipo <span className={s.req}>*</span></label>
           <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+            {/* La opción vacía queda deshabilitada: se ve mientras no se
+                eligió nada, pero no se puede volver a ella. */}
+            <option value="" disabled>Elegí el tipo…</option>
             {tiposDisponibles.map((k) => <option key={k} value={k}>{TIPOS_COMPROBANTE[k].label}</option>)}
           </select>
           {esNoFiscal && (
@@ -1130,7 +1140,10 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
               </div>
             </>
           ) : (
-            <select value={provId} onChange={(e) => onProveedor(e.target.value)}>{productoProveedorOptions(store)}</select>
+            <select value={provId} onChange={(e) => onProveedor(e.target.value)}>
+              <option value="" disabled>Elegí el proveedor…</option>
+              {productoProveedorOptions(store)}
+            </select>
           )}
         </div>
       </div>
