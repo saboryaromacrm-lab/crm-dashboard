@@ -160,6 +160,44 @@ async function urlProtegida(path) {
   return objeto;
 }
 
+/**
+ * DESCARGAR UN ARCHIVO PROTEGIDO a la máquina del usuario (el respaldo de la
+ * base). Distinto de `urlProtegida` en las dos cosas que importan acá: NO
+ * cachea (un respaldo viejo servido como nuevo es peor que ninguno) y dispara
+ * la descarga con el nombre que mandó el servidor en Content-Disposition.
+ */
+async function descargar(path, nombrePorDefecto = 'archivo') {
+  const url = path.startsWith('http') ? path : `${appConfig.api.baseUrl}${path}`;
+  const token = leerSesion()?.token;
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+  } catch {
+    throw new HttpError(`Sin respuesta del servidor: GET ${path}`, {
+      sinRespuesta: true,
+      data: { message: 'No llegó la respuesta del servidor.' },
+    });
+  }
+  if (response.status === 401) sesionVencida();
+  if (!response.ok) {
+    throw new HttpError(`Request failed: ${response.status}`, { status: response.status });
+  }
+  const nombre = /filename="?([^";]+)"?/.exec(response.headers.get('content-disposition') || '')?.[1]
+    || nombrePorDefecto;
+  const objeto = URL.createObjectURL(await response.blob());
+  const a = document.createElement('a');
+  a.href = objeto;
+  a.download = nombre;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Un respiro antes de revocar: el click recién disparó la descarga.
+  setTimeout(() => URL.revokeObjectURL(objeto), 10_000);
+  return nombre;
+}
+
 export const httpClient = {
   /** Se llama al entrar: una sesión nueva vuelve a habilitar el aviso. */
   reiniciarAvisoDeSesion: () => { yaAvisado = false; },
@@ -169,6 +207,7 @@ export const httpClient = {
   patch: (path, body, opts) => request('PATCH', path, { ...opts, body }),
   delete: (path, opts) => request('DELETE', path, opts),
   urlProtegida,
+  descargar,
 };
 
 export { HttpError };

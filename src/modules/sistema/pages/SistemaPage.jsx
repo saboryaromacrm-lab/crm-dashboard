@@ -23,6 +23,7 @@ import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 import { money, fmtFechaHora } from '@modules/productos/domain/format.js';
 import { SISTEMA_SECCIONES } from '../config/sistema.config.js';
 import { EsteEquipoPanel } from './EsteEquipoPanel.jsx';
+import { RespaldosPanel } from './RespaldosPanel.jsx';
 
 /**
  * Los documentos configurables. `etiqueta: true` marca los que van a la
@@ -158,17 +159,6 @@ async function cuerpoMuestra(clave, empresa, impresion) {
       <tr><td>Miel Pura 500g</td><td class="chica n">6</td><td class="chica n">$6.020,00</td><td class="chica n"><strong>$36.120,00</strong></td></tr>
     </tbody></table>
     <div class="tot">Total: <strong>$57.720,00</strong></div>`;
-}
-
-function Proximamente({ seccion }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
-      <PanelHead title={seccion.label} desc={seccion.desc} />
-      <div className={cx(s.callout, s.info)}>
-        <strong>Próximamente.</strong> Esta sección está en la agenda y todavía no se construyó.
-      </div>
-    </div>
-  );
 }
 
 export function SistemaPage() {
@@ -474,7 +464,9 @@ export function SistemaPage() {
               arriba falla y el panel no aparecería nunca. */}
           {seccionActiva === 'terminales' && <EsteEquipoPanel onAviso={setAviso} />}
 
-          {!cargando && seccionActiva === 'respaldos' && <Proximamente seccion={secciones.find((x) => x.id === 'respaldos')} />}
+          {/* Misma regla que "Este equipo": no depende de empresa/impresión,
+              así que no espera esa carga. */}
+          {seccionActiva === 'respaldos' && <RespaldosPanel onAviso={setAviso} />}
         </div>
       </div>
     </div>
