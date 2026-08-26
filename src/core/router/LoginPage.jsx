@@ -97,9 +97,20 @@ export function LoginPage() {
   );
   /* Con el equipo registrado la sucursal sale de la terminal; sin registrar,
    * del desplegable. Un solo lugar la resuelve para que la confirmación, la
-   * validación y el envío no puedan discrepar entre sí. */
+   * validación y el envío no puedan discrepar entre sí.
+   *
+   * 'sin' es la opción "No especificar" (26/8): viaja SIN sucursal y el
+   * servidor decide — solo el superadmin puede entrar así (queda parado en la
+   * central y la cambia arriba); a cualquier otro rol lo rechaza con su
+   * mensaje. La pantalla no puede decidirlo acá porque el login público no
+   * sabe quién es superadmin, y publicarlo sería regalar a quién atacar. */
+  const sinSucursal = !terminal && sucursalId === 'sin';
   const sucursal = useMemo(
-    () => (terminal ? terminal.sucursal : sucursales.find((s) => s.id === Number(sucursalId))),
+    () => {
+      if (terminal) return terminal.sucursal;
+      if (sucursalId === 'sin') return { id: null, nombre: 'Sin especificar' };
+      return sucursales.find((s) => s.id === Number(sucursalId));
+    },
     [terminal, sucursales, sucursalId],
   );
 
@@ -117,8 +128,9 @@ export function LoginPage() {
     setError('');
     try {
       /* El `sucursalId` viaja igual, pero cuando hay terminal **el servidor lo
-       * ignora** y usa la del equipo: el candado vive allá, no acá. */
-      await login({ usuarioId: usuario.id, password, sucursalId: sucursal.id });
+       * ignora** y usa la del equipo: el candado vive allá, no acá. Con "No
+       * especificar" directamente no viaja, y el servidor decide si puede. */
+      await login({ usuarioId: usuario.id, password, sucursalId: sucursal.id ?? undefined });
       // Recarga completa a propósito: ver comentario de arriba.
       window.location.replace(from);
     } catch (e2) {
@@ -190,6 +202,11 @@ export function LoginPage() {
                       {sucursales.map((s) => (
                         <MenuItem key={s.id} value={String(s.id)}>{s.nombre}</MenuItem>
                       ))}
+                      {/* Al final y no primera: la cajera no tiene que pasarle
+                          por encima. El servidor rechaza a quien no puede. */}
+                      <MenuItem value="sin">
+                        <em>No especificar — solo el superadmin</em>
+                      </MenuItem>
                     </TextField>
                   )}
                   {error && <Alert severity="error">{error}</Alert>}
@@ -225,7 +242,9 @@ export function LoginPage() {
                     <Typography variant="caption" color="text.secondary">
                       {terminal
                         ? `Sucursal de este equipo (${terminal.nombre})`
-                        : 'Sucursal de trabajo de esta sesión'}
+                        : sinSucursal
+                          ? 'Entrás parado en la central y la cambiás desde el encabezado'
+                          : 'Sucursal de trabajo de esta sesión'}
                     </Typography>
                   </div>
                 </Stack>
