@@ -12,7 +12,7 @@ import {
 } from '../domain/pos.js';
 import { indicePrecios, sugerenciaPorMonto } from '../domain/listas.js';
 import { sugerenciasOfertaTicket } from '../domain/ofertas.js';
-import { Table, PanelHead, Btn, money, num, fmtFechaHora, s } from '../components/ui.jsx';
+import { Table, PanelHead, Btn, ModalShell, money, num, fmtFechaHora, s } from '../components/ui.jsx';
 import { imprimirVenta } from '@core/services/imprimir.js';
 import { EVENTO_PRECIOS, cambiosPrecio } from '@core/services/cambiosPrecio.js';
 import p from '../styles/Pos.module.css';
@@ -32,6 +32,112 @@ function leerPestanas(sucursalId) {
 }
 function guardarPestanas(sucursalId, ids) {
   try { localStorage.setItem(PESTANAS_KEY(sucursalId), JSON.stringify(ids)); } catch { /* modo privado */ }
+}
+
+/* ==================================================================== *
+ * Elegir cliente
+ * ==================================================================== */
+
+const normCliente = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+
+/**
+ * El selector de cliente es un MODAL con buscador y lista clickeable (26/8,
+ * pedido del dueño): el `<select>` nativo con el padrón entero adentro no
+ * dejaba buscar por fantasía ni por documento, y con la lista creciendo se
+ * volvía inmanejable. El default no cambia: sin elegir nada, la venta es de
+ * Consumidor Final — que va SIEMPRE primero en la lista.
+ */
+function ElegirClienteModal({ clientes, actualId, onElegir, onCerrar }) {
+  const [busca, setBusca] = useState('');
+
+  /* Mientras el modal está abierto, las teclas del POS no pueden llegar al
+   * listener global (F2 cobraría la venta con este modal adelante). Captura +
+   * stopImmediatePropagation: se ejecuta antes que el listener de burbuja del
+   * POS y lo apaga del todo. Esc acá adentro cierra ESTE modal. */
+  useEffect(() => {
+    const parar = (e) => {
+      if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); onCerrar(); }
+      else if (e.key === 'F2' || e.key === 'F4' || e.key === 'Insert') {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', parar, true);
+    return () => window.removeEventListener('keydown', parar, true);
+  }, [onCerrar]);
+
+  const activos = useMemo(() => {
+    const lista = clientes.filter((c) => c.activo);
+    return [
+      ...lista.filter((c) => c.esConsumidorFinal),
+      ...lista.filter((c) => !c.esConsumidorFinal).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+    ];
+  }, [clientes]);
+
+  const q = normCliente(busca.trim());
+  const filtrados = q
+    ? activos.filter((c) => normCliente(`${c.nombre} ${c.nombreFantasia || ''} ${c.numeroDoc || ''}`).includes(q))
+    : activos;
+
+  const elegir = (c) => { onElegir(c.id); onCerrar(); };
+
+  return (
+    <ModalShell
+      title="Elegir cliente"
+      onClose={onCerrar}
+      footer={[{ texto: 'Cancelar', clase: 'btn-ghost', onClick: onCerrar }]}
+    >
+      <div className={s.field}>
+        <input
+          autoFocus
+          placeholder="Escribí el nombre, la fantasía o el documento…"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && filtrados.length) { e.preventDefault(); elegir(filtrados[0]); }
+          }}
+        />
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 380, overflowY: 'auto' }}>
+        {filtrados.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => elegir(c)}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2,
+              padding: '8px 12px', textAlign: 'left', cursor: 'pointer', width: '100%',
+              border: '1px solid var(--crm-color-border)', borderRadius: 'var(--crm-radius-sm)',
+              background: c.id === actualId
+                ? 'color-mix(in srgb, var(--crm-color-primary, #166534) 10%, transparent)'
+                : 'transparent',
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>
+              {c.nombre}
+              {c.nombreFantasia && <span className={s.muted} style={{ fontWeight: 400 }}> · {c.nombreFantasia}</span>}
+            </span>
+            <span className={s.hint} style={{ margin: 0 }}>
+              {[
+                c.numeroDoc || null,
+                CONDICIONES_IVA[c.condicionIva]?.corto || null,
+                c.ctaCteHabilitada ? 'cta. cte.' : null,
+                c.descuento > 0 ? `${c.descuento}% desc.` : null,
+              ].filter(Boolean).join(' · ') || '—'}
+            </span>
+          </button>
+        ))}
+        {!filtrados.length && (
+          <div className={s['empty-state']}>Ningún cliente coincide con “{busca}”.</div>
+        )}
+      </div>
+
+      <div className={s.hint} style={{ margin: '10px 0 0' }}>
+        Enter elige el primero de la lista. Sin cliente elegido, la venta es de <strong>Consumidor Final</strong>.
+      </div>
+    </ModalShell>
+  );
 }
 
 /* ==================================================================== *
@@ -472,6 +578,7 @@ export function PosPanel() {
   const [ticket, dispatch] = useReducer(ticketReducer, ticketInicial);
   const [activaId, setActivaId] = useState(null);      // null = tabla de ventas en curso
   const [clienteId, setClienteId] = useState(null);
+  const [selectorCliente, setSelectorCliente] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [pestanaIds, setPestanaIds] = useState([]);
   /**
@@ -1249,16 +1356,30 @@ export function PosPanel() {
           <div className={p.regLateral}>
             <div className={p.bloque}>
               <div className={p.bloqueTitulo}>Cliente</div>
-              <select
+              {/* Botón, no <select>: abre el modal con buscador y lista. */}
+              <button
+                type="button"
                 className={s['select-inline']}
-                style={{ width: '100%' }}
-                value={clienteActual?.id ?? ''}
-                onChange={(e) => cambiarCliente(Number(e.target.value))}
+                style={{
+                  width: '100%', cursor: 'pointer', textAlign: 'left',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+                }}
+                onClick={() => setSelectorCliente(true)}
+                title="Elegir cliente"
               >
-                {clientes.filter((c) => c.activo).map((c) => (
-                  <option key={c.id} value={c.id}>{c.nombre}</option>
-                ))}
-              </select>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {clienteActual?.nombre || 'Consumidor Final'}
+                </span>
+                <span aria-hidden style={{ color: 'var(--crm-color-text-muted)' }}>▾</span>
+              </button>
+              {selectorCliente && (
+                <ElegirClienteModal
+                  clientes={clientes}
+                  actualId={clienteActual?.id}
+                  onElegir={cambiarCliente}
+                  onCerrar={() => setSelectorCliente(false)}
+                />
+              )}
               <div className={s.hint} style={{ margin: '8px 0 0' }}>
                 {CONDICIONES_IVA[clienteActual?.condicionIva]?.label || '—'}
                 {clienteActual?.descuento > 0 && ` · ${clienteActual.descuento}% de descuento`}
