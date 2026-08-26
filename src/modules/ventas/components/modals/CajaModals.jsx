@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { ventasApi } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
-import { Table, Di, ModalShell, money, fmtFechaHora, s } from '../ui.jsx';
+import { Table, Di, Btn, ModalShell, money, fmtFechaHora, s } from '../ui.jsx';
 
 /* ==================================================================== *
  * Apertura
@@ -302,6 +302,120 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
 }
 
 /* ==================================================================== *
+ * Contador de billetes
+ * ==================================================================== */
+
+/** Denominaciones vigentes de mayor a menor, como se apila el cajón. */
+const DENOMINACIONES = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.25, 0.1, 0.05];
+
+/**
+ * Contar el cajón sin calculadora: cantidad de cada billete/moneda y el total
+ * sale solo. No es un dato que se guarde — es una ayuda para llenar "Efectivo
+ * contado" sin errores de suma. El conteo queda en el modal padre mientras
+ * esté abierto, así se puede volver a entrar a corregir una cantidad.
+ */
+function ContadorBilletesModal({ inicial, onUsar, onCerrar }) {
+  const [cant, setCant] = useState(() => ({ ...(inicial || {}) }));
+  const refs = useRef({});
+
+  // La cuenta va en centavos: 3 monedas de $0,05 son 15 centavos justos,
+  // no 0.15000000000000002.
+  const totalCentavos = useMemo(() => DENOMINACIONES.reduce((acc, d) => {
+    const n = Math.floor(Number(cant[d])) || 0;
+    return acc + (n > 0 ? Math.round(d * 100) * n : 0);
+  }, 0), [cant]);
+  const total = totalCentavos / 100;
+
+  const etiqueta = (d) => `$ ${d.toLocaleString('es-AR', { minimumFractionDigits: d < 1 ? 2 : 0 })}`;
+
+  const fila = (d, i) => {
+    const n = Math.floor(Number(cant[d])) || 0;
+    return (
+      <div key={d} style={{ display: 'grid', gridTemplateColumns: '82px 84px 1fr', gap: 8, alignItems: 'center' }}>
+        <span className={s.mono} style={{ textAlign: 'right', fontWeight: 600 }}>{etiqueta(d)}</span>
+        <input
+          ref={(el) => { refs.current[d] = el; }}
+          type="number" min="0" step="1" placeholder="0"
+          autoFocus={i === 0}
+          value={cant[d] ?? ''}
+          onChange={(e) => setCant((c) => ({ ...c, [d]: e.target.value }))}
+          onKeyDown={(e) => {
+            // Enter baja al renglón siguiente: se cuenta de corrido, sin mouse.
+            if (e.key === 'Enter') {
+              const idx = DENOMINACIONES.indexOf(d);
+              refs.current[DENOMINACIONES[idx + 1]]?.focus();
+            }
+          }}
+        />
+        <span className={cx(s.mono, !n && s.muted)} style={{ textAlign: 'right' }}>
+          {n ? money((Math.round(d * 100) * n) / 100) : '—'}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <ModalShell
+      title="Contar el efectivo"
+      subtitle="Cantidad de cada billete y moneda: el total se calcula solo. Enter salta al siguiente."
+      wide
+      onClose={onCerrar}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: onCerrar },
+        { texto: `Usar este total (${money(total)})`, clase: 'btn-primary', onClick: () => onUsar(cant, total) },
+      ]}
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 32px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {DENOMINACIONES.slice(0, 9).map((d, i) => fila(d, i))}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {DENOMINACIONES.slice(9).map((d) => fila(d, -1))}
+        </div>
+      </div>
+
+      <div
+        className={s.callout}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', margin: '14px 0 0' }}
+      >
+        <span>Total contado</span>
+        <strong className={s.mono} style={{ fontSize: 22 }}>{money(total)}</strong>
+      </div>
+    </ModalShell>
+  );
+}
+
+/**
+ * Botón + estado del contador para los dos modales que piden "Efectivo
+ * contado" (control intermedio y cierre). Devuelve el botón a poner debajo
+ * del campo y el modal ya cableado.
+ */
+function useContadorBilletes(setMonto) {
+  const [abierto, setAbierto] = useState(false);
+  const [conteo, setConteo] = useState(null);
+
+  const boton = (
+    <div style={{ marginTop: 6 }}>
+      <Btn small onClick={() => setAbierto(true)}>🧮 Contar billetes</Btn>
+    </div>
+  );
+
+  const modal = abierto && (
+    <ContadorBilletesModal
+      inicial={conteo}
+      onCerrar={() => setAbierto(false)}
+      onUsar={(cant, total) => {
+        setConteo(cant);
+        setMonto(String(total));
+        setAbierto(false);
+      }}
+    />
+  );
+
+  return { boton, modal };
+}
+
+/* ==================================================================== *
  * Control de caja intermedio (no cierra nada)
  * ==================================================================== */
 
@@ -314,6 +428,7 @@ export function ControlCajaModal({ cajaSesionId, onChange }) {
   const { ctx, act, closeModal, toast } = useVentas();
   const [contado, setContado] = useState('');
   const [observaciones, setObservaciones] = useState('');
+  const contador = useContadorBilletes(setContado);
 
   const { data: arqueo, loading, error } = useResource(
     `control-arqueo:${cajaSesionId}`,
@@ -383,8 +498,10 @@ export function ControlCajaModal({ cajaSesionId, onChange }) {
             value={contado}
             onChange={(e) => setContado(e.target.value)}
           />
+          {contador.boton}
         </div>
       </div>
+      {contador.modal}
 
       {diferencia !== null && (
         <div
@@ -606,6 +723,7 @@ export function CerrarCajaModal({ cajaSesionId, onChange }) {
   const { act, closeModal, toast } = useVentas();
   const [declarado, setDeclarado] = useState('');
   const [observaciones, setObservaciones] = useState('');
+  const contador = useContadorBilletes(setDeclarado);
 
   const { data: arqueo, loading, error } = useResource(`arqueo:${cajaSesionId}`, () => ventasApi.cajaArqueo(cajaSesionId));
 
@@ -673,8 +791,10 @@ export function CerrarCajaModal({ cajaSesionId, onChange }) {
             value={declarado}
             onChange={(e) => setDeclarado(e.target.value)}
           />
+          {contador.boton}
         </div>
       </div>
+      {contador.modal}
 
       {diferencia !== null && (
         <div
