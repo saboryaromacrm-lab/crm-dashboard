@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
-import ConstructionIcon from '@mui/icons-material/Construction';
 import { cx } from '@shared/utils/classNames.js';
+import { httpClient } from '@core/services/httpClient.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { useSeccion } from '../../hooks/useSeccion.js';
-import { money, fmtFecha } from '../../domain/format.js';
+import { money, fmtFecha, fmtFechaHora } from '../../domain/format.js';
 import { CONDICIONES_IVA_PROV } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
 import { Table, Btn, s } from '../ui.jsx';
@@ -295,18 +295,6 @@ function OperacionesTab({ prov }) {
   );
 }
 
-/* ---- Pestañas que dependen de módulos futuros (Facturación / cuenta corriente) ---- */
-function TabScaffold({ titulo, desc }) {
-  return (
-    <div className={cx(s.callout, s.info)} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-      <ConstructionIcon style={{ fontSize: 20, marginTop: 1 }} />
-      <div>
-        <strong>{titulo} — Próximamente.</strong><br />
-        {desc}
-      </div>
-    </div>
-  );
-}
 function ResumenCtaTab({ prov }) {
   const { store, openModal } = useProductos();
   const saldo = store.cuentaProveedor(prov.id);
@@ -387,8 +375,54 @@ function PendEntregaTab({ prov }) {
     </>
   );
 }
-function AuditoriaTab() {
-  return <TabScaffold titulo="Auditoría" desc="Registro de cambios sobre el proveedor y sus condiciones comerciales (quién y cuándo modificó qué)." />;
+/**
+ * AUDITORÍA (0086): quién cambió qué condición comercial y cuándo, con el
+ * antes → después. Lo escriben el formato de compra, las percepciones y la
+ * ficha del proveedor. Los documentos (facturas, pagos, anulaciones) NO van
+ * acá: ya quedan firmados con usuario y fecha en sus propias pantallas.
+ */
+function AuditoriaTab({ prov }) {
+  const [filas, setFilas] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let vivo = true;
+    httpClient.get(`/auditoria?entidad=proveedor&entidadId=${prov.id}`)
+      .then((r) => { if (vivo) setFilas(Array.isArray(r) ? r : []); })
+      .catch((e) => { if (vivo) setError(e?.data?.message || 'No se pudo cargar el registro.'); });
+    return () => { vivo = false; };
+  }, [prov.id]);
+
+  if (error) return <div className={cx(s.callout, s.warn)}>{error}</div>;
+  if (!filas) return <div className={s['empty-state']}>Cargando el registro…</div>;
+
+  return (
+    <>
+      <div className={s.hint} style={{ marginTop: 0 }}>
+        Los cambios <strong>a mano</strong> de las condiciones comerciales: formato de compra
+        (costos, descuentos, flete, sin factura), percepciones y ficha del proveedor. Cada fila
+        es un campo, con el valor anterior y el nuevo. Las facturas y los pagos no están acá:
+        quedan firmados en sus propias pantallas.
+      </div>
+      <Table
+        cols={[{ h: 'Fecha y hora' }, { h: 'Dónde' }, { h: 'Qué cambió' }, { h: 'Antes' }, { h: 'Ahora' }, { h: 'Quién' }]}
+        empty="Sin cambios registrados. El registro existe desde el 26/8/2026: lo anterior a esa fecha no dejó rastro."
+      >
+        {filas.map((f) => (
+          <tr key={f.id}>
+            <td style={{ whiteSpace: 'nowrap' }}>{fmtFechaHora(f.fecha)}</td>
+            <td>
+              {f.ambito}
+              {f.detalle && <div className={s.hint} style={{ margin: 0 }}>{f.detalle}</div>}
+            </td>
+            <td><strong>{f.campo}</strong></td>
+            <td className={s.muted}>{f.antes || '—'}</td>
+            <td><strong>{f.despues || '—'}</strong></td>
+            <td>{f.usuario || <span className={s.muted}>—</span>}</td>
+          </tr>
+        ))}
+      </Table>
+    </>
+  );
 }
 function HistorialProvTab({ prov }) {
   const { store, openModal } = useProductos();
