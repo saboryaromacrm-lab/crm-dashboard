@@ -12,7 +12,9 @@ import {
 } from '../domain/pos.js';
 import { indicePrecios, sugerenciaPorMonto } from '../domain/listas.js';
 import { sugerenciasOfertaTicket } from '../domain/ofertas.js';
-import { Table, PanelHead, Btn, ModalShell, money, num, fmtFechaHora, s } from '../components/ui.jsx';
+import {
+  Table, PanelHead, Btn, ModalShell, Paginador, usePaginado, money, num, fmtFechaHora, s,
+} from '../components/ui.jsx';
 import { imprimirVenta } from '@core/services/imprimir.js';
 import { EVENTO_PRECIOS, cambiosPrecio } from '@core/services/cambiosPrecio.js';
 import p from '../styles/Pos.module.css';
@@ -79,6 +81,11 @@ function ElegirClienteModal({ clientes, actualId, onElegir, onCerrar }) {
     ? activos.filter((c) => normCliente(`${c.nombre} ${c.nombreFantasia || ''} ${c.numeroDoc || ''}`).includes(q))
     : activos;
 
+  /* Paginado en memoria (previsión del dueño: el padrón va a crecer). La barra
+   * recién aparece cuando la lista no entra en la página más chica, y cambiar
+   * la búsqueda vuelve a la página 1 — el `q` como reinicio hace exactamente eso. */
+  const pag = usePaginado(filtrados, 'posElegirCliente', q);
+
   const elegir = (c) => { onElegir(c.id); onCerrar(); };
 
   return (
@@ -100,7 +107,7 @@ function ElegirClienteModal({ clientes, actualId, onElegir, onCerrar }) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 380, overflowY: 'auto' }}>
-        {filtrados.map((c) => (
+        {pag.visibles.map((c) => (
           <button
             key={c.id}
             type="button"
@@ -132,6 +139,8 @@ function ElegirClienteModal({ clientes, actualId, onElegir, onCerrar }) {
           <div className={s['empty-state']}>Ningún cliente coincide con “{busca}”.</div>
         )}
       </div>
+
+      <Paginador pag={pag} />
 
       <div className={s.hint} style={{ margin: '10px 0 0' }}>
         Enter elige el primero de la lista. Sin cliente elegido, la venta es de <strong>Consumidor Final</strong>.
