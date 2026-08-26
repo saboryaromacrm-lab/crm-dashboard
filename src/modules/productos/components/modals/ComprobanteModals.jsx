@@ -220,9 +220,48 @@ function PasosWizard({ paso, irA }) {
  *   encabezado ya resuelto desde el QR del papel —tipo, letra, punto de venta,
  *   número, fecha, CAE— y sobre todo **el total que dice la factura**, que es el
  *   número contra el que se valida que los renglones cargados cierren.
+ * @param remito  LLEGÓ LA FACTURA DE UN REMITO (26/8): el mismo asistente, en
+ *   modo conversión. El remito ya ingresó la mercadería; acá se completa el
+ *   papel (encabezado, precios reales, pie, pago) y el remito PASA A SER la
+ *   factura — el stock no se vuelve a mover.
+ *
+ * El wrapper con `key` existe porque ModalHost no remonta al cambiar solo los
+ * props (mismo tipo de modal = mismo componente montado): sin él, pasar del
+ * alta normal a la conversión dejaría todo el estado inicial viejo.
  */
-export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
-  const { store, closeModal, toast, sucOperativa, can } = useProductos();
+export function ComprobanteFormModal(props) {
+  return <ComprobanteFormInner key={props.remito ? `remito-${props.remito.id}` : 'nuevo'} {...props} />;
+}
+
+/** Un renglón del asistente a partir de un ítem YA CARGADO del remito. */
+function filaDesdeItemRemito(it, entry) {
+  const cant = Number(it.cantidad) || 0;
+  const pb = Number(entry?.cantidad) || 0;
+  // Si la cantidad ingresada se divide exacto en bultos del formato, se habla
+  // en bultos como siempre; si no (entrega suelta), el "bulto" pasa a ser 1 y
+  // el costo se muestra por unidad — la cuenta da igual en los dos casos.
+  const entera = pb > 0 && Math.round(cant / pb) > 0 && Math.abs(cant / pb - Math.round(cant / pb)) < 1e-6;
+  const porBulto = entera ? pb : 1;
+  return {
+    itemId: it.id,
+    productoId: String(it.productoId),
+    bultos: String(r3(cant / porBulto)),
+    porBulto: String(porBulto),
+    costoBulto: String(+((Number(it.costoUnitario) || 0) * porBulto).toFixed(4)),
+    descuento: String(it.descuento || 0),
+    iva: String(it.iva ?? 21),
+    costoAuto: false,
+    modo: 'bulto',
+    codigoProveedor: '',
+    descripcionPapel: '',
+  };
+}
+
+function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) {
+  const { store, closeModal, toast, sucOperativa, can, openModal } = useProductos();
+
+  /** Modo conversión: facturar un remito ya ingresado. */
+  const esConversion = !!remito;
 
   /*
    * LA LIQUIDACIÓN SOLO APARECE CON SU PERMISO. Es la mitad que el proveedor
@@ -251,8 +290,9 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
    */
   const [paso, setPaso] = useState(1);
   // Abierto desde la ficha del proveedor (Operaciones): el comprobante ES de
-  // ese proveedor — se muestra, pero no se puede cambiar.
-  const provFijo = !!proveedorId;
+  // ese proveedor — se muestra, pero no se puede cambiar. En la conversión el
+  // proveedor es un hecho del remito.
+  const provFijo = !!proveedorId || esConversion;
 
   /*
    * EL ENCABEZADO NO SE TIPEA CUANDO VIENE DE LA BANDEJA. Todo esto salió del QR
@@ -265,14 +305,16 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
    * es el proveedor de nada por estar primero en orden alfabético. Se
    * prellenan solo cuando SON un dato: la lectura del QR de la bandeja, o
    * abrirlo desde la ficha del proveedor. */
-  const [tipo, setTipo] = useState(lectura?.tipo || tipoInit || '');
+  // En la conversión el tipo no se elige: un remito solo se convierte en factura.
+  const [tipo, setTipo] = useState(esConversion ? 'factura' : (lectura?.tipo || tipoInit || ''));
   const [letra, setLetra] = useState(lectura?.letra || 'A');
   const [puntoVenta, setPuntoVenta] = useState(lectura?.puntoVenta || '0001');
   const [numero, setNumero] = useState(lectura?.numero != null ? String(lectura.numero) : '');
   const [fecha, setFecha] = useState(lectura?.fecha ? String(lectura.fecha).slice(0, 10) : isoDate(new Date()));
   const [fechaCarga, setFechaCarga] = useState(isoDate(new Date()));
-  const [provId, setProvId] = useState(proveedorId || '');
-  const [sucId, setSucId] = useState(lectura?.sucursalId ?? sucOperativa() ?? '');
+  const [provId, setProvId] = useState(remito?.proveedorId || proveedorId || '');
+  // La sucursal de la conversión es la del remito: la mercadería YA entró ahí.
+  const [sucId, setSucId] = useState(remito?.sucursalId ?? lectura?.sucursalId ?? sucOperativa() ?? '');
   const [venc, setVenc] = useState('');
   const [obs, setObs] = useState('');
   /* COMPROMISOS (0068): el proveedor diferido (cta cte / echeq) promete cuándo
@@ -286,7 +328,15 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   // El renglón nace VACÍO: preseleccionar el primer producto del catálogo era
   // una bomba silenciosa (un "+ ítem" distraído registraba harina en la
   // factura de gaseosas). El ítem sin producto no viaja al guardar.
-  const [items, setItems] = useState(() => [nuevoItem()]);
+  // En la CONVERSIÓN nacen del remito, con producto y cantidad clavados: son
+  // lo que entró al depósito — solo el precio puede venir distinto en el papel.
+  const [items, setItems] = useState(() => (esConversion
+    ? (remito.items || []).map((it) => {
+      const prod = store.getProducto(it.productoId);
+      const entry = (prod?.formatosCompra || []).find((e) => e.proveedorId === remito.proveedorId);
+      return filaDesdeItemRemito(it, entry);
+    })
+    : [nuevoItem()]));
   const [busquedaLote, setBusquedaLote] = useState(false);
 
   /* ---- Lectura de renglones desde el PDF digital ----
@@ -320,6 +370,20 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   const esNotaCredito = tipo === 'nota_credito';
   const [devuelveMercaderia, setDevuelveMercaderia] = useState(false);
   const provElegido = store.getProveedor(parseInt(provId, 10));
+
+  /**
+   * REMITOS DEL PROVEEDOR ESPERANDO SU FACTURA (26/8). Si el papel que se está
+   * por cargar es la factura de una de esas entregas, cargarla como documento
+   * nuevo ingresa el stock DOS VECES — la factura entra mercadería siempre. El
+   * camino correcto es la conversión, y este aviso lo pone a un clic.
+   */
+  const remitosPendientes = useMemo(() => {
+    const pid = parseInt(provId, 10);
+    if (esConversion || tipo !== 'factura' || !pid) return [];
+    return store.state.comprobantes
+      .filter((x) => x.tipo === 'remito' && x.estado === 'confirmado' && x.proveedorId === pid)
+      .sort((a, b) => b.id - a.id);
+  }, [store, provId, tipo, esConversion]);
 
   /**
    * Pagos A CUENTA del proveedor (los que la cajera hizo desde la sucursal
@@ -972,6 +1036,51 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
         .filter((x) => x.importe > 0.009)
       : [];
 
+    /*
+     * LA CONVERSIÓN VIAJA POR SU ENDPOINT (26/8): el remito PASA A SER la
+     * factura. Los renglones van por `itemId` y solo con lo que el papel puede
+     * traer distinto (costo, descuento, IVA) — producto y cantidad los tiene
+     * el remito y la API no deja tocarlos. El stock no se vuelve a mover.
+     */
+    if (esConversion) {
+      const res = await store.facturarRemito(remito.id, {
+        letra, puntoVenta, numero, fecha, fechaCarga,
+        vencimientoPago: venc || null,
+        observaciones: obs.trim(),
+        cae: lectura?.cae || caePdf || undefined,
+        lecturaId: lectura?.id,
+        bonificacion: Number(bonifPct) || 0,
+        bonificacionImporte: bonifImporte,
+        percepciones: percCalculadas
+          .filter((p) => p.aplicar && p.importe > 0.009)
+          .map((p) => ({ nombre: p.nombre, alicuota: Number(p.alicuota) || 0, base: p.base, importe: r2(p.importe) })),
+        actualizarCostos: costosAActualizar.map((d) => ({
+          productoId: d.productoId, costo: d.costoBultoFacturado, cantidad: d.bultoFacturado,
+        })),
+        activarProveedor: aActivar.map((d) => d.productoId),
+        tomarPagos,
+        pagoContado: ahora > 0
+          ? {
+            importe: r2(ahora),
+            medio: medioPago,
+            cajaSesionId: origenPago ? Number(origenPago) : undefined,
+            referencia: refPago.trim() || undefined,
+          }
+          : undefined,
+        compromisos: compFilas.length
+          ? compFilas.map((k) => ({ importe: r2(k.importe), fechaVenc: k.fechaVenc }))
+          : undefined,
+        items: items.filter((it) => it.itemId).map((it) => {
+          const r = calcRow(it);
+          return { itemId: it.itemId, costoUnitario: r.costoUnitario, descuento: it.descuento, iva: it.iva };
+        }),
+      });
+      if (!res.ok) { toast(res.error || 'No se pudo facturar el remito.', 'err'); return; }
+      toast(`Remito facturado: pasó a ser la factura ${letra} ${puntoVenta}-${numero || remito.id}. El stock no se movió.`, 'ok');
+      closeModal();
+      return;
+    }
+
     const res = await store.crearComprobante({
       tipo, letra, puntoVenta, numero, fecha, fechaCarga, proveedorId: parseInt(provId, 10),
       // Sale del TIPO, no de un tilde: factura, liquidación y remito ingresan
@@ -1075,13 +1184,25 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
   return (
     <>
       <ModalShell
-        title="Nuevo comprobante de compra"
+        title={esConversion ? 'Llegó la factura — facturar el remito' : 'Nuevo comprobante de compra'}
         subtitle={`Paso ${paso} de 3 · ${PASOS_WIZARD[paso - 1]}`}
         wide
         onClose={closeModal}
         footer={footer}
       >
       <PasosWizard paso={paso} irA={setPaso} />
+
+      {/* LA CONVERSIÓN, DICHA EN LA CARA (26/8): qué es este formulario y qué
+          NO va a pasar con el stock. Es la diferencia entera con el alta. */}
+      {esConversion && (
+        <div className={cx(s.callout, s.info)} style={{ marginBottom: 'var(--crm-space-3)' }}>
+          Esta factura nace del remito <strong>{comprobanteNro(remito)}</strong> del{' '}
+          {fmtFecha(remito.fecha)} ({store.getSucursal(remito.sucursalId)?.nombre || 'sucursal'}).{' '}
+          <strong>La mercadería ya ingresó con el remito y el stock no se vuelve a mover</strong>:
+          acá se completa lo que dice el papel — número, precios reales, pie y pago — y el remito
+          pasa a ser la factura.
+        </div>
+      )}
 
       {/* EL PAPEL, A MANO EN LOS TRES PASOS. Es lo que se mira mientras se
           tipean los renglones, así que el link tiene que estar siempre visible y
@@ -1117,12 +1238,18 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Tipo <span className={s.req}>*</span></label>
-          <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
-            {/* La opción vacía queda deshabilitada: se ve mientras no se
-                eligió nada, pero no se puede volver a ella. */}
-            <option value="" disabled>Elegí el tipo…</option>
-            {tiposDisponibles.map((k) => <option key={k} value={k}>{TIPOS_COMPROBANTE[k].label}</option>)}
-          </select>
+          {/* En la conversión no hay nada que elegir: un remito solo se
+              convierte en factura — es el punto del circuito. */}
+          {esConversion ? (
+            <input value="Factura" readOnly tabIndex={-1} />
+          ) : (
+            <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+              {/* La opción vacía queda deshabilitada: se ve mientras no se
+                  eligió nada, pero no se puede volver a ella. */}
+              <option value="" disabled>Elegí el tipo…</option>
+              {tiposDisponibles.map((k) => <option key={k} value={k}>{TIPOS_COMPROBANTE[k].label}</option>)}
+            </select>
+          )}
           {esNoFiscal && (
             <div className={s.hint} style={{ margin: '6px 0 0' }}>
               Sin IVA, sin percepciones y sin CAE. Suma stock y deuda igual que una
@@ -1136,7 +1263,9 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
             <>
               <input value={provElegido?.nombre || '—'} readOnly tabIndex={-1} />
               <div className={s.hint} style={{ margin: '6px 0 0' }}>
-                Abierto desde la ficha del proveedor: el comprobante es de él.
+                {esConversion
+                  ? 'El del remito: la factura es de la misma entrega.'
+                  : 'Abierto desde la ficha del proveedor: el comprobante es de él.'}
               </div>
             </>
           ) : (
@@ -1206,9 +1335,15 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
             </label>
             {/* Cambia la sucursal → cambia la bandeja de pagos que se ofrece
                 en el paso 3: lo tildado hablaba de otra sucursal. */}
-            <select value={sucId} onChange={(e) => { setSucId(e.target.value); setTomados({}); }}>
-              {sucursalOptions(store, false)}
-            </select>
+            {/* En la conversión no se elige: la mercadería YA entró en la
+                sucursal del remito — moverla acá mentiría dos inventarios. */}
+            {esConversion ? (
+              <input value={store.getSucursal(parseInt(sucId, 10))?.nombre || '—'} readOnly tabIndex={-1} />
+            ) : (
+              <select value={sucId} onChange={(e) => { setSucId(e.target.value); setTomados({}); }}>
+                {sucursalOptions(store, false)}
+              </select>
+            )}
           </div>
           {/*
             En factura, liquidación y remito acá había un tilde "Ingresa stock" y
@@ -1237,10 +1372,41 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
           ) : (
             <div className={s.field} style={{ alignSelf: 'end' }}>
               <div className={s.hint} style={{ margin: 0 }}>
-                La mercadería de los ítems <strong>entra al stock de esa sucursal</strong> al registrar.
+                {esConversion
+                  ? <>La mercadería <strong>ya ingresó con el remito</strong>: registrar la factura no toca el stock.</>
+                  : <>La mercadería de los ítems <strong>entra al stock de esa sucursal</strong> al registrar.</>}
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* EL CANDADO DEL DOBLE INGRESO (26/8): la factura de un remito ya
+          ingresado NO se carga como comprobante nuevo — el stock entraría dos
+          veces. Se avisa y se ofrece el camino correcto con un clic. */}
+      {remitosPendientes.length > 0 && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>
+            Ojo: {provElegido?.nombre || 'este proveedor'} tiene{' '}
+            {remitosPendientes.length === 1 ? 'un remito ya ingresado' : `${remitosPendientes.length} remitos ya ingresados`}{' '}
+            esperando su factura.
+          </strong>{' '}
+          Si este papel es la factura de una de esas entregas, no la cargues acá: la mercadería
+          del remito ya está en el stock y <strong>entraría dos veces</strong>. Usá
+          «Llegó la factura», que completa el remito sin volver a mover mercadería.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+            {remitosPendientes.map((r) => (
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span>
+                  Remito <span className={s.mono}>{comprobanteNro(r)}</span> · {fmtFecha(r.fecha)} ·{' '}
+                  {store.getSucursal(r.sucursalId)?.nombre || '—'} · {money(r.total)}
+                </span>
+                <Btn small variant="btn-primary" onClick={() => openModal('comprobanteForm', { remito: r, lectura })}>
+                  Llegó la factura de este
+                </Btn>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1359,15 +1525,24 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
           )}
         </div>
       )}
-      <div className={s.hint} style={{ marginTop: 0 }}>
-        El buscador ofrece los productos de <strong>{provElegido?.nombre || 'este proveedor'}</strong> por
-        nombre, código interno o código de barras. Se carga <strong>en bultos</strong>, como habla la
-        factura: llegaron 2 bolsas de 25 kg → Cantidad 2, y el sistema ingresa los 50 kg. El tamaño
-        del bulto <strong>sale del Formato de compra del producto</strong> — si cambió, se corrige
-        ahí, no acá. Si un producto
-        entero vino <strong>suelto</strong> (unidades que no completan el bulto), el selector del
-        renglón lo pasa a &ldquo;u. sueltas&rdquo;: la cantidad y el costo pasan a ser por unidad.
-      </div>
+      {esConversion ? (
+        <div className={s.hint} style={{ marginTop: 0 }}>
+          Los renglones son <strong>los del remito</strong>: producto y cantidad no se tocan — son
+          lo que entró al depósito. Lo que sí se corrige acá es lo que el papel puede traer
+          distinto: <strong>costo, descuento e IVA</strong>. Si la factura difiere en cantidades,
+          eso es una diferencia de entrega y va por su circuito (ajuste de stock o nota de crédito).
+        </div>
+      ) : (
+        <div className={s.hint} style={{ marginTop: 0 }}>
+          El buscador ofrece los productos de <strong>{provElegido?.nombre || 'este proveedor'}</strong> por
+          nombre, código interno o código de barras. Se carga <strong>en bultos</strong>, como habla la
+          factura: llegaron 2 bolsas de 25 kg → Cantidad 2, y el sistema ingresa los 50 kg. El tamaño
+          del bulto <strong>sale del Formato de compra del producto</strong> — si cambió, se corrige
+          ahí, no acá. Si un producto
+          entero vino <strong>suelto</strong> (unidades que no completan el bulto), el selector del
+          renglón lo pasa a &ldquo;u. sueltas&rdquo;: la cantidad y el costo pasan a ser por unidad.
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr .6fr .8fr .9fr .6fr .6fr 1fr auto', gap: 8, marginBottom: 6 }}>
         {['Producto', 'Cantidad', 'Por bulto', 'Costo', 'Desc%', 'IVA%', 'Subtotal', ''].map((h, i) => (
           <div key={i} className={s['mini-label']}>{h}</div>
@@ -1385,10 +1560,13 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ flex: 1, minWidth: 0, fontWeight: 600 }}>{prod.nombre}</span>
-                  <button
-                    type="button" className={s['pres-remove']} title="Cambiar producto"
-                    onClick={() => setItem(i, { productoId: '', costoBulto: '', costoAuto: true, modo: 'bulto' })}
-                  >×</button>
+                  {/* En la conversión el producto está clavado: es el que entró. */}
+                  {!esConversion && (
+                    <button
+                      type="button" className={s['pres-remove']} title="Cambiar producto"
+                      onClick={() => setItem(i, { productoId: '', costoBulto: '', costoAuto: true, modo: 'bulto' })}
+                    >×</button>
+                  )}
                 </div>
                 <div className={s.hint} style={{ margin: 0 }}>
                   {activo?.proveedorId === pid
@@ -1414,9 +1592,12 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
             <div>
               <input
                 type="number" min="0" step="any" value={it.bultos}
-                title={it.modo === 'unidad'
-                  ? 'Cuántas unidades sueltas llegaron'
-                  : 'Cuántos bultos llegaron'}
+                disabled={esConversion}
+                title={esConversion
+                  ? 'La cantidad es la del remito: es lo que entró al depósito'
+                  : it.modo === 'unidad'
+                    ? 'Cuántas unidades sueltas llegaron'
+                    : 'Cuántos bultos llegaron'}
                 onChange={(e) => setItem(i, { bultos: e.target.value })}
               />
               {/* El modo suelto es SOLO de los enteros (el dueño, 25/8): en el
@@ -1430,7 +1611,9 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
                   tamaño NO va dentro de la opción del select ("bultos ×12"):
                   en el ancho real de la columna se trunca a "bultos ×1", que
                   es peor que la ambigüedad que se quería arreglar. */}
-              {prod && prod.tipo === 'entero' && (
+              {/* En la conversión el modo tampoco se elige: la cantidad ya
+                  está clavada y cambiar el modo solo re-expresaría el costo. */}
+              {prod && prod.tipo === 'entero' && !esConversion && (
                 <>
                   <select
                     value={it.modo || 'bulto'}
@@ -1487,16 +1670,21 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
             <input type="number" min="0" step="any" value={it.descuento} onChange={(e) => setItem(i, { descuento: e.target.value })} />
             <input type="number" min="0" step="any" value={it.iva} onChange={(e) => setItem(i, { iva: e.target.value })} />
             <div className={cx(s.mono, s.num)} style={{ fontWeight: 700, alignSelf: 'center' }}>{money(r.neto)}</div>
-            <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>
+            {/* Quitar o agregar renglones cambiaría QUÉ entró — y eso ya pasó. */}
+            {esConversion
+              ? <span />
+              : <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>}
           </div>
         );
       })}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button" className={cx(s.btn, s['btn-ghost'], s['btn-sm'])} onClick={addItem}>+ Agregar ítem</button>
-        <button type="button" className={cx(s.btn, s['btn-ghost'], s['btn-sm'])} onClick={() => setBusquedaLote(true)}>
-          Buscar en lote (marca / categoría)
-        </button>
-      </div>
+      {!esConversion && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className={cx(s.btn, s['btn-ghost'], s['btn-sm'])} onClick={addItem}>+ Agregar ítem</button>
+          <button type="button" className={cx(s.btn, s['btn-ghost'], s['btn-sm'])} onClick={() => setBusquedaLote(true)}>
+            Buscar en lote (marca / categoría)
+          </button>
+        </div>
+      )}
 
       {/*
         IMPACTO EN PRECIOS. Las dos decisiones que mueven la góndola, juntas y
@@ -1783,11 +1971,20 @@ export function ComprobanteFormModal({ proveedorId, tipo: tipoInit, lectura }) {
         </div>
       )}
       {permiteRecepcion && itemsValidos > 0 && (
-        <div className={cx(s.callout, s.info)}>
-          {itemsValidos === 1 ? 'El ítem' : `Los ${itemsValidos} ítems`} de este comprobante{' '}
-          <strong>entran al stock de {store.getSucursal(parseInt(sucId, 10))?.nombre || 'la sucursal elegida'}</strong>.
-          {' '}Si la mercadería llegó a otra sucursal, cambiala en el paso 1.
-        </div>
+        esConversion ? (
+          <div className={cx(s.callout, s.info)}>
+            <strong>El stock no se mueve</strong>: la mercadería ya ingresó a{' '}
+            {store.getSucursal(parseInt(sucId, 10))?.nombre || 'la sucursal'} con el remito{' '}
+            {comprobanteNro(remito)}. Al registrar, ese remito pasa a ser esta factura y nace la
+            deuda con el proveedor.
+          </div>
+        ) : (
+          <div className={cx(s.callout, s.info)}>
+            {itemsValidos === 1 ? 'El ítem' : `Los ${itemsValidos} ítems`} de este comprobante{' '}
+            <strong>entran al stock de {store.getSucursal(parseInt(sucId, 10))?.nombre || 'la sucursal elegida'}</strong>.
+            {' '}Si la mercadería llegó a otra sucursal, cambiala en el paso 1.
+          </div>
+        )
       )}
 
       {/* ============ QUÉ FACTURA AJUSTA (solo NC y ND) ============
@@ -2468,7 +2665,7 @@ function productoProveedorOptions(store) {
 
 /* ============================== DETALLE DE COMPROBANTE ============================== */
 export function ComprobanteDetalleModal({ id }) {
-  const { store, closeModal, openModal } = useProductos();
+  const { store, closeModal, openModal, isAdmin } = useProductos();
   const c = store.getComprobante(id);
   if (!c) return null;
   const prov = store.getProveedor(c.proveedorId);
@@ -2479,6 +2676,8 @@ export function ComprobanteDetalleModal({ id }) {
    * deuda de la mitad no facturada no tenía botón Pagar en ningún lado. */
   const puedePagar = c.estado === 'confirmado'
     && (c.tipo === 'factura' || c.tipo === 'liquidacion' || c.tipo === 'nota_debito');
+  /** Un remito confirmado espera SU factura (26/8): el botón vive acá. */
+  const puedeFacturar = isAdmin && c.tipo === 'remito' && c.estado === 'confirmado';
 
   const Di = ({ label, children }) => <div className={s.di}><div className={s.l}>{label}</div><div className={s.v}>{children}</div></div>;
 
@@ -2498,7 +2697,28 @@ export function ComprobanteDetalleModal({ id }) {
   });
 
   return (
-    <ModalShell title={'Comprobante ' + comprobanteNro(c)} wide onClose={closeModal} footer={[{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }]}>
+    <ModalShell
+      title={'Comprobante ' + comprobanteNro(c)}
+      wide
+      onClose={closeModal}
+      footer={[
+        { texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal },
+        // El circuito del remito (26/8): cuando el papel llega, se convierte acá.
+        ...(puedeFacturar
+          ? [{ texto: 'Llegó la factura', clase: 'btn-primary', onClick: () => openModal('comprobanteForm', { remito: c }) }]
+          : []),
+      ]}
+    >
+      {/* El estado del circuito, dicho arriba de todo: este documento ingresó
+          mercadería pero todavía no es deuda ni factura — está esperando. */}
+      {c.tipo === 'remito' && c.estado === 'confirmado' && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>Remito pendiente de facturar.</strong> La mercadería ya ingresó
+          {suc ? ` a ${suc.nombre}` : ''} y se puede vender; el documento no genera deuda. Cuando
+          llegue la factura del proveedor, usá <strong>«Llegó la factura»</strong>: este remito pasa
+          a ser la factura, sin volver a mover el stock.
+        </div>
+      )}
       <div className={s['detalle-grid']}>
         <Di label="Tipo"><ComprobanteTag tipo={c.tipo} /></Di>
         <Di label="Estado"><ComprobanteEstadoPill estado={c.estado} /></Di>
@@ -2513,8 +2733,10 @@ export function ComprobanteDetalleModal({ id }) {
       </div>
       {c.observaciones && <div className={s.callout}>{c.observaciones}</div>}
 
-      {/* ---- De dónde salió la plata ---- */}
-      {(c.pagos?.length > 0 || saldo > 0.009) && (
+      {/* ---- De dónde salió la plata ----
+          Solo para documentos que GENERAN deuda: un remito o una orden de
+          compra no deben nada, y un "queda debiendo" ahí mentiría. */}
+      {(c.pagos?.length > 0 || (puedePagar && saldo > 0.009)) && (
         <>
           <h3 className={s['card-title']}>Pagos</h3>
           <Table

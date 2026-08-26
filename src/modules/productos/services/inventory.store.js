@@ -835,6 +835,56 @@ function _cleanComprobante(o) {
   };
 }
 const crearComprobante = (o) => _mutate(() => httpClient.post('/comprobantes', _cleanComprobante(o)));
+/**
+ * LLEGÓ LA FACTURA DE UN REMITO (26/8): el remito PASA A SER la factura, sin
+ * volver a mover stock. Los renglones viajan por `itemId` (los del remito) y
+ * solo llevan lo que el papel puede traer distinto: precio, descuento e IVA.
+ */
+const facturarRemito = (remitoId, o) => _mutate(() => httpClient.post(`/comprobantes/${remitoId}/facturar`, {
+  letra: o.letra, puntoVenta: o.puntoVenta,
+  numero: o.numero != null && o.numero !== '' ? Number(o.numero) : undefined,
+  fecha: _fechaLocal(o.fecha), fechaCarga: _fechaLocal(o.fechaCarga),
+  vencimientoPago: _fechaLocal(o.vencimientoPago), observaciones: o.observaciones || '',
+  cae: o.cae || undefined,
+  lecturaId: o.lecturaId != null && o.lecturaId !== '' ? Number(o.lecturaId) : undefined,
+  bonificacion: Number(o.bonificacion) || 0,
+  bonificacionImporte: Number(o.bonificacionImporte) || 0,
+  percepciones: (o.percepciones || [])
+    .filter((p) => (p?.nombre ?? '').trim() && Number(p.importe) > 0)
+    .map((p) => ({
+      nombre: String(p.nombre).trim(),
+      alicuota: Number(p.alicuota) || 0,
+      base: p.base === 'total' ? 'total' : 'neto',
+      importe: Number(p.importe) || 0,
+    })),
+  actualizarCostos: (o.actualizarCostos || []).map((x) => ({
+    productoId: Number(x.productoId),
+    costo: Number(x.costo) || 0,
+    cantidad: Number(x.cantidad) > 0 ? Number(x.cantidad) : undefined,
+  })),
+  activarProveedor: (o.activarProveedor || []).map(Number).filter(Boolean),
+  tomarPagos: (o.tomarPagos || [])
+    .map((x) => ({ pagoId: Number(x.pagoId), importe: Number(x.importe) || 0 }))
+    .filter((x) => x.pagoId && x.importe > 0),
+  compromisos: (o.compromisos || [])
+    .map((k) => ({ importe: Number(k.importe) || 0, fechaVenc: k.fechaVenc, obs: k.obs || undefined }))
+    .filter((k) => k.importe > 0 && k.fechaVenc),
+  pagoContado: o.pagoContado && Number(o.pagoContado.importe) > 0
+    ? {
+      importe: Number(o.pagoContado.importe),
+      medio: o.pagoContado.medio || 'efectivo',
+      cajaSesionId: o.pagoContado.cajaSesionId != null ? Number(o.pagoContado.cajaSesionId) : undefined,
+      referencia: o.pagoContado.referencia || undefined,
+    }
+    : undefined,
+  usuarioId: o.usuarioId != null ? Number(o.usuarioId) : (state.ctx.usuarioId ?? undefined),
+  items: (o.items || []).map((it) => ({
+    itemId: Number(it.itemId),
+    costoUnitario: Number(it.costoUnitario) || 0,
+    descuento: Number(it.descuento) || 0,
+    iva: it.iva != null ? Number(it.iva) : 21,
+  })),
+}));
 /** Las facturas de este proveedor que una NC/ND puede ajustar, con su saldo real. */
 const facturasReferenciables = (proveedorId) => httpClient.get('/comprobantes/referenciables/' + proveedorId);
 
@@ -1000,7 +1050,7 @@ export const inventoryStore = {
   guardarFormatosCompra, guardarListasProducto, guardarListasPresentacion,
   costoNeto, costoNetoEntry, costoPrecio, costoPrecioEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPaquete,
   precioFinal, redondearPrecio,
-  crearComprobante, getComprobante, comprobantesDe, cuentaProveedor, saldoTotalProveedores,
+  crearComprobante, facturarRemito, getComprobante, comprobantesDe, cuentaProveedor, saldoTotalProveedores,
   facturasReferenciables,
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,

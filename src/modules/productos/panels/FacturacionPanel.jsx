@@ -107,6 +107,20 @@ export function FacturacionPanel() {
     .filter((c) => (verNoFiscal || !TIPOS_COMPROBANTE[c.tipo]?.noFiscal)
       && (!tipoF || c.tipo === tipoF) && (!provF || c.proveedorId === parseInt(provF, 10)) && (!estadoF || c.estado === estadoF));
 
+  /*
+   * REMITOS PENDIENTES DE FACTURAR (26/8) — el espejo de "⚠ Sin facturar" de
+   * Ventas. Mercadería que ya entró (y se vende) con un remito, esperando que
+   * el proveedor mande la factura. Mientras haya alguno, la pestaña existe y
+   * lo canta: un remito que se olvida es deuda que no figura y crédito fiscal
+   * que no se computa. Respeta el filtro de proveedor de arriba.
+   */
+  const remitosPendientes = store.state.comprobantes
+    .filter((c) => c.tipo === 'remito' && c.estado === 'confirmado'
+      && (!provF || c.proveedorId === parseInt(provF, 10)))
+    .sort((a, b) => b.id - a.id);
+  // Si el último remito se facturó con la pestaña abierta, se vuelve a Facturas.
+  const tabEfectiva = tab === 'remitos' && !remitosPendientes.length ? 'facturas' : tab;
+
   // "Facturado" es SOLO lo facturado: la liquidación no entra ni con el permiso
   // puesto. Es el número que se compara contra el libro de IVA.
   const totalFacturado = comps
@@ -164,18 +178,64 @@ export function FacturacionPanel() {
         </span>
       </div>
 
-      {verPagos ? (
+      {(verPagos || remitosPendientes.length > 0) ? (
         <Tabs
-          value={tab}
+          value={tabEfectiva}
           onChange={(e, v) => setTab(v)}
           sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}
         >
           <Tab value="facturas" label="Facturas" sx={{ minHeight: 40 }} />
-          <Tab value="pagos" label="Pagos en sucursal" sx={{ minHeight: 40 }} />
+          {verPagos && <Tab value="pagos" label="Pagos en sucursal" sx={{ minHeight: 40 }} />}
+          {/* Solo existe mientras haya remitos esperando: un "⚠ (0)" fijo no avisa nada. */}
+          {remitosPendientes.length > 0 && (
+            <Tab value="remitos" label={`⚠ Remitos sin facturar (${remitosPendientes.length})`} sx={{ minHeight: 40 }} />
+          )}
         </Tabs>
       ) : null}
 
-      {tab === 'pagos' && verPagos ? (
+      {tabEfectiva === 'remitos' && remitosPendientes.length > 0 ? (
+        <>
+          <div className={s.callout}>
+            Mercadería que <strong>ya ingresó con un remito</strong> (y ya se vende) mientras el
+            proveedor manda la factura. Cuando llegue el papel: <strong>Llegó la factura</strong> —
+            el remito pasa a ser la factura, nace la deuda y <strong>el stock no se vuelve a
+            mover</strong>. No cargues esa factura como comprobante nuevo: la mercadería entraría
+            dos veces.
+          </div>
+          <Table
+            cols={[
+              { h: 'Ingresó' }, { h: 'Remito' }, { h: 'Proveedor' }, { h: 'Sucursal' },
+              { h: 'Total estimado', num: true }, { h: 'Acciones', cls: 'actions-col' },
+            ]}
+          >
+            {remitosPendientes.map((c) => {
+              const prov = store.getProveedor(c.proveedorId);
+              return (
+                <tr key={c.id} className={s.clickable} onClick={() => openModal('comprobanteDetalle', { id: c.id })}>
+                  <td>{fmtFecha(c.fecha)}</td>
+                  <td className={s.mono}>{comprobanteNro(c)}</td>
+                  <td>{prov ? prov.nombre : '—'}</td>
+                  <td>{store.getSucursal(c.sucursalId)?.nombre || '—'}</td>
+                  <td className={s.num}>{money(c.total)}</td>
+                  <td className={s['actions-col']}>
+                    <div className={s['row-actions']} onClick={(e) => e.stopPropagation()}>
+                      {isAdmin && (
+                        <Btn small variant="btn-primary" onClick={() => openModal('comprobanteForm', { remito: c })}>
+                          Llegó la factura
+                        </Btn>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </Table>
+          <div className={s.hint}>
+            El total es <strong>estimado</strong>: el remito entró con los costos de catálogo. El
+            número real lo trae la factura, y se corrige al facturarlo.
+          </div>
+        </>
+      ) : tabEfectiva === 'pagos' && verPagos ? (
         <PagosSucursalTab proveedorId={provF} />
       ) : (
         <>
