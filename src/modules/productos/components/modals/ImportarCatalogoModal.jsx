@@ -157,8 +157,9 @@ export function ImportarCatalogoModal() {
     const res = await store.importarCatalogo(Number(proveedorId), plan.items);
     setGuardando(false);
     if (!res.ok) { toast(res.error || 'No se pudo importar.', 'err'); return; }
-    setResultado(res.data ?? res);
-    toast(`${(res.data ?? res).creados} producto(s) importados.`, 'ok');
+    const r = res.data ?? res;
+    setResultado(r);
+    toast(`${r.creados} producto(s) importados${r.vinculados?.length ? ` y ${r.vinculados.length} vinculados` : ''}.`, 'ok');
   };
 
   /* ------------------------------- resultado ------------------------------- */
@@ -176,6 +177,26 @@ export function ImportarCatalogoModal() {
           {resultado.marcasCreadas?.length > 0 && <> Marcas nuevas: {resultado.marcasCreadas.join(', ')}.</>}
           {resultado.rubrosCreados?.length > 0 && <> Rubros nuevos: {resultado.rubrosCreados.join(', ')}.</>}
         </div>
+        {/* Los que YA EXISTÍAN (los trajo otro proveedor primero): no se crean
+            de nuevo — se les agrega el formato de compra de ESTE proveedor. */}
+        {resultado.vinculados?.length > 0 && (
+          <>
+            <div className={s['section-title']}>
+              Ya existían — se les agregó este proveedor ({resultado.vinculados.length})
+            </div>
+            <Table cols={[{ h: 'Código' }, { h: 'Producto' }, { h: 'Precio' }]}>
+              {resultado.vinculados.map((x, i) => (
+                <tr key={i}>
+                  <td className={s.mono}>{x.codigo}</td>
+                  <td>{x.nombre}</td>
+                  <td>{x.fijaPrecio
+                    ? 'Pasa a fijar el precio (no tenía ningún formato)'
+                    : 'Lo sigue fijando el proveedor anterior'}</td>
+                </tr>
+              ))}
+            </Table>
+          </>
+        )}
         {resultado.saltados?.length > 0 && (
           <>
             <div className={s['section-title']}>No entraron ({resultado.saltados.length})</div>
