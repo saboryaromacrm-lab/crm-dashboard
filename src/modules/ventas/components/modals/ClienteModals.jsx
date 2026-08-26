@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { ventasApi } from '../../services/ventas.api.js';
@@ -56,6 +57,14 @@ export function ClienteFormModal({ clienteId }) {
   // apagado, no tiene sentido ofrecer crédito por cliente.
   const ctaCteDisponible = !!config.ctaCteHabilitada;
 
+  /* LA LLAVE DEL CRÉDITO (`cta_cte`, 26/8): la ficha completa es del admin,
+   * pero habilitar la cuenta corriente y ponerle monto es otorgar crédito y
+   * lo decide el superadmin. Sin la llave los tres campos se muestran como
+   * info y NO viajan en el guardado — la API los preserva tal como están
+   * (y rechaza fuerte cualquier intento de cambiarlos por atrás). */
+  const { can } = usePermissions();
+  const puedeCredito = can('cta_cte');
+
   const guardar = () => {
     if (!f.nombre.trim()) { toast('Ingresá el nombre o razón social.', 'err'); return; }
     if (docInvalido) { toast(`El ${TIPOS_DOC[f.tipoDoc].label} debe tener ${largoDoc} dígitos.`, 'err'); return; }
@@ -69,6 +78,11 @@ export function ClienteFormModal({ clienteId }) {
       sucursalId: f.sucursalId ? Number(f.sucursalId) : null,
       ctaCteHabilitada: ctaCteDisponible && f.ctaCteHabilitada,
     };
+    if (!puedeCredito) {
+      delete datos.ctaCteHabilitada;
+      delete datos.limiteCredito;
+      delete datos.diasPlazo;
+    }
     // Las listas viven en su propia tabla (el cliente puede tener varias), así
     // que se guardan en un segundo paso con el id ya resuelto.
     const guardado = editando
@@ -214,6 +228,16 @@ export function ClienteFormModal({ clienteId }) {
       {!ctaCteDisponible ? (
         <div className={cx(s.callout, s.warn)}>
           La venta en cuenta corriente está deshabilitada en <strong>Configuración</strong>.
+        </div>
+      ) : !puedeCredito ? (
+        /* Sin la llave se VE el estado (para atender al cliente hay que saber
+         * si tiene crédito) pero no se toca: habilitarla es otorgar crédito. */
+        <div className={s.callout}>
+          {cliente?.ctaCteHabilitada
+            ? <>Habilitada — límite {cliente.limiteCredito > 0 ? money(cliente.limiteCredito) : 'sin tope'} · plazo {cliente.diasPlazo} día(s).</>
+            : 'No habilitada: este cliente opera al contado.'}
+          {' '}Habilitarla y fijar el monto lo hace el <strong>superadmin</strong> desde este mismo
+          formulario. El resto de la ficha se guarda normalmente.
         </div>
       ) : (
         <>
