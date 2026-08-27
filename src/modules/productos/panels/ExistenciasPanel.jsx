@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { Tabs, Tab } from '@mui/material';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money } from '../domain/format.js';
 import { ESTADOS_STOCK } from '../domain/constants.js';
 import { sucursalOptions, productoOptions } from '../components/selectOptions.jsx';
 import { Table, PanelHead, TipoBadge, StockPill, Btn, usePaginado, s } from '../components/ui.jsx';
+import { HistorialPanel } from './HistorialPanel.jsx';
 
 /**
  * Existencias es consulta, con UNA excepción: el AJUSTE por fila (19/8/2026,
@@ -25,11 +27,21 @@ import { Table, PanelHead, TipoBadge, StockPill, Btn, usePaginado, s } from '../
  * vencimientos, incidencias) y ajustarlo desde acá los descuadraría.
  */
 export function ExistenciasPanel() {
-  const { store, openModal, goPanel } = useProductos();
+  const { store, openModal } = useProductos();
   const puedeAjustar = store.can('inventario');
   const [sucF, setSucF] = useState('');
   const [prodF, setProdF] = useState('');
   const [estadoF, setEstadoF] = useState('');
+  /* La FOTO y la PELÍCULA como pestañas de la misma pantalla (27/8, pedido del
+   * dueño). `movsPreset.k` cuenta los clics en "Movs." y va en la key del
+   * historial embebido: sin remount, los useState del filtro no releerían el
+   * preset de la nueva fila. */
+  const [tab, setTab] = useState('stock');
+  const [movsPreset, setMovsPreset] = useState(null);
+  const irAMovs = (st) => {
+    setMovsPreset({ productoId: st.productoId, sucursalId: st.sucursalId, k: (movsPreset?.k ?? 0) + 1 });
+    setTab('movs');
+  };
 
   const entradas = store.state.stock
     .filter((st) => st.cantidad > 1e-9)
@@ -55,14 +67,10 @@ export function ExistenciasPanel() {
           <td className={s.num}>{money(store.valorEntry(st))}</td>
           <td className={s['actions-col']}>
             <div className={s['row-actions']}>
-              {/* La película de ESTA fila (27/8): salta al historial con el
+              {/* La película de ESTA fila: abre la pestaña Movimientos con el
                   producto y la sucursal ya filtrados — quién lo tocó, cuándo y
-                  por qué, sin cruzar de módulo. */}
-              <Btn
-                small
-                variant="btn-ghost"
-                onClick={() => goPanel('historial', { productoId: st.productoId, sucursalId: st.sucursalId })}
-              >
+                  por qué. */}
+              <Btn small variant="btn-ghost" onClick={() => irAMovs(st)}>
                 Movs.
               </Btn>
               {puedeAjustar && st.estado === 'disponible' && (
@@ -86,34 +94,48 @@ export function ExistenciasPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
-        title="Existencias · Movimientos de stock"
-        desc="Stock real por Producto × Sucursal × Presentación × Estado. Toda baja o alta genera un movimiento."
+        title="Existencias"
+        desc="La foto y la película del stock: lo que hay por Producto × Sucursal × Presentación × Estado, y en Movimientos el registro de toda alta o baja."
       />
-      <div className={s.toolbar}>
-        <select className={s['select-inline']} value={sucF} onChange={(e) => setSucF(e.target.value)}>
-          <option value="">Todas las sucursales</option>
-          {sucursalOptions(store, false)}
-        </select>
-        <select className={s['select-inline']} value={prodF} onChange={(e) => setProdF(e.target.value)}>
-          <option value="">Todos los productos</option>
-          {productoOptions(store, false)}
-        </select>
-        <select className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)}>
-          <option value="">Todos los estados</option>
-          {Object.keys(ESTADOS_STOCK).map((k) => <option key={k} value={k}>{ESTADOS_STOCK[k].label}</option>)}
-        </select>
-      </div>
-      <Table
-        cols={[
-          { h: 'Producto' }, { h: 'Sucursal' }, { h: 'Present.' },
-          { h: 'Estado' }, { h: 'Cantidad', num: true }, { h: 'Valor', num: true },
-          { h: '', cls: 'actions-col' },
-        ]}
-        empty="Sin existencias con esos filtros."
-        pag={pag}
+      <Tabs
+        value={tab}
+        onChange={(e, v) => setTab(v)}
+        sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}
       >
-        {filas}
-      </Table>
+        <Tab value="stock" label="Existencias" sx={{ minHeight: 40 }} />
+        <Tab value="movs" label="Movimientos" sx={{ minHeight: 40 }} />
+      </Tabs>
+      {tab === 'movs' ? (
+        <HistorialPanel embedded preset={movsPreset} key={movsPreset?.k ?? 0} />
+      ) : (
+        <>
+          <div className={s.toolbar}>
+            <select className={s['select-inline']} value={sucF} onChange={(e) => setSucF(e.target.value)}>
+              <option value="">Todas las sucursales</option>
+              {sucursalOptions(store, false)}
+            </select>
+            <select className={s['select-inline']} value={prodF} onChange={(e) => setProdF(e.target.value)}>
+              <option value="">Todos los productos</option>
+              {productoOptions(store, false)}
+            </select>
+            <select className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)}>
+              <option value="">Todos los estados</option>
+              {Object.keys(ESTADOS_STOCK).map((k) => <option key={k} value={k}>{ESTADOS_STOCK[k].label}</option>)}
+            </select>
+          </div>
+          <Table
+            cols={[
+              { h: 'Producto' }, { h: 'Sucursal' }, { h: 'Present.' },
+              { h: 'Estado' }, { h: 'Cantidad', num: true }, { h: 'Valor', num: true },
+              { h: '', cls: 'actions-col' },
+            ]}
+            empty="Sin existencias con esos filtros."
+            pag={pag}
+          >
+            {filas}
+          </Table>
+        </>
+      )}
     </div>
   );
 }

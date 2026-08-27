@@ -10,10 +10,13 @@ import { imprimirDocumento, cuerpoValeOperacion } from '@core/services/imprimir.
 /**
  * HISTORIAL DE MOVIMIENTOS — la película del stock, fila por fila.
  *
- * Vive en DOS menús con la misma pantalla: Compras › Historial y Almacén ›
- * Movimientos (27/8, pedido del dueño: "quiero fecha, hora, usuario y el dato
- * que importe" — la película tiene que leerse al lado de la foto de
- * Existencias, no cruzando de módulo).
+ * Vive en DOS lugares con la misma pantalla: Compras › Historial (panel
+ * propio) y Almacén › Existencias › pestaña Movimientos (27/8, pedido del
+ * dueño: "quiero fecha, hora, usuario y el dato que importe", y después "en
+ * una pestaña dentro de Existencias" — la película tiene que leerse al lado
+ * de la foto, no cruzando de módulo ni gastando una entrada del menú).
+ * Embebido recibe `preset` (filtros iniciales) y `embedded` (sin PanelHead:
+ * la pestaña ya lo dice).
  *
  * Cada fila dice CUÁNDO (fecha y hora), QUÉ (tipo + producto + cantidad con
  * signo), DÓNDE (sucursal, con la flecha si fue un viaje), POR QUÉ (el
@@ -22,14 +25,15 @@ import { imprimirDocumento, cuerpoValeOperacion } from '@core/services/imprimir.
  * QUIÉN. Si nació de una transferencia o una incidencia, "Ver" abre ese
  * documento.
  */
-export function HistorialPanel() {
+export function HistorialPanel({ preset, embedded }) {
   const { store, toast, openModal, panelParams } = useProductos();
   useSeccion('movimientos');
   const [tipoF, setTipoF] = useState('');
   /* Llegar DESDE UNA FILA de Existencias (botón "Movs.") entra con el
    * producto y la sucursal ya filtrados: la pregunta era sobre ESA fila. */
-  const [prodF, setProdF] = useState(() => (panelParams?.productoId ? String(panelParams.productoId) : ''));
-  const [sucF, setSucF] = useState(() => (panelParams?.sucursalId ? String(panelParams.sucursalId) : ''));
+  const ini = preset ?? panelParams;
+  const [prodF, setProdF] = useState(() => (ini?.productoId ? String(ini.productoId) : ''));
+  const [sucF, setSucF] = useState(() => (ini?.sucursalId ? String(ini.sucursalId) : ''));
 
   const movs = store.state.movimientos
     .slice()
@@ -131,10 +135,12 @@ export function HistorialPanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
-      <PanelHead
-        title="Historial de movimientos"
-        desc={`Registro inmutable de toda alta y baja de inventario: cuándo, qué, dónde, por qué y quién. ${store.state.movimientos.length} movimientos.`}
-      />
+      {!embedded && (
+        <PanelHead
+          title="Historial de movimientos"
+          desc={`Registro inmutable de toda alta y baja de inventario: cuándo, qué, dónde, por qué y quién. ${store.state.movimientos.length} movimientos.`}
+        />
+      )}
       <div className={s.toolbar}>
         <select className={s['select-inline']} value={tipoF} onChange={(e) => setTipoF(e.target.value)}>
           <option value="">Todos los movimientos</option>

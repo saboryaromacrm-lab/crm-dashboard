@@ -55,15 +55,12 @@ export const COMPRAS_PANELS = [
 
 /** Menú interno del módulo ALMACÉN. */
 export const ALMACEN_PANELS = [
-  { id: 'existencias',    label: 'Existencias',    icon: WarehouseIcon,      permiso: 'almacen.existencias' },
   /*
-   * El historial de movimientos TAMBIÉN acá (27/8, pedido del dueño): es la
-   * película de la foto que muestra Existencias, y tenerla solo en Compras
-   * obligaba a cruzar de módulo para responder "quién tocó esto y cuándo".
-   * Misma pantalla que Compras › Historial; misma llave que Existencias a
-   * propósito — quien puede ver el stock puede ver sus movimientos.
+   * Existencias trae adentro la pestaña Movimientos (27/8, pedido del dueño):
+   * la película de la foto, sin cruzar a Compras › Historial ni gastar una
+   * entrada del menú. Ver ExistenciasPanel.
    */
-  { id: 'historial',      label: 'Movimientos',    icon: HistoryIcon,        permiso: 'almacen.existencias' },
+  { id: 'existencias',    label: 'Existencias',    icon: WarehouseIcon,      permiso: 'almacen.existencias' },
   /*
    * El físico contra el virtual (0066): sesiones de conteo con la lista
    * congelada, ciegas por defecto, que se aplican por diferencia. Vive al lado
