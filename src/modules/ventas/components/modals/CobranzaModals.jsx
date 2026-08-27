@@ -18,7 +18,7 @@ const EPS = 0.005;
  * ==================================================================== */
 
 export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
-  const { clientes, config, ctx, act, closeModal, toast } = useVentas();
+  const { clientes, config, ctx, act, closeModal, toast, operadorId } = useVentas();
 
   const [clienteId, setClienteId] = useState(clienteInicial ? String(clienteInicial) : '');
   const [fecha, setFecha] = useState(() => isoDate(new Date()));
@@ -99,6 +99,8 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
       clienteId: Number(clienteId),
       sucursalId: ctx.sucursalId ?? undefined,
       usuarioId: ctx.usuarioId ?? undefined,
+      // El relevo (0088): el recibo lo firma quien está parado en la caja.
+      operadorId: operadorId ?? undefined,
       fecha: new Date(`${fecha}T12:00:00`).toISOString(),
       observaciones,
       pagos: pagos

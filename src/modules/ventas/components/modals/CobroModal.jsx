@@ -36,7 +36,7 @@ import p from '../../styles/Pos.module.css';
  * nada que elegir. Los medios de pago arrancan en efectivo por el total.
  */
 export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrado }) {
-  const { getCliente, config, ctx, closeModal, toast } = useVentas();
+  const { getCliente, config, ctx, closeModal, toast, operador, operadorId } = useVentas();
   const cliente = getCliente(clienteId);
 
   const [condicionPago, setCondicionPago] = useState('contado');
@@ -192,6 +192,8 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
           condicionPago,
           cajaSesionId: cajaSesionId ?? undefined,
           usuarioId: ctx.usuarioId ?? undefined,
+          // El relevo (0088): el cobro queda firmado por quien está en la caja.
+          operadorId: operadorId ?? undefined,
           observaciones,
           // El importe del redondeo (los $7 de "39.893 → 39.900"): el servidor
           // lo materializa como el extra "Redondeo" y ajusta el total.

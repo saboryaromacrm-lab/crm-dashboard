@@ -88,7 +88,7 @@ export function AbrirCajaModal({ onChange }) {
  *     repartidor": la cajera no carga factura, solo registra el pago.
  */
 export function MovimientoCajaModal({ cajaSesionId, onChange }) {
-  const { ctx, act, closeModal, toast } = useVentas();
+  const { ctx, act, closeModal, toast, operadorId } = useVentas();
   const [tipo, setTipo] = useState('egreso');
   const [destino, setDestino] = useState('comun');
   const [importe, setImporte] = useState('');
@@ -140,6 +140,8 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
           medio: 'efectivo',
           cajaSesionId,
           usuarioId: ctx.usuarioId ?? undefined,
+          // El relevo (0088): el pago lo firma quien está en la caja.
+          operadorId: operadorId ?? undefined,
           concepto: motivo.trim(),
           referencia: referencia.trim(),
           esFlete: esFlete || undefined,
@@ -157,7 +159,12 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
 
     if (!motivo.trim()) { toast('Indicá el motivo.', 'err'); return; }
     const ok = await act(
-      ventasApi.movimientoCaja(cajaSesionId, { tipo, importe: r2(importe), motivo, usuarioId: ctx.usuarioId ?? undefined }),
+      ventasApi.movimientoCaja(cajaSesionId, {
+        tipo, importe: r2(importe), motivo,
+        usuarioId: ctx.usuarioId ?? undefined,
+        // El relevo (0088): el movimiento manual lo firma quien está en la caja.
+        operadorId: operadorId ?? undefined,
+      }),
       'Movimiento registrado.',
       { recargar: false },
     );
@@ -425,7 +432,7 @@ function useContadorBilletes(setMonto) {
  * No mueve dinero ni cambia el estado — es puro control entre arqueos.
  */
 export function ControlCajaModal({ cajaSesionId, onChange }) {
-  const { ctx, act, closeModal, toast } = useVentas();
+  const { ctx, act, closeModal, toast, operadorId } = useVentas();
   const [contado, setContado] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const contador = useContadorBilletes(setContado);
@@ -451,6 +458,8 @@ export function ControlCajaModal({ cajaSesionId, onChange }) {
         contadoEfectivo: r2(contado),
         observaciones,
         usuarioId: ctx.usuarioId ?? undefined,
+        // El relevo (0088): el conteo lo firma quien está parado en la caja.
+        operadorId: operadorId ?? undefined,
       }),
       'Control de caja registrado.',
       { recargar: false },
@@ -720,7 +729,7 @@ export function DetalleArqueo({ arqueo }) {
 }
 
 export function CerrarCajaModal({ cajaSesionId, onChange }) {
-  const { act, closeModal, toast } = useVentas();
+  const { act, closeModal, toast, setOperador } = useVentas();
   const [declarado, setDeclarado] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const contador = useContadorBilletes(setDeclarado);
@@ -744,7 +753,12 @@ export function CerrarCajaModal({ cajaSesionId, onChange }) {
       'Turno cerrado.',
       { recargar: false },
     );
-    if (ok) onChange?.();
+    if (ok) {
+      /* El relevo muere con el turno (0088): el próximo arranca con el titular
+       * de la sesión — un relevo que sobrevive al cierre es un olvido servido. */
+      setOperador(null);
+      onChange?.();
+    }
   };
 
   if (loading) {

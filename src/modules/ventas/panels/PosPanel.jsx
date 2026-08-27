@@ -581,7 +581,7 @@ function VentasAbiertas({ abiertas, catalogo, onAbrir, onNueva, cargando }) {
 export function PosPanel() {
   const {
     clientes, config, ctx, usuarios, sucursales, getCliente, openModal, closeModal, toast, modal,
-    goPanel,
+    goPanel, operador, operadorId,
   } = useVentas();
 
   const [ticket, dispatch] = useReducer(ticketReducer, ticketInicial);
@@ -923,6 +923,8 @@ export function PosPanel() {
          * porcentaje lo pone el servidor— y se filtran los que ya no tienen
          * efecto, que el servidor rechaza (ver `descuentosParaApi`). */
         descuentos: descuentosParaApi(estado),
+        /* El relevo (0088): quien está en la caja firma lo que toca. */
+        operadorId: operadorId ?? undefined,
       });
       recargarAbiertas();
     } catch (e) {
@@ -930,7 +932,7 @@ export function PosPanel() {
     } finally {
       setGuardando(false);
     }
-  }, [recargarAbiertas, toast]);
+  }, [recargarAbiertas, toast, operadorId]);
 
   useEffect(() => {
     if (!activaId) return undefined;
@@ -985,6 +987,8 @@ export function PosPanel() {
         clienteId: consumidorFinal?.id,
         sucursalId,
         usuarioId: ctx.usuarioId ?? undefined,
+        // El relevo (0088): el ticket nuevo nace firmado por quien está en la caja.
+        operadorId: operadorId ?? undefined,
         items: [],
       });
       dispatch({ tipo: 'limpiar' });
@@ -998,7 +1002,7 @@ export function PosPanel() {
     } catch (e) {
       toast(e?.data?.message || 'No se pudo abrir una venta nueva.', 'err');
     }
-  }, [consumidorFinal, sucursalId, ctx.usuarioId, abrirPestana, recargarAbiertas, enfocarBuscador, toast]);
+  }, [consumidorFinal, sucursalId, ctx.usuarioId, operadorId, abrirPestana, recargarAbiertas, enfocarBuscador, toast]);
 
   const nuevaVenta = useCallback(async () => {
     clearTimeout(guardadoRef.current);
@@ -1257,6 +1261,13 @@ export function PosPanel() {
           {barraPestanas(true)}
           <div className={p.regEstado}>
             {guardando && <span className={s.hint} style={{ margin: 0 }}>Guardando…</span>}
+            {/* El relevo (0088): quién está en la caja, siempre a la vista y a
+                un clic. Cuando no es el de la sesión, el BANNER de abajo lo
+                canta en grande — el modo real de falla del relevo es olvidarse
+                de volver, y contra eso lo único que sirve es que se vea. */}
+            <Btn small onClick={() => openModal('relevo', { cajaSesionId: caja?.id })}>
+              {operador ? `Cobrando: ${operador.nombre}` : 'Relevo'}
+            </Btn>
             <span className={cx(p.cajaChip, !cajaAbierta && p.cajaChipCerrada)}>
               {cargandoCaja ? 'Caja…' : cajaAbierta ? `Caja #${caja.id}` : 'Caja cerrada'}
             </span>
@@ -1268,6 +1279,22 @@ export function PosPanel() {
             <span className={p.regSucursal}>{sucursal?.nombre}</span>
           </div>
         </div>
+
+        {operador && (
+          <div
+            className={cx(s.callout, s.warn)}
+            style={{ margin: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}
+          >
+            <span>
+              🧾 <strong>COBRANDO: {operador.nombre.toUpperCase()}</strong>
+              {' '}(sesión de {usuarios.find((u) => u.id === ctx.usuarioId)?.nombre || '—'}) — las
+              ventas quedan a su nombre.
+            </span>
+            <Btn small onClick={() => openModal('relevo', { cajaSesionId: caja?.id })}>
+              Volvió {usuarios.find((u) => u.id === ctx.usuarioId)?.nombre || 'el titular'}
+            </Btn>
+          </div>
+        )}
 
         {errorCatalogo && (
           <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>
@@ -1570,6 +1597,10 @@ export function PosPanel() {
             <div className={p.cajaDato}><span>Turno</span><strong>#{caja.id} abierto</strong></div>
             <div className={p.cajaDato}><span>Desde</span><strong>{fmtFechaHora(caja.apertura)}</strong></div>
             <span className={p.spacer} />
+            {/* El relevo (0088), también desde la lista de ventas en curso. */}
+            <Btn small onClick={() => openModal('relevo', { cajaSesionId: caja?.id })}>
+              {operador ? `Cobrando: ${operador.nombre}` : 'Relevo'}
+            </Btn>
             <Btn small onClick={() => goPanel('caja')}>Gestionar caja</Btn>
           </>
         ) : (
@@ -1585,6 +1616,24 @@ export function PosPanel() {
           </>
         )}
       </div>
+
+      {/* El banner del relevo, también en la lista: el olvido de volver es EL
+          modo de falla, y contra eso lo único que sirve es que se vea. */}
+      {operador && (
+        <div
+          className={cx(s.callout, s.warn)}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}
+        >
+          <span>
+            🧾 <strong>COBRANDO: {operador.nombre.toUpperCase()}</strong>
+            {' '}(sesión de {usuarios.find((u) => u.id === ctx.usuarioId)?.nombre || '—'}) — las
+            ventas quedan a su nombre.
+          </span>
+          <Btn small onClick={() => openModal('relevo', { cajaSesionId: caja?.id })}>
+            Volvió {usuarios.find((u) => u.id === ctx.usuarioId)?.nombre || 'el titular'}
+          </Btn>
+        </div>
+      )}
 
       {/* ---------------- Pestañas ---------------- */}
       {barraPestanas(false)}

@@ -19,6 +19,7 @@ import {
 } from './modals/ListaModals.jsx';
 import { OfertaFormModal, BorrarOfertaModal } from './modals/OfertaModals.jsx';
 import { DetalleVentaModal, AnularVentaModal, NotaCreditoModal } from './modals/VentaModals.jsx';
+import { RelevoModal } from './modals/RelevoModal.jsx';
 
 /** Un solo modal a la vez: el contexto guarda `{ type, props }`. */
 const REGISTRY = {
@@ -48,6 +49,8 @@ const REGISTRY = {
   verLogica: VerLogicaModal,
   cobro: CobroModal,
   ventaEmitida: VentaEmitidaModal,
+  // El relevo de caja (0088): quién está físicamente en la registradora.
+  relevo: RelevoModal,
   cargaRapida: CargaRapidaModal,
   busquedaMasiva: BusquedaMasivaModal,
   cargaExtra: CargaExtraModal,

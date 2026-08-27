@@ -140,6 +140,15 @@ export const ventasApi = {
   borrarLista: (id) => httpClient.delete(`/listas/${id}`),
   setListasCliente: (clienteId, listas) => httpClient.put(`/listas/cliente/${clienteId}`, { listas }),
 
+  /* El relevo de caja (0088): quién puede tomar la registradora y su PIN.
+   * `relevoId` y no `usuarioId`: ese campo lo pisa el servidor con el de la
+   * sesión (AutorInterceptor) — mismo motivo que `paraUsuarioId` en delegar. */
+  relevos: () => httpClient.get('/relevos'),
+  verificarRelevo: (relevoId, pin, cajaSesionId) =>
+    httpClient.post('/relevos/verificar', { relevoId, pin, cajaSesionId }),
+  volverRelevo: (operadorNombre, cajaSesionId) =>
+    httpClient.post('/relevos/volver', { operadorNombre, cajaSesionId }),
+
   /* Caja */
   cajaActual: (sucursalId) => httpClient.get(`/caja/actual/${sucursalId}`),
   cajaTurnos: (filtros) => httpClient.get(`/caja${qs(filtros)}`),

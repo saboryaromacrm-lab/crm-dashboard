@@ -122,6 +122,9 @@ export function DetalleVentaModal({ ventaId, onCambio }) {
             <Di label="Fecha">{fmtFechaHora(v.fecha)}</Di>
             <Di label="Sucursal">{v.sucursalNombre}</Di>
             <Di label="Cajero">{v.cajeroNombre}</Di>
+            {/* Quién cobró, cuando no es quien armó (0060/0088, relevo de
+                caja): la respuesta a "¿quién cerró esta venta?". */}
+            {v.cobradoPorNombre ? <Di label="Cobrada por">{v.cobradoPorNombre}</Di> : null}
             <Di label="Turno de caja">{v.cajaSesionId ? `#${v.cajaSesionId}` : <span className={s.muted}>—</span>}</Di>
             <Di label="Cliente">{v.clienteNombre}</Di>
             <Di label="Condición">{CONDICIONES_PAGO[v.condicionPago] ?? v.condicionPago}</Di>

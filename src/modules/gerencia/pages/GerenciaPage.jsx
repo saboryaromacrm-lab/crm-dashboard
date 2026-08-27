@@ -41,13 +41,19 @@ function UsuarioModal({ usuario, roles, onGuardar, onCerrar }) {
   const [rolId, setRolId] = useState(usuario?.rolId ?? roles.find((r) => r.clave === 'cajero')?.id ?? roles[0]?.id);
   const [activo, setActivo] = useState(usuario?.activo ?? true);
   const [password, setPassword] = useState('');
+  /* El relevo de caja (0088): la marca + su PIN. El PIN nunca vuelve del
+   * servidor — el campo siempre arranca vacío y vacío = no cambiarlo. */
+  const [relevoCaja, setRelevoCaja] = useState(usuario?.relevoCaja ?? false);
+  const [pin, setPin] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   const guardar = async () => {
     setGuardando(true);
     const ok = await onGuardar({
       nombre, rolId: Number(rolId), activo,
+      relevoCaja,
       ...(password ? { password } : {}),
+      ...(pin ? { pin } : {}),
     });
     setGuardando(false);
     if (ok) onCerrar();
@@ -88,6 +94,31 @@ function UsuarioModal({ usuario, roles, onGuardar, onCerrar }) {
           <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} />
           Usuario activo (desactivado no puede operar)
         </label>
+      )}
+
+      {/* EL RELEVO DE CAJA (0088): "la cajera se ausenta, cobra el repositor".
+          El relevo toma la registradora de una sesión ajena con su PIN y firma
+          lo que hace — sin cambiar de usuario ni ganar permisos. */}
+      <div className={s.field} style={{ marginTop: 12 }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" checked={relevoCaja} onChange={(e) => setRelevoCaja(e.target.checked)} />
+          Puede relevar en caja
+        </label>
+        <div className={s.hint} style={{ margin: '4px 0 0' }}>
+          Aparece en el POS para tomar la caja de otra sesión con su PIN: las ventas y los
+          movimientos quedan firmados con su nombre. No cambia sus permisos.
+        </div>
+      </div>
+      {relevoCaja && (
+        <div className={s.field}>
+          <label>PIN del relevo {usuario?.tienePin ? '' : <span className={s.req}>*</span>}</label>
+          <input
+            type="password" inputMode="numeric" maxLength={6}
+            value={pin}
+            placeholder={usuario?.tienePin ? 'Ya tiene PIN — dejar vacío para no cambiarlo' : '4 a 6 dígitos'}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+          />
+        </div>
       )}
     </ModalShell>
   );

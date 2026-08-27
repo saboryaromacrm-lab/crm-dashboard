@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { leerClave, leerSesion } from '@core/auth/sesion.js';
+import { escribirClave, leerClave, leerSesion } from '@core/auth/sesion.js';
 import { errorMsg, ventasApi } from '../services/ventas.api.js';
 
 /**
@@ -27,6 +27,15 @@ function leerCtx() {
   return leerClave(CTX_KEY) || {};
 }
 
+/**
+ * EL RELEVO DE CAJA (0088): quién está físicamente en la registradora cuando
+ * no es el de la sesión ("la cajera se ausenta, cobra el repositor"). Vive POR
+ * PESTAÑA, como el ctx: es del puesto, no de la cuenta. El PIN ya se verificó
+ * al elegirlo (POST /relevos/verificar); de acá en más cada escritura de la
+ * registradora viaja con `operadorId` y el servidor revalida la marca.
+ */
+const OPERADOR_KEY = 'crm_operador';
+
 export function VentasProvider({ children, panels = [], defaultPanel }) {
   const [data, setData] = useState(VACIO);
   const [loaded, setLoaded] = useState(false);
@@ -36,6 +45,15 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
   const [panel, setPanel] = useState(defaultPanel || panels[0]?.id);
   const [modal, setModal] = useState(null); // { type, props }
   const [toastState, setToastState] = useState({ open: false, msg: '', kind: 'ok' });
+
+  /* El relevo activo: {id, nombre} o null (= firma el de la sesión). */
+  const [operador, setOperadorState] = useState(() => leerClave(OPERADOR_KEY) || null);
+  const setOperador = useCallback((op) => {
+    setOperadorState(op);
+    escribirClave(OPERADOR_KEY, op ?? null);
+  }, []);
+  /** El id que viaja en las escrituras de la registradora (null = sesión). */
+  const operadorId = operador && operador.id !== ctx.usuarioId ? operador.id : null;
 
   /* ------------------------------ Carga ------------------------------ */
 
@@ -144,9 +162,11 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
       modal, openModal, closeModal,
       toast, toastState, closeToast, act,
       getCliente, listasCatalogo, esJefe,
+      operador, operadorId, setOperador,
     }),
     [data, loaded, loadError, cargar, ctx, panels, panel, goPanel, modal,
-      openModal, closeModal, toast, toastState, closeToast, act, getCliente, listasCatalogo, esJefe],
+      openModal, closeModal, toast, toastState, closeToast, act, getCliente, listasCatalogo, esJefe,
+      operador, operadorId, setOperador],
   );
 
   return <VentasContext.Provider value={value}>{children}</VentasContext.Provider>;
