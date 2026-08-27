@@ -13,13 +13,14 @@
  * Todo el trabajo pesado (parseo y traducción) está en
  * `domain/importarCatalogo.js`; acá vive la pantalla.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num as fmtNum } from '../../domain/format.js';
 import {
-  armarPlan, leerTexto, parseCsv, tipoDeArchivo,
+  armarPlan, leerTexto, parseCsv, proveedorDelArchivo, tipoDeArchivo,
 } from '../../domain/importarCatalogo.js';
+import { mismoNombreProveedor, proveedoresParecidos } from '@modules/proveedores/domain/importarProveedores.js';
 import { ModalShell } from '../Modal.jsx';
 import { Table, s } from '../ui.jsx';
 
@@ -96,6 +97,32 @@ export function ImportarCatalogoModal() {
 
   const proveedores = store.state.proveedores.filter((p) => p.proveeMercaderia !== false);
 
+  /*
+   * EL PROVEEDOR QUE DICE EL ARCHIVO (27/8, pedido del dueño). El CSV de
+   * compras trae la columna `Proveedor`, y el sistema viejo escribe el mismo
+   * nombre con variantes ("BAVOSI SA" vs "BAVOSI S.A."). Se resuelve contra el
+   * padrón: si matchea, se preselecciona; si NO está tal cual, se pregunta si
+   * es uno existente (con los parecidos como candidatos) o si es nuevo — crear
+   * un duplicado en silencio era exactamente el error que esto evita.
+   */
+  const deteccion = useMemo(() => {
+    const d = proveedorDelArchivo(archivos.compras?.filas);
+    if (!d) return null;
+    const exacto = proveedores.find((p) => mismoNombreProveedor(p.nombre, d.nombre)) || null;
+    const candidatos = exacto ? [] : proveedoresParecidos(d.nombre, proveedores);
+    return { ...d, exacto, candidatos };
+  }, [archivos.compras, proveedores]);
+  /** 'existente' = usa el desplegable · 'nuevo' = se crea con el nombre del archivo. */
+  const [modoProveedor, setModoProveedor] = useState('existente');
+
+  // Preselección: el exacto directo; sin exacto, el candidato más parecido —
+  // solo si el desplegable está vacío, para no pisar una elección hecha a mano.
+  useEffect(() => {
+    if (!deteccion || proveedorId) return;
+    const sugerido = deteccion.exacto ?? deteccion.candidatos[0];
+    if (sugerido) setProveedorId(String(sugerido.id));
+  }, [deteccion]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /**
    * Cada archivo se reconoce por sus columnas, así que el orden en que se
    * cargan no importa: si alguien pone el de ventas donde va el de compras, se
@@ -146,7 +173,8 @@ export function ImportarCatalogoModal() {
       if (!archivos.compras) toast('Sin el archivo de formatos de compra, los productos entran sin costo.', 'err');
       setPaso(2);
     } else if (paso === 2) {
-      if (!proveedorId) { toast('Elegí de qué proveedor es este catálogo.', 'err'); return; }
+      const creaNuevo = deteccion && !deteccion.exacto && modoProveedor === 'nuevo';
+      if (!creaNuevo && !proveedorId) { toast('Elegí de qué proveedor es este catálogo.', 'err'); return; }
       if (!plan?.items.length) { toast('No hay ningún producto para importar.', 'err'); return; }
       setPaso(3);
     }
@@ -154,7 +182,20 @@ export function ImportarCatalogoModal() {
 
   const importar = async () => {
     setGuardando(true);
-    const res = await store.importarCatalogo(Number(proveedorId), plan.items);
+    let provId = Number(proveedorId);
+    // El proveedor NUEVO se crea recién acá, con el importe confirmado: si la
+    // vista previa se cancela, no queda un proveedor colgado en el padrón.
+    if (deteccion && !deteccion.exacto && modoProveedor === 'nuevo') {
+      const r = await store.crearProveedor({ nombre: deteccion.nombre, proveeMercaderia: true });
+      if (!r || r.ok === false) {
+        setGuardando(false);
+        toast(r?.error || 'No se pudo crear el proveedor.', 'err');
+        return;
+      }
+      provId = r.id;
+      setProveedorId(String(provId));
+    }
+    const res = await store.importarCatalogo(provId, plan.items);
     setGuardando(false);
     if (!res.ok) { toast(res.error || 'No se pudo importar.', 'err'); return; }
     const r = res.data ?? res;
@@ -173,7 +214,7 @@ export function ImportarCatalogoModal() {
         footer={[{ texto: 'Listo', clase: 'btn-primary', onClick: closeModal }]}
       >
         <div className={cx(s.callout, s.ok)}>
-          Se crearon <strong>{resultado.creados}</strong> productos de <strong>{prov?.nombre}</strong>.
+          Se crearon <strong>{resultado.creados}</strong> productos de <strong>{prov?.nombre ?? deteccion?.nombre ?? '—'}</strong>.
           {resultado.marcasCreadas?.length > 0 && <> Marcas nuevas: {resultado.marcasCreadas.join(', ')}.</>}
           {resultado.rubrosCreados?.length > 0 && <> Rubros nuevos: {resultado.rubrosCreados.join(', ')}.</>}
         </div>
@@ -309,17 +350,65 @@ export function ImportarCatalogoModal() {
       {/* ===================== PASO 2 · OPCIONES ===================== */}
       {paso === 2 && (
         <>
+          {/* El archivo dice de quién es el catálogo: si el nombre no está en el
+              padrón TAL CUAL, se pregunta — asignarlo a un parecido o crearlo.
+              Crear el duplicado en silencio era el error que esto evita. */}
+          {deteccion && !deteccion.exacto && (
+            <div className={cx(s.callout, s.warn)}>
+              El archivo dice que este catálogo es de <strong>«{deteccion.nombre}»</strong>, y en el
+              padrón no hay ningún proveedor con ese nombre exacto.
+              {deteccion.candidatos.length > 0 && (
+                <> Hay {deteccion.candidatos.length === 1 ? 'uno parecido' : 'parecidos'}:{' '}
+                  <strong>{deteccion.candidatos.map((c) => c.nombre).join(' · ')}</strong>.</>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    checked={modoProveedor === 'existente'}
+                    onChange={() => setModoProveedor('existente')}
+                  />
+                  <span>Es uno que <strong>ya está cargado</strong> con otro nombre — lo elijo abajo</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="radio"
+                    checked={modoProveedor === 'nuevo'}
+                    onChange={() => setModoProveedor('nuevo')}
+                  />
+                  <span>Es un proveedor <strong>nuevo</strong>: crearlo como «{deteccion.nombre}» al importar</span>
+                </label>
+              </div>
+            </div>
+          )}
+
           <div className={s['form-grid']}>
             <div className={s.field}>
               <label>Proveedor del catálogo <span className={s.req}>*</span></label>
-              <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
+              <select
+                value={proveedorId}
+                onChange={(e) => setProveedorId(e.target.value)}
+                disabled={deteccion && !deteccion.exacto && modoProveedor === 'nuevo'}
+              >
                 <option value="">Elegí el proveedor</option>
                 {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
               <div className={s.hint} style={{ margin: '6px 0 0' }}>
+                {deteccion?.exacto
+                  ? <>Detectado del archivo: <strong>«{deteccion.nombre}»</strong>. </>
+                  : deteccion && modoProveedor === 'nuevo'
+                    ? <>Se crea <strong>«{deteccion.nombre}»</strong> al importar; la ficha se completa después en Proveedores. </>
+                    : null}
                 Todos los formatos de compra se cargan a su nombre, con el código con el que él
                 identifica cada producto.
               </div>
+              {deteccion?.otros?.length > 0 && (
+                <div className={s.hint} style={{ margin: '6px 0 0' }}>
+                  Ojo: el archivo trae además filas de{' '}
+                  {deteccion.otros.map(([n, c]) => `${n} (${c})`).join(' · ')} — todo se importa a
+                  nombre del proveedor elegido.
+                </div>
+              )}
             </div>
           </div>
 

@@ -75,6 +75,25 @@ export function parseCsv(texto) {
   return { cols, filas };
 }
 
+/**
+ * El proveedor que DICE el archivo de compras (su columna `Proveedor`): el más
+ * frecuente, con el detalle de los demás si el export vino mezclado. Es lo que
+ * permite preseleccionar el proveedor en el paso 2 — y preguntar cuando el
+ * nombre del archivo no está en el padrón tal cual (27/8, pedido del dueño:
+ * el sistema viejo escribe el mismo proveedor con nombres levemente distintos).
+ */
+export function proveedorDelArchivo(filasCompras) {
+  const cuenta = new Map();
+  for (const f of filasCompras ?? []) {
+    const n = String(f.Proveedor ?? '').trim();
+    if (!n) continue;
+    cuenta.set(n, (cuenta.get(n) || 0) + 1);
+  }
+  if (!cuenta.size) return null;
+  const orden = [...cuenta.entries()].sort((a, b) => b[1] - a[1]);
+  return { nombre: orden[0][0], otros: orden.slice(1) };
+}
+
 /** Reconoce cuál de los tres archivos es cada uno por sus columnas. */
 export function tipoDeArchivo(cols) {
   const set = new Set(cols);

@@ -30,6 +30,30 @@ const norm = (v) => String(v ?? '').toLowerCase().normalize('NFD')
   .replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9]+/g, ' ').trim();
 const soloDigitos = (v) => String(v ?? '').replace(/\D/g, '');
 
+/** ¿Son el mismo nombre, más allá de mayúsculas, acentos y puntuación? */
+export const mismoNombreProveedor = (a, b) => norm(a) === norm(b);
+
+/**
+ * Los proveedores que se PARECEN a un nombre: mismo arranque (≥8 letras de
+ * prefijo común normalizado) o todas las palabras de un lado contenidas en el
+ * otro. Atrapa "NUEVO COSMOS S.A" vs "Nuevo Cosmo S.A. - Lucfel" sin emparejar
+ * por una sola palabra. Compartido entre el plan del padrón y el detector del
+ * importador de catálogos (27/8) — una sola definición de "parecido".
+ */
+export function proveedoresParecidos(nombre, existentes) {
+  const nf = norm(nombre);
+  return existentes.filter((p) => {
+    const pn = norm(p.nombre);
+    if (!pn || pn === nf) return false;
+    let comun = 0;
+    while (comun < Math.min(pn.length, nf.length) && pn[comun] === nf[comun]) comun += 1;
+    if (comun >= 8) return true;
+    const palabras = (a) => a.split(' ').filter((w) => w.length >= 3);
+    return (palabras(nf).length && palabras(nf).every((w) => pn.includes(w)))
+      || (palabras(pn).length && palabras(pn).every((w) => nf.includes(w)));
+  });
+}
+
 /** Reconoce el archivo por sus columnas (mismo criterio que los tres del catálogo). */
 export function esArchivoProveedores(cols) {
   const set = new Set(cols);
@@ -74,19 +98,7 @@ export function armarPlanProveedores(filas, existentes) {
       estado = 'completar';
       proveedorId = existente.id;
     } else {
-      /* Parecidos: mismo arranque (≥8 letras de prefijo común normalizado) o
-       * todas las palabras de un lado contenidas en el otro. Atrapa el "NUEVO
-       * COSMOS" vs "Nuevo Cosmo … Lucfel" sin emparejar solo por una palabra. */
-      const candidatos = existentes.filter((p) => {
-        const pn = norm(p.nombre);
-        if (!pn || pn === nf) return false;
-        let comun = 0;
-        while (comun < Math.min(pn.length, nf.length) && pn[comun] === nf[comun]) comun += 1;
-        if (comun >= 8) return true;
-        const palabras = (a) => a.split(' ').filter((w) => w.length >= 3);
-        return (palabras(nf).length && palabras(nf).every((w) => pn.includes(w)))
-          || (palabras(pn).length && palabras(pn).every((w) => nf.includes(w)));
-      });
+      const candidatos = proveedoresParecidos(nombre, existentes);
       if (candidatos.length) {
         estado = 'dudoso';
         proveedorId = candidatos[0].id;
