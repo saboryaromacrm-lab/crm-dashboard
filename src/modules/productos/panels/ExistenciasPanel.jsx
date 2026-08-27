@@ -25,7 +25,7 @@ import { Table, PanelHead, TipoBadge, StockPill, Btn, usePaginado, s } from '../
  * vencimientos, incidencias) y ajustarlo desde acá los descuadraría.
  */
 export function ExistenciasPanel() {
-  const { store, openModal } = useProductos();
+  const { store, openModal, goPanel } = useProductos();
   const puedeAjustar = store.can('inventario');
   const [sucF, setSucF] = useState('');
   const [prodF, setProdF] = useState('');
@@ -54,18 +54,30 @@ export function ExistenciasPanel() {
           <td className={s.num}>{store.fmtCant(p, st.presentacionId, st.cantidad)}</td>
           <td className={s.num}>{money(store.valorEntry(st))}</td>
           <td className={s['actions-col']}>
-            {puedeAjustar && st.estado === 'disponible' && (
+            <div className={s['row-actions']}>
+              {/* La película de ESTA fila (27/8): salta al historial con el
+                  producto y la sucursal ya filtrados — quién lo tocó, cuándo y
+                  por qué, sin cruzar de módulo. */}
               <Btn
                 small
-                onClick={() => openModal('movimiento', {
-                  prodId: st.productoId,
-                  sucId: st.sucursalId,
-                  pre: { presId: st.presentacionId, tipo: 'ajuste' },
-                })}
+                variant="btn-ghost"
+                onClick={() => goPanel('historial', { productoId: st.productoId, sucursalId: st.sucursalId })}
               >
-                Ajustar
+                Movs.
               </Btn>
-            )}
+              {puedeAjustar && st.estado === 'disponible' && (
+                <Btn
+                  small
+                  onClick={() => openModal('movimiento', {
+                    prodId: st.productoId,
+                    sucId: st.sucursalId,
+                    pre: { presId: st.presentacionId, tipo: 'ajuste' },
+                  })}
+                >
+                  Ajustar
+                </Btn>
+              )}
+            </div>
           </td>
         </tr>
       );

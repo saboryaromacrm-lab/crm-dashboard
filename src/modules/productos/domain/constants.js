@@ -29,6 +29,9 @@ export const TIPOS_MOV = {
 export const ESTADOS_STOCK = {
   disponible:   { label: 'Disponible',   pill: 'st-disponible' },
   comprometido: { label: 'Comprometido', pill: 'st-comprometido' },
+  /* Despachado y todavía no recibido (queda en el ORIGEN). Faltaba en este
+   * mapa y la pantalla mostraba el enum crudo "en_transito". */
+  en_transito:  { label: 'En viaje',     pill: 'st-comprometido' },
   retenido:     { label: 'Retenido',     pill: 'st-retenido' },
   defectuoso:   { label: 'Defectuoso',   pill: 'st-defectuoso' },
   vencido:      { label: 'Vencido',      pill: 'st-vencido' },

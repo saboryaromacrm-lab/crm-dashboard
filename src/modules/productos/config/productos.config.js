@@ -57,6 +57,14 @@ export const COMPRAS_PANELS = [
 export const ALMACEN_PANELS = [
   { id: 'existencias',    label: 'Existencias',    icon: WarehouseIcon,      permiso: 'almacen.existencias' },
   /*
+   * El historial de movimientos TAMBIÉN acá (27/8, pedido del dueño): es la
+   * película de la foto que muestra Existencias, y tenerla solo en Compras
+   * obligaba a cruzar de módulo para responder "quién tocó esto y cuándo".
+   * Misma pantalla que Compras › Historial; misma llave que Existencias a
+   * propósito — quien puede ver el stock puede ver sus movimientos.
+   */
+  { id: 'historial',      label: 'Movimientos',    icon: HistoryIcon,        permiso: 'almacen.existencias' },
+  /*
    * El físico contra el virtual (0066): sesiones de conteo con la lista
    * congelada, ciegas por defecto, que se aplican por diferencia. Vive al lado
    * de Existencias porque es su contraparte: una muestra lo que el sistema
