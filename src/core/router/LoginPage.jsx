@@ -99,16 +99,19 @@ export function LoginPage() {
    * del desplegable. Un solo lugar la resuelve para que la confirmación, la
    * validación y el envío no puedan discrepar entre sí.
    *
-   * 'sin' es la opción "No especificar" (26/8): viaja SIN sucursal y el
-   * servidor decide — solo el superadmin puede entrar así (queda parado en la
-   * central y la cambia arriba); a cualquier otro rol lo rechaza con su
-   * mensaje. La pantalla no puede decidirlo acá porque el login público no
-   * sabe quién es superadmin, y publicarlo sería regalar a quién atacar. */
-  const sinSucursal = !terminal && sucursalId === 'sin';
+   * EL CAMPO VACÍO ES "SIN ESPECIFICAR" (27/8, pedido del dueño: la opción
+   * explícita del desplegable se fue). Vacío viaja SIN sucursal y el servidor
+   * decide — el superadmin entra así sin tocar nada (queda parado en la
+   * central y la cambia arriba); a cualquier otro rol lo rechaza pidiéndole
+   * que la elija. La pantalla no puede decidirlo acá porque el login público
+   * no sabe quién es superadmin, y publicarlo sería regalar a quién atacar —
+   * por eso el default es "vacío que el servidor juzga" y no "campo que
+   * desaparece para el superadmin". */
+  const sinSucursal = !terminal && !sucursalId;
   const sucursal = useMemo(
     () => {
       if (terminal) return terminal.sucursal;
-      if (sucursalId === 'sin') return { id: null, nombre: 'Sin especificar' };
+      if (!sucursalId) return { id: null, nombre: 'Sin especificar' };
       return sucursales.find((s) => s.id === Number(sucursalId));
     },
     [terminal, sucursales, sucursalId],
@@ -119,7 +122,9 @@ export function LoginPage() {
     setError('');
     if (!usuario) { setError('Elegí tu usuario.'); return; }
     if (!password) { setError('Ingresá tu contraseña.'); return; }
-    if (!sucursal) { setError('Elegí la sucursal con la que vas a operar.'); return; }
+    /* La sucursal vacía NO corta acá: sigue viaje sin sucursal y el servidor
+     * decide (superadmin sí, el resto no). El corte del lado de la pantalla
+     * mentiría para el único que puede entrar así. */
     setConfirmando(true);
   };
 
@@ -199,14 +204,13 @@ export function LoginPage() {
                       onChange={(e) => setSucursalId(e.target.value)}
                       helperText="Este equipo no está registrado: elegí a mano dónde estás."
                     >
+                      {/* Sin opción "No especificar" (27/8): dejar el campo
+                          VACÍO ya es eso — el superadmin entra directo y al
+                          resto el servidor le pide elegirla. Una opción que
+                          solo sirve a uno era ruido para todos los demás. */}
                       {sucursales.map((s) => (
                         <MenuItem key={s.id} value={String(s.id)}>{s.nombre}</MenuItem>
                       ))}
-                      {/* Al final y no primera: la cajera no tiene que pasarle
-                          por encima. El servidor rechaza a quien no puede. */}
-                      <MenuItem value="sin">
-                        <em>No especificar — solo el superadmin</em>
-                      </MenuItem>
                     </TextField>
                   )}
                   {error && <Alert severity="error">{error}</Alert>}
@@ -240,10 +244,14 @@ export function LoginPage() {
                   <div>
                     <Typography variant="subtitle2">{sucursal?.nombre}</Typography>
                     <Typography variant="caption" color="text.secondary">
+                      {/* Vacío llega acá también la cajera que se olvidó de
+                          elegir: el texto tiene que servirle a los dos — al
+                          superadmin le cuenta qué pasa, a ella la manda de
+                          vuelta al campo antes de que el servidor la rechace. */}
                       {terminal
                         ? `Sucursal de este equipo (${terminal.nombre})`
                         : sinSucursal
-                          ? 'Entrás parado en la central y la cambiás desde el encabezado'
+                          ? 'Así entra solo el superadmin (parado en la central); si no lo sos, volvé y elegí la sucursal'
                           : 'Sucursal de trabajo de esta sesión'}
                     </Typography>
                   </div>
