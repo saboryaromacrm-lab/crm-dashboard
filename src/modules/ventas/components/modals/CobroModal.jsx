@@ -45,6 +45,45 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   const [observaciones, setObservaciones] = useState('');
   const [enviando, setEnviando] = useState(false);
 
+  /*
+   * EL REDONDEO DEL COBRO (27/8, venía del sistema viejo): "$39.893 se cobra
+   * $39.900" para no pelear el vuelto chico en efectivo — hasta $100 de más y
+   * solo hacia arriba. Acá vive el IMPORTE que se suma (los $7); el servidor
+   * lo materializa al confirmar como el extra "Redondeo" (IVA 0), así que el
+   * ticket impreso lo lista y el total del comprobante da el número redondo
+   * EXACTO. Todo lo que se valida y cobra en este modal mira `totalCobrar`.
+   */
+  const [redondeo, setRedondeo] = useState(0);
+  const totalCobrar = r2(totales.total + redondeo);
+
+  /** Los números redondos alcanzables: el próximo $100, $500 y $1.000 hacia
+   *  arriba, mientras el salto no pase el tope de $100. Deduplicados (para
+   *  $39.920 el próximo 100 y el próximo 1.000 son los mismos $40.000). */
+  const sugerencias = useMemo(() => {
+    const base = Number(totales.total) || 0;
+    const vistos = new Set();
+    const out = [];
+    for (const esc of [100, 500, 1000]) {
+      const objetivo = Math.ceil((base - 0.001) / esc) * esc;
+      const delta = r2(objetivo - base);
+      if (delta > 0.009 && delta <= 100.009 && !vistos.has(objetivo)) {
+        vistos.add(objetivo);
+        out.push({ objetivo, delta });
+      }
+    }
+    return out.sort((a, b) => a.objetivo - b.objetivo);
+  }, [totales.total]);
+
+  /** Aplica (o quita, con 0) el redondeo y acomoda el pago único al total
+   *  nuevo — el caso de caja es "efectivo por el total". Con varios medios no
+   *  se toca nada: el aviso de faltante y el botón Resto guían. */
+  const aplicarRedondeo = (delta) => {
+    setRedondeo(delta);
+    setPagos((ps) => (ps.length === 1
+      ? [{ ...ps[0], importe: String(r2(totales.total + delta)) }]
+      : ps));
+  };
+
   // El foco entra directo en "Con cuánto paga". Diferido porque el focus-trap
   // del Dialog de MUI corre después del montaje y pisa un autoFocus normal.
   const pagaRef = useRef(null);
@@ -68,7 +107,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   }, [config.mediosPago]);
 
   const pagado = r2(pagos.reduce((a, x) => a + (Number(x.importe) || 0), 0));
-  const faltante = r2(totales.total - pagado);
+  const faltante = r2(totalCobrar - pagado);
 
   /**
    * Medios que EXIGEN factura (configuración, 19/8/2026): un peso cobrado con
@@ -100,7 +139,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   /** El renglón nuevo arranca con lo que falta: el caso típico es partir el pago. */
   const agregarPago = () => setPagos((ps) => {
     const asignado = r2(ps.reduce((a, x) => a + (Number(x.importe) || 0), 0));
-    const resto = Math.max(0, r2(totales.total - asignado));
+    const resto = Math.max(0, r2(totalCobrar - asignado));
     return [...ps, {
       medio: medios.find((m) => m !== 'efectivo') || medios[0],
       importe: resto > 0 ? String(resto) : '',
@@ -110,15 +149,15 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   /** Completa este renglón con lo que falta para llegar al total. */
   const completar = (i) => {
     const otros = r2(pagos.reduce((a, x, j) => (j === i ? a : a + (Number(x.importe) || 0)), 0));
-    setPago(i, 'importe', String(Math.max(0, r2(totales.total - otros))));
+    setPago(i, 'importe', String(Math.max(0, r2(totalCobrar - otros))));
   };
   /** Reparte el total en partes iguales entre los medios cargados. */
   const dividir = () => setPagos((ps) => {
-    const parte = r2(totales.total / ps.length);
+    const parte = r2(totalCobrar / ps.length);
     return ps.map((x, i) => ({
       ...x,
       // El último absorbe el centavo del redondeo para que sume exacto.
-      importe: String(i === ps.length - 1 ? r2(totales.total - parte * (ps.length - 1)) : parte),
+      importe: String(i === ps.length - 1 ? r2(totalCobrar - parte * (ps.length - 1)) : parte),
     }));
   });
 
@@ -154,6 +193,9 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
           cajaSesionId: cajaSesionId ?? undefined,
           usuarioId: ctx.usuarioId ?? undefined,
           observaciones,
+          // El importe del redondeo (los $7 de "39.893 → 39.900"): el servidor
+          // lo materializa como el extra "Redondeo" y ajusta el total.
+          redondeo: condicionPago === 'contado' && redondeo > 0.009 ? redondeo : undefined,
           pagos: condicionPago === 'contado'
             ? pagos.filter((x) => Number(x.importe) > 0).map((x) => ({ medio: x.medio, importe: r2(x.importe) }))
             : [],
@@ -276,7 +318,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [puedeLiquidar, puedeFacturar, condicionPago, pagos, observaciones, vuelto]);
+  }, [puedeLiquidar, puedeFacturar, condicionPago, pagos, observaciones, vuelto, redondeo]);
 
   return (
     <ModalShell
@@ -293,7 +335,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
           onClick: () => confirmar('factura'),
         },
         {
-          texto: enviando ? 'Registrando…' : `Liquidar ${money(totales.total)} · F10`,
+          texto: enviando ? 'Registrando…' : `Liquidar ${money(totalCobrar)} · F10`,
           clase: puedeLiquidar ? 'btn-primary' : 'btn-ghost',
           onClick: () => confirmar('ticket'),
         },
@@ -301,8 +343,27 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
     >
       <div className={p.cobroTotal}>
         <span className={p.cobroTotalLabel}>Total</span>
-        <span className={p.cobroTotalValor}>{money(totales.total)}</span>
+        <span className={p.cobroTotalValor}>{money(totalCobrar)}</span>
       </div>
+
+      {/* EL REDONDEO, pegado al total porque ES del total: los números redondos
+          alcanzables con hasta $100 de más, a un clic. Aplicado, se dice cuánto
+          se sumó y se puede quitar — el papel va a listar "Redondeo". */}
+      {condicionPago === 'contado' && (redondeo > 0.009 ? (
+        <div className={s.hint} style={{ margin: '0 0 var(--crm-space-3)', textAlign: 'center' }}>
+          Redondeado: el ticket sale de {money(totales.total)} y se cobra{' '}
+          <strong>+{money(redondeo)}</strong>{' '}
+          <button type="button" className={s.linkBtn} onClick={() => aplicarRedondeo(0)}>quitar</button>
+        </div>
+      ) : sugerencias.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 'var(--crm-space-3)' }}>
+          {sugerencias.map((sug) => (
+            <Btn key={sug.objetivo} small onClick={() => aplicarRedondeo(sug.delta)}>
+              Redondear a {money(sug.objetivo)} (+{money(sug.delta)})
+            </Btn>
+          ))}
+        </div>
+      ))}
 
       {/* El selector solo existe cuando hay algo que elegir: cliente con cta. cte. */}
       {ctaCteDisponible && (
@@ -315,7 +376,9 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
           </Btn>
           <Btn
             variant={condicionPago === 'cuenta_corriente' ? 'btn-primary' : 'btn-ghost'}
-            onClick={() => setCondicionPago('cuenta_corriente')}
+            // En cta. cte. no hay vuelto que simplificar: el redondeo se apaga
+            // y el comprobante va por su total exacto (la API también lo corta).
+            onClick={() => { setCondicionPago('cuenta_corriente'); aplicarRedondeo(0); }}
           >
             Cuenta corriente
           </Btn>
@@ -482,6 +545,17 @@ export function VentaEmitidaModal({ venta, vuelto = 0, renglones = [], onNuevoTi
             <td className={s.num}>{it.cantidad}</td>
             <td className={s.num}>{money(it.precioUnitario)}</td>
             <td className={s.num}>{money(it.subtotal)}</td>
+          </tr>
+        ))}
+        {/* Los extras (envío, packaging, el Redondeo del cobro): sin ellos el
+            total de abajo no se explicaba con las filas de arriba. Importe
+            neto, igual que el subtotal de los renglones. */}
+        {(venta.extras ?? []).map((e) => (
+          <tr key={`extra-${e.id}`}>
+            <td>{e.concepto}</td>
+            <td className={s.num}>—</td>
+            <td className={s.num}>—</td>
+            <td className={s.num}>{money(e.importe)}</td>
           </tr>
         ))}
       </Table>
