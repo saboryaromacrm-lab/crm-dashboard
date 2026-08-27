@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { errorMsg, provApi, MEDIOS_HABITUALES, CONDICIONES_COMPRA } from '../services/proveedores.api.js';
-import { Btn, PanelHead, Pill, Table, s } from '../components/ui.jsx';
+import { Btn, PanelHead, Pill, Table, usePaginado, s } from '../components/ui.jsx';
 
 /**
  * EL PADRÓN — la ficha única del sistema (0068). Los ABM chicos que vivían en
@@ -48,6 +48,10 @@ export function PadronPanel() {
 
   const pendientes = proveedores.filter((p) => !p.migracionLista).length;
 
+  // Paginado de servidor no hace falta: el padrón entero ya viene en memoria.
+  // Los filtros van en la clave para volver a la página 1 al cambiarlos.
+  const pag = usePaginado(filas, 'padron', `${buscar}|${soloPendientes}`);
+
   return (
     <div>
       <PanelHead
@@ -70,11 +74,15 @@ export function PadronPanel() {
           Solo migración pendiente ({pendientes})
         </label>
       </div>
-      <Table cols={[
-        { h: 'Proveedor' }, { h: 'Emite' }, { h: 'Cómo cobra' }, { h: 'Modo de cuenta' },
-        { h: 'Clasificación' }, { h: 'Migración' }, { h: 'Acciones' },
-      ]}>
-        {filas.map((p) => {
+      <Table
+        cols={[
+          { h: 'Proveedor' }, { h: 'Emite' }, { h: 'Cómo cobra' }, { h: 'Modo de cuenta' },
+          { h: 'Clasificación' }, { h: 'Migración' }, { h: 'Acciones' },
+        ]}
+        empty="Sin resultados."
+        pag={pag}
+      >
+        {pag.visibles.map((p) => {
           const cargados = Number(p.productosCargados) || 0;
           const esperados = Number(p.productosEsperados) || 0;
           const color = p.migracionLista
@@ -124,7 +132,6 @@ export function PadronPanel() {
           );
         })}
       </Table>
-      {!filas.length && <div className={s['empty-state']}>Sin resultados.</div>}
       <div className={s.hint}>
         <strong>Migración</strong>: cuántos productos de este proveedor ya tienen su formato de
         compra cargado (en Compras), contra los que tiene en el sistema viejo (columna “Productos
