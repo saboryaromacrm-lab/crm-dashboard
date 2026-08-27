@@ -10,6 +10,7 @@ import {
   ESTADOS_INCIDENCIA,
   ESTADOS_PRODUCTO,
   TIPOS_MOV,
+  labelTipoMov,
 } from '../domain/constants.js';
 import styles from '../styles/Productos.module.css';
 
@@ -227,9 +228,11 @@ export function EstadoProductoBadge({ estado }) {
   return <span style={{ marginLeft: 6 }}><Pill pill={m.pill} label={m.label} /></span>;
 }
 
-export function MovTag({ tipo }) {
+/** `prodTipo` (tipo del producto) corrige la etiqueta del entero vendido por
+ *  unidad, que la API guarda como venta_fraccionada — ver labelTipoMov. */
+export function MovTag({ tipo, prodTipo }) {
   const m = TIPOS_MOV[tipo] || { label: tipo, tag: 'tag-ajuste' };
-  return <span className={cx(styles['mov-tag'], styles[m.tag])}>{m.label}</span>;
+  return <span className={cx(styles['mov-tag'], styles[m.tag])}>{labelTipoMov(tipo, prodTipo)}</span>;
 }
 
 /** Botón con las variantes de color del módulo (btn-primary, btn-vender, …). */

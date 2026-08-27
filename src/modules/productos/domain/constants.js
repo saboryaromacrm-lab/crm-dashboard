@@ -25,6 +25,20 @@ export const TIPOS_MOV = {
   envio_cafeteria:   { label: 'Envío a Cafetería',   tag: 'tag-venta',   dir: -1 },
 };
 
+/**
+ * Etiqueta del tipo de movimiento, corregida con el tipo del PRODUCTO.
+ * La API solo distingue la venta de granel suelto de "todo lo demás"
+ * (`venta_fraccionada`) — herencia de cuando el catálogo era granel y sus
+ * paquetes: la lata vendida por unidad caía en "fraccionada" sin haber pasado
+ * por la fraccionadora. El dato guardado no cambia (arreglarlo es un enum
+ * nuevo + backfill, anotado en Pendientes); acá se corrige lo que se MUESTRA.
+ */
+export const labelTipoMov = (tipo, prodTipo) => (
+  tipo === 'venta_fraccionada' && prodTipo === 'entero'
+    ? 'Venta por unidad'
+    : (TIPOS_MOV[tipo]?.label ?? tipo)
+);
+
 // ---- Estados de stock ----
 export const ESTADOS_STOCK = {
   disponible:   { label: 'Disponible',   pill: 'st-disponible' },

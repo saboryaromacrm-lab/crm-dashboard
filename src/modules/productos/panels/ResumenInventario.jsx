@@ -110,7 +110,7 @@ export function ResumenInventario() {
   const ultimos = store.state.movimientos.slice().sort((a, b) => b.id - a.id).slice(0, 6).map((m) => (
     <tr key={m.id}>
       <td>{fmtFechaHora(m.fecha)}</td>
-      <td><MovTag tipo={m.tipo} /></td>
+      <td><MovTag tipo={m.tipo} prodTipo={store.getProducto(m.productoId)?.tipo} /></td>
       <td>{m.descripcion}</td>
     </tr>
   ));

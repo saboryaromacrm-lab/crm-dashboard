@@ -528,7 +528,7 @@ function ResumenTab({ prod: p }) {
     </tr>
   ));
   const movs = store.movimientosDe(p.id).slice(0, 6).map((m) => (
-    <tr key={m.id}><td>{fmtFechaHora(m.fecha)}</td><td><MovTag tipo={m.tipo} /></td><td>{m.descripcion}</td></tr>
+    <tr key={m.id}><td>{fmtFechaHora(m.fecha)}</td><td><MovTag tipo={m.tipo} prodTipo={p.tipo} /></td><td>{m.descripcion}</td></tr>
   ));
 
   /* La verdad TOTAL del granel: el suelto MÁS lo ya fraccionado, en kg. "¿Cuánto
@@ -1207,7 +1207,7 @@ function FraccionadoResumen({ store, p, pr, costoPaquete }) {
     .filter((m) => m.presentacionId === pr.id)
     .slice(0, 8)
     .map((m) => (
-      <tr key={m.id}><td>{fmtFechaHora(m.fecha)}</td><td><MovTag tipo={m.tipo} /></td><td>{m.descripcion}</td></tr>
+      <tr key={m.id}><td>{fmtFechaHora(m.fecha)}</td><td><MovTag tipo={m.tipo} prodTipo={p.tipo} /></td><td>{m.descripcion}</td></tr>
     ));
 
   /* El formato de venta del paquete: el precio en cada lista del producto.

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { useSeccion } from '../hooks/useSeccion.js';
 import { num, money, fmtFechaHora } from '../domain/format.js';
-import { TIPOS_MOV, ESTADOS_STOCK } from '../domain/constants.js';
+import { TIPOS_MOV, ESTADOS_STOCK, labelTipoMov } from '../domain/constants.js';
 import { sucursalOptions, productoOptions } from '../components/selectOptions.jsx';
 import { Table, PanelHead, MovTag, Btn, usePaginado, s } from '../components/ui.jsx';
 import { imprimirDocumento, cuerpoValeOperacion } from '@core/services/imprimir.js';
@@ -66,10 +66,11 @@ export function HistorialPanel({ preset, embedded }) {
   const imprimirVale = async (m) => {
     const signo = m.signo > 0 ? '+' : m.signo < 0 ? '−' : '';
     const valor = valorDe(m);
+    const titulo = `${labelTipoMov(m.tipo, store.getProducto(m.productoId)?.tipo)} #${m.id}`;
     const ok = await imprimirDocumento('valeMovimiento', {
-      titulo: `${TIPOS_MOV[m.tipo]?.label ?? m.tipo} #${m.id}`,
+      titulo,
       cuerpo: cuerpoValeOperacion({
-        titulo: `${TIPOS_MOV[m.tipo]?.label ?? m.tipo} #${m.id}`,
+        titulo,
         subtitulo: `${fmtFechaHora(m.fecha)} · ${m.sucursalNombre}${
           m.sucursalDestinoNombre ? ` → ${m.sucursalDestinoNombre}` : ''}`,
         datos: [
@@ -99,7 +100,7 @@ export function HistorialPanel({ preset, embedded }) {
       return (
         <tr key={m.id}>
           <td style={{ whiteSpace: 'nowrap' }}>{fmtFechaHora(m.fecha)}</td>
-          <td><MovTag tipo={m.tipo} /></td>
+          <td><MovTag tipo={m.tipo} prodTipo={store.getProducto(m.productoId)?.tipo} /></td>
           <td>
             {m.productoNombre}
             {m.presLabel && <div className={s.hint} style={{ margin: 0 }}>{m.presLabel}</div>}
@@ -170,7 +171,8 @@ export function HistorialPanel({ preset, embedded }) {
         <strong>Detalle</strong> es el documento o motivo que generó el movimiento (la venta, la
         factura, el remito, el conteo, el ajuste con su porqué). <strong>Valor</strong> aparece solo
         en las bajas por pérdida (merma, vencido, defectuoso): van valuadas al costo del día del
-        movimiento y ese número no cambia después.
+        movimiento y ese número no cambia después. El filtro <strong>Venta fraccionada</strong> trae
+        también las ventas por unidad: por dentro son el mismo registro.
       </div>
     </div>
   );
