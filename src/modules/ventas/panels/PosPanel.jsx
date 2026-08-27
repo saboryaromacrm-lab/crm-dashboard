@@ -6,7 +6,7 @@ import { ventasApi } from '../services/ventas.api.js';
 import { CONDICIONES_IVA, CONDICIONES_PAGO, MEDIOS_PAGO, ORIGEN_LISTA } from '../domain/constants.js';
 import {
   buscarEnCatalogo, calcularRenglon, descuentosDisponibles, descuentosParaApi,
-  extrasParaApi, itemsParaApi, parseEtiquetaBalanza,
+  extrasParaApi, itemsParaApi, motivoBloqueo, parseEtiquetaBalanza,
   problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
   totalesTicket, ultimoArticulo,
 } from '../domain/pos.js';
@@ -230,6 +230,9 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
                   <span className={item.stock <= 0 ? p.sinStock : undefined}>
                     {num(item.stock)} {item.unidad}
                   </span>
+                  {/* La marca del 0089 a la vista: el cajero ve el porqué ANTES
+                      de intentar agregarlo y comerse el rechazo. */}
+                  {item.soloCafeteria && <span className={p.sinStock}>{' · '}solo Cafetería</span>}
                 </span>
               </span>
               <span className={p.resultadoPrecio}>
@@ -1079,6 +1082,11 @@ export function PosPanel() {
   /* ------------------------------ Acciones ------------------------------ */
 
   const agregar = useCallback((item, cantidad = 1) => {
+    /* El candado de pantalla del "uso exclusivo de Cafetería" (0089). Va acá,
+     * en el embudo por el que pasan TODOS los caminos (buscador, escáner,
+     * carga rápida, búsqueda masiva); la API lo revalida en el confirm. */
+    const bloqueo = motivoBloqueo(item);
+    if (bloqueo) { toast(bloqueo, 'err'); return; }
     // Escaneo de una CAJA: además de las unidades, se fija la lista del
     // formato — comprar la caja ES elegir el precio mayorista.
     let listaFija = null;

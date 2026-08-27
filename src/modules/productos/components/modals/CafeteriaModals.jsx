@@ -366,7 +366,14 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null }) {
         return (
           <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr .8fr 1fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'start' }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 600 }}>{prod.nombre}</div>
+              <div style={{ fontWeight: 600 }}>
+                {prod.nombre}
+                {/* La marca del 0089: en ESTA pantalla es el protagonista —
+                    el envío es el único camino de salida del exclusivo. */}
+                {prod.soloCafeteria && (
+                  <span className={cx(s.badge, s['badge-granel'])} style={{ marginLeft: 6 }}>Cafetería</span>
+                )}
+              </div>
               <div className={s.hint} style={{ margin: 0 }}>
                 disponible: {store.fmtCant(prod, it.presId, disp)}
               </div>

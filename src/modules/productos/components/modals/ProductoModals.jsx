@@ -103,6 +103,8 @@ export function ProductoFormModal({ prodId }) {
   const [paso, setPaso] = useState(1);
   /** Granel que NO se vende suelto: existe solo para fraccionarse. */
   const [soloFraccionar, setSoloFraccionar] = useState(!!prod?.soloFraccionar);
+  /** Uso exclusivo de Cafetería (0089): no se vende en el mostrador. */
+  const [soloCafeteria, setSoloCafeteria] = useState(!!prod?.soloCafeteria);
   /** Catálogo que se está administrando encima del formulario (o null). */
   const [admin, setAdmin] = useState(null);
 
@@ -159,6 +161,7 @@ export function ProductoFormModal({ prodId }) {
       idExterno: f.idExterno.trim(),
       esGranel,
       soloFraccionar: esGranel ? soloFraccionar : false,
+      soloCafeteria,
     };
     if (!ed && f.proveedorId) {
       o.proveedorId = parseInt(f.proveedorId, 10);
@@ -229,6 +232,28 @@ export function ProductoFormModal({ prodId }) {
               </span>
             </span>
           </label>
+        )}
+
+        <label className={s['granel-toggle']}>
+          <input type="checkbox" checked={soloCafeteria} onChange={(e) => setSoloCafeteria(e.target.checked)} />
+          <span>
+            <span className={s['t-title']}>Uso exclusivo de Cafetería — no se vende en el mostrador</span><br />
+            <span className={s['t-sub']}>
+              Mercadería que se compra y guarda para la cafetería (Coffit). Es stock normal en
+              todo — compra, existencias, conteos, vencimientos — pero el POS la bloquea con el
+              motivo y la venta la rechaza. Sale solo por el envío de Almacén › Cafetería.
+            </span>
+          </span>
+        </label>
+        {/* El destilde vuelve el producto vendible YA: si nunca se vendió, lo
+            más probable es que no tenga precio cargado — avisarlo acá, antes
+            de guardar, y no después de la primera venta rara. */}
+        {ed && prod?.soloCafeteria && !soloCafeteria && (
+          <div className={s.callout}>
+            Al guardar, este producto <strong>vuelve a poder venderse en el mostrador</strong>.
+            Revisá que tenga precio cargado (Formato de venta): si no lo tiene, el POS lo va a
+            mostrar «sin precio» y no lo va a poder cobrar.
+          </div>
         )}
 
         {/* --- Identificación --- */}
@@ -549,6 +574,9 @@ function ResumenTab({ prod: p }) {
           <TipoBadge prod={p} />
           {p.soloFraccionar && (
             <span className={cx(s.badge, s['badge-granel'])} style={{ marginLeft: 6 }}>no se vende suelto</span>
+          )}
+          {p.soloCafeteria && (
+            <div className={s.hint} style={{ margin: 0 }}>Uso exclusivo de Cafetería: no se vende en el mostrador.</div>
           )}
         </Di>
         <Di label="Marca">{p.marca || '—'}</Di>

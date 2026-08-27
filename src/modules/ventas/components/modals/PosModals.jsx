@@ -3,7 +3,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { ventasApi } from '../../services/ventas.api.js';
 import { norm } from '../../domain/constants.js';
-import { buscarEnCatalogo, parseEtiquetaBalanza, r2 } from '../../domain/pos.js';
+import { buscarEnCatalogo, motivoBloqueo, parseEtiquetaBalanza, r2 } from '../../domain/pos.js';
 import { Btn, ModalShell, money, num, s } from '../ui.jsx';
 import p from '../../styles/Pos.module.css';
 
@@ -26,6 +26,10 @@ export function CargaRapidaModal({ catalogo, config, onAgregar }) {
   const resultados = useMemo(() => buscarEnCatalogo(catalogo, q, 6), [catalogo, q]);
 
   const agregar = (item, cantidad = 1) => {
+    // El "solo Cafetería" primero: su mensaje explica el porqué; el de
+    // "sin precio" mandaría al cajero a cargar un precio que no va a existir.
+    const bloqueo = motivoBloqueo(item);
+    if (bloqueo) { toast(bloqueo, 'err'); return; }
     if (item.precio <= 0) { toast(`${item.nombre} no tiene precio cargado.`, 'err'); return; }
     onAgregar(item, cantidad);
     // El "Agregado" muestra el FINAL con IVA: es lo que el cliente paga por
@@ -91,6 +95,7 @@ export function CargaRapidaModal({ catalogo, config, onAgregar }) {
                 <span className={p.resultadoMeta}>
                   {' · '}{item.detalle}
                   {' · '}<span className={item.stock <= 0 ? p.sinStock : undefined}>{num(item.stock)} {item.unidad}</span>
+                  {item.soloCafeteria && <span className={p.sinStock}>{' · '}solo Cafetería</span>}
                 </span>
               </span>
               <span className={p.resultadoPrecio}>{money(item.precioFinal)}</span>
@@ -188,6 +193,8 @@ export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
   }, [catalogo, categoria, marca, texto]);
 
   const agregar = (item) => {
+    const bloqueo = motivoBloqueo(item);
+    if (bloqueo) { toast(bloqueo, 'err'); return; }
     if (item.precio <= 0) { toast(`${item.nombre} no tiene precio cargado.`, 'err'); return; }
     onAgregar(item, 1);
     toast(`${item.nombre} · ${item.detalle} agregado.`, 'ok');
@@ -271,7 +278,12 @@ export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
                   {/* CÓDIGO INTERNO (el "código" del negocio), no el de barras. */}
                   <td className={s.mono}>{i.codigoPropio || <span className={s.muted}>—</span>}</td>
                   {/* Solo el nombre: la presentación tiene su columna y marca/categoría son los filtros de arriba. */}
-                  <td><div className={p.nombreCol}>{i.nombre}</div></td>
+                  <td>
+                    <div className={p.nombreCol}>
+                      {i.nombre}
+                      {i.soloCafeteria && <span className={p.sinStock}>{' · '}solo Cafetería</span>}
+                    </div>
+                  </td>
                   <td>{i.detalle}</td>
 
                   {sucursalesCols.map((su) => {
