@@ -5,6 +5,10 @@
  * archivo → vista previa obligatoria → resultado. La traducción vive en
  * `domain/importarProveedores.js`; acá vive la pantalla.
  *
+ * Vive en el módulo Proveedores (27/8, pedido del dueño): la importación
+ * alimenta el PADRÓN, y el padrón se administra acá desde 0068 — en Compras
+ * quedó solo lo operativo (costos y percepciones).
+ *
  * La vista previa es donde se decide TODO lo que la máquina no puede sola:
  * incluir o no una fila, mercadería vs. gastos, y los DUDOSOS — el archivo
  * dice "NUEVO COSMOS S.A" y en el CRM ya está "Nuevo Cosmo S.A. - Lucfel"
@@ -12,10 +16,12 @@
  */
 import { useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
-import { useProductos } from '../../context/ProductosContext.jsx';
-import { ModalShell } from '../Modal.jsx';
-import { Table, Btn, s } from '../ui.jsx';
-import { leerTexto, parseCsv } from '../../domain/importarCatalogo.js';
+import { useProveedores } from '../../context/ProveedoresContext.jsx';
+import { errorMsg, provApi } from '../../services/proveedores.api.js';
+import { ModalShell, Table, Btn, s } from '../ui.jsx';
+// Los helpers de CSV son los del importador de catálogos: mismo sistema viejo,
+// misma codificación rota (windows-1252), mismo parser.
+import { leerTexto, parseCsv } from '@modules/productos/domain/importarCatalogo.js';
 import { esArchivoProveedores, armarPlanProveedores } from '../../domain/importarProveedores.js';
 
 const CHIP = {
@@ -25,13 +31,11 @@ const CHIP = {
 };
 
 export function ImportarProveedoresModal() {
-  const { store, closeModal, toast } = useProductos();
+  const { proveedores: existentes, getProveedor, recargar, closeModal, toast } = useProveedores();
   const [filas, setFilas] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [resultado, setResultado] = useState(null);
   const inputRef = useRef(null);
-
-  const existentes = store.state.proveedores;
   const ordenados = useMemo(
     () => [...existentes].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
     [existentes],
@@ -57,26 +61,33 @@ export function ImportarProveedoresModal() {
   const importar = async () => {
     if (!incluidas.length) { toast('No quedó ninguna fila tildada para importar.', 'err'); return; }
     setGuardando(true);
-    const res = await store.importarProveedores(incluidas.map((f) => ({
-      nombre: f.nombre,
-      cuit: f.cuit,
-      email: f.email,
-      telefono: f.telefono,
-      condicionCompra: f.condicionCompra,
-      medioHabitual: f.medioHabitual || undefined,
-      diasPago: f.diasPago || undefined,
-      modoCuenta: f.modoCuenta,
-      porcSinFactura: f.porcSinFactura,
-      proveeMercaderia: !f.esGastos,
-      proveeGastos: f.esGastos,
-      productosEsperados: f.productosEsperados,
-      cuentas: f.cuentas,
-      // Solo el emparejamiento decidido acá viaja; el resto lo re-resuelve la API.
-      proveedorId: f.proveedorId || undefined,
-    })));
-    setGuardando(false);
-    if (!res.ok) { toast(res.error || 'No se pudo importar.', 'err'); return; }
-    setResultado(res.data ?? res);
+    try {
+      const res = await provApi.importarProveedores(incluidas.map((f) => ({
+        nombre: f.nombre,
+        cuit: f.cuit,
+        email: f.email,
+        telefono: f.telefono,
+        condicionCompra: f.condicionCompra,
+        medioHabitual: f.medioHabitual || undefined,
+        diasPago: f.diasPago || undefined,
+        modoCuenta: f.modoCuenta,
+        porcSinFactura: f.porcSinFactura,
+        proveeMercaderia: !f.esGastos,
+        proveeGastos: f.esGastos,
+        productosEsperados: f.productosEsperados,
+        cuentas: f.cuentas,
+        // Solo el emparejamiento decidido acá viaja; el resto lo re-resuelve la API.
+        proveedorId: f.proveedorId || undefined,
+      })));
+      setResultado(res);
+      // El padrón de atrás se refresca YA: la pantalla de resultado convive
+      // con la lista, y la lista tiene que mostrar lo que se acaba de crear.
+      recargar();
+    } catch (e) {
+      toast(errorMsg(e), 'err');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   /* ------------------------------- resultado ------------------------------- */
@@ -223,7 +234,7 @@ export function ImportarProveedoresModal() {
                   )}
                   {f.estado === 'completar' && (
                     <div className={s.hint} style={{ margin: '2px 0 0' }}>
-                      {store.getProveedor(f.proveedorId)?.nombre}
+                      {getProveedor(f.proveedorId)?.nombre}
                     </div>
                   )}
                 </td>

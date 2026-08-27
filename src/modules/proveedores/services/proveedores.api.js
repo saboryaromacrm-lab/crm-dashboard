@@ -38,6 +38,10 @@ export const provApi = {
   eliminarProveedor: (id) => httpClient.delete(`/proveedores/${id}`),
   cuentas: (id) => httpClient.get(`/proveedores/${id}/cuentas`),
   guardarCuentas: (id, cuentas) => httpClient.put(`/proveedores/${id}/cuentas`, { cuentas }),
+  /* La migración desde el sistema viejo (26/8): el CSV del padrón entero en
+   * una pasada, y el tilde manual de "terminé con este proveedor". */
+  importarProveedores: (filas) => httpClient.post('/proveedores/importar', { filas }),
+  marcarMigracion: (id, lista) => httpClient.post(`/proveedores/${id}/migracion`, { lista }),
 
   /* Pedidos (kanban + ingresos) */
   kanban: () => httpClient.get('/pedidos-proveedor'),

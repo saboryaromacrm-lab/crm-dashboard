@@ -25,7 +25,6 @@ import {
   VencimientoEditarModal, VencimientoProcesarModal,
 } from './modals/VencimientosModals.jsx';
 import { ImportarCatalogoModal } from './modals/ImportarCatalogoModal.jsx';
-import { ImportarProveedoresModal } from './modals/ImportarProveedoresModal.jsx';
 import { LecturaFacturaModal } from './modals/LecturaFacturaModal.jsx';
 import { HistorialPreciosModal, MargenesMasivosModal } from './modals/PreciosModals.jsx';
 
@@ -239,8 +238,8 @@ const REGISTRY = {
   // La pantalla propia del fraccionado (el Ajo X500G): resumen + Producto madre.
   fraccionado: FraccionadoModal,
   importarCatalogo: ImportarCatalogoModal,
-  // El padrón del sistema viejo, en una pasada (26/8, migración).
-  importarProveedores: ImportarProveedoresModal,
+  /* `importarProveedores` se mudó al módulo Proveedores (27/8): alimenta el
+   * padrón, y el padrón se administra allá. */
   /* Sin `compra`: la mercadería entra por la factura en Compras (18/8/2026). */
   vender: VenderModal,
   fraccionar: FraccionarModal,

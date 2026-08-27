@@ -1012,12 +1012,9 @@ const leerRenglonesLectura = (id) => httpClient.get(`/facturas/lecturas/${id}/re
 const percepcionesProveedor = (id) => httpClient.get(`/proveedores/${id}/percepciones`);
 const guardarPercepcionesProveedor = (id, percepciones) => _mutate(() => httpClient.put(`/proveedores/${id}/percepciones`, { percepciones }));
 
-/** Importación masiva: la API escribe el catálogo entero en una transacción. */
+/** Importación masiva: la API escribe el catálogo entero en una transacción.
+ *  La del PADRÓN de proveedores vive en el módulo Proveedores (27/8). */
 const importarCatalogo = (proveedorId, items) => _mutate(() => httpClient.post('/productos/importar', { proveedorId, items }));
-/** Importación del padrón de proveedores del sistema viejo (26/8, migración). */
-const importarProveedores = (filas) => _mutate(() => httpClient.post('/proveedores/importar', { filas }));
-/** El tilde manual de "terminé de migrar el catálogo de este proveedor". */
-const marcarMigracionProveedor = (id, lista) => _mutate(() => httpClient.post(`/proveedores/${id}/migracion`, { lista }));
 
 const actualizarCostos = (o) => _mutate(() => httpClient.post('/precios/costos', o));
 const actualizarMargenes = (o) => _mutate(() => httpClient.post('/precios/margenes', o));
@@ -1043,7 +1040,7 @@ export const inventoryStore = {
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
   sugerenciasArchivado, archivarLote,
-  guardarPresentaciones, importarCatalogo, importarProveedores, marcarMigracionProveedor,
+  guardarPresentaciones, importarCatalogo,
   crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, siguienteCodigo, siguienteEan,
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,
