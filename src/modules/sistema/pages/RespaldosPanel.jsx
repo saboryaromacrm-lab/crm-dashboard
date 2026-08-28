@@ -10,14 +10,23 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import { PanelHead, Btn, Stat, Table, s } from '@modules/productos/components/ui.jsx';
 import { fmtFechaHora, num } from '@modules/productos/domain/format.js';
 
 export function RespaldosPanel({ onAviso }) {
+  const { permissions } = usePermissions();
+  /* La limpieza de fin de práctica es EXCLUSIVA del superadmin (28/8, pedido
+   * del dueño): ni siquiera se muestra a los demás — y el servidor lo
+   * revalida, que es el candado que vale. */
+  const esSuper = permissions.includes('*');
   const [info, setInfo] = useState(null);
   const [error, setError] = useState('');
   const [bajando, setBajando] = useState(false);
+  const [ensayo, setEnsayo] = useState(null);
+  const [confirmacion, setConfirmacion] = useState('');
+  const [limpiando, setLimpiando] = useState(false);
 
   const cargar = useCallback(() => {
     httpClient.get('/sistema/respaldos/info')
@@ -37,6 +46,33 @@ export function RespaldosPanel({ onAviso }) {
       onAviso?.({ tipo: 'err', texto: e?.data?.message || 'No se pudo generar el respaldo.' });
     } finally {
       setBajando(false);
+    }
+  };
+
+  const verEnsayo = async () => {
+    try {
+      setEnsayo(await httpClient.get('/sistema/respaldos/limpieza/ensayo'));
+      setConfirmacion('');
+    } catch (e) {
+      onAviso?.({ tipo: 'err', texto: e?.data?.message || 'No se pudo consultar la limpieza.' });
+    }
+  };
+
+  const limpiar = async () => {
+    if (limpiando || confirmacion !== 'LIMPIAR') return;
+    setLimpiando(true);
+    try {
+      const r = await httpClient.post('/sistema/respaldos/limpieza', { confirmar: confirmacion });
+      onAviso?.({
+        tipo: 'ok',
+        texto: `Listo: se vaciaron ${num(r.borradas ?? 0, 0)} filas de práctica. El catálogo, los proveedores y los clientes quedaron intactos. La pantalla se recarga…`,
+      });
+      /* TODO lo que este navegador tiene en memoria (catálogos, stock,
+       * borradores) acaba de dejar de existir: la recarga es obligatoria. */
+      setTimeout(() => window.location.reload(), 2500);
+    } catch (e) {
+      onAviso?.({ tipo: 'err', texto: e?.data?.message || 'La limpieza no se pudo hacer.' });
+      setLimpiando(false);
     }
   };
 
@@ -92,6 +128,56 @@ export function RespaldosPanel({ onAviso }) {
           </div>
         )}
       </div>
+
+      {/* ============ FIN DEL PERÍODO DE PRUEBA — solo superadmin ============ */}
+      {esSuper && (
+        <div>
+          <div className={s['section-title']}>Fin del período de prueba</div>
+          <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>
+            <strong>Vacía TODA la operatoria</strong> — stock y movimientos, ventas y tickets,
+            comprobantes de compra (facturas, remitos, liquidaciones), cobranzas, caja y arqueos,
+            transferencias, conteos, incidencias, vencimientos, pagos y compromisos de
+            proveedores, gastos y envíos a Cafetería. <strong>Se conservan</strong> los productos
+            con sus formatos y precios, los proveedores, los clientes, los usuarios, las fotos y
+            toda la configuración. Es para el día que termine la práctica del equipo: los
+            contadores arrancan de nuevo y la primera venta real es el ticket 1.
+            <div style={{ marginTop: 8 }}>
+              <strong>Antes de tocar nada: descargá un respaldo</strong> con el botón de arriba —
+              es la única vuelta atrás.
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+              <Btn onClick={verEnsayo}>Ver qué se borraría</Btn>
+              {ensayo && (
+                <span className={s.hint} style={{ margin: 0 }}>
+                  <strong>{num(ensayo.total ?? 0, 0)}</strong> filas en {ensayo.detalle?.length ?? 0} tablas
+                  {' '}({(ensayo.detalle ?? []).slice(0, 6).map((d) => `${d.tabla}: ${num(d.filas, 0)}`).join(' · ')}
+                  {(ensayo.detalle?.length ?? 0) > 6 ? ' …' : ''})
+                </span>
+              )}
+            </div>
+            {/* El botón rojo recién aparece con el ensayo mirado, y recién se
+                prende con la palabra tipeada: dos seguros, y el servidor los
+                revalida a los dos. */}
+            {ensayo && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+                <input
+                  placeholder="Escribí LIMPIAR para confirmar"
+                  value={confirmacion}
+                  onChange={(e) => setConfirmacion(e.target.value)}
+                  style={{ maxWidth: 240 }}
+                />
+                <Btn
+                  variant="btn-delete"
+                  disabled={confirmacion !== 'LIMPIAR' || limpiando}
+                  onClick={limpiar}
+                >
+                  {limpiando ? 'Vaciando…' : 'Vaciar la operatoria de práctica'}
+                </Btn>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
