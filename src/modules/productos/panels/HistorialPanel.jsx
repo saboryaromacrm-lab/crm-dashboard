@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { useSeccion } from '../hooks/useSeccion.js';
 import { num, money, fmtFechaHora } from '../domain/format.js';
@@ -35,7 +35,28 @@ export function HistorialPanel({ preset, embedded }) {
   const [prodF, setProdF] = useState(() => (ini?.productoId ? String(ini.productoId) : ''));
   const [sucF, setSucF] = useState(() => (ini?.sucursalId ? String(ini.sucursalId) : ''));
 
-  const movs = store.state.movimientos
+  /* RANGO DE FECHAS (28/8, pedido del dueño). No puede ser un filtro de
+   * pantalla: acá abajo hay solo los últimos 300 movimientos, y filtrar eso
+   * por una fecha vieja mostraría un día incompleto sin avisar. Con rango
+   * puesto se le piden al servidor los movimientos de ESAS fechas (hasta
+   * 1000) y la tabla trabaja sobre esa respuesta; sin rango, todo sigue
+   * igual que siempre. */
+  const [desdeF, setDesdeF] = useState('');
+  const [hastaF, setHastaF] = useState('');
+  const [porFechas, setPorFechas] = useState(null);
+  const [cargandoRango, setCargandoRango] = useState(false);
+  useEffect(() => {
+    if (!desdeF && !hastaF) { setPorFechas(null); return undefined; }
+    let vivo = true;
+    setCargandoRango(true);
+    store.movimientosPorFechas({ desde: desdeF, hasta: hastaF })
+      .then((rows) => { if (vivo) setPorFechas(rows); })
+      .catch(() => { if (vivo) toast('No se pudieron cargar los movimientos de ese rango.', 'err'); })
+      .finally(() => { if (vivo) setCargandoRango(false); });
+    return () => { vivo = false; };
+  }, [desdeF, hastaF]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const movs = (porFechas ?? store.state.movimientos)
     .slice()
     .sort((a, b) => b.id - a.id)
     .filter((m) => {
@@ -45,7 +66,7 @@ export function HistorialPanel({ preset, embedded }) {
       return true;
     });
 
-  const pag = usePaginado(movs, 'movimientos', `${tipoF}|${prodF}|${sucF}`);
+  const pag = usePaginado(movs, 'movimientos', `${tipoF}|${prodF}|${sucF}|${desdeF}|${hastaF}`);
 
   /** El documento o motivo que explica el movimiento, como lo escribió quien
    *  lo generó ("Venta 0001-00000042 · Consumidor Final", "Recepción factura…",
@@ -155,7 +176,22 @@ export function HistorialPanel({ preset, embedded }) {
           <option value="">Todas las sucursales</option>
           {sucursalOptions(store, false)}
         </select>
+        <input type="date" value={desdeF} onChange={(e) => setDesdeF(e.target.value)} aria-label="Desde" />
+        <span className={s.muted}>→</span>
+        <input type="date" value={hastaF} onChange={(e) => setHastaF(e.target.value)} aria-label="Hasta" />
+        {(desdeF || hastaF) && (
+          <Btn small variant="btn-ghost" onClick={() => { setDesdeF(''); setHastaF(''); }}>Quitar fechas</Btn>
+        )}
+        {cargandoRango && <span className={s.hint} style={{ margin: 0 }}>Buscando…</span>}
       </div>
+      {/* El techo del rango, dicho: callarlo haría pasar un listado recortado
+          por el día completo. */}
+      {porFechas && porFechas.length >= 1000 && (
+        <div className={s.hint} style={{ margin: 0 }}>
+          El rango tiene más de 1000 movimientos y se muestran los últimos 1000 — achicalo para
+          ver el detalle completo.
+        </div>
+      )}
       <Table
         cols={[
           { h: 'Fecha y hora' }, { h: 'Tipo' }, { h: 'Producto' }, { h: 'Sucursal' },

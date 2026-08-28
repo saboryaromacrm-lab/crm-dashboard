@@ -475,6 +475,19 @@ function _enriquecerMovimientos(rows) {
   });
 }
 
+/**
+ * Movimientos de un RANGO DE FECHAS, pedidos aparte (27/8, pedido del dueño):
+ * la sección `movimientos` carga los últimos 300, y para atrás de eso hay que
+ * ir al servidor. NO pisa `state.movimientos` — el resumen del inventario y el
+ * historial sin rango siguen viendo lo suyo; el panel guarda esto en su estado.
+ */
+async function movimientosPorFechas({ desde, hasta }) {
+  const q = new URLSearchParams({ limit: '1000' });
+  if (desde) q.set('desde', desde);
+  if (hasta) q.set('hasta', hasta);
+  return _enriquecerMovimientos(await httpClient.get('/movimientos?' + q.toString()));
+}
+
 const _LOADERS = {
   movimientos: async () => {
     state.movimientos = _enriquecerMovimientos(await httpClient.get('/movimientos?limit=300'));
@@ -1027,7 +1040,7 @@ export const inventoryStore = {
   get loaded() { return _loaded; },
   get loadError() { return _loadError; },
   subscribe, getVersion,
-  init, reset, refetch, cargarSeccion,
+  init, reset, refetch, cargarSeccion, movimientosPorFechas,
   getProducto, getSucursal, getProveedor, getUsuario, presDe, distribuidora,
   unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry,
   rolActual, can, tiposMovPermitidos, setCtx,
