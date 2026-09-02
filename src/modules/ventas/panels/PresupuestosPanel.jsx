@@ -16,7 +16,7 @@ import { configImpresion, esc, imprimirDocumento } from '@core/services/imprimir
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
-import { telefonoWa } from '../domain/constants.js';
+import { direccionOrden, telefonoWa } from '../domain/constants.js';
 import {
   Table, PanelHead, Btn, Pill, ModalShell, money, num, fmtFecha, usePaginado, s,
 } from '../components/ui.jsx';
@@ -88,7 +88,7 @@ function imprimirArmado(p, cliente) {
     titulo: `${p.codigo} — Armado`,
     cuerpo: `
       <h1>${esc(p.codigo)} · Armado del pedido</h1>
-      <div class="sub">${esc(cliente?.nombre ?? '')} · ${esc(ENTREGAS[p.entrega] ?? p.entrega)} · anotá lo armado y cargalo al volver</div>
+      <div class="sub">${esc(cliente?.nombre ?? '')} · ${esc(ENTREGAS[p.entrega] ?? p.entrega)}${direccionOrden(p) ? ` · 📍 ${esc(direccionOrden(p))}` : ''} · anotá lo armado y cargalo al volver</div>
       <table><thead><tr><th>Producto</th><th>Pedido</th><th>Armado</th><th>Observación</th><th>&#10003;</th></tr></thead>
       <tbody>${filas}</tbody></table>`,
   });
@@ -118,6 +118,7 @@ function textoWhatsApp(p, cliente, empresaNombre) {
     `💰 *TOTAL: ${money(p.total)}* _(IVA incluido)_`,
     p.vencimiento ? `⏳ Válido hasta el *${fmtFecha(p.vencimiento)}*` : null,
     `🚚 Entrega: ${ENTREGAS[p.entrega] ?? p.entrega}`,
+    direccionOrden(p) ? `📍 ${direccionOrden(p)}` : null,
     p.observaciones ? `📝 ${p.observaciones}` : null,
     '',
     '¡Gracias por tu compra! 💚',
@@ -334,6 +335,7 @@ export function PresupuestosPanel() {
           <strong>{cli?.nombre ?? `Cliente #${p.clienteId}`}</strong>
           <div className={s.hint} style={{ margin: 0 }}>
             {ENTREGAS[p.entrega] ?? p.entrega}
+            {direccionOrden(p) && ` · 📍 ${direccionOrden(p)}`}
             {p.observaciones && ` · ${p.observaciones}`}
           </div>
         </td>

@@ -195,7 +195,7 @@ export function PagosSucursalTab({ proveedorId, onCambio }) {
       <div className={s.hint}>
         Esta bandeja es de <strong>solo lectura</strong>: es el control de qué plata salió sin
         comprobante detrás. Un pago se aplica desde el GASTO — al cargarlo, o en su detalle con
-        "Aplicar un pago existente" — y aplicar <strong>no vuelve a mover plata</strong>.
+        &quot;Aplicar un pago existente&quot; — y aplicar <strong>no vuelve a mover plata</strong>.
       </div>
     </>
   );

@@ -36,7 +36,7 @@ import p from '../../styles/Pos.module.css';
  * nada que elegir. Los medios de pago arrancan en efectivo por el total.
  */
 export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrado }) {
-  const { getCliente, config, ctx, closeModal, toast, operador, operadorId } = useVentas();
+  const { getCliente, config, ctx, closeModal, toast, operadorId } = useVentas();
   const cliente = getCliente(clienteId);
 
   const [condicionPago, setCondicionPago] = useState('contado');

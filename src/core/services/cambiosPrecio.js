@@ -66,6 +66,13 @@ function asegurarPolling() {
   _timer = setInterval(tick, INTERVALO_MS);
 }
 
+/** Sin oyentes se apaga el reloj (si no, seguía corriendo tras cerrar sesión). */
+function detenerPolling() {
+  if (!_timer) return;
+  clearInterval(_timer);
+  _timer = null;
+}
+
 export const cambiosPrecio = {
   /** `{ ultimo, hayNovedad }` — pensado para `useSyncExternalStore`. */
   estado: () => _snap,
@@ -73,7 +80,10 @@ export const cambiosPrecio = {
   subscribe(listener) {
     asegurarPolling();
     _listeners.add(listener);
-    return () => _listeners.delete(listener);
+    return () => {
+      _listeners.delete(listener);
+      if (!_listeners.size) detenerPolling();
+    };
   },
   /**
    * "Ya estoy al día con esta firma": apaga el aviso hasta el próximo cambio.

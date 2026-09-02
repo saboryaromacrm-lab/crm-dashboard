@@ -94,6 +94,8 @@ export const authService = {
     };
     guardarSesion(sesion);
     httpClient.reiniciarAvisoDeSesion();
+    // Lo que bajó la sesión anterior no es de esta.
+    httpClient.olvidarBlobs();
     // La elección del login ES el contexto de trabajo: los módulos arrancan
     // parados en esa sucursal y operando como ese usuario.
     actualizarCtx({ sucursalId: res.sucursal.id, usuarioId: res.usuario.id }, res.usuario.id);
@@ -114,6 +116,9 @@ export const authService = {
      */
     try { await httpClient.post('/auth/salir'); } catch { /* se limpia igual */ }
     limpiarSesion();
+    // Las fotos de facturas bajadas con ESTA credencial no le quedan al
+    // próximo que entre en la misma pestaña.
+    httpClient.olvidarBlobs();
     return true;
   },
 

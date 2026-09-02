@@ -12,7 +12,8 @@
     "dev:https": "node scripts/dev-https.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "test": "node --test \"src/**/*.test.js\""
   },
   "dependencies": {
     "@emotion/react": "^11.13.3",

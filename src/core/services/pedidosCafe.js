@@ -34,13 +34,23 @@ function asegurarPolling() {
   _timer = setInterval(tick, INTERVALO_MS);
 }
 
+/** Sin oyentes se apaga el reloj (si no, seguía corriendo tras cerrar sesión). */
+function detenerPolling() {
+  if (!_timer) return;
+  clearInterval(_timer);
+  _timer = null;
+}
+
 export const pedidosCafe = {
   /** Pedidos del café sin tomar, según el último tick. */
   count: () => _count,
   subscribe(listener) {
     asegurarPolling();
     _listeners.add(listener);
-    return () => _listeners.delete(listener);
+    return () => {
+      _listeners.delete(listener);
+      if (!_listeners.size) detenerPolling();
+    };
   },
   /** Refresco inmediato (después de tomar/convertir, sin esperar el tick). */
   refrescar: tick,

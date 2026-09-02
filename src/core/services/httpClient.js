@@ -66,6 +66,38 @@ function sesionVencida() {
   } catch { /* sin window (tests) */ }
 }
 
+/**
+ * Encadena el `signal` del llamador al controller del timeout: si el llamador
+ * cancela, se aborta; si vence el timeout, también. Antes se hacía
+ * `signal ?? controller.signal`, y con eso una llamada que traía su propio
+ * signal quedaba SIN timeout — el temporizador abortaba un controller que
+ * nadie escuchaba.
+ */
+function encadenarAbort(signal, controller) {
+  if (!signal) return;
+  if (signal.aborted) {
+    controller.abort(signal.reason);
+    return;
+  }
+  signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
+}
+
+/**
+ * `fetch` con timeout SOLO hasta que llegan los encabezados. Lo que se corta es
+ * la espera de un servidor que no contesta nada; una vez que respondió, bajar
+ * el cuerpo no tiene límite — un respaldo grande tarda más de 20 s y no se
+ * puede matar a la mitad.
+ */
+async function fetchConTimeout(url, init = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), appConfig.api.timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function request(method, path, { body, headers, signal, sinRedirigir = false } = {}) {
   const url = path.startsWith('http')
     ? path
@@ -73,6 +105,7 @@ async function request(method, path, { body, headers, signal, sinRedirigir = fal
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), appConfig.api.timeoutMs);
+  encadenarAbort(signal, controller);
 
   const token = leerSesion()?.token;
 
@@ -87,7 +120,7 @@ async function request(method, path, { body, headers, signal, sinRedirigir = fal
           ...headers,
         },
         body: body != null ? JSON.stringify(body) : undefined,
-        signal: signal ?? controller.signal,
+        signal: controller.signal,
       });
     } catch (e) {
       /* Acá SOLO se cae cuando no hubo respuesta: se cortó la red, el servidor
@@ -131,9 +164,11 @@ async function request(method, path, { body, headers, signal, sinRedirigir = fal
  * UN BINARIO PROTEGIDO (la foto de una factura, un adjunto). Desde que la API
  * se cerró, un `<img src>` pelado recibe 401: la etiqueta no puede mandar el
  * token. Esto lo baja CON la credencial y devuelve una **URL de objeto local**
- * (`blob:`) lista para el `src` o para `window.open`. La URL vive hasta que la
- * pestaña se cierra o alguien la revoca — para modales que van y vienen es un
- * costo aceptable y evita re-bajar el mismo papel en cada render.
+ * (`blob:`) lista para el `src` o para `window.open`. La URL vive mientras dure
+ * la SESIÓN: para modales que van y vienen es un costo aceptable y evita
+ * re-bajar el mismo papel en cada render. Al salir se revocan todas
+ * (`olvidarBlobs`): sin eso, las facturas del usuario anterior seguían
+ * resolubles en la misma pestaña para el siguiente, y el Map crecía sin techo.
  */
 const urlsDeBlob = new Map();
 async function urlProtegida(path) {
@@ -142,7 +177,7 @@ async function urlProtegida(path) {
   const token = leerSesion()?.token;
   let response;
   try {
-    response = await fetch(url, {
+    response = await fetchConTimeout(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
   } catch {
@@ -160,6 +195,14 @@ async function urlProtegida(path) {
   return objeto;
 }
 
+/** Revoca y olvida todos los binarios bajados. Se llama al entrar y al salir. */
+function olvidarBlobs() {
+  for (const objeto of urlsDeBlob.values()) {
+    try { URL.revokeObjectURL(objeto); } catch { /* ya revocada */ }
+  }
+  urlsDeBlob.clear();
+}
+
 /**
  * DESCARGAR UN ARCHIVO PROTEGIDO a la máquina del usuario (el respaldo de la
  * base). Distinto de `urlProtegida` en las dos cosas que importan acá: NO
@@ -171,7 +214,7 @@ async function descargar(path, nombrePorDefecto = 'archivo') {
   const token = leerSesion()?.token;
   let response;
   try {
-    response = await fetch(url, {
+    response = await fetchConTimeout(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
   } catch {
@@ -184,7 +227,7 @@ async function descargar(path, nombrePorDefecto = 'archivo') {
   if (!response.ok) {
     throw new HttpError(`Request failed: ${response.status}`, { status: response.status });
   }
-  const nombre = /filename="?([^";]+)"?/.exec(response.headers.get('content-disposition') || '')?.[1]
+  const nombre =/filename="?([^";]+)"?/.exec(response.headers.get('content-disposition') || '')?.[1]
     || nombrePorDefecto;
   const objeto = URL.createObjectURL(await response.blob());
   const a = document.createElement('a');
@@ -207,6 +250,7 @@ export const httpClient = {
   patch: (path, body, opts) => request('PATCH', path, { ...opts, body }),
   delete: (path, opts) => request('DELETE', path, opts),
   urlProtegida,
+  olvidarBlobs,
   descargar,
 };
 

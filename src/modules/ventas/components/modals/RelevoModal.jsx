@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { errorMsg, ventasApi } from '../../services/ventas.api.js';
-import { Btn, ModalShell, s } from '../ui.jsx';
+import { ModalShell, s } from '../ui.jsx';
 
 /**
  * EL RELEVO DE CAJA (0088, pedido del dueño).

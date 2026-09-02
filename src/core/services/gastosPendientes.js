@@ -44,10 +44,7 @@ async function tick() {
      *
      * Todo lo demás (la API caída, un corte de red) SÍ se reintenta.
      */
-    if (e?.status === 403 && _timer) {
-      clearInterval(_timer);
-      _timer = null;
-    }
+    if (e?.status === 403) detenerPolling();
   }
 }
 
@@ -57,12 +54,22 @@ function asegurarPolling() {
   _timer = setInterval(tick, INTERVALO_MS);
 }
 
+function detenerPolling() {
+  if (!_timer) return;
+  clearInterval(_timer);
+  _timer = null;
+}
+
 export const gastosPendientes = {
   count: () => _count,
   subscribe(listener) {
     asegurarPolling();
     _listeners.add(listener);
-    return () => _listeners.delete(listener);
+    return () => {
+      _listeners.delete(listener);
+      // Sin oyentes se apaga el reloj, igual que los otros pollers del núcleo.
+      if (!_listeners.size) detenerPolling();
+    };
   },
   /** Refresco inmediato después de pagar o imputar, sin esperar el tick. */
   refrescar: tick,

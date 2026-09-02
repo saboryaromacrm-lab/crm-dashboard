@@ -34,6 +34,16 @@ function asegurarPolling() {
   _timer = setInterval(tick, INTERVALO_MS);
 }
 
+/**
+ * Sin oyentes no hay a quién avisar: se apaga el reloj. Antes el intervalo
+ * seguía pegándole a la API después de cerrar sesión, hasta recargar.
+ */
+function detenerPolling() {
+  if (!_timer) return;
+  clearInterval(_timer);
+  _timer = null;
+}
+
 export const ordenesWeb = {
   /** Pedidos web pendientes según el último tick. */
   count: () => _count,
@@ -41,7 +51,10 @@ export const ordenesWeb = {
   subscribe(listener) {
     asegurarPolling();
     _listeners.add(listener);
-    return () => _listeners.delete(listener);
+    return () => {
+      _listeners.delete(listener);
+      if (!_listeners.size) detenerPolling();
+    };
   },
   /** Refresco inmediato (después de aceptar/rechazar, sin esperar el tick). */
   refrescar: tick,

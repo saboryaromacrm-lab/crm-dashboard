@@ -161,6 +161,21 @@ export function telefonoWa(tel) {
   return d.length === 10 ? `549${d}` : '';
 }
 
+/**
+ * La dirección de entrega que dejó el cliente en el checkout del sitio (viaja
+ * en `webCliente`, solo con envío): "Calle 123, Barrio (referencia)". Vacío si
+ * es retiro o si la orden es de antes de que el sitio la pidiera.
+ */
+export function direccionOrden(p) {
+  const wc = p?.webCliente ?? {};
+  const calle = String(wc.direccion ?? '').trim();
+  const localidad = String(wc.localidad ?? '').trim();
+  const referencia = String(wc.referencia ?? '').trim();
+  const base = [calle, localidad].filter(Boolean).join(', ');
+  if (!base) return '';
+  return referencia ? `${base} (${referencia})` : base;
+}
+
 /** Documento legible: "CUIT 30-71234567-8". Vacío → guion. */
 export function docLegible(cliente) {
   if (!cliente?.numeroDoc) return '—';

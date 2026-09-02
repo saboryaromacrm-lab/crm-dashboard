@@ -1,0 +1,36 @@
+# CI mínima: en cada push a dev/main y en cada pull request, el dashboard tiene
+# que pasar el lint (errores) y compilar. No despliega nada.
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # La misma versión que la imagen de producción (node:22-alpine).
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias (lockfile exacto)
+        run: npm ci
+
+      # `--quiet` = solo errores. El `npm run lint` del proyecto exige cero
+      # warnings y hoy hay ~54 heredados (dependencias de hooks, fast refresh);
+      # se limpian de a poco y recién ahí se cambia este paso por `npm run lint`.
+      - name: Lint (errores)
+        run: npx eslint . --ext js,jsx --quiet
+
+      # Runner nativo de Node sobre la lógica pura de `domain/` (sin React).
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build

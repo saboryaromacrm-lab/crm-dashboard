@@ -221,7 +221,7 @@ export function DetallePagoModal({ pagoId, onChange }) {
       {vivo && p.saldo > 0.009 && (
         <div className={s.hint}>
           Este pago se aplica <strong>desde el gasto</strong>: al cargarlo se ofrece solo, y si el
-          gasto ya está cargado, desde su detalle con "Aplicar un pago existente".
+          gasto ya está cargado, desde su detalle con &quot;Aplicar un pago existente&quot;.
         </div>
       )}
 

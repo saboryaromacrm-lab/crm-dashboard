@@ -21,6 +21,15 @@ como la referencia viva del proyecto para los próximos años.
 13. [Recomendaciones para una plataforma CRM empresarial](#13-recomendaciones-empresariales)
 14. [Camino de migración a TypeScript](#14-migración-a-typescript)
 
+> **Estado real al 1/9/2026.** Este documento nació como diseño de la base y
+> se actualizó ese día para que describa lo que HAY, no lo que iba a haber.
+> Lo que ya está implementado y funcionando: autenticación real contra la API
+> (`core/auth`, sesión por pestaña con token), permisos por rol en dos niveles
+> (`core/permissions`), guards de ruta (`ProtectedRoute` + `ModuleGuard`),
+> 10 módulos de negocio, y 9 servicios de núcleo (cliente HTTP, impresión,
+> códigos de barras, pollers de avisos, chat). Lo que sigue siendo aspiración
+> está marcado como tal en cada sección.
+
 ---
 
 ## 1. Principios de diseño
@@ -80,12 +89,14 @@ crm-dashboard/
     │   │   ├── createAppTheme.js# factory de theme MUI (+ overrides por comercio)
     │   │   └── ThemeModeContext.jsx
     │   ├── providers/
-    │   │   └── AppProviders.jsx # compone TODOS los providers globales
-    │   ├── auth/                # gestión de autenticación (futura)
-    │   │   ├── auth.service.js  # única puerta de I/O de auth
-    │   │   └── AuthContext.jsx
-    │   ├── permissions/         # gestión de permisos (futura)
-    │   │   └── PermissionContext.jsx   # can() / canAny() / hasRole()
+    │   │   └── AppProviders.jsx # ThemeMode → Auth → Permission → UI
+    │   ├── auth/                # AUTENTICACIÓN REAL contra la API
+    │   │   ├── auth.service.js  # login / logout / getCurrentUser (/auth/yo)
+    │   │   ├── AuthContext.jsx
+    │   │   ├── sesion.js        # sesión POR PESTAÑA (sessionStorage + copia heredable)
+    │   │   └── terminal.js      # token del equipo registrado (localStorage)
+    │   ├── permissions/
+    │   │   └── PermissionContext.jsx   # can() / canAny() — decide qué se MUESTRA
     │   ├── context/
     │   │   └── UIContext.jsx    # estado de layout (sidebar, drawer móvil)
     │   ├── modules/             # infraestructura del sistema de módulos
@@ -93,14 +104,16 @@ crm-dashboard/
     │   │   └── registry.js      # registro: genera rutas y navegación
     │   ├── router/
     │   │   ├── AppRouter.jsx    # árbol de rutas generado desde el registro
-    │   │   ├── LoginPage.jsx
+    │   │   ├── HomeRedirect.jsx # "/" → primer módulo que el rol puede ver
+    │   │   ├── LoginPage.jsx    # usuario + contraseña + sucursal (dos pasos)
     │   │   ├── NotFoundPage.jsx
     │   │   ├── RouteErrorBoundary.jsx
     │   │   └── guards/
     │   │       ├── ProtectedRoute.jsx    # exige sesión
-    │   │       └── PermissionRoute.jsx   # exige permiso
+    │   │       ├── ModuleGuard.jsx       # exige los permisos del módulo (URL tipeada)
+    │   │       └── PermissionRoute.jsx   # (sin uso hoy)
     │   ├── navigation/
-    │   │   ├── useNavigation.js         # nav = registro + permisos + grupos
+    │   │   ├── useNavigation.js         # nav = registro + permisos + grupos + badges
     │   │   ├── navigationGroups.js      # grupos del sidebar y su orden
     │   │   └── useBreadcrumbs.js        # breadcrumbs desde la ruta activa
     │   ├── layout/
@@ -108,32 +121,45 @@ crm-dashboard/
     │   │   ├── MainLayout.module.css
     │   │   └── components/
     │   │       ├── Sidebar/             # SidebarContent + Sidebar + MobileNavDrawer
-    │   │       ├── Topbar/              # Topbar + GlobalSearch
-    │   │       └── Breadcrumbs/
-    │   ├── hooks/               # hooks compartidos del núcleo
-    │   │   ├── useMediaQuery.js
-    │   │   ├── useBreakpoint.js
-    │   │   ├── useToggle.js
-    │   │   └── useDocumentTitle.js
-    │   └── services/           # servicios compartidos del núcleo
-    │       ├── httpClient.js    # cliente HTTP único (base url, timeout, auth)
+    │   │       ├── Topbar/              # Topbar + GlobalSearch (cambio de sucursal, salir)
+    │   │       ├── Breadcrumbs/
+    │   │       ├── ChatDock.jsx         # chat interno (poller `chat.js`)
+    │   │       ├── OrdenesWebAlert.jsx  # aviso con sonido de pedidos del sitio
+    │   │       ├── PedidosCafeAlert.jsx # aviso de pedidos de la cafetería
+    │   │       └── PreciosAlert.jsx     # "cambiaron los precios, recargá"
+    │   ├── hooks/               # useMediaQuery, useBreakpoint, useDocumentTitle, useToggle
+    │   └── services/            # servicios compartidos del núcleo
+    │       ├── httpClient.js    # cliente HTTP único: base url, timeout, Bearer, 401 → login
+    │       ├── imprimir.js      # motor único de impresión (lee Sistema › Impresión)
+    │       ├── barcode.js       # EAN-13 / Code 39 en SVG, sin dependencias
+    │       ├── ordenesWeb.js    # poller: pedidos web pendientes (badge + alerta)
+    │       ├── pedidosCafe.js   # poller: pedidos de la cafetería
+    │       ├── gastosPendientes.js # poller: vencidos + pagos sin aplicar
+    │       ├── cambiosPrecio.js # poller: firma del último cambio de precio
+    │       ├── chat.js          # poller del chat interno (4 s, latido de presencia)
     │       └── logger.js
     │
     ├── modules/                 # ────────── MÓDULOS DE NEGOCIO ──────────
-    │   ├── index.js             # COMPOSITION ROOT: lista y registra módulos
-    │   └── dashboard/           # módulo de referencia (autocontenido)
-    │       ├── index.js         # manifiesto: defineModule({...})
-    │       ├── config/dashboard.config.js
-    │       ├── pages/DashboardPage.jsx
-    │       ├── components/      # MetricCard, MetricsGrid, RecentActivityTable
-    │       ├── hooks/useDashboardData.js
-    │       ├── services/dashboard.service.js
-    │       └── styles/Dashboard.module.css
+    │   ├── index.js             # COMPOSITION ROOT: lista y registra los 10 módulos
+    │   ├── dashboard/           # /dashboard — resumen del inventario (pages, styles)
+    │   ├── compras/             # /compras   — manifiesto; usa `productos/`
+    │   ├── almacen/             # /almacen   — manifiesto; usa `productos/`
+    │   ├── productos/           # SUBSISTEMA compartido por Compras y Almacén
+    │   │                        #   (apps, components, config, context, domain,
+    │   │                        #    hooks, pages, panels, services, styles)
+    │   ├── proveedores/         # /proveedores — pedidos, cuentas, echeqs, padrón
+    │   ├── ventas/              # /ventas — POS, caja, órdenes web, presupuestos…
+    │   ├── gastos/              # /gastos — gastos, pagos a proveedor, fijos, rubros
+    │   ├── web/                 # /web — administración del sitio público
+    │   ├── gerencia/            # /gerencia — usuarios y roles, rentabilidad
+    │   ├── sistema/             # /sistema — empresa, impresión, terminales, respaldos
+    │   ├── manual/              # /info — documentación viva (contenido, es DATO)
+    │   └── consultas/           # atajos globales (Alt+F3/F5); lo monta MainLayout
     │
     ├── shared/                  # ────────── REUTILIZABLE (sin negocio) ──────────
-    │   ├── components/          # PageHeader, FullScreenLoader…
+    │   ├── components/          # PageHeader, FullScreenLoader, ComingSoon
     │   ├── constants/breakpoints.js
-    │   └── utils/               # classNames (cx), formatters
+    │   └── utils/               # classNames (cx), csv, formatters
     │
     ├── assets/                  # imágenes, íconos, fuentes
     └── styles/                  # ────────── ESTILOS GLOBALES ──────────
@@ -144,8 +170,16 @@ crm-dashboard/
 ```
 
 Cada **módulo** puede contener las mismas subcarpetas: `pages`, `components`,
-`services`, `hooks`, `routes`/`index.js`, `styles`, `config`. Es un mini-proyecto
-autocontenido.
+`services`, `hooks`, `routes`/`index.js`, `styles`, `config`, y en los grandes
+también `context` (el provider del módulo), `domain` (cálculos puros) y
+`panels` (las secciones del submenú). Es un mini-proyecto autocontenido.
+
+**Una excepción conocida y deliberada:** `modules/productos/` no es un módulo
+con ruta propia sino el subsistema que comparten Compras y Almacén, y de él
+importan además Ventas, Gastos, Proveedores, Web, Gerencia, Sistema y
+Consultas (`components/ui.jsx`, `components/Modal.jsx`, `domain/format.js`).
+Funciona como librería compartida disfrazada de módulo; lo correcto sería
+subir esas piezas a `shared/`. Está anotado como deuda.
 
 ---
 
@@ -310,36 +344,69 @@ separado de tema y auth para respetar *Single Responsibility*.
 /login                        → pública (LoginPage)
 /                             → ProtectedRoute (exige sesión)
   └── MainLayout              → shell
-        ├── index            → redirect a /dashboard
-        └── …módulos…        → moduleRegistry.getRouteObjects()  (auto)
+        ├── index            → HomeRedirect: al PRIMER módulo que el rol puede ver
+        └── ModuleGuard      → exige los permisos del módulo (por `handle.moduleId`)
+              └── …módulos… → moduleRegistry.getRouteObjects()  (auto)
 *                             → NotFoundPage (404)
 ```
 
 - **Guards** como componentes de ruta: `ProtectedRoute` (sesión) y
-  `PermissionRoute` (autorización), combinables por módulo.
+  `ModuleGuard` (autorización por módulo, para la URL tipeada a mano).
+  `PermissionRoute` existe pero hoy no se usa.
+- **`HomeRedirect`** no es un redirect fijo a `/dashboard` (sería un rebote
+  infinito con el guard para un rol sin ese permiso): manda al primer módulo
+  visible, y si no hay ninguno muestra "Sin secciones asignadas".
 - **`RouteErrorBoundary`** aísla errores: una ruta rota no tumba toda la app.
 - **Breadcrumbs** se derivan de `handle.crumb` de cada ruta (o del pathname),
   vía `useMatches()`.
 - Agregar un módulo **no** modifica este archivo: sus rutas entran por el
   registro.
+- **Sub-navegación:** cada módulo declara UNA ruta; sus paneles (Punto de
+  venta, Caja, Clientes…) son estado del provider del módulo, no URL. El
+  `?panel=<id>` permite enlazar a uno, y se ignora si el rol no lo puede ver.
+
+### 7.1 Autenticación y sesión (implementado)
+
+- `LoginPage` pide `GET /auth/opciones` (solo `{id, nombre}` de usuarios y
+  sucursales) y hace `POST /auth/login` con usuario, contraseña y sucursal. Si
+  el equipo está registrado como terminal, la sucursal la impone el servidor.
+- La sesión (`token`, usuario, sucursal) vive en **`sessionStorage`** —una por
+  pestaña— con una copia en `localStorage` que una pestaña nueva hereda
+  durante 10 horas (`core/auth/sesion.js`). Dos ventanas pueden operar con
+  usuarios y sucursales distintos sin pisarse.
+- `httpClient` agrega `Authorization: Bearer` a toda llamada; un **401** limpia
+  la sesión y recarga (vuelve al login); un **403** NO cierra sesión (es "tu
+  rol no puede", no "tu sesión venció").
+- En cada arranque `getCurrentUser()` refresca permisos contra `/auth/yo`; si
+  la API no responde, vale la foto guardada al entrar.
+- `PermissionContext` decide qué se **muestra**; quién puede hacer qué lo
+  decide **el servidor** (guard global de `crm-api`).
 
 ---
 
-## 8. El módulo Dashboard como referencia
+## 8. Módulos de referencia
 
-El módulo `dashboard` es la implementación canónica a copiar. Incluye lo pedido:
+El módulo `dashboard` fue la implementación canónica del arranque; hoy es el
+más chico (`index.js` + `pages/` + `styles/`) y lee el inventario real desde el
+store compartido. **Para copiar la estructura de un módulo completo, mirá
+`gastos/` o `proveedores/`**, que tienen el patrón entero:
 
-- **Cards de métricas** (`MetricsGrid` + `MetricCard`): grid responsive (1 → 2 →
-  4 columnas) manejado por CSS Modules. Qué métricas se muestran se define en
-  `config/dashboard.config.js` (datos, no código).
-- **Tabla de actividad reciente** (`RecentActivityTable`): tabla MUI con scroll
-  horizontal en pantallas chicas y estados de carga con `Skeleton`.
-- **Datos desacoplados**: `services/dashboard.service.js` (hoy mock, mañana
-  `httpClient`) + `hooks/useDashboardData.js` (estado de carga/error/refetch).
-  La página `DashboardPage.jsx` es solo composición.
+- `index.js` — manifiesto `defineModule({...})`; los `permissions` se derivan
+  de la lista de paneles del `config/`.
+- `config/<modulo>.config.js` — los paneles del submenú como **dato** (id,
+  rótulo, permiso, badge).
+- `context/<Modulo>Context.jsx` — el provider: carga el bootstrap del módulo,
+  expone `panel/goPanel`, `modal/openModal/closeModal`, `toast`, `recargar`.
+- `pages/<Modulo>Page.jsx` — filtra los paneles por permiso y monta el shell.
+- `panels/` — una pantalla por sección; `components/modals/` — los diálogos.
+- `services/<modulo>.api.js` — la única capa de I/O, sobre `httpClient`.
+- `domain/` — cálculos puros, sin React ni red.
+- `hooks/useResource.js` — carga perezosa de listados grandes.
 
-Este módulo demuestra las siete subcarpetas del contrato: `pages`, `components`,
-`services`, `hooks`, `config`, `styles` e `index.js` (manifiesto/routes).
+Los datos se cargan de tres formas que conviven: un **store singleton** para
+el inventario (`productos/services/inventory.store.js`, compartido por
+Compras, Almacén y Dashboard), un **contexto por módulo** (Ventas, Gastos,
+Proveedores), y **pollers globales** del núcleo para los avisos.
 
 ---
 
@@ -431,9 +498,9 @@ sugerido:
 1. **Data layer:** adoptar **TanStack Query** (React Query) sobre `httpClient`
    para caché, reintentos, invalidación y estados de servidor. Los hooks
    `useXData` ya son el lugar natural para migrarlo.
-2. **Autenticación real:** OAuth2/OIDC (Auth0/Keycloak/Cognito), refresh tokens,
-   e inyección del `Authorization` en `httpClient`. Todo el cambio queda en
-   `auth.service.js`.
+2. **Autenticación:** ya es real (sesiones con token contra la API, ver §7.1).
+   Si algún día hace falta OAuth2/OIDC, el cambio sigue quedando encapsulado en
+   `auth.service.js` + `sesion.js`.
 3. **Autorización robusta:** RBAC/ABAC con permisos `"<recurso>:<acción>"` (ya
    soportados), más un componente `<Can permission="…">` para gating a nivel UI.
 4. **Multi-tenant / white-label:** tema y catálogo de módulos por comercio; feature
@@ -442,7 +509,8 @@ sugerido:
    volverse claves de traducción. Formatos regionales ya usan `Intl`.
 6. **Calidad:** **TypeScript** (ver §14), **Vitest + Testing Library** para
    unidad, **Playwright** para E2E, **Storybook** para `shared/` y componentes de
-   módulos.
+   módulos. Hoy el dashboard **no tiene tests**; la CI (`.github/workflows/ci.yml`)
+   corre lint (errores) y build en cada push.
 7. **Observabilidad:** enrutar `logger` a Sentry/Datadog; métricas de uso y
    *error boundaries* por módulo.
 8. **Rendimiento:** `React.lazy` por módulo/ruta (code-splitting), virtualización

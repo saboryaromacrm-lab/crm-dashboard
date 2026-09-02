@@ -145,7 +145,7 @@ export function ListaFormModal({ listaId }) {
       <div className={cx(s.callout, s.info)}>
         La lista es <strong>solo identidad</strong>: no lleva markup ni condición. El precio de cada
         producto en esta lista, y desde cuántas unidades la habilita, se cargan en{' '}
-        <strong>Compras › Productos › Formato de Venta</strong>. Es lo que permite que "Mayorista"
+        <strong>Compras › Productos › Formato de Venta</strong>. Es lo que permite que &quot;Mayorista&quot;
         sea 30% en un producto y 50% en otro.
       </div>
 

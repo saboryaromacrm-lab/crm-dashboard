@@ -18,7 +18,7 @@ import { ordenesWeb } from '@core/services/ordenesWeb.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
-import { telefonoWa } from '../domain/constants.js';
+import { direccionOrden, telefonoWa } from '../domain/constants.js';
 import {
   Table, PanelHead, Btn, Di, ModalShell, money, num, fmtFechaHora, usePaginado, s,
 } from '../components/ui.jsx';
@@ -30,6 +30,22 @@ function nombreOrden(p, getCliente) {
   if (p.clienteId) return getCliente(p.clienteId)?.nombre || `Cliente #${p.clienteId}`;
   const wc = p.webCliente ?? {};
   return `${wc.nombre ?? ''} ${wc.apellido ?? ''}`.trim() || '—';
+}
+
+/** Entrega + dirección, para la tabla y el detalle. */
+function Entrega({ orden }) {
+  const direccion = direccionOrden(orden);
+  const conEnvio = orden.entrega && orden.entrega !== 'retiro';
+  return (
+    <>
+      {ENTREGAS[orden.entrega] ?? orden.entrega}
+      {conEnvio && (
+        direccion
+          ? <div className={s.hint} style={{ margin: 0 }}>📍 {direccion}</div>
+          : <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-danger)' }}>Sin dirección: pedila por WhatsApp</div>
+      )}
+    </>
+  );
 }
 
 /**
@@ -80,7 +96,7 @@ function DetalleOrdenModal({ orden, getCliente, onCerrar }) {
         <Di label="Cliente">{nombreOrden(orden, getCliente)}{!orden.clienteId && <span className={cx(s.pill, s['est-pendiente'])} style={{ marginLeft: 6 }}>NUEVO</span>}</Di>
         <Di label="WhatsApp"><WhatsAppLink orden={orden} /></Di>
         <Di label="DNI">{wc.dni || '—'}</Di>
-        <Di label="Entrega">{ENTREGAS[orden.entrega] ?? orden.entrega}</Di>
+        <Di label="Entrega"><Entrega orden={orden} /></Di>
       </div>
 
       <Table cols={[
@@ -182,6 +198,7 @@ function AceptarOrdenModal({ orden, onListo, onCerrar }) {
               <span>
                 Agregarlo como cliente nuevo: <strong>{`${wc.nombre ?? ''} ${wc.apellido ?? ''}`.trim() || '—'}</strong>
                 {wc.telefono ? ` · ${wc.telefono}` : ''} · DNI {wc.dni || '—'}
+                {direccionOrden(orden) ? ` · ${direccionOrden(orden)}` : ''}
               </span>
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13.5 }}>
@@ -306,7 +323,7 @@ export function OrdenesPanel() {
               {!p.clienteId && <span className={cx(s.pill, s['est-pendiente'])} style={{ marginLeft: 6 }}>NUEVO</span>}
             </td>
             <td onClick={(e) => e.stopPropagation()}><WhatsAppLink orden={p} /></td>
-            <td>{ENTREGAS[p.entrega] ?? p.entrega}</td>
+            <td><Entrega orden={p} /></td>
             <td className={s.num}>{p.items.length}</td>
             <td className={s.num}><strong>{money(p.total)}</strong></td>
             <td className={s['actions-col']}>

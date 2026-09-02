@@ -153,6 +153,19 @@ async function bootstrap() {
   }
 }
 
+/**
+ * Apaga el reloj (el del poll o el del reintento del bootstrap). Sin esto el
+ * chat seguía preguntando cada 4 segundos después de cerrar sesión, hasta que
+ * el login recargara la página. `_timer` puede ser un interval o un timeout;
+ * en el navegador comparten el mismo espacio de ids, así que se limpian ambos.
+ */
+function detener() {
+  if (!_timer) return;
+  clearInterval(_timer);
+  clearTimeout(_timer);
+  _timer = null;
+}
+
 export const chat = {
   /** Arranca (una vez) con el contexto de la sesión. Idempotente. */
   iniciar(ctx) {
@@ -163,7 +176,13 @@ export const chat = {
 
   subscribe(listener) {
     _listeners.add(listener);
-    return () => _listeners.delete(listener);
+    // Si el reloj se apagó porque nadie miraba y ahora alguien vuelve a mirar
+    // (mismo usuario, sin recarga), se prende de nuevo.
+    if (_habilitado === true && _ctx && !_timer) _timer = setInterval(tick, INTERVALO_MS);
+    return () => {
+      _listeners.delete(listener);
+      if (!_listeners.size) detener();
+    };
   },
   snapshot,
 
