@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import { fileURLToPath, URL } from 'node:url';
@@ -24,27 +24,51 @@ import { fileURLToPath, URL } from 'node:url';
  */
 const HTTPS = process.env.VITE_DEV_HTTPS === '1';
 
-export default defineConfig({
-  plugins: [react(), ...(HTTPS ? [basicSsl()] : [])],
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@core': fileURLToPath(new URL('./src/core', import.meta.url)),
-      '@modules': fileURLToPath(new URL('./src/modules', import.meta.url)),
-      '@shared': fileURLToPath(new URL('./src/shared', import.meta.url)),
-      '@assets': fileURLToPath(new URL('./src/assets', import.meta.url)),
-      '@styles': fileURLToPath(new URL('./src/styles', import.meta.url)),
+
+
+export default defineConfig(({ mode }) => {
+  /*
+   * PUERTO DEL SERVIDOR DE DESARROLLO. 3000 salvo que la maquina diga otra cosa.
+   *
+   * Es configurable porque el 3000 es un puerto MUY peleado: si en la misma
+   * maquina corre otra aplicacion que ya lo ocupa, Vite se corre solo a otro
+   * puerto y el CORS de la API —que lista origenes exactos— lo rechaza, asi
+   * que el CRM carga y ninguna llamada funciona.
+   *
+   * Va por `loadEnv` y no por `process.env`: adentro de este archivo las
+   * variables del `.env` del proyecto todavia no existen en `process.env`
+   * —Vite las expone al CLIENTE, no a su propia configuracion—, asi que
+   * leerlas de ahi devolvia siempre vacio y el puerto quedaba clavado en 3000.
+   *
+   * El tercer argumento vacio es a proposito: sin el, `loadEnv` solo devuelve
+   * las que empiezan con VITE_ ... que es justo el caso, pero dejarlo explicito
+   * evita la sorpresa si mañana la variable se llama distinto.
+   */
+  const env = loadEnv(mode, process.cwd(), '');
+  const PUERTO = Number(env.VITE_DEV_PORT) || 3000;
+
+  return {
+    plugins: [react(), ...(HTTPS ? [basicSsl()] : [])],
+    resolve: {
+      alias: {
+        '@': fileURLToPath(new URL('./src', import.meta.url)),
+        '@core': fileURLToPath(new URL('./src/core', import.meta.url)),
+        '@modules': fileURLToPath(new URL('./src/modules', import.meta.url)),
+        '@shared': fileURLToPath(new URL('./src/shared', import.meta.url)),
+        '@assets': fileURLToPath(new URL('./src/assets', import.meta.url)),
+        '@styles': fileURLToPath(new URL('./src/styles', import.meta.url)),
+      },
     },
-  },
-  server: {
-    port: 3000,
-    open: true,
-    // Con HTTPS el servidor escucha en toda la red: el celular entra por la IP
-    // de la máquina y ahí la cámara SÍ funciona (contexto seguro).
-    host: HTTPS ? true : undefined,
-  },
-  build: {
-    outDir: 'dist',
-    sourcemap: true,
-  },
+    server: {
+      port: PUERTO,
+      open: true,
+      // Con HTTPS el servidor escucha en toda la red: el celular entra por la IP
+      // de la máquina y ahí la cámara SÍ funciona (contexto seguro).
+      host: HTTPS ? true : undefined,
+    },
+    build: {
+      outDir: 'dist',
+      sourcemap: true,
+    },
+  };
 });

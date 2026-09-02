@@ -61,6 +61,7 @@ npm run lint              # ESLint
 | `VITE_API_BASE_URL` | URL base de `crm-api`. La usa `src/core/services/httpClient.js` para todas las llamadas. | `http://localhost:3001/api` |
 | `VITE_APP_NAME` | Nombre que se muestra en la interfaz. | `CRM Dashboard` |
 | `VITE_DEFAULT_THEME` | Tema inicial (`light` / `dark`). | `light` |
+| `VITE_DEV_PORT` | Puerto del server de desarrollo. Solo si el 3000 ya lo usa otra app en esa máquina; hay que sumar el mismo puerto a `CORS_ORIGINS` en el `.env` de la API. | vacío (= 3000) |
 
 > El archivo `.env` está en `.gitignore` y **no se sube**: copialo de
 > `.env.example` en cada máquina.

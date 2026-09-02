@@ -168,7 +168,7 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
   // La etiqueta no es un documento chico: no lleva membrete, ni pie, ni bordes,
   // y cada una es una página del rollo. Sale por su propio camino.
   if (f.etiqueta) return htmlEtiquetas({ f, titulo, cuerpo });
-  const color = f.rollo ? '#111' : colorSeguro(empresa.colorMarca, '#166534');
+  const color = f.rollo ? '#000' : colorSeguro(empresa.colorMarca, '#166534');
   /* El nombre GRANDE es el de fantasía, que es con el que el cliente conoce al
    * negocio. La razón social va abajo, en la línea de datos, y SOLO si es otra:
    * repetirla cuando coinciden es ruido en un rollo de 58 mm. En la factura la
@@ -191,30 +191,47 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
     + `<title>${esc(titulo)}</title><style>
     @page { size: ${f.page}; margin: ${f.margen}; }
     * { box-sizing: border-box; }
-    body { font: ${f.font}/1.45 ${f.rollo ? "'Courier New', monospace" : 'system-ui, sans-serif'}; margin: 0; color: #111; }
+    /*
+     * POR QUE EL ROLLO VA EN NEGRITA Y EN NEGRO PURO.
+     *
+     * Una impresora termica no tiene tinta: quema puntos en un papel sensible.
+     * Un gris no sale gris — sale con MENOS puntos quemados, o sea mas claro y
+     * mas debil, y encima se desvanece con el calor y el roce (el ticket que se
+     * guarda en el bolsillo o en la caja termina ilegible). El peso normal
+     * (400) deja letras de un punto de ancho: la primera que se borra.
+     *
+     * Con font-weight 700 cada trazo son dos puntos, que es exactamente lo
+     * que hacen los sistemas de punto de venta que imprimen "fuerte". Courier
+     * New es monoespaciada y su variante negrita tiene el MISMO ancho de
+     * avance, asi que las columnas del ticket no se corren ni un milimetro.
+     *
+     * La regla print-color-adjust evita que el navegador aclare los tonos
+     * al mandar a imprimir.
+     */
+    body { font: ${f.font}/1.45 ${f.rollo ? "'Courier New', monospace" : 'system-ui, sans-serif'}; margin: 0; color: ${f.rollo ? '#000' : '#111'}; ${f.rollo ? 'font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact;' : ''} }
     .emp { display: flex; align-items: center; gap: ${f.rollo ? '6px' : '14px'}; border-bottom: 2px solid ${color}; padding-bottom: ${f.rollo ? '4px' : '10px'}; margin-bottom: ${f.rollo ? '6px' : '14px'}; ${f.rollo ? 'flex-direction: column; text-align: center;' : ''} }
     .logo { max-height: ${f.rollo ? '34px' : '58px'}; max-width: ${f.rollo ? '46mm' : '70mm'}; ${f.rollo ? 'filter: grayscale(1);' : ''} }
     .empNombre { font-size: ${f.rollo ? '13px' : '19px'}; font-weight: 800; color: ${color}; }
-    .empDatos { font-size: ${f.chica}; color: #555; }
+    .empDatos { font-size: ${f.chica}; color: ${f.rollo ? '#000' : '#555'}; }
     h1 { font-size: ${f.rollo ? '12px' : '17px'}; margin: 0; color: ${color}; }
-    .sub { color: #555; margin: 2px 0 ${f.rollo ? '6px' : '12px'}; font-size: ${f.chica}; }
+    .sub { color: ${f.rollo ? '#000' : '#555'}; margin: 2px 0 ${f.rollo ? '6px' : '12px'}; font-size: ${f.chica}; }
     table { width: 100%; border-collapse: collapse; font-size: ${f.rollo ? f.chica : f.font}; margin-top: 6px; }
-    th, td { text-align: left; vertical-align: top; padding: ${f.rollo ? '2px 3px' : '7px 8px'}; ${f.rollo ? 'border-bottom: 1px dashed #999;' : 'border: 1px solid #999;'} }
-    th { ${f.rollo ? '' : 'background: #eee;'} white-space: nowrap; ${f.rollo ? 'border-bottom: 1px solid #111;' : ''} }
+    th, td { text-align: left; vertical-align: top; padding: ${f.rollo ? '2px 3px' : '7px 8px'}; ${f.rollo ? 'border-bottom: 1px dashed #000;' : 'border: 1px solid #999;'} }
+    th { ${f.rollo ? '' : 'background: #eee;'} white-space: nowrap; ${f.rollo ? 'border-bottom: 2px solid #000; font-weight: 800;' : ''} }
     .n { text-align: right; white-space: nowrap; }
     .chica { white-space: nowrap; width: 1%; }
     .prep { width: 88px; }
     .obs { width: 34%; }
     .c { text-align: center; width: 32px; font-size: 16px; }
-    .tot { margin-top: ${f.rollo ? '6px' : '12px'}; text-align: right; font-size: ${f.rollo ? '12px' : '15px'}; }
-    .nota { margin-top: ${f.rollo ? '8px' : '14px'}; color: #555; font-size: ${f.chica}; ${esTicket ? 'text-align: center;' : ''} }
-    .fiscal { margin-top: 6px; text-align: center; font-size: ${f.chica}; color: #555; letter-spacing: 0.06em; }
+    .tot { margin-top: ${f.rollo ? '6px' : '12px'}; text-align: right; font-size: ${f.rollo ? '12px' : '15px'}; ${f.rollo ? 'font-weight: 800;' : ''} }
+    .nota { margin-top: ${f.rollo ? '8px' : '14px'}; color: ${f.rollo ? '#000' : '#555'}; font-size: ${f.chica}; ${esTicket ? 'text-align: center;' : ''} }
+    .fiscal { margin-top: 6px; text-align: center; font-size: ${f.chica}; color: ${f.rollo ? '#000' : '#555'}; letter-spacing: 0.06em; }
 
     /* ---- Comprobante fiscal (RG 1415 y RG 4892) ---- */
     /* El recuadro de la letra: es lo primero que se mira para saber qué
        comprobante es, así que va grande y centrado. */
     .letraBox {
-      border: 2px solid #111; text-align: center; margin: ${f.rollo ? '4px auto 6px' : '0 auto 12px'};
+      border: 2px solid #000; text-align: center; margin: ${f.rollo ? '4px auto 6px' : '0 auto 12px'};
       width: ${f.rollo ? '18mm' : '24mm'}; padding: ${f.rollo ? '1px 0' : '3px 0'};
     }
     .letraBox .letra { font-size: ${f.rollo ? '20px' : '30px'}; font-weight: 800; line-height: 1; }
@@ -223,7 +240,7 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
     .fiscalDatos > div { flex: 1; }
     .fiscalDatos strong { display: inline-block; min-width: ${f.rollo ? '0' : '78px'}; }
     .cajaCae {
-      margin-top: ${f.rollo ? '8px' : '14px'}; border-top: 1px solid #111; padding-top: 6px;
+      margin-top: ${f.rollo ? '8px' : '14px'}; border-top: 1px solid #000; padding-top: 6px;
       ${f.rollo ? 'text-align: center;' : 'display: flex; align-items: center; gap: 14px;'}
     }
     .cajaCae .qr { width: ${f.rollo ? '26mm' : '32mm'}; height: ${f.rollo ? '26mm' : '32mm'}; flex: 0 0 auto; }
@@ -1037,7 +1054,7 @@ export function cuerpoTicket(venta, { moneda, fechaHora, leyendaNoFiscal = true 
     const neto = it.cantidad * it.precioUnitario * (1 - (it.descuento || 0) / 100);
     const final = neto * (1 + (it.iva ?? 21) / 100);
     return `<tr>
-      <td>${esc(it.nombre ?? `#${it.productoId}`)}<br /><span style="color:#555">${Number(it.cantidad)} x ${moneda(it.precioUnitario * (1 + (it.iva ?? 21) / 100))}</span></td>
+      <td>${esc(it.nombre ?? `#${it.productoId}`)}<br /><span style="color:#333">${Number(it.cantidad)} x ${moneda(it.precioUnitario * (1 + (it.iva ?? 21) / 100))}</span></td>
       <td class="n">${moneda(final)}</td>
     </tr>`;
   }).join('');
