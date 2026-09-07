@@ -466,7 +466,20 @@ function imprimirRemito(envio) {
 }
 
 export function EnvioCafeteriaDetalleModal({ id }) {
-  const { store, act, closeModal, openModal, toast, isAdmin } = useProductos();
+  const { store, act, closeModal, openModal, toast, can } = useProductos();
+  /*
+   * QUIEN TIENE LA SECCION DE CAFETERIA PUEDE OPERARLA, sea jefe o no.
+   *
+   * Antes estos botones pedian ROL de admin y la pantalla quedaba mas
+   * cerrada que el servidor: la API exige `almacen.cafeteria` y nada mas en
+   * TODOS estos endpoints. El resultado era que una cajera con la seccion
+   * abierta veia el pedido del cafe y no podia despacharlo — tenia que
+   * esperar a que pasara un administrador.
+   *
+   * El rol Cafeteria (coffit) NO entra: tiene `almacen.cafeteria-pedidos`,
+   * que es la pantalla de PEDIR. Sigue sin poder despacharse a si mismo.
+   */
+  const puedeOperar = can('almacen.cafeteria');
   const [envio, setEnvio] = useState(null);
   const [motivoAnular, setMotivoAnular] = useState('');
 
@@ -497,7 +510,7 @@ export function EnvioCafeteriaDetalleModal({ id }) {
       wide
       onClose={closeModal}
       footer={[
-        ...(isAdmin && vivo
+        ...(puedeOperar && vivo
           ? [{ texto: 'Editar', clase: 'btn-primary', onClick: () => { closeModal(); openModal('envioCafeteria', { envio }); } }]
           : []),
         { texto: 'Imprimir remito', clase: 'btn-ghost', onClick: () => imprimirRemito(envio) },
@@ -663,7 +676,9 @@ export function PedidoCafeteriaFormModal() {
 
 /** El detalle del pedido: lo ven las dos puntas, las acciones dependen del rol. */
 export function PedidoCafeteriaDetalleModal({ id }) {
-  const { store, act, closeModal, openModal, toast, isAdmin } = useProductos();
+  const { store, act, closeModal, openModal, toast, can } = useProductos();
+  /* Misma llave que el modal de envio: la seccion habilita la operacion. */
+  const puedeOperar = can('almacen.cafeteria');
   const [pedido, setPedido] = useState(null);
   const [motivoAnular, setMotivoAnular] = useState('');
 
@@ -683,7 +698,7 @@ export function PedidoCafeteriaDetalleModal({ id }) {
   const est = ESTADOS_PEDIDO_CAFE[pedido.estado] || {};
   const abierto = pedido.estado === 'pendiente' || pedido.estado === 'armando';
   // La cafetería puede anular lo que todavía nadie tomó; el admin, todo lo abierto.
-  const puedeAnular = abierto && (isAdmin || pedido.estado === 'pendiente');
+  const puedeAnular = abierto && (puedeOperar || pedido.estado === 'pendiente');
 
   const anular = async () => {
     if (!motivoAnular.trim()) { toast('Escribí por qué se anula.', 'err'); return; }
@@ -697,10 +712,10 @@ export function PedidoCafeteriaDetalleModal({ id }) {
       wide
       onClose={closeModal}
       footer={[
-        ...(isAdmin && pedido.estado === 'pendiente'
+        ...(puedeOperar && pedido.estado === 'pendiente'
           ? [{ texto: 'Tomar (lo estoy armando)', clase: 'btn-ghost', onClick: () => act(store.tomarPedidoCafeteria(id), 'Tomado: el café lo ve como "armando".') }]
           : []),
-        ...(isAdmin && abierto
+        ...(puedeOperar && abierto
           ? [{ texto: 'Convertir en envío', clase: 'btn-primary', onClick: () => { closeModal(); openModal('envioCafeteria', { pedido }); } }]
           : []),
         ...footerBase,

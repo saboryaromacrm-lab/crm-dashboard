@@ -30,7 +30,9 @@ const PESTANAS = [
 ];
 
 export function CafeteriaPanel() {
-  const { store, isAdmin, openModal, toast } = useProductos();
+  const { store, can, openModal, toast } = useProductos();
+  /* Ver la seccion habilita mandar mercaderia: es lo que ya permite la API. */
+  const puedeOperar = can('almacen.cafeteria');
 
   // Arranca en Pedidos: es la cola de trabajo (el aviso del admin cae acá).
   const [pestana, setPestana] = useState('pedidos');
@@ -136,7 +138,7 @@ export function CafeteriaPanel() {
       <PanelHead
         title="Cafetería"
         desc='El punto de salida hacia coffit: el envío egresa a costo y del otro lado entra al almacén "Sabor y Aroma", donde coffit clasifica. Acá no hay existencias.'
-        actions={isAdmin && pestana === 'envios' && (
+        actions={puedeOperar && pestana === 'envios' && (
           <Btn variant="btn-primary" onClick={() => openModal('envioCafeteria', {})}>
             + Nuevo envío
           </Btn>
