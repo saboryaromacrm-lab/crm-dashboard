@@ -1063,6 +1063,30 @@ export function cuerpoTicket(venta, { moneda, fechaHora, leyendaNoFiscal = true 
       <td class="n">${moneda(final)}</td>
     </tr>`;
   }).join('');
+  /*
+   * LOS CARGOS QUE NO SON MERCADERÍA (envío, packaging…) — `venta_extras`.
+   *
+   * Faltaban, y era un agujero serio: el extra SÍ entra en el total —la cuenta
+   * es `productos + extras + IVA` (ver `totalesTicket`)— pero no salía en
+   * ningún renglón. El cliente se llevaba un papel con un aceite de $5.198 y un
+   * TOTAL de $7.198, sin nada que explicara los $2.000 de diferencia. Imposible
+   * de defender en el mostrador, y peor todavía para el arqueo: la caja cerraba
+   * bien pero el ticket no lo justificaba.
+   *
+   * La factura los imprime desde siempre (`cuerpoFactura`); el que los perdía
+   * era este papel, que es justo el que se lleva el 90% de los clientes.
+   *
+   * Van con el precio CON IVA, igual que los renglones de arriba: en el ticket
+   * todo se muestra como lo paga el cliente. El `?? 21` es el mismo criterio
+   * que usa la factura para un extra viejo sin alícuota cargada.
+   */
+  const extras = (venta.extras ?? []).map((e) => {
+    const final = (Number(e.importe) || 0) * (1 + (e.iva ?? 21) / 100);
+    return `<tr>
+      <td>${esc(e.concepto || 'Cargo extra')}</td>
+      <td class="n">${moneda(final)}</td>
+    </tr>`;
+  }).join('');
   const pagos = (venta.pagos ?? []).map((p) => `<tr><td>${esc(p.medio)}</td><td class="n">${moneda(p.importe)}</td></tr>`).join('');
   const nro = venta.numero != null ? `${esc(venta.puntoVenta)}-${String(venta.numero).padStart(8, '0')}` : '';
   /*
@@ -1078,7 +1102,7 @@ export function cuerpoTicket(venta, { moneda, fechaHora, leyendaNoFiscal = true 
   return `
     <h1>Ticket ${nro}</h1>
     <div class="sub">${esc(fechaHora(venta.fecha))}${venta.clienteNombre ? ` · ${esc(venta.clienteNombre)}` : ''}</div>
-    <table><tbody>${filas}</tbody></table>
+    <table><tbody>${filas}${extras}</tbody></table>
     <div class="tot"><strong>TOTAL ${moneda(venta.total)}</strong></div>
     ${pagos ? `<table><tbody>${pagos}</tbody></table>` : ''}
     ${leyendaNoFiscal ? '<div class="fiscal">DOCUMENTO NO FISCAL</div>' : ''}
