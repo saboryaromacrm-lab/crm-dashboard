@@ -5,6 +5,7 @@ import { useResource } from '../../hooks/useResource.js';
 import { ventasApi } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
+import { imprimirArqueoCaja } from '@core/services/imprimir.js';
 import { Table, Di, Btn, ModalShell, money, fmtFechaHora, s } from '../ui.jsx';
 
 /* ==================================================================== *
@@ -728,8 +729,38 @@ export function DetalleArqueo({ arqueo }) {
   );
 }
 
+/**
+ * SACA EL PAPEL DE LA RENDICION.
+ *
+ * Resuelve aca los NOMBRES de sucursal y cajero -el arqueo trae los ids- porque
+ * el papel lo lee una persona: un "sucursal 3" no le sirve a nadie para rendir.
+ *
+ * Devuelve `false` si el navegador bloqueo la ventana emergente, para que quien
+ * llama lo avise: en el cierre eso es la diferencia entre "se imprimio" y "creí
+ * que se imprimio".
+ */
+function sacarComprobanteArqueo(arqueo, { sucursales, usuarios, ctx, reimpresion = false }) {
+  const ses = arqueo?.sesion ?? {};
+  const nombreDe = (id) => usuarios?.find((u) => u.id === id)?.nombre || '';
+  return imprimirArqueoCaja(arqueo, {
+    moneda: money,
+    fechaHora: fmtFechaHora,
+    /* Solo la hora, para el rollo: los movimientos son todos del mismo turno. */
+    hora: (v) => new Date(v).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+    sucursal: sucursales?.find((x) => x.id === ses.sucursalId)?.nombre || '',
+    /* El CAJERO del papel es el DUEÑO DEL TURNO, no quien esta mirando la
+     * pantalla: el que rinde la plata es el que la cobro. */
+    cajero: nombreDe(ses.usuarioId),
+    /* En cambio el sello de reimpresion lleva a QUIEN LA SACO, que puede ser
+     * otro -el encargado sacando de nuevo el papel de un turno ajeno. */
+    usuario: nombreDe(ctx?.usuarioId),
+    ahora: fmtFechaHora(new Date()),
+    reimpresion,
+  });
+}
+
 export function CerrarCajaModal({ cajaSesionId, onChange }) {
-  const { act, closeModal, toast, setOperador } = useVentas();
+  const { act, closeModal, toast, setOperador, sucursales, usuarios, ctx } = useVentas();
   const [declarado, setDeclarado] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const contador = useContadorBilletes(setDeclarado);
@@ -754,6 +785,24 @@ export function CerrarCajaModal({ cajaSesionId, onChange }) {
       { recargar: false },
     );
     if (ok) {
+      /*
+       * EL PAPEL SALE SOLO, y sale ANTES de cerrar el modal.
+       *
+       * Con este comprobante se rinde la plata, asi que pedirlo con un boton
+       * aparte lo volveria opcional: el turno que se cierra sin papel deja al
+       * cajero entregando efectivo contra nada. Se imprime con la sesion YA
+       * cerrada (`sesionCerrada`) para que el papel lleve el conteo, la
+       * diferencia y la hora de cierre definitivos, no los de un segundo antes.
+       *
+       * Si el navegador bloquea la ventana emergente se avisa: siempre se puede
+       * reimprimir desde el historial del turno.
+       */
+      const sesionCerrada = ok?.id ? ok : { ...arqueo.sesion, estado: 'cerrada', cierre: new Date(), declaradoEfectivo: r2(declarado), diferencia: r2(Number(declarado) - arqueo.esperadoEfectivo) };
+      const salio = sacarComprobanteArqueo(
+        { ...arqueo, sesion: sesionCerrada },
+        { sucursales, usuarios, ctx },
+      );
+      if (!salio) toast('El turno se cerro, pero el navegador bloqueo la impresion. Reimprimilo desde el historial.', 'err');
       /* El relevo muere con el turno (0088): el próximo arranca con el titular
        * de la sesión — un relevo que sobrevive al cierre es un olvido servido. */
       setOperador(null);
@@ -847,10 +896,24 @@ export function CerrarCajaModal({ cajaSesionId, onChange }) {
 
 /** Arqueo de un turno ya cerrado (solo lectura, desde el historial). */
 export function ArqueoTurnoModal({ cajaSesionId }) {
-  const { closeModal, sucursales, usuarios } = useVentas();
+  const { closeModal, sucursales, usuarios, ctx, toast } = useVentas();
   const { data: arqueo, loading, error } = useResource(`arqueo-ver:${cajaSesionId}`, () => ventasApi.cajaArqueo(cajaSesionId));
 
-  const footer = [{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }];
+  const footer = [
+    { texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal },
+    /* Reimprimir SIEMPRE, no solo los turnos cerrados: con el turno abierto el
+     * papel sale sin conteo y avisandolo, que es justo lo que se necesita para
+     * un control a mitad del dia. */
+    {
+      texto: 'Imprimir',
+      clase: 'btn-primary',
+      onClick: () => {
+        if (!arqueo) return;
+        const salio = sacarComprobanteArqueo(arqueo, { sucursales, usuarios, ctx, reimpresion: true });
+        if (!salio) toast('El navegador bloqueó la ventana de impresión.', 'err');
+      },
+    },
+  ];
   if (loading) {
     return <ModalShell title="Arqueo del turno" onClose={closeModal} footer={footer}>
       <div className={s['empty-state']}>Cargando…</div>

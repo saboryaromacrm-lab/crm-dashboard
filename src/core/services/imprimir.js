@@ -96,7 +96,7 @@ export function medidaEtiqueta(formato) {
  * NO puede ser A4 —saldría una etiqueta gigante con membrete— así que cada
  * documento de etiqueta declara acá su tamaño de arranque.
  */
-const DEFECTO_DOC = { etiquetaFraccionado: 'etiqueta50x30', etiquetaGondola: 'etiqueta64x32' };
+const DEFECTO_DOC = { etiquetaFraccionado: 'etiqueta50x30', etiquetaGondola: 'etiqueta64x32', cierreCaja: 'rollo80' };
 export function formatoPorDefecto(tipoDoc) {
   return DEFECTO_DOC[tipoDoc] || 'a4';
 }
@@ -250,6 +250,66 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
     }
     .cajaCae .qr { width: ${f.rollo ? '26mm' : '32mm'}; height: ${f.rollo ? '26mm' : '32mm'}; flex: 0 0 auto; }
     .cajaCae .qr svg { width: 100%; height: 100%; display: block; }
+    /* ---- Cierre de caja (el papel de la rendicion) ---- */
+    /*
+     * EL ANCHO MANDA. Un rollo de 80 mm son ~48 caracteres: una tabla de cuatro
+     * columnas con importes de seis cifras NO ENTRA, y lo que se desborda no
+     * se ve chico — se CORTA. En la primera prueba se perdieron el esperado, el
+     * contado y la diferencia, que es exactamente lo que se viene a leer.
+     *
+     * Por eso el documento se emite con las dos versiones y el papel elige:
+     * la clase opAncha (el desglose ventas/cobranzas y la fecha larga) solo
+     * sale en hoja; soloRollo (la hora sola, el desglose en una linea chica)
+     * solo en el rollo. Mismo dato, dos anchos.
+     */
+    ${f.rollo ? '.opAncha { display: none; }' : '.soloRollo { display: none; }'}
+    /* Cada bloque arranca con su titulo: en un rollo largo, sin estos cortes
+       las tablas se leen como una sola lista y no se sabe que se esta mirando. */
+    .secArqueo {
+      margin: ${f.rollo ? '9px 0 2px' : '16px 0 4px'}; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      font-size: ${f.chica}; border-bottom: 1px solid ${f.rollo ? '#000' : '#999'};
+      padding-bottom: 2px;
+    }
+    /*
+     * EL REPARTO DE COLUMNAS, FIJO. Sin esto la tabla se agranda hasta donde
+     * pida su celda mas larga -un motivo como "Pago a proveedor Bavosi (remito
+     * 4471)"- y como el body no tiene tope, arrastra la columna de importes
+     * fuera del papel. En pantalla se ve raro; en el rollo directamente NO SALE
+     * IMPRESA, y lo primero que se pierde son el esperado y la diferencia.
+     *
+     * Con table-layout fixed la tabla no puede pasarse del ancho, y los
+     * textos largos hacen lo que corresponde: cortarse en varias lineas. Va
+     * acotado a este documento para no tocar el reparto de los otros.
+     */
+    .arqueo table { table-layout: fixed; width: 100%; }
+    .arqueo th, .arqueo td { overflow-wrap: anywhere; }
+    /* El importe nunca se parte: es el dato que se lee. */
+    .arqueo .n { white-space: nowrap; width: ${f.rollo ? '40%' : '20%'}; }
+    /* La hora tampoco, y ocupa lo justo. */
+    .arqueo .chica { white-space: nowrap; width: ${f.rollo ? '20%' : '14%'}; }
+    /* El desglose de un medio (ventas + cobranzas) cuando no entra en columnas. */
+    .subLinea { font-size: ${f.chica}; ${f.rollo ? '' : 'color: #555;'} }
+    /* Los renglones que se firman: esperado, contado y la diferencia. Van mas
+       grandes que el resto porque son los tres numeros que se discuten. */
+    tr.fuerte td {
+      font-weight: 800; font-size: ${f.rollo ? '12px' : '15px'};
+      border-top: 1px solid ${f.rollo ? '#000' : '#999'};
+    }
+    /* La diferencia es EL numero del papel: doble linea arriba y abajo. */
+    tr.remarcada td {
+      font-weight: 800; font-size: ${f.rollo ? '13px' : '17px'};
+      border-top: 3px double #000; border-bottom: 3px double #000;
+    }
+    /* Espacio real para firmar: si el renglon es fino, se firma encima del texto. */
+    .firmasArqueo {
+      margin-top: ${f.rollo ? '16px' : '26px'}; display: flex; gap: ${f.rollo ? '8px' : '24px'};
+      font-size: ${f.chica};
+    }
+    .firmasArqueo > div {
+      flex: 1; border-top: 1px solid ${f.rollo ? '#000' : '#666'};
+      padding-top: 3px; text-align: center;
+    }
     .caeNro { font-family: 'Courier New', monospace; font-size: ${f.rollo ? '12px' : '15px'}; font-weight: 700; letter-spacing: 0.04em; }
   </style></head><body>
     <div class="emp">${logo}<div><div class="empNombre">${esc(empresa.nombre || '')}</div>${datos ? `<div class="empDatos">${datos}</div>` : ''}</div></div>
@@ -785,6 +845,203 @@ export function cuerpoOrdenDePago({ pago: p, imputaciones, moneda, ahora, usuari
     ${p.observaciones ? `<div class="nota">${esc(p.observaciones)}</div>` : ''}
     <div class="nota">Recibí conforme: ______________________ &nbsp;&nbsp; Aclaración: ______________________</div>
     ${selloReimpresion(usuario, ahora)}`;
+}
+
+/* ==================================================================== *
+ * CIERRE DE CAJA - el papel con el que se rinde el dinero
+ * ==================================================================== */
+
+/** Etiquetas de los medios de pago. Si aparece uno nuevo, sale su clave cruda. */
+const MEDIOS_CAJA = {
+  efectivo: 'Efectivo',
+  transferencia: 'Transferencia',
+  tarjeta_debito: 'Tarjeta de debito',
+  tarjeta_credito: 'Tarjeta de credito',
+  cheque: 'Cheque',
+  qr: 'QR / billetera',
+  otro: 'Otro',
+};
+
+/**
+ * EL COMPROBANTE DEL ARQUEO.
+ *
+ * Con este papel el cajero le rinde la plata a quien la recibe, asi que esta
+ * armado para que se pueda VERIFICAR, no solo leer: la cuenta del efectivo va
+ * renglon por renglon -fondo, cobrado, ingresos, egresos- y recien al final
+ * aparece el esperado. Quien recibe puede rehacer la suma sin abrir el sistema,
+ * que es exactamente lo que se le pide a un comprobante de rendicion.
+ *
+ * TRES SEPARACIONES QUE NO SON DECORATIVAS:
+ *
+ *  1. Lo COBRADO por medio de pago va aparte del arqueo del cajon. En el cajon
+ *     solo hay efectivo: la tarjeta y la transferencia se concilian contra el
+ *     banco y no se cuentan a mano. Mezclarlos haria que el papel pida rendir
+ *     plata que nunca estuvo en la caja.
+ *  2. Los MOVIMIENTOS van uno por uno con su motivo, no como un total. Un
+ *     retiro de $50.000 sin decir a donde fue no sirve para rendir nada, y es
+ *     justo el renglon que alguien va a querer discutir.
+ *  3. La CUENTA CORRIENTE va al pie y marcada como informativa. Es venta del
+ *     turno pero no entro un peso: sumarla al arqueo seria pedirle al cajero
+ *     que ponga de su bolsillo lo que el cliente todavia debe.
+ *
+ * La DIFERENCIA se escribe con la palabra -SOBRANTE o FALTANTE- y no solo con
+ * el signo: un "-500" en un papel termico borroso se lee mal, y de ese numero
+ * depende que alguien tenga que poner plata.
+ */
+export function cuerpoArqueoCaja(arqueo, { moneda, fechaHora, hora, sucursal, cajero, usuario, ahora, reimpresion = false }) {
+  const a = arqueo ?? {};
+  const ses = a.sesion ?? {};
+  const n = (x) => Number(x) || 0;
+  /* Fecha completa en hoja, hora sola en rollo: los movimientos son todos del
+   * mismo turno y la fecha ya esta en el encabezado. */
+  const cuando = (v) => `<span class="opAncha">${esc(fechaHora(v))}</span>`
+    + `<span class="soloRollo">${esc((hora || fechaHora)(v))}</span>`;
+
+  /* Lo cobrado, por medio. `ventas` y `cobranzas` van separadas porque son dos
+   * origenes distintos de la misma plata: una venta del dia y un cliente que
+   * vino a pagar una cuenta vieja. En el rollo el desglose baja a una linea
+   * chica debajo del nombre, y solo cuando hay las dos cosas. */
+  const medios = Object.entries(a.medios ?? {});
+  const filasMedios = medios.length
+    ? medios.map(([clave, m]) => {
+      const dos = n(m.ventas) !== 0 && n(m.cobranzas) !== 0;
+      return `
+      <tr>
+        <td>${esc(MEDIOS_CAJA[clave] || clave)}${dos ? `
+          <div class="subLinea soloRollo">vta ${esc(moneda(n(m.ventas)))} &middot; cob ${esc(moneda(n(m.cobranzas)))}</div>` : ''}</td>
+        <td class="n opAncha">${esc(moneda(n(m.ventas)))}</td>
+        <td class="n opAncha">${esc(moneda(n(m.cobranzas)))}</td>
+        <td class="n"><strong>${esc(moneda(n(m.total)))}</strong></td>
+      </tr>`;
+    }).join('')
+    : '<tr><td>No entro dinero en este turno.</td><td class="n">-</td></tr>';
+
+  /* Cada movimiento con su hora y su motivo: el signo va en el importe para
+   * que la columna se lea de un vistazo. */
+  const filasMovs = (a.movimientos ?? []).map((m) => {
+    const egreso = m.tipo === 'egreso';
+    return `
+      <tr>
+        <td class="chica">${cuando(m.fecha)}</td>
+        <td>${esc(m.motivo || (egreso ? 'Egreso' : 'Ingreso'))}</td>
+        <td class="n">${egreso ? '-' : '+'}${esc(moneda(n(m.importe)))}</td>
+      </tr>`;
+  }).join('');
+
+  /* Los controles intermedios: conteos que se hicieron SIN cerrar. Van porque
+   * si a mitad del turno ya faltaba, el faltante del cierre no nacio al final. */
+  const filasCtrls = (a.controles ?? []).map((c) => `
+    <tr>
+      <td class="chica">${cuando(c.fecha)}</td>
+      <td class="n opAncha">${esc(moneda(n(c.esperadoEfectivo)))}</td>
+      <td class="n">${esc(moneda(n(c.contadoEfectivo)))}</td>
+      <td class="n">${n(c.diferencia) > 0 ? '+' : ''}${esc(moneda(n(c.diferencia)))}</td>
+    </tr>`).join('');
+
+  /*
+   * LA CUENTA DEL CAJON, renglon por renglon. El esperado NO se vuelve a
+   * calcular aca: se muestra el que dio el servidor (`esperadoEfectivo`), que
+   * es el mismo con el que se grabo el cierre. Recalcularlo en el papel abriria
+   * la puerta a que el comprobante diga un numero y la base otro.
+   */
+  const efectivo = (a.medios ?? {}).efectivo ?? { total: 0 };
+  const cerrado = ses.estado === 'cerrada';
+  const contado = n(ses.declaradoEfectivo);
+  const dif = n(ses.diferencia);
+  const hayDif = Math.abs(dif) > 0.009;
+  const ctaCte = a.ctaCte ?? {};
+
+  return `
+    <div class="arqueo">
+    <h1>Cierre de caja - Turno #${esc(String(ses.id ?? ''))}</h1>
+    <div class="sub">
+      ${esc(sucursal || '')}${cajero ? ` &middot; Cajero: ${esc(cajero)}` : ''}<br />
+      Apertura: ${esc(fechaHora(ses.apertura))}<br />
+      ${ses.cierre ? `Cierre: ${esc(fechaHora(ses.cierre))}` : 'TURNO ABIERTO'}
+    </div>
+
+    <div class="secArqueo">Cobrado por medio de pago</div>
+    <table>
+      <thead><tr>
+        <th>Medio</th>
+        <th class="n opAncha">Ventas</th>
+        <th class="n opAncha">Cobranzas</th>
+        <th class="n">Total</th>
+      </tr></thead>
+      <tbody>
+        ${filasMedios}
+        <tr class="fuerte"><td>TOTAL COBRADO</td>
+          <td class="opAncha"></td><td class="opAncha"></td>
+          <td class="n">${esc(moneda(n(a.totalCobrado)))}</td></tr>
+      </tbody>
+    </table>
+
+    ${filasMovs ? `
+      <div class="secArqueo">Movimientos de caja</div>
+      <table>
+        <thead><tr><th>Hora</th><th>Motivo</th><th class="n">Importe</th></tr></thead>
+        <tbody>
+          ${filasMovs}
+          <tr class="fuerte"><td></td><td>Ingresos</td><td class="n">+${esc(moneda(n(a.ingresos)))}</td></tr>
+          <tr class="fuerte"><td></td><td>Egresos</td><td class="n">-${esc(moneda(n(a.egresos)))}</td></tr>
+        </tbody>
+      </table>` : ''}
+
+    ${filasCtrls ? `
+      <div class="secArqueo">Controles durante el turno</div>
+      <table>
+        <thead><tr>
+          <th>Hora</th><th class="n opAncha">Esperado</th><th class="n">Contado</th><th class="n">Dif.</th>
+        </tr></thead>
+        <tbody>${filasCtrls}</tbody>
+      </table>` : ''}
+
+    <div class="secArqueo">Arqueo del efectivo</div>
+    <table><tbody>
+      <tr><td>Fondo inicial</td><td class="n">${esc(moneda(n(a.montoInicial)))}</td></tr>
+      <tr><td>Efectivo cobrado</td><td class="n">+${esc(moneda(n(efectivo.total)))}</td></tr>
+      <tr><td>Ingresos</td><td class="n">+${esc(moneda(n(a.ingresos)))}</td></tr>
+      <tr><td>Egresos</td><td class="n">-${esc(moneda(n(a.egresos)))}</td></tr>
+      <tr class="fuerte"><td>ESPERADO</td><td class="n">${esc(moneda(n(a.esperadoEfectivo)))}</td></tr>
+      ${cerrado ? `
+        <tr class="fuerte"><td>CONTADO</td><td class="n">${esc(moneda(contado))}</td></tr>
+        <tr class="remarcada">
+          <td>${hayDif ? (dif > 0 ? 'SOBRANTE' : 'FALTANTE') : 'SIN DIFERENCIA'}</td>
+          <td class="n">${esc(moneda(Math.abs(dif)))}</td>
+        </tr>` : ''}
+    </tbody></table>
+    ${cerrado ? '' : '<div class="nota">Turno TODAVIA ABIERTO: el conteo y la diferencia se completan al cerrarlo.</div>'}
+
+    ${n(ctaCte.cantidad) ? `
+      <div class="nota">
+        Ademas ${esc(String(n(ctaCte.cantidad)))} venta(s) en CUENTA CORRIENTE por
+        ${esc(moneda(n(ctaCte.total)))}: no entraron a la caja y no se rinden con este papel.
+      </div>` : ''}
+
+    ${ses.observaciones ? `<div class="nota">Observaciones: ${esc(ses.observaciones)}</div>` : ''}
+
+    <div class="firmasArqueo">
+      <div>Entrega (cajero)<br />${esc(cajero || '')}</div>
+      <div>Recibe conforme</div>
+    </div>
+    ${reimpresion ? selloReimpresion(usuario, ahora) : ''}
+    </div>`;
+}
+
+/**
+ * Imprime el comprobante del arqueo. Lo usan el CIERRE (apenas se cierra el
+ * turno) y la reimpresion desde el historial.
+ *
+ * `reimpresion` marca el papel con quien lo saco y cuando: dos copias iguales
+ * de una rendicion, una sin sello, se prestan a cobrar dos veces la misma
+ * diferencia.
+ */
+export function imprimirArqueoCaja(arqueo, opts) {
+  const id = arqueo?.sesion?.id ?? '';
+  return imprimirDocumento('cierreCaja', {
+    titulo: `Cierre de caja - Turno ${id}`,
+    cuerpo: cuerpoArqueoCaja(arqueo, opts),
+  });
 }
 
 /**

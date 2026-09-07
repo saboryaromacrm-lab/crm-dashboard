@@ -46,6 +46,11 @@ const DOCUMENTOS = [
   { clave: 'remitoTransferencia', label: 'Remito de transferencia', hint: 'Se reimprime desde el detalle de un envío. Lleva las tres cantidades —pedido, enviado y recibido— porque la diferencia entre ellas es lo que se reclama.' },
   { clave: 'valeMovimiento', label: 'Vale de movimiento de stock', hint: 'El papel que se firma al dar de baja mercadería (merma, vencido, defectuoso, ajuste). Chico a propósito: son tres renglones y se archiva de a uno.' },
   { clave: 'comprobanteGasto', label: 'Comprobante de gasto', hint: 'La ficha del gasto para archivar junto al papel del proveedor, con su IVA y percepciones.' },
+  {
+    clave: 'cierreCaja',
+    label: 'Cierre de caja (arqueo)',
+    hint: 'El papel con el que el cajero rinde la plata. Sale del rollo del mostrador al cerrar el turno; pasalo a A4 si se archiva, porque un termico se borra en unos meses y este comprobante respalda faltantes y sobrantes.',
+  },
   { clave: 'ordenPago', label: 'Orden de pago (proveedor)', hint: 'El recibo que se le ENTREGA al proveedor, con el detalle de qué se le cancela. En A4 aunque salga de la caja: un rollo térmico se borra en unos meses y esto es un recibo que pueden reclamarte.' },
   {
     clave: 'etiquetaFraccionado',
