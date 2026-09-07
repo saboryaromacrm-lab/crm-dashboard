@@ -154,9 +154,32 @@ function ListaPermisos({ titulo, items, permisos, toggle }) {
         {titulo}
       </div>
       {items.map((p) => (
-        <label key={p.clave} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '3px 0', cursor: 'pointer' }}>
-          <input type="checkbox" checked={permisos.has(p.clave)} onChange={() => toggle(p.clave)} />
+        /*
+         * Los de FÁBRICA (`p.base`, ver `permisos-base.ts` en la API) van
+         * tildados y bloqueados: los tiene todo rol, con o sin esta pantalla.
+         * Mostrarlos como una casilla vacía haría pensar que están apagados, y
+         * tildarlos "para arreglarlo" solo guardaría en la base algo que ya rige.
+         */
+        <label
+          key={p.clave}
+          title={p.base ? 'Viene activado de fábrica en todas las sucursales: no se puede apagar desde acá.' : undefined}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '3px 0',
+            cursor: p.base ? 'default' : 'pointer', opacity: p.base ? 0.8 : 1,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={p.base || permisos.has(p.clave)}
+            disabled={p.base}
+            onChange={() => !p.base && toggle(p.clave)}
+          />
           {p.nombre}
+          {p.base && (
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--crm-color-text-muted)', border: '1px solid var(--crm-color-border)', borderRadius: 4, padding: '0 4px' }}>
+              siempre
+            </span>
+          )}
         </label>
       ))}
     </div>
