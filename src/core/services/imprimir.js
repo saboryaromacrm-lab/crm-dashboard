@@ -226,6 +226,11 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
     .tot { margin-top: ${f.rollo ? '6px' : '12px'}; text-align: right; font-size: ${f.rollo ? '12px' : '15px'}; ${f.rollo ? 'font-weight: 800;' : ''} }
     .nota { margin-top: ${f.rollo ? '8px' : '14px'}; color: ${f.rollo ? '#000' : '#555'}; font-size: ${f.chica}; ${esTicket ? 'text-align: center;' : ''} }
     .fiscal { margin-top: 6px; text-align: center; font-size: ${f.chica}; color: ${f.rollo ? '#000' : '#555'}; letter-spacing: 0.06em; }
+    /* El renglon "3 x $9.834,00" del ticket: en una HOJA el gris lo separa del
+       nombre del producto y se lee igual; en TERMICA el gris es letra a medio
+       quemar — justo el dato que el cliente vuelve a mirar para chequear el
+       precio unitario. En rollo va negro y con el mismo peso que el resto. */
+    .det { color: ${f.rollo ? '#000' : '#555'}; ${f.rollo ? 'font-weight: 700;' : ''} }
 
     /* ---- Comprobante fiscal (RG 1415 y RG 4892) ---- */
     /* El recuadro de la letra: es lo primero que se mira para saber qué
@@ -1054,7 +1059,7 @@ export function cuerpoTicket(venta, { moneda, fechaHora, leyendaNoFiscal = true 
     const neto = it.cantidad * it.precioUnitario * (1 - (it.descuento || 0) / 100);
     const final = neto * (1 + (it.iva ?? 21) / 100);
     return `<tr>
-      <td>${esc(it.nombre ?? `#${it.productoId}`)}<br /><span style="color:#333">${Number(it.cantidad)} x ${moneda(it.precioUnitario * (1 + (it.iva ?? 21) / 100))}</span></td>
+      <td>${esc(it.nombre ?? `#${it.productoId}`)}<br /><span class="det">${Number(it.cantidad)} x ${moneda(it.precioUnitario * (1 + (it.iva ?? 21) / 100))}</span></td>
       <td class="n">${moneda(final)}</td>
     </tr>`;
   }).join('');
