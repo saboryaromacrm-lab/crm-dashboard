@@ -98,7 +98,56 @@ async function fetchConTimeout(url, init = {}) {
   }
 }
 
-async function request(method, path, { body, headers, signal, sinRedirigir = false } = {}) {
+/**
+ * CUÁNTAS VECES SE REINTENTA UNA LECTURA QUE NO OBTUVO RESPUESTA.
+ *
+ * Un parpadeo de internet de medio segundo —el wifi del local, el proxy que
+ * recicla una conexión— alcanzaba para que el cajero viera el cartel de error
+ * en pantalla. No porque el sistema estuviera caído: porque nadie volvía a
+ * intentar. Con dos reintentos, ese parpadeo se vuelve invisible.
+ *
+ * Las esperas suben (300 ms, 900 ms) y llevan un desvío al azar a propósito:
+ * si se cayó algo del lado del servidor, ocho cajas reintentando todas en el
+ * mismo milisegundo lo terminan de voltear justo cuando se está levantando.
+ */
+const REINTENTOS = 2;
+const ESPERA_BASE_MS = 300;
+
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * SOLO SE REINTENTA LO QUE SE PUEDE REPETIR SIN CONSECUENCIAS.
+ *
+ * GET y HEAD solo preguntan: repetirlos no cambia nada. Un POST puede haber
+ * registrado la venta y haberse perdido la respuesta en el camino de vuelta —
+ * repetirlo la cobraría dos veces. Esa distinción ya estaba razonada en el
+ * comentario de `sinRespuesta` de más arriba; acá se usa.
+ */
+const sePuedeReintentar = (metodo) => metodo === 'GET' || metodo === 'HEAD';
+
+async function request(method, path, opts = {}) {
+  let ultimo;
+  for (let intento = 0; intento <= REINTENTOS; intento += 1) {
+    try {
+      return await intentarRequest(method, path, opts);
+    } catch (e) {
+      ultimo = e;
+      /* Se reintenta ÚNICAMENTE cuando no hubo respuesta (red cortada, el
+       * servidor no contestó). Un 400 o un 403 son respuestas: el servidor
+       * dijo que no, y repetir la pregunta va a dar lo mismo. */
+      const vaDeNuevo = e?.sinRespuesta
+        && sePuedeReintentar(method)
+        && intento < REINTENTOS
+        && !opts.signal?.aborted;
+      if (!vaDeNuevo) throw e;
+      const espera = ESPERA_BASE_MS * (3 ** intento);
+      await dormir(espera + Math.random() * 200);
+    }
+  }
+  throw ultimo;
+}
+
+async function intentarRequest(method, path, { body, headers, signal, sinRedirigir = false } = {}) {
   const url = path.startsWith('http')
     ? path
     : `${appConfig.api.baseUrl}${path}`;

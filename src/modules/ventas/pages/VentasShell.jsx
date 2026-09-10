@@ -78,7 +78,9 @@ export function VentasShell({ title, subtitle }) {
             <Btn variant="btn-primary" small onClick={onRefresh}>Reintentar</Btn>
           </div>
           <div className={s.hint} style={{ marginTop: 8 }}>
-            Verificá que el backend esté corriendo (crm-api: <code>npm run start:dev</code>) en http://localhost:3001/api.
+            {String(loadError ?? '').toLowerCase().includes('respuesta')
+              ? 'Puede ser un corte momentáneo de conexión: probá “Reintentar”. Si sigue, revisá internet.'
+              : 'Si el problema sigue, avisá a soporte con el mensaje de arriba.'}
           </div>
         </div>
       </div>
