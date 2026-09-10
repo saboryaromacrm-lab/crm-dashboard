@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { ventasApi } from '../services/ventas.api.js';
-import { CONDICIONES_IVA, MEDIOS_PAGO, OPCIONES_REDONDEO, OPCIONES_REDONDEO_PRECIO } from '../domain/constants.js';
+import { CONDICIONES_IVA, MEDIOS_PAGO, OPCIONES_REDONDEO_PRECIO } from '../domain/constants.js';
 import { PanelHead, Btn, s } from '../components/ui.jsx';
 import { PanelArca } from '../components/PanelArca.jsx';
 
@@ -425,11 +425,6 @@ export function ConfiguracionPanel() {
           >
             <select value={draft.redondeoPrecio ?? 0} onChange={setNum('redondeoPrecio')}>
               {OPCIONES_REDONDEO_PRECIO.map((o) => <option key={o.valor} value={o.valor}>{o.label}</option>)}
-            </select>
-          </Campo>
-          <Campo label="Redondeo de efectivo" hint="Para plazas sin monedas chicas. Solo afecta pagos en efectivo.">
-            <select value={draft.redondeoEfectivo ?? 0} onChange={setNum('redondeoEfectivo')}>
-              {OPCIONES_REDONDEO.map((o) => <option key={o.valor} value={o.valor}>{o.label}</option>)}
             </select>
           </Campo>
         </Seccion>

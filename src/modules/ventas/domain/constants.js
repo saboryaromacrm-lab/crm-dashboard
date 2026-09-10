@@ -73,14 +73,6 @@ export const ESTADOS_COBRANZA = {
 
 export const CONDICIONES_PAGO = { contado: 'Contado', cuenta_corriente: 'Cuenta corriente' };
 
-/** Opciones de redondeo de efectivo (para plazas sin monedas chicas). */
-export const OPCIONES_REDONDEO = [
-  { valor: 0, label: 'Sin redondeo' },
-  { valor: 10, label: 'A $10' },
-  { valor: 50, label: 'A $50' },
-  { valor: 100, label: 'A $100' },
-];
-
 /**
  * Redondeo del precio de góndola. Incluye "al entero" —el caso habitual— que no
  * tiene sentido para el vuelto en efectivo, por eso es una lista aparte.
