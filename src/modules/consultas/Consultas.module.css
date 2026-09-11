@@ -145,6 +145,17 @@
 }
 .tabla tbody tr:hover td { background: color-mix(in srgb, var(--crm-color-accent) 6%, transparent); }
 
+/*
+ * La fila que ABRE LA FICHA del producto. Solo se marca así cuando el usuario
+ * tiene el permiso: el cursor y el subrayado del nombre son la promesa de que
+ * el clic hace algo, y prometerlo para después negarlo es peor que no ofrecerlo.
+ */
+.filaClicable { cursor: pointer; }
+.filaClicable:hover td { background: color-mix(in srgb, var(--crm-color-primary) 9%, transparent); }
+.filaClicable:hover .prodNombre { text-decoration: underline; }
+/* Con teclado: el navegador no dibuja foco en una fila, así que se hace acá. */
+.filaClicable:focus-visible { outline: 2px solid var(--crm-color-primary); outline-offset: -2px; }
+
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 .mono { font-family: var(--crm-font-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; }
 

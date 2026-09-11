@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ModalShell } from '@modules/productos/components/Modal.jsx';
 import { CambiosPrecioVista, ExistenciasVista } from './vistas.jsx';
+import { DetalleDesdeConsulta } from './DetalleDesdeConsulta.jsx';
 
 /** Cada consulta con su tecla y su título. Agregar una es agregar una entrada. */
 const CONSULTAS = {
@@ -35,7 +36,12 @@ const CONSULTAS = {
 
 export function ConsultasRapidas() {
   const [abierta, setAbierta] = useState(null);
-  const cerrar = useCallback(() => setAbierta(null), []);
+  /* El producto cuya ficha se esta mirando, elegido desde la consulta. La
+   * consulta NO se cierra: la ficha se abre encima y al cerrarla se vuelve a
+   * la lista, con la busqueda y los filtros como estaban. */
+  const [fichaDe, setFichaDe] = useState(null);
+  const cerrar = useCallback(() => { setFichaDe(null); setAbierta(null); }, []);
+  const cerrarFicha = useCallback(() => setFichaDe(null), []);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -49,6 +55,7 @@ export function ConsultasRapidas() {
       e.preventDefault();
       e.stopPropagation();
       // Volver a apretar el mismo atajo cierra: la consulta es de ida y vuelta.
+      setFichaDe(null);
       setAbierta((actual) => (actual === id ? null : id));
     };
     window.addEventListener('keydown', onKey, true);
@@ -66,7 +73,9 @@ export function ConsultasRapidas() {
       size="xl"
       footer={[{ texto: 'Cerrar (Esc)', clase: 'btn-ghost', onClick: cerrar }]}
     >
-      <Vista compacto />
+      <Vista compacto onAbrirFicha={setFichaDe} />
+      {/* La ficha se monta ENCIMA de la consulta, que queda intacta debajo. */}
+      <DetalleDesdeConsulta prodId={fichaDe} onCerrar={cerrarFicha} />
     </ModalShell>
   );
 }

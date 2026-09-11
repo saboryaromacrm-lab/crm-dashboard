@@ -22,6 +22,8 @@ import { httpClient } from '@core/services/httpClient.js';
 import { cx } from '@shared/utils/classNames.js';
 import { money, num, fmtFechaHora } from '@modules/productos/domain/format.js';
 import { usePaginado, Paginador } from '@modules/productos/components/ui.jsx';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
+import { PERMISO_FICHA } from './DetalleDesdeConsulta.jsx';
 import c from './Consultas.module.css';
 
 /** Texto comparable: sin acentos ni mayúsculas. */
@@ -268,7 +270,14 @@ export function CambiosPrecioVista({ compacto = false }) {
 
 const FILTROS_STOCK = { q: '', proveedor: '', categoria: '', marca: '', soloConStock: false };
 
-export function ExistenciasVista({ compacto = false }) {
+export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
+  /*
+   * Abrir la ficha muestra costos y margenes, asi que pide la misma llave que
+   * Compras > Productos. Sin ella la consulta sigue siendo lo que era —stock y
+   * precios de venta— y las filas ni se ofrecen como clicables.
+   */
+  const { can } = usePermissions();
+  const puedeVerFicha = !!onAbrirFicha && can(PERMISO_FICHA);
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState('');
   const [f, setF] = useState(FILTROS_STOCK);
@@ -401,8 +410,23 @@ export function ExistenciasVista({ compacto = false }) {
             {pag.visibles.map((i) => {
               const total = totalDe(i);
               const otras = (i.precios ?? []).filter((p) => p.listaId !== baseId);
+              /* La ficha es del PRODUCTO: un paquete fraccionado abre la de su
+                 madre, que es donde estan sus formatos y su costo. */
+              const abrir = puedeVerFicha ? () => onAbrirFicha(i.productoId) : null;
               return (
-                <tr key={i.key}>
+                <tr
+                  key={i.key}
+                  className={cx(abrir && c.filaClicable)}
+                  onClick={abrir ?? undefined}
+                  /* Con teclado: Tab llega a la fila y Enter o Espacio la abre.
+                     Sin esto, quien no usa mouse no tendria como entrar. */
+                  tabIndex={abrir ? 0 : undefined}
+                  role={abrir ? 'button' : undefined}
+                  title={abrir ? 'Ver la ficha del producto' : undefined}
+                  onKeyDown={abrir ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); }
+                  } : undefined}
+                >
                   <td className={c.mono} style={{ fontSize: 12 }}>{i.codigo || '—'}</td>
                   <td>
                     <div className={c.prodNombre}>{i.nombre}</div>
