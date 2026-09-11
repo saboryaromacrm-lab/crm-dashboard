@@ -51,6 +51,9 @@ export const TIPOS_VENTA = {
   nota_credito_a: { label: 'N. crédito A', tag: 'tag-baja' },
   nota_credito_b: { label: 'N. crédito B', tag: 'tag-baja' },
   nota_credito_c: { label: 'N. crédito C', tag: 'tag-baja' },
+  /* La devolución de un ticket: resta como una nota de crédito (mismo prefijo,
+     `esNotaCredito` la reconoce) pero no es fiscal. */
+  nota_credito_ticket: { label: 'Devolución', tag: 'tag-baja' },
   nota_debito_a: { label: 'N. débito A', tag: 'tag-transf' },
   nota_debito_b: { label: 'N. débito B', tag: 'tag-transf' },
   nota_debito_c: { label: 'N. débito C', tag: 'tag-transf' },

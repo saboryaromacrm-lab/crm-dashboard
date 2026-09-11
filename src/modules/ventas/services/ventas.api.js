@@ -82,6 +82,11 @@ export const ventasApi = {
    * `{ motivo, items?: [{itemId, cantidad}], devuelveMercaderia?, devolverEfectivo? }`
    */
   notaCredito: (id, datos) => httpClient.post(`/ventas/${id}/nota-credito`, datos),
+  /**
+   * DEVOLUCIÓN DE UN TICKET, total o parcial: mismo cuerpo que la nota de
+   * crédito, por la puerta del cajero (`devoluciones`). Solo acepta tickets.
+   */
+  devolucion: (id, datos) => httpClient.post(`/ventas/${id}/devolucion`, datos),
 
   /* Ventas abiertas del punto de venta (borradores) */
   ventasAbiertas: (sucursalId) =>

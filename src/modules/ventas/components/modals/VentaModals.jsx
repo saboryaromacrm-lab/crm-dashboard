@@ -26,11 +26,20 @@ import {
 
 /* ============================== DETALLE ============================== */
 export function DetalleVentaModal({ ventaId, onCambio }) {
-  const { closeModal, openModal, toast, esJefe } = useVentas();
-  /* El permiso REAL de emitir notas de crédito (0080). Antes la pantalla usaba
-   * `esJefe` y la API pedía `devoluciones` —que el cajero tiene—, así que el
-   * candado que se veía no era el que mandaba: el botón estaba escondido pero
-   * el endpoint aceptaba. Ahora los dos lados miran la misma llave. */
+  const { closeModal, openModal, toast } = useVentas();
+  /*
+   * LA PANTALLA MIRA LAS MISMAS LLAVES QUE EL SERVIDOR, y nada más.
+   *
+   *  - `nota_credito` (0080, solo administración): la nota de crédito de una
+   *    FACTURA. Emite un comprobante fiscal y da vuelta el débito.
+   *  - `devoluciones` (la llave del cajero): anular un ticket, y ahora también
+   *    DEVOLVERLO por renglones. Antes el botón "Anular" pedía además ser jefe
+   *    —un candado que existía solo acá, porque la API ya aceptaba al cajero—,
+   *    y la devolución parcial de un ticket directamente no existía: había que
+   *    anular la venta entera y recargarla. Decisión del dueño (11/9): el
+   *    cajero atiende la devolución en el mostrador, con la plata y el stock
+   *    pasando por el mismo circuito que la nota de crédito.
+   */
   const { can } = usePermissions();
   const [imprimiendo, setImprimiendo] = useState(false);
   const { data: v, loading, error } = useResource(`venta:${ventaId}`, () => ventasApi.venta(ventaId));
@@ -82,16 +91,23 @@ export function DetalleVentaModal({ ventaId, onCambio }) {
             onClick: () => openModal('notaCredito', { venta: v, onCambio }),
           });
         }
-      } else if (esJefe) {
-        /* Anular sigue con `esJefe` y NO se tocó: la API pide `devoluciones`,
-         * que el cajero tiene, así que cambiarlo a `can('devoluciones')` le
-         * ABRIRÍA la acción al cajero. Es una decisión del dueño, no una
-         * corrección; queda anotada en /info. */
+      } else if (can('devoluciones')) {
+        /* Sin CAE: Anular (todo o nada, la venta no debió existir) y, si es un
+         * ticket ya emitido, Devolución (el cliente devuelve parte o todo, y
+         * queda un comprobante que lo dice). Un ticket pendiente de facturar no
+         * lleva devolución: primero se factura, o se anula. */
         pie.unshift({
           texto: 'Anular',
           clase: 'btn-delete',
           onClick: () => openModal('anularVenta', { venta: v, onCambio }),
         });
+        if (v.tipo === 'ticket' && !v.facturarPendiente && v.acreditable > 0.009) {
+          pie.unshift({
+            texto: 'Devolución',
+            clase: 'btn-delete',
+            onClick: () => openModal('notaCredito', { venta: v, onCambio }),
+          });
+        }
       }
     }
   }
@@ -99,7 +115,7 @@ export function DetalleVentaModal({ ventaId, onCambio }) {
   return (
     <ModalShell
       title={v
-        ? `${esNotaCredito(v.tipo) ? 'Nota de crédito' : 'Venta'} ${nroComprobante(v)}`
+        ? `${v.tipo === 'nota_credito_ticket' ? 'Devolución' : esNotaCredito(v.tipo) ? 'Nota de crédito' : 'Venta'} ${nroComprobante(v)}`
         : 'Venta'}
       wide
       onClose={closeModal}
@@ -208,7 +224,7 @@ export function DetalleVentaModal({ ventaId, onCambio }) {
               {v.condicionPago === 'cuenta_corriente' && (
                 <div className={s['detalle-grid']} style={{ marginTop: 'var(--crm-space-2)' }}>
                   <Di label="Cobrado (recibos)">{money(v.cobrado)}</Di>
-                  {v.acreditado > 0.009 && <Di label="Acreditado (notas)">− {money(v.acreditado)}</Di>}
+                  {v.acreditado > 0.009 && <Di label={v.tipo === 'ticket' ? 'Devuelto' : 'Acreditado (notas)'}>− {money(v.acreditado)}</Di>}
                   <Di label="Saldo"><SaldoMonto valor={v.saldo}>{money(v.saldo)}</SaldoMonto></Di>
                 </div>
               )}
@@ -221,7 +237,7 @@ export function DetalleVentaModal({ ventaId, onCambio }) {
           {v.notas?.length > 0 && (
             <>
               <h3 className={s['card-title']} style={{ marginTop: 'var(--crm-space-3)' }}>
-                Notas de crédito de esta venta
+                {v.tipo === 'ticket' ? 'Devoluciones de esta venta' : 'Notas de crédito de esta venta'}
               </h3>
               <Table cols={[{ h: 'Comprobante' }, { h: 'Fecha' }, { h: 'Motivo' }, { h: 'Importe', num: true }]}>
                 {v.notas.map((n) => (
@@ -234,15 +250,16 @@ export function DetalleVentaModal({ ventaId, onCambio }) {
                 ))}
               </Table>
               <div className={s['detalle-grid']} style={{ marginTop: 'var(--crm-space-2)' }}>
-                <Di label="Acreditado">− {money(v.acreditado)}</Di>
-                <Di label="Queda por acreditar"><strong>{money(v.acreditable)}</strong></Di>
+                <Di label={v.tipo === 'ticket' ? 'Devuelto' : 'Acreditado'}>− {money(v.acreditado)}</Di>
+                <Di label={v.tipo === 'ticket' ? 'Queda por devolver' : 'Queda por acreditar'}><strong>{money(v.acreditable)}</strong></Di>
               </div>
             </>
           )}
 
           {v.origen && (
             <div className={cx(s.callout)} style={{ marginTop: 'var(--crm-space-3)' }}>
-              Esta nota de crédito ajusta <VentaTag tipo={v.origen.tipo} />{' '}
+              {v.tipo === 'nota_credito_ticket' ? 'Esta devolución es del' : 'Esta nota de crédito ajusta'}{' '}
+              <VentaTag tipo={v.origen.tipo} />{' '}
               <span className={s.mono}>{nroComprobante(v.origen)}</span>, del{' '}
               {fmtFechaHora(v.origen.fecha)} por {money(v.origen.total)}.
             </div>
@@ -373,10 +390,21 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
  */
 export function NotaCreditoModal({ venta, onCambio }) {
   const { closeModal, act, toast } = useVentas();
+  /*
+   * LA MISMA PANTALLA PARA LA FACTURA Y PARA EL TICKET. La cuenta, los topes y
+   * los renglones son idénticos; lo que cambia es cómo se llama el papel que
+   * sale ("nota de crédito" o "devolución"), por qué puerta de la API entra, y
+   * un default: en una devolución de ticket AL CONTADO la plata sale por
+   * defecto. El cliente está parado en el mostrador con el producto en la
+   * mano; si la casilla arrancara apagada y la cajera no la viera, le
+   * entregaría la plata igual y el arqueo cerraría con un sobrante que nadie
+   * explica. Queda a la vista para destildarla si la plata va aparte.
+   */
+  const esTicket = venta.tipo === 'ticket';
   const [motivo, setMotivo] = useState('');
   const [parcial, setParcial] = useState(false);
   const [devuelveMercaderia, setDevuelveMercaderia] = useState(true);
-  const [devolverEfectivo, setDevolverEfectivo] = useState(false);
+  const [devolverEfectivo, setDevolverEfectivo] = useState(esTicket && venta.condicionPago === 'contado');
   const [enviando, setEnviando] = useState(false);
   /** itemId → cantidad tipeada (solo en modo parcial). */
   const [cants, setCants] = useState({});
@@ -429,7 +457,7 @@ export function NotaCreditoModal({ venta, onCambio }) {
   const emitir = async () => {
     const razon = motivo.trim();
     if (!razon) {
-      toast('Escribí por qué se emite la nota de crédito: va impresa en el comprobante.', 'err');
+      toast(`Escribí por qué se ${esTicket ? 'registra la devolución' : 'emite la nota de crédito'}: va impreso en el comprobante.`, 'err');
       return;
     }
     if (!calc.elegidos.length) {
@@ -437,19 +465,19 @@ export function NotaCreditoModal({ venta, onCambio }) {
       return;
     }
     if (excede) {
-      toast(`La nota da ${money(calc.total)} y de esta venta quedan ${money(tope)} por acreditar.`, 'err');
+      toast(`${esTicket ? 'La devolución' : 'La nota'} da ${money(calc.total)} y de esta venta quedan ${money(tope)} por ${esTicket ? 'devolver' : 'acreditar'}.`, 'err');
       return;
     }
     setEnviando(true);
     const nc = await act(
-      ventasApi.notaCredito(venta.id, {
+      (esTicket ? ventasApi.devolucion : ventasApi.notaCredito)(venta.id, {
         motivo: razon,
         // Sin `items` la API emite la nota TOTAL, con los otros cargos adentro.
         items: parcial ? calc.elegidos : undefined,
         devuelveMercaderia,
         devolverEfectivo,
       }),
-      'Nota de crédito emitida.',
+      esTicket ? 'Devolución registrada.' : 'Nota de crédito emitida.',
       { recargar: false },
     );
     setEnviando(false);
@@ -462,36 +490,48 @@ export function NotaCreditoModal({ venta, onCambio }) {
     try {
       const salio = await imprimirVenta(nc, { moneda: money, fechaHora: fmtFechaHora });
       if (!salio) {
-        toast('La nota se emitió, pero el navegador bloqueó la impresión. Reimprimila desde el listado.', 'err');
+        toast(`${esTicket ? 'La devolución se registró' : 'La nota se emitió'}, pero el navegador bloqueó la impresión. Reimprimila desde el listado.`, 'err');
       }
     } catch {
-      toast('La nota se emitió, pero no se pudo imprimir. Reimprimila desde el listado.', 'err');
+      toast(`${esTicket ? 'La devolución se registró' : 'La nota se emitió'}, pero no se pudo imprimir. Reimprimila desde el listado.`, 'err');
     }
   };
 
   return (
     <ModalShell
-      title={`Nota de crédito de ${nroComprobante(venta)}`}
+      title={`${esTicket ? 'Devolución' : 'Nota de crédito'} de ${nroComprobante(venta)}`}
       wide
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
         {
-          texto: enviando ? 'Emitiendo…' : `Emitir por ${money(calc.total)}`,
+          texto: enviando
+            ? (esTicket ? 'Registrando…' : 'Emitiendo…')
+            : `${esTicket ? 'Devolver' : 'Emitir'} por ${money(calc.total)}`,
           clase: 'btn-delete',
           onClick: emitir,
         },
       ]}
     >
-      <p>
-        Esta venta tiene <strong>CAE {venta.cae}</strong>: existe para ARCA y no se puede anular.
-        La nota de crédito es el comprobante que la corrige.
-      </p>
+      {esTicket ? (
+        <p>
+          Elegí qué devuelve el cliente. La mercadería vuelve al stock y, si está tildado, la plata
+          sale de la caja. Queda un comprobante de devolución con tu nombre, y el ticket original
+          sigue existiendo con lo que no se devolvió.
+        </p>
+      ) : (
+        <p>
+          Esta venta tiene <strong>CAE {venta.cae}</strong>: existe para ARCA y no se puede anular.
+          La nota de crédito es el comprobante que la corrige.
+        </p>
+      )}
 
       {venta.acreditado > 0.009 && (
         <div className={cx(s.callout, s.warn)}>
-          Ya se acreditaron <strong>{money(venta.acreditado)}</strong> de esta venta con{' '}
-          {venta.notas.length === 1 ? 'una nota anterior' : `${venta.notas.length} notas anteriores`}.
+          Ya se {esTicket ? 'devolvieron' : 'acreditaron'} <strong>{money(venta.acreditado)}</strong> de esta venta con{' '}
+          {venta.notas.length === 1
+            ? (esTicket ? 'una devolución anterior' : 'una nota anterior')
+            : `${venta.notas.length} ${esTicket ? 'devoluciones anteriores' : 'notas anteriores'}`}.
           Queda un tope de <strong>{money(tope)}</strong>.
         </div>
       )}
@@ -559,7 +599,7 @@ export function NotaCreditoModal({ venta, onCambio }) {
       <div className={s['detalle-grid']} style={{ marginTop: 'var(--crm-space-3)' }}>
         <Di label="Neto">{money(calc.neto)}</Di>
         <Di label="IVA">{money(calc.iva)}</Di>
-        <Di label="Total de la nota">
+        <Di label={esTicket ? 'Total a devolver' : 'Total de la nota'}>
           <strong style={{ fontSize: 19, color: excede ? 'var(--crm-color-danger)' : 'inherit' }}>
             {money(calc.total)}
           </strong>
@@ -581,7 +621,7 @@ export function NotaCreditoModal({ venta, onCambio }) {
           La mercadería vuelve al stock de {venta.sucursalNombre}
         </label>
         <div className={s.hint}>
-          Destildalo si la nota es por un error de precio o de facturación: ahí no volvió nada.
+          Destildalo si {esTicket ? 'la devolución' : 'la nota'} es por un error de precio{esTicket ? '' : ' o de facturación'}: ahí no volvió nada.
         </div>
       </div>
 
@@ -610,7 +650,7 @@ export function NotaCreditoModal({ venta, onCambio }) {
           value={motivo}
           onChange={(e) => setMotivo(e.target.value)}
         />
-        <div className={s.hint}>Va impreso en la nota y queda guardado con tu nombre.</div>
+        <div className={s.hint}>Va impreso en el comprobante y queda guardado con tu nombre.</div>
       </div>
     </ModalShell>
   );

@@ -1088,6 +1088,7 @@ const TIPO_TEXTO = {
   nota_credito_a: 'Nota de crédito A',
   nota_credito_b: 'Nota de crédito B',
   nota_credito_c: 'Nota de crédito C',
+  nota_credito_ticket: 'Devolución',
 };
 
 /**
@@ -1296,6 +1297,29 @@ export async function imprimirVenta(venta, { moneda, fechaHora }) {
   const { empresa, impresion } = await configImpresion();
   const nro = `${venta.puntoVenta}-${String(venta.numero ?? '').padStart(8, '0')}`;
   const esNota = String(venta.tipo || '').startsWith('nota_credito');
+  /*
+   * LA DEVOLUCIÓN DE UN TICKET es una nota de crédito por dentro, pero NO es
+   * un comprobante fiscal: no tiene letra, ni CAE, ni "ARCA no disponible".
+   * Por la plantilla fiscal saldría con una letra "T" en el recuadro y la
+   * leyenda de servicio caído — dos cosas falsas. Sale como el ticket, que es
+   * el papel que el cliente ya tiene en la mano, con su referencia y el motivo.
+   */
+  if (venta.tipo === 'nota_credito_ticket') {
+    const o = venta.origen;
+    return imprimirDocumento('ticketPos', {
+      titulo: `Devolución ${nro}`,
+      esTicket: true,
+      cuerpo: cuerpoTicket(venta, {
+        moneda,
+        fechaHora,
+        leyendaNoFiscal: impresion.leyendaNoFiscal,
+        titulo: 'Devolución',
+        referencia: o ? `de ${TIPO_TEXTO[o.tipo] || 'Ticket'} ${o.puntoVenta}-${String(o.numero ?? 0).padStart(8, '0')}` : '',
+        motivo: String(venta.observaciones || '').split('\n')[0].trim(),
+        etiquetaTotal: 'TOTAL DEVUELTO',
+      }),
+    });
+  }
   if (venta.cae || esNota) {
     return imprimirDocumento('facturaVenta', {
       titulo: `${esNota ? 'Nota de crédito' : 'Factura'} ${nro}`,
@@ -1311,7 +1335,12 @@ export async function imprimirVenta(venta, { moneda, fechaHora }) {
 }
 
 /** El ticket del POS como cuerpo de documento (lo usan cobro y reimpresión). */
-export function cuerpoTicket(venta, { moneda, fechaHora, leyendaNoFiscal = true }) {
+export function cuerpoTicket(venta, {
+  moneda, fechaHora, leyendaNoFiscal = true,
+  /* Lo que cambia entre el ticket y la devolución: el título, la línea que
+   * dice de qué ticket viene, el motivo, y cómo se llama el total. */
+  titulo = 'Ticket', referencia = '', motivo = '', etiquetaTotal = 'TOTAL',
+}) {
   const filas = (venta.items ?? []).map((it) => {
     const neto = it.cantidad * it.precioUnitario * (1 - (it.descuento || 0) / 100);
     const final = neto * (1 + (it.iva ?? 21) / 100);
@@ -1357,10 +1386,12 @@ export function cuerpoTicket(venta, { moneda, fechaHora, leyendaNoFiscal = true 
       + '<div class="fiscal">COMPROBANTE PROVISORIO — PENDIENTE DE FACTURACIÓN</div>'
     : '';
   return `
-    <h1>Ticket ${nro}</h1>
+    <h1>${esc(titulo)} ${nro}</h1>
     <div class="sub">${esc(fechaHora(venta.fecha))}${venta.clienteNombre ? ` · ${esc(venta.clienteNombre)}` : ''}</div>
+    ${referencia ? `<div class="sub">${esc(referencia)}</div>` : ''}
     <table><tbody>${filas}${extras}</tbody></table>
-    <div class="tot"><strong>TOTAL ${moneda(venta.total)}</strong></div>
+    <div class="tot"><strong>${esc(etiquetaTotal)} ${moneda(venta.total)}</strong></div>
+    ${motivo ? `<div class="sub"><strong>Motivo:</strong> ${esc(motivo)}</div>` : ''}
     ${pagos ? `<table><tbody>${pagos}</tbody></table>` : ''}
     ${leyendaNoFiscal ? '<div class="fiscal">DOCUMENTO NO FISCAL</div>' : ''}
     ${provisorio}

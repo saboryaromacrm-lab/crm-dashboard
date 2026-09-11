@@ -34,6 +34,9 @@ test('norm: sin acentos ni mayúsculas', () => {
 
 test('esNotaCredito: por el prefijo del tipo', () => {
   assert.equal(esNotaCredito('nota_credito_a'), true);
+  // La devolución de ticket también resta: es lo que hace que todos los
+  // totales con signo la traten bien sin tocar una línea.
+  assert.equal(esNotaCredito('nota_credito_ticket'), true);
   assert.equal(esNotaCredito('ticket'), false);
   assert.equal(esNotaCredito(undefined), false);
 });
