@@ -46,5 +46,17 @@ export function useResource(key, fetcher, { enabled = true } = {}) {
     return () => { corrida.current++; };
   }, [key, enabled, load]);
 
-  return { ...state, reload: load };
+  /**
+   * Reemplaza el dato en memoria SIN volver a la red, con algo que ya se sabe
+   * cierto: la respuesta de un guardado. El punto de venta lo usa después de
+   * cada autoguardado del ticket, que hasta ahora venía seguido de una
+   * relectura de TODAS las ventas abiertas de la sucursal — una consulta más
+   * por tecla para enterarse de lo que el servidor acababa de contestar.
+   * Recibe el valor nuevo o una función `(actual) => nuevo`.
+   */
+  const mutate = useCallback((valor) => {
+    setState((s) => ({ ...s, data: typeof valor === 'function' ? valor(s.data) : valor }));
+  }, []);
+
+  return { ...state, reload: load, mutate };
 }

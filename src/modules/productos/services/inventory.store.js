@@ -590,6 +590,52 @@ async function _mutate(fn) {
   }
 }
 
+/**
+ * MUTACIÓN QUE MUEVE EL STOCK DE UN SOLO PRODUCTO (venta suelta, fraccionar,
+ * corregir un fraccionado, movimiento manual).
+ *
+ * Estas pasaban por `_mutate`, que vuelve a bajar el inventario ENTERO
+ * (`/bootstrap`: 10 MB con 2.700 productos, más el armado de precios de todos
+ * ellos en el servidor) por cada tanda de paquetes que se fraccionaba. Con
+ * varias personas trabajando, ese armado repetido era lo que dejaba la API
+ * sin responder a las cajas.
+ *
+ * La API devuelve ahora, en la misma respuesta, la FOTO del producto que se
+ * tocó —sus filas de stock en todas las sucursales y su estado—, leída dentro
+ * de la misma transacción. Con eso la pantalla queda exactamente igual que si
+ * se recargara todo, porque es la verdad del servidor y no un cálculo local.
+ * Si la respuesta no la trae (una API vieja), se cae al refresco completo de
+ * siempre: nunca se queda con un número inventado.
+ */
+async function _mutateStock(fn) {
+  try {
+    const data = await fn();
+    if (data && Array.isArray(data.stock) && data.producto && data.producto.id != null) {
+      _aplicarFotoProducto(data);
+      // Lo que está mirando alguien (el historial de movimientos) se refresca
+      // igual que antes: la operación acaba de escribir un movimiento nuevo.
+      await _refrescarSecciones();
+      emit();
+    } else {
+      await refetch();
+    }
+    return Object.assign({ ok: true }, (data && typeof data === 'object') ? data : {});
+  } catch (e) {
+    return { ok: false, error: _errMsg(e) };
+  }
+}
+
+/** Reemplaza el stock de ESE producto por el que mandó el servidor, y su estado. */
+function _aplicarFotoProducto({ stock: filas, producto }) {
+  const id = producto.id;
+  // Arrays NUEVOS, no mutados: los paneles memorizan sobre la identidad de
+  // `state.stock` y `state.productos`, y así se enteran de que cambió.
+  state.stock = state.stock.filter((s) => s.productoId !== id).concat(filas);
+  state.productos = state.productos.map((p) => (p.id === id
+    ? { ...p, estado: producto.estado, estadoDesde: producto.estadoDesde, motivoBaja: producto.motivoBaja }
+    : p));
+}
+
 /* ---------------- Mutaciones (API) ---------------- */
 const crearProducto = (o) => _mutate(() => httpClient.post('/productos', o));
 const editarProducto = (id, o) => _mutate(() => httpClient.patch('/productos/' + id, o));
@@ -648,18 +694,18 @@ const editarProveedor = (id, o) => _mutate(() => httpClient.patch('/proveedores/
 const eliminarProveedor = (id) => _mutate(() => httpClient.delete('/proveedores/' + id));
 
 /* Sin `opCompra`: el ingreso de mercadería es la factura de Compras (18/8/2026). */
-const opVenta = (o) => _mutate(() => httpClient.post('/operaciones/venta', o));
-const opFraccionar = (o) => _mutate(() => httpClient.post('/operaciones/fraccionar', o));
+const opVenta = (o) => _mutateStock(() => httpClient.post('/operaciones/venta', o));
+const opFraccionar = (o) => _mutateStock(() => httpClient.post('/operaciones/fraccionar', o));
 
 /**
  * Corregir una tanda mal cargada. Manda el usuario: una corrección de stock sin
  * autor es justo la que uno quiere poder preguntar después.
  */
-const opCorregirFraccionado = (o) => _mutate(() => httpClient.post('/operaciones/corregir-fraccionado', {
+const opCorregirFraccionado = (o) => _mutateStock(() => httpClient.post('/operaciones/corregir-fraccionado', {
   usuarioId: state.ctx.usuarioId ?? undefined,
   ...o,
 }));
-const opSimple = (o) => _mutate(() => httpClient.post('/operaciones/movimiento', o));
+const opSimple = (o) => _mutateStock(() => httpClient.post('/operaciones/movimiento', o));
 
 const avanzarTransferencia = (id, desde) => _mutate(() => httpClient.post('/transferencias/' + id + '/avanzar', { usuarioId: state.ctx.usuarioId, desde }));
 const cancelarTransferencia = (id) => _mutate(() => httpClient.post('/transferencias/' + id + '/cancelar'));

@@ -681,7 +681,7 @@ export function PosPanel() {
     cambiosPrecio.marcarVisto();
   }, [recargarCatalogo]);
 
-  const { data: abiertasRaw, loading: cargandoAbiertas, reload: recargarAbiertas } = useResource(
+  const { data: abiertasRaw, loading: cargandoAbiertas, reload: recargarAbiertas, mutate: pisarAbiertas } = useResource(
     `abiertas:${sucursalId}`,
     () => ventasApi.ventasAbiertas(sucursalId),
     { enabled: !!sucursalId },
@@ -917,7 +917,7 @@ export function PosPanel() {
     if (!id) return;
     setGuardando(true);
     try {
-      await ventasApi.guardarVenta(id, {
+      const guardada = await ventasApi.guardarVenta(id, {
         clienteId: cliente?.id,
         items: itemsParaApi(estado.renglones),
         extras: extrasParaApi(estado.extras),
@@ -929,13 +929,27 @@ export function PosPanel() {
         /* El relevo (0088): quien está en la caja firma lo que toca. */
         operadorId: operadorId ?? undefined,
       });
-      recargarAbiertas();
+      /*
+       * La lista de ventas abiertas se actualiza con LO QUE EL SERVIDOR
+       * DEVOLVIÓ, sin volver a pedirla: el guardado ya contesta la venta
+       * entera (renglones, total, cliente), que es lo que la pestaña y la
+       * tabla muestran. Antes cada autoguardado —uno por tecla, con retardo—
+       * disparaba además una relectura de todas las ventas abiertas de la
+       * sucursal: con tres cajas cargando tickets, era la mitad de las
+       * llamadas del mostrador. Las de otros cajeros se siguen viendo igual:
+       * la lista se relee al abrir, al cobrar y al descartar, como siempre.
+       */
+      if (guardada?.id) {
+        pisarAbiertas((lista) => (Array.isArray(lista) && lista.some((v) => v.id === guardada.id)
+          ? lista.map((v) => (v.id === guardada.id ? guardada : v))
+          : lista));
+      }
     } catch (e) {
       toast(e?.data?.message || 'No se pudo guardar la venta abierta.', 'err');
     } finally {
       setGuardando(false);
     }
-  }, [recargarAbiertas, toast, operadorId]);
+  }, [pisarAbiertas, toast, operadorId]);
 
   useEffect(() => {
     if (!activaId) return undefined;
