@@ -26,8 +26,8 @@ como la referencia viva del proyecto para los próximos años.
 > Lo que ya está implementado y funcionando: autenticación real contra la API
 > (`core/auth`, sesión por pestaña con token), permisos por rol en dos niveles
 > (`core/permissions`), guards de ruta (`ProtectedRoute` + `ModuleGuard`),
-> 10 módulos de negocio, y 9 servicios de núcleo (cliente HTTP, impresión,
-> códigos de barras, pollers de avisos, chat). Lo que sigue siendo aspiración
+> 10 módulos de negocio, y 8 servicios de núcleo (cliente HTTP, impresión,
+> códigos de barras, pollers de avisos). Lo que sigue siendo aspiración
 > está marcado como tal en cada sección.
 
 ---
@@ -123,7 +123,6 @@ crm-dashboard/
     │   │       ├── Sidebar/             # SidebarContent + Sidebar + MobileNavDrawer
     │   │       ├── Topbar/              # Topbar + GlobalSearch (cambio de sucursal, salir)
     │   │       ├── Breadcrumbs/
-    │   │       ├── ChatDock.jsx         # chat interno (poller `chat.js`)
     │   │       ├── OrdenesWebAlert.jsx  # aviso con sonido de pedidos del sitio
     │   │       ├── PedidosCafeAlert.jsx # aviso de pedidos de la cafetería
     │   │       └── PreciosAlert.jsx     # "cambiaron los precios, recargá"
@@ -136,7 +135,6 @@ crm-dashboard/
     │       ├── pedidosCafe.js   # poller: pedidos de la cafetería
     │       ├── gastosPendientes.js # poller: vencidos + pagos sin aplicar
     │       ├── cambiosPrecio.js # poller: firma del último cambio de precio
-    │       ├── chat.js          # poller del chat interno (4 s, latido de presencia)
     │       └── logger.js
     │
     ├── modules/                 # ────────── MÓDULOS DE NEGOCIO ──────────

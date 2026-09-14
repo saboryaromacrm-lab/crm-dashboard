@@ -2528,47 +2528,6 @@ export const MANUAL = [
 
   /* ================================================================== */
   {
-    id: 'chat-interno',
-    titulo: 'Chat interno',
-    resumen: 'El mostrador le pregunta a administración sin dejar el puesto. Hoy, solo en la Distribuidora.',
-    temas: [
-      {
-        id: 'chat-como-funciona',
-        actualizado: '2026-08-07 08:45',
-        titulo: 'Cómo funciona',
-        bloques: [
-          {
-            t: 'p',
-            texto: 'El caso de todos los días: la cajera necesita saber si hay cuenta para transferencia, o qué pasó con un pedido web, y no puede dejar el mostrador. El **botón de chat del Topbar** (al lado de las notificaciones) abre un **panel lateral que flota sobre cualquier pantalla — incluido el POS**: pregunta, sigue cobrando, y el badge naranja le avisa cuando le respondieron.',
-          },
-          {
-            t: 'lista',
-            items: [
-              '**El canal grupal del local + privados 1-a-1.** El canal lo ven todos (si ya preguntaron y ya respondieron, nadie repite); el privado ordena lo otro — si tres cajeros le preguntan a la vez al administrador por el canal, las respuestas se pisan. El panel abre en una LISTA: el canal arriba y abajo el **Equipo**, con punto verde para los que están **en línea** — clic en un nombre y se abre su conversación. Un privado sin leer no desaparece porque el otro se desconectó: la fila queda con su badge.',
-              '**Los mensajes se borran a las 24 horas.** El chat es conversación, no archivo: lo que hay que decidir va a su documento (el pedido, la factura, la observación del comprobante), no al chat — ahí se pierde. La regla se avisa en el propio panel. Son DOS capas y las dos hacen falta: las consultas **filtran** por el corte (así el límite es exacto en todo momento) y una **purga borra de verdad** cada 10 minutos como máximo (así la tabla no crece). El navegador descarta con el mismo corte, así el panel no muestra lo que el servidor ya borró aunque el CRM lleve dos días abierto. La marca de "leído hasta acá" sobrevive a la purga: es un número, no una referencia al mensaje.',
-              '**"En línea" sin infraestructura**: el mismo poller que trae mensajes es el latido — en línea = su sistema preguntó hace menos de 15 segundos. Se pierde al reiniciar la API y se rearma solo en el próximo tick.',
-              '**Los privados son privados EN EL SERVIDOR**: la API solo le entrega cada mensaje a sus dos puntas — no es un filtro de pantalla. Cada conversación (canal o privado) tiene su propia marca de lectura.',
-              '**Solo en la Distribuidora, y lo decide la API.** El gate es por TIPO de sucursal en el servidor — una sesión parada en un Express ni ve el botón ni gasta un request. Si mañana otra sucursal necesita su canal, es cambiar esa regla, no rediseñar.',
-              '**Sin WebSockets, a propósito.** El cliente pregunta por lo nuevo cada 4 segundos, como los avisos de órdenes web y de precios: para esta dinámica es indistinguible de instantáneo, no agrega infraestructura nueva y la BASE es la verdad — historial consultable, sobrevive recargas, el que llega tarde ve todo.',
-              '**El "no leídos" es por usuario y por conversación, y vive en la base** (no en el navegador): sobrevive al F5 y a cambiar de máquina. Lo propio nace leído — el badge del Topbar suma todas las conversaciones y cada fila muestra el suyo. La conversación a la vista queda leída sola.',
-              '**Pestaña en segundo plano = avisos demorados.** El navegador estrangula los relojes de las pestañas que no se ven: un mensaje puede tardar hasta un minuto en sonar si el CRM está detrás de otra ventana. Con el CRM a la vista (el caso del mostrador), llega en segundos.',
-              '**Enter envía, Shift+Enter hace salto de línea.** Cada mensaje muestra quién y a qué hora (con fecha si no es de hoy). Al llegar un mensaje con el panel cerrado suena UNA nota corta — distinta de la campanita de dos notas de los pedidos web, para que el oído las distinga.',
-              '**Como la sesión es por pestaña**, cada ventana chatea como su usuario: dos ventanas en la misma máquina son dos personas distintas en el canal.',
-            ],
-          },
-          {
-            t: 'nota',
-            tono: 'warn',
-            texto: 'Mientras la API no tenga autenticación (bloqueante del deploy), el chat hereda el mismo agujero que todo el resto: cualquiera en la red podría escribir a nombre de otro. Se cierra con el mismo trabajo de auth, no necesita nada propio.',
-          },
-          { t: 'ruta', texto: 'Botón de chat en el Topbar (visible solo con sesión en la Distribuidora) · API: /chat/bootstrap · /chat/mensajes · /chat/leido' },
-        ],
-      },
-    ],
-  },
-
-  /* ================================================================== */
-  {
     id: 'usuarios-roles',
     titulo: 'Usuarios y roles',
     resumen: 'Quién es quién: roles dinámicos con permisos, contraseñas y el superadmin.',
@@ -2929,7 +2888,7 @@ export const MANUAL = [
     temas: [
       {
         id: 'registro',
-        actualizado: '2026-08-27',
+        actualizado: '2026-09-14',
         titulo: 'Registro de lo último',
         bloques: [
           {
@@ -2940,6 +2899,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**14/9/2026**', '**Se eliminó el chat interno** (pedido del dueño). Se fue entero: el módulo de la API con sus tres endpoints, las dos tablas de la base (migración 0093 las borra), el botón y el panel del encabezado, el poller que cada CRM abierto disparaba **cada 4 segundos** —era la fuente de tráfico repetido más grande del sistema, y con varios usuarios a la vez le sacaba conexiones a las cajas— y su guía en este manual. La sucursal del encabezado sigue funcionando igual: nunca dependió del chat.'],
               ['**28/8/2026**', '**NACIÓ EL BOTÓN DE FIN DEL PERÍODO DE PRUEBA — la limpieza de la operatoria, exclusiva del superadmin** (pedido del dueño: "cuando el período termina, solo aprieta el botón"). Vive en **Sistema › Respaldos**, abajo de todo, y **solo el superadmin lo ve** (los demás ni saben que existe, y el servidor lo revalida con 403: el comodín `*` es la definición de superadmin en todo el sistema). **Qué hace**: vacía TODA la operatoria — stock y movimientos, ventas y tickets, comprobantes de compra (facturas, remitos, liquidaciones), cobranzas, caja y arqueos, transferencias, conteos, incidencias, vencimientos, pagos/compromisos/echeqs de proveedores con su split multi-medio, gastos, envíos a Cafetería, la bandeja de papeles y la auditoría — y **conserva** el catálogo entero (productos, formatos, precios con su historial), proveedores, clientes, usuarios, ofertas, fotos, chat y configuración. Los contadores arrancan de nuevo: la primera venta real es el ticket 1 (la numeración fiscal la lleva ARCA y no se toca). **Los seguros, en capas**: primero "Ver qué se borraría" (el ensayo: cuántas filas por tabla, sin tocar nada), recién ahí aparece el campo donde hay que **tipear LIMPIAR** tal cual para que el botón rojo se prenda — y la API exige la misma palabra en el body. Corre en **una sola transacción**: si algo falla, no queda nada a medias. El TRUNCATE es **sin CASCADE a propósito** — una tabla olvidada aborta en vez de arrastrarse en silencio, y la prueba lo demostró: `pago_formas` faltaba en la lista y Postgres se negó hasta que se la agregó. Al terminar escribe **el primer registro de la auditoría nueva** ("Fin del período de prueba", con quién y cuántas filas) y la pantalla se recarga sola (todo lo que el navegador tenía en memoria dejó de existir). **Probado de punta a punta contra una COPIA de la base** (crm_test): el admin común recibió su 403, el ensayo contó 488 filas en 25 tablas, "limpiar" en minúscula rebotó, LIMPIAR vació todo, el catálogo quedó intacto (228 productos, 169 proveedores, 3 clientes), el contador de ventas volvió a 1 y la única fila de auditoría era la de la propia limpieza. **El día D, el orden es**: descargar el respaldo (mismo panel) → Ver qué se borraría → LIMPIAR → y de ahí al plan del corte (saldos iniciales de proveedores + stock real por conteo ciego).'],
               ['**28/8/2026**', '**SE CARGÓ STOCK DE PRÁCTICA EN PRODUCCIÓN para que el equipo se entrene** (pedido del dueño: "que los chicos vayan probando el sistema vendiendo, mandando órdenes"). Por única vez y **por el circuito real de ajuste** — nada de SQL directo: 2.757 productos quedaron con **50 unidades/kg disponibles en Distribuidora** (los archivados afuera; verificación contra el servidor: 2.762 productos con ≥50). Cada carga dejó su movimiento con el motivo **"Carga inicial para pruebas del sistema (28/8/2026) — no es mercadería comprada"**, firmado por el usuario descartable ZZZ_Carga (borrarlo en Gerencia › Usuarios). **Solo Distribuidora a propósito**: los locales arrancan vacíos para que el equipo practique el pedido a la distribuidora y la transferencia, que es el flujo real de abastecimiento. **OJO — todo lo que salga de esta base es de práctica** (ver el pendiente 🟠): antes del corte real se depura y el stock verdadero entra por el conteo ciego.'],
               ['**28/8/2026**', '**El historial de movimientos ganó el rango de fechas (Desde → Hasta)** (pedido del dueño), en Almacén › Existencias › Movimientos y en Compras › Historial — es la misma pantalla. **No es un filtro de pantalla a propósito**: la tabla carga los últimos 300 movimientos, y filtrar ESO por una fecha vieja mostraría un día incompleto sin avisar. Con rango puesto, los movimientos de esas fechas **se piden al servidor** (`GET /movimientos` ganó `desde`/`hasta`, hasta 1000 filas, con el mismo criterio de zona horaria del libro del almacén: el desde arranca a las 00:00 del día pedido y el hasta llega a las 23:59 — un rango de un solo día trae ese día completo). Si el rango supera las 1000 filas lo dice y pide achicarlo; "Quitar fechas" vuelve al listado de siempre, y los filtros de tipo/producto/sucursal siguen aplicando sobre el resultado. Verificado en pantalla: rango 25/8→25/8 trajo exactamente los 7 movimientos de ese día (coincide con la base) y el pedido viajó con `desde`/`hasta`.'],
@@ -3263,7 +3223,7 @@ export const MANUAL = [
           {
             t: 'nota',
             tono: 'warn',
-            texto: '**La decisión real: el papel sale de la máquina.** La imagen viaja a la API del modelo — los precios de los proveedores, los CUITs, los códigos. Es el único componente de todo el sistema que manda datos afuera: el chat, el importador de catálogos, la lectura del QR y todo lo demás corren en la red local. No es una objeción, es el precio del servicio, pero la decisión es del dueño.',
+            texto: '**La decisión real: el papel sale de la máquina.** La imagen viaja a la API del modelo — los precios de los proveedores, los CUITs, los códigos. Es el único componente de todo el sistema que manda datos afuera: el importador de catálogos, la lectura del QR y todo lo demás corren en la red local. No es una objeción, es el precio del servicio, pero la decisión es del dueño.',
           },
           {
             t: 'p',
