@@ -138,10 +138,22 @@ function aplicarRegla(actual, modo, valor) {
  * El margen es una decisión propia y transversal a los proveedores, por eso vive
  * acá y no en la pantalla del proveedor. Opera sobre los productos que el panel
  * ya tiene filtrados: lo que ves en la tabla es lo que se actualiza.
+ *
+ * DOS FORMAS DE ENTRAR, y la diferencia es el ALCANCE:
+ *
+ *   · Desde Productos, con el filtro puesto: mueve TODAS las filas de esos
+ *     productos (las del suelto y las de sus paquetes) en la lista que se elija.
+ *   · Desde el mapa de márgenes, con `soloFilas`: mueve EXACTAMENTE las filas
+ *     de un grupo —"los 312 que están al 40% en Minorista"— y ninguna más.
+ *     Eso hace falta porque un producto puede estar al 40% suelto y al 55% en
+ *     su paquete de 500 g: sin el alcance fino, cambiar "el grupo del 40%"
+ *     movería también ese 55% que nadie tocó, y el dueño se enteraría en la
+ *     góndola. Por eso el alcance viaja como ids de `producto_listas`, que es
+ *     el mismo grano con el que la API aplica el cambio.
  */
-export function MargenesMasivosModal({ productos }) {
+export function MargenesMasivosModal({ productos, soloFilas = null, contexto = '', listaInicial = '' }) {
   const { store, closeModal, toast, act } = useProductos();
-  const [lista, setLista] = useState('');
+  const [lista, setLista] = useState(listaInicial);
   const [modo, setModo] = useState('monto');
   const [valor, setValor] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -180,6 +192,8 @@ export function MargenesMasivosModal({ productos }) {
     const out = [];
     const agregar = (p, l, prefijo, costo) => {
       if (!l.id || l.modoPrecio === 'precio') return;
+      // El alcance fino manda sobre todo lo demás (ver el encabezado).
+      if (soloFilas && !soloFilas.has(l.id)) return;
       if (lista && l.etiqueta !== lista) return;
       const nuevo = Math.max(0, aplicarRegla(l.markup, modo, valor));
       if (Math.abs(nuevo - l.markup) < 0.005) return;
@@ -202,7 +216,7 @@ export function MargenesMasivosModal({ productos }) {
       }
     }
     return out;
-  }, [productos, store, lista, modo, valor]);
+  }, [productos, store, lista, modo, valor, soloFilas]);
 
   const seleccionados = useMemo(
     () => cambios.filter((c) => !excluidos.has(claveDe(c))),
@@ -250,23 +264,36 @@ export function MargenesMasivosModal({ productos }) {
         },
       ]}
     >
-      <div className={cx(s.callout, s.info)}>
-        Mueve el <strong>markup del formato de venta</strong> de los <strong>{productos.length}</strong>{' '}
-        producto(s) que quedaron filtrados en el panel — y también el de sus <strong>paquetes
-        fraccionados</strong>, que se cotizan solos. En la vista previa, <strong>destildá</strong> los
-        que no van a cambiar: se aplica solo a los tildados. Las filas en <strong>precio definido</strong>
-        {' '}no entran — ese precio lo fijó una persona y un % no debe pisarlo.
-      </div>
-
-      <div className={s['form-grid']}>
-        <div className={s.field}>
-          <label>Lista</label>
-          <select value={lista} onChange={(e) => setLista(e.target.value)}>
-            <option value="">Todas</option>
-            {listas.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
+      {soloFilas ? (
+        <div className={cx(s.callout, s.info)}>
+          Se cambia el markup de <strong>{contexto || `${soloFilas.size} fila(s)`}</strong>, y de
+          nada más: los paquetes fraccionados del mismo producto tienen su propio markup y{' '}
+          <strong>no se tocan</strong>. En la vista previa podés <strong>destildar</strong> los que
+          no van a cambiar.
         </div>
-      </div>
+      ) : (
+        <div className={cx(s.callout, s.info)}>
+          Mueve el <strong>markup del formato de venta</strong> de los <strong>{productos.length}</strong>{' '}
+          producto(s) que quedaron filtrados en el panel — y también el de sus <strong>paquetes
+          fraccionados</strong>, que se cotizan solos. En la vista previa, <strong>destildá</strong> los
+          que no van a cambiar: se aplica solo a los tildados. Las filas en <strong>precio definido</strong>
+          {' '}no entran — ese precio lo fijó una persona y un % no debe pisarlo.
+        </div>
+      )}
+
+      {/* Con alcance fino el selector no va: el grupo YA decidió la lista, y
+          ofrecer cambiarla sería ofrecer romper el alcance. */}
+      {!soloFilas && (
+        <div className={s['form-grid']}>
+          <div className={s.field}>
+            <label>Lista</label>
+            <select value={lista} onChange={(e) => setLista(e.target.value)}>
+              <option value="">Todas</option>
+              {listas.map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
 
       <div className={s['form-grid']}>
         <div className={s.field}>

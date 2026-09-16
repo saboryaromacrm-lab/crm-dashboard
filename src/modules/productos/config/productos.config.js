@@ -10,6 +10,7 @@
  * Incidencias viven en Almacén.
  */
 import Inventory2Icon from '@mui/icons-material/Inventory2';
+import PercentIcon from '@mui/icons-material/Percent';
 import SellIcon from '@mui/icons-material/Sell';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import DocumentScannerIcon from '@mui/icons-material/DocumentScanner';
@@ -41,6 +42,14 @@ export const COMPRAS_PANELS = [
    * datos inventados en la puerta de entrada era exactamente al revés.
    */
   { id: 'productos',      label: 'Productos',      icon: Inventory2Icon,     permiso: 'compras.productos' },
+  /*
+   * MÁRGENES (16/9/2026, pedido del dueño): el mapa de markups del catálogo
+   * entero, para dejar de entrar producto por producto a ver qué margen tiene
+   * cada uno. Va pegado a Productos porque es la misma pregunta mirada al
+   * revés —del valor hacia los productos, y no del producto hacia su valor— y
+   * lleva su mismo permiso: muestra costos.
+   */
+  { id: 'margenes',       label: 'Márgenes',       icon: PercentIcon,        permiso: 'compras.productos' },
   { id: 'catalogos',      label: 'Catálogos',      icon: SellIcon,           permiso: 'compras.catalogos' },
   /*
    * El ABM de la ficha se mudó al MÓDULO Proveedores (0068). Acá queda solo lo

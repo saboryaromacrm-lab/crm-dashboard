@@ -9,6 +9,7 @@ import { ModalHost } from '../components/ModalHost.jsx';
 import { Btn, s } from '../components/ui.jsx';
 
 import { ProductosPanel } from '../panels/ProductosPanel.jsx';
+import { MargenesPanel } from '../panels/MargenesPanel.jsx';
 import { CatalogosPanel } from '../panels/CatalogosPanel.jsx';
 
 import { FacturacionPanel } from '../panels/FacturacionPanel.jsx';
@@ -33,6 +34,9 @@ import { ConteosPanel } from '../panels/ConteosPanel.jsx';
  */
 const PANEL_COMPONENTS = {
   productos: ProductosPanel,
+  // El mapa de markups del catálogo: el resumen por valor y la grilla
+  // producto × lista, las dos sobre el snapshot que ya está en memoria.
+  margenes: MargenesPanel,
   catalogos: CatalogosPanel,
 
   // Solo lo OPERATIVO de compras (costos por producto, percepciones, cuenta):
