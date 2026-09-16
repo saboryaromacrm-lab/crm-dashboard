@@ -84,7 +84,7 @@ function UsuarioModal({ usuario, roles, onGuardar, onCerrar }) {
           <input
             type="password"
             value={password}
-            placeholder={esAlta ? 'Mínimo 8 caracteres' : 'Dejar vacío para no cambiarla'}
+            placeholder={esAlta ? 'Mínimo 4 — puede ser un PIN' : 'Dejar vacío para no cambiarla'}
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
