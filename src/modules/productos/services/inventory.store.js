@@ -2,7 +2,7 @@
  * INVENTORY STORE — cliente del backend (crm-api).
  * ============================================================================
  * Reemplaza al store localStorage: ahora los datos vienen de la API REST y las
- * mutaciones llaman a los endpoints y luego refrescan el snapshot (`/bootstrap`).
+ * mutaciones llaman a los endpoints y luego refrescan el snapshot (`/bootstrap/*`).
  *
  * Mantiene la MISMA interfaz que consumían paneles y modales:
  *   - `state.*` (arrays cargados desde la API) para lecturas sincrónicas,
@@ -535,8 +535,36 @@ function _refrescarSecciones() {
   );
 }
 
+/**
+ * EL SNAPSHOT, EN TRES PEDIDOS A LA VEZ.
+ *
+ * Hasta el 17/9 era un solo `GET /bootstrap` de 10 MB que se bajaba entero al
+ * entrar y de nuevo entero después de casi cada cambio — y era lo que se
+ * cortaba a mitad de camino en el mostrador. Ahora son tres partes, cada una
+ * con su versión del lado del servidor (ver `BootstrapController` en la API):
+ *
+ *   · si una parte no cambió, el servidor contesta 304 sin cuerpo y el
+ *     navegador reutiliza la copia que guardó — después de una venta se
+ *     vuelve a bajar el stock (3 MB) y no el catálogo (8 MB); después de
+ *     editar un producto, al revés. Y como la copia vive en la caché del
+ *     navegador, un F5 tampoco vuelve a bajar lo que no cambió.
+ *   · si una se corta, se reintenta esa sola, no las tres.
+ *
+ * Acá no hay lógica de caché a propósito: es HTTP común (`ETag` +
+ * `If-None-Match`) y lo maneja el navegador solo. `mergeState` recibe la
+ * misma forma de siempre, así que el resto del store no se entera.
+ */
+async function cargarSnapshot() {
+  const [base, catalogo, stk] = await Promise.all([
+    httpClient.get('/bootstrap/base'),
+    httpClient.get('/bootstrap/catalogo'),
+    httpClient.get('/bootstrap/stock'),
+  ]);
+  return { ...base, ...catalogo, ...stk };
+}
+
 async function refetch() {
-  const data = await httpClient.get('/bootstrap');
+  const data = await cargarSnapshot();
   mergeState(data);
   await _refrescarSecciones();
   emit();
@@ -546,7 +574,7 @@ async function init() {
   if (_loaded || _loading) return;
   _loading = true;
   try {
-    const data = await httpClient.get('/bootstrap');
+    const data = await cargarSnapshot();
     mergeState(data);
     // LA SESIÓN MANDA: el usuario operativo es el que se LOGUEÓ — con login
     // real ya no hay selector libre de usuario. Si el logueado no es
