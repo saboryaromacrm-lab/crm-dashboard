@@ -153,7 +153,23 @@ async function intentarRequest(method, path, { body, headers, signal, sinRedirig
     : `${appConfig.api.baseUrl}${path}`;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), appConfig.api.timeoutMs);
+  /*
+   * EL PLAZO CORRE SOLO HASTA QUE EL SERVIDOR EMPIEZA A CONTESTAR.
+   *
+   * Estaba armado hasta el final —se limpiaba recién después de bajar Y
+   * parsear el cuerpo—, así que una respuesta GRANDE y legítima competía
+   * contra el reloj: el catálogo de Compras y Almacén son 10 MB, y bajarlos e
+   * interpretarlos en la máquina del mostrador puede pasarse de los 20
+   * segundos sin que nada esté roto. Ahí el navegador abortaba una descarga
+   * sana y el usuario veía un error.
+   *
+   * Lo que el plazo tiene que cortar es al servidor que NO CONTESTA NADA. Una
+   * vez que contestó, bajar el cuerpo no lleva reloj — es la misma regla que
+   * ya estaba escrita en `fetchConTimeout` y que hasta ahora valía solo para
+   * los binarios.
+   */
+  let timeout = setTimeout(() => controller.abort(), appConfig.api.timeoutMs);
+  const yaContesto = () => { clearTimeout(timeout); timeout = null; };
   encadenarAbort(signal, controller);
 
   const token = leerSesion()?.token;
@@ -192,10 +208,47 @@ async function intentarRequest(method, path, { body, headers, signal, sinRedirig
       sesionVencida();
     }
 
+    // Llegaron los encabezados: el servidor contestó y el reloj deja de correr.
+    yaContesto();
+
     const isJson = (response.headers.get('content-type') ?? '').includes(
       'application/json',
     );
-    const data = isJson ? await response.json() : await response.text();
+    let data;
+    try {
+      data = isJson ? await response.json() : await response.text();
+    } catch (e) {
+      /*
+       * SE CORTÓ MIENTRAS BAJABA EL CUERPO — **este era el agujero** por el que
+       * se colaba el error que veían las cajas en Compras y en Almacén.
+       *
+       * `fetch` resuelve apenas llegan los ENCABEZADOS; el cuerpo sigue
+       * viajando después. Si la conexión se corta a la mitad de esa bajada, el
+       * que falla es ESTE `await` y no el `fetch` de arriba — así que el error
+       * salía crudo, SIN la marca `sinRespuesta`, y el reintento que existe
+       * justamente para esto no se disparaba nunca. El navegador a eso lo llama
+       * `TypeError: Failed to fetch`, y ese texto terminaba tal cual impreso en
+       * la pantalla.
+       *
+       * Y pegaba SIEMPRE en las mismas dos secciones por una razón simple:
+       * cuanto más grande la respuesta, más tiempo está expuesta a que la
+       * corten. Las que bajan el catálogo entero viajan diez megas; las de
+       * Ventas, dos kilobytes, y entran de una.
+       *
+       * Un cuerpo cortado es lo MISMO que una respuesta que nunca llegó: de
+       * las dos se sabe igual de poco. Se marca igual, y así el reintento de
+       * los GET —los únicos que se repiten, porque repetir un cobro lo
+       * duplicaría— la recupera solo, sin que nadie se entere.
+       *
+       * Se marca cualquier falla al leer el cuerpo, incluso un JSON mal
+       * formado: en los dos casos lo que hay es una respuesta que no se pudo
+       * usar, y volver a pedir un GET no cuesta nada.
+       */
+      throw new HttpError(`Respuesta incompleta: ${method} ${path}`, {
+        sinRespuesta: true,
+        data: { message: 'La respuesta del servidor llegó incompleta.' },
+      });
+    }
 
     if (!response.ok) {
       throw new HttpError(`Request failed: ${response.status}`, {
@@ -205,7 +258,7 @@ async function intentarRequest(method, path, { body, headers, signal, sinRedirig
     }
     return data;
   } finally {
-    clearTimeout(timeout);
+    if (timeout) clearTimeout(timeout);
   }
 }
 
