@@ -78,13 +78,32 @@ export function VenderModal({ prodId, sucId: sucInit, pre = {} }) {
 }
 
 /* ============================== FRACCIONAR ============================== */
-export function FraccionarModal({ prodId, sucId: sucInit }) {
-  const { store, act, closeModal } = useProductos();
+export function FraccionarModal({ prodId, sucId: sucInit, sugerido = null, volverA = null }) {
+  const { store, act, closeModal, openModal } = useProductos();
   const prod = store.getProducto(prodId);
   // Todo se fracciona en la DISTRIBUIDORA (ahí llega la mercadería a granel):
   // no se elige sucursal. Si la fila que abrió el modal trae otra, se respeta.
   const sucId = sucInit || store.distribuidora()?.id || store.state.ctx.sucursalId;
-  const [cants, setCants] = useState(() => Object.fromEntries(prod.presentaciones.map((pr) => [pr.id, '0'])));
+  /*
+   * ARRANCA CON LO QUE FALTA, NO EN CERO (17/9/2026).
+   *
+   * Abierto desde la preparación de un pedido, quien llama YA SABE cuántos
+   * paquetes faltan — está escrito en el renglón. Pedirle al fraccionador que
+   * lo vuelva a calcular y lo tipee es hacerle hacer de nuevo una cuenta que
+   * la pantalla tiene hecha, y es donde se cuela el error de dedo.
+   */
+  const [cants, setCants] = useState(() => Object.fromEntries(
+    prod.presentaciones.map((pr) => [pr.id, String(Math.max(0, Math.round(sugerido?.[pr.id] ?? 0)))]),
+  ));
+  /*
+   * Y AL SALIR SE VUELVE DE DONDE SE VINO.
+   *
+   * La pantalla muestra UN modal por vez: abrir Fraccionar reemplazaba al del
+   * pedido, y al terminar `act()` cerraba todo y dejaba al fraccionador en el
+   * listado, sin el pedido que estaba preparando y sin saber si el fraccionado
+   * había quedado. Quedaba: lo que no quedaba era el camino de vuelta.
+   */
+  const volver = () => { if (volverA) openModal(volverA.type, volverA.props); else closeModal(); };
 
   if (prod.tipo !== 'granel') return null;
 
@@ -103,7 +122,7 @@ export function FraccionarModal({ prodId, sucId: sucInit }) {
    */
   const sinTamanos = !prod.presentaciones.length;
 
-  const fraccionar = () => {
+  const fraccionar = async () => {
     /* NÚMEROS, no el texto del input. `cants` guarda strings —arranca en '0' y
      * el input escribe texto—, y el DTO valida `@IsNumber()`: un "5" rebotaba
      * con tres constraints por renglón y ni una palabra sobre el fraccionado.
@@ -116,15 +135,17 @@ export function FraccionarModal({ prodId, sucId: sucInit }) {
       presId: pr.id,
       cant: Math.round(Number(cants[pr.id]) || 0),
     }));
-    act(store.opFraccionar({ productoId: prod.id, sucursalId: parseInt(sucId, 10), asignaciones }), 'Fraccionamiento registrado.');
+    const ok = await act(store.opFraccionar({ productoId: prod.id, sucursalId: parseInt(sucId, 10), asignaciones }), 'Fraccionamiento registrado.');
+    // `act` cierra el modal al salir bien: si vinimos de un pedido, se reabre.
+    if (ok && volverA) openModal(volverA.type, volverA.props);
   };
 
   return (
     <ModalShell
       title={'Fraccionar — ' + prod.nombre}
-      onClose={closeModal}
+      onClose={volver}
       footer={[
-        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+        { texto: volverA ? 'Volver al pedido' : 'Cancelar', clase: 'btn-ghost', onClick: volver },
         {
           texto: 'Fraccionar',
           clase: 'btn-primary',

@@ -1227,6 +1227,13 @@ export function PrepararTransferModal({ id }) {
   /** Formulario de alta por lista (null = cerrado). */
   const [altas, setAltas] = useState({});
   const [ocupado, setOcupado] = useState(false);
+  /*
+   * QUÉ HIZO EL SERVIDOR AL CONFIRMAR, por lista. Confirmar ahora fracciona lo
+   * que falta y recorta lo que no se puede cubrir: eso hay que MOSTRARLO, y no
+   * en un toast que se va solo a los tres segundos. Son las dos cosas que el
+   * encargado necesita revisar antes de despachar.
+   */
+  const [informe, setInforme] = useState({});
 
   const grupos = useMemo(() => {
     const g = { enteros: [], granel: [] };
@@ -1291,9 +1298,19 @@ export function PrepararTransferModal({ id }) {
     const res = await store.confirmarListaTransferencia(t.id, tipo, listo);
     setOcupado(false);
     if (!res.ok) { toast(res.error, 'err'); return; }
-    toast(listo
-      ? `${LISTAS_PREP[tipo].titulo} confirmada: stock reservado.`
-      : `${LISTAS_PREP[tipo].titulo} desconfirmada: stock liberado.`, 'ok');
+    const armados = res.armados ?? [];
+    const recortes = res.recortes ?? [];
+    setInforme((x) => ({ ...x, [tipo]: listo && (armados.length || recortes.length) ? { armados, recortes } : null }));
+    if (!listo) { toast(`${LISTAS_PREP[tipo].titulo} desconfirmada: stock liberado.`, 'ok'); return; }
+    // El recorte manda el tono: es lo único que exige una decisión de alguien.
+    toast(
+      recortes.length
+        ? `${LISTAS_PREP[tipo].titulo} confirmada, pero ${recortes.length} renglón(es) viajan cortos — miralos abajo.`
+        : armados.length
+          ? `${LISTAS_PREP[tipo].titulo} confirmada: se fraccionó lo que faltaba y quedó reservado.`
+          : `${LISTAS_PREP[tipo].titulo} confirmada: stock reservado.`,
+      recortes.length ? 'err' : 'ok',
+    );
   };
 
   const quitar = async (it) => {
@@ -1354,6 +1371,26 @@ export function PrepararTransferModal({ id }) {
             : <Btn variant="btn-primary" small onClick={() => confirmar(tipo, true)} disabled={ocupado}>Confirmar lista</Btn>
           )}
         </div>
+
+        {informe[tipo] && (
+          <div className={cx(s.callout, informe[tipo].recortes.length ? s.warn : s.ok)} style={{ marginBottom: 8 }}>
+            {informe[tipo].armados.length > 0 && (
+              <div>
+                <strong>Se fraccionó solo lo necesario para este pedido:</strong>{' '}
+                {informe[tipo].armados.join(' · ')}
+              </div>
+            )}
+            {informe[tipo].recortes.length > 0 && (
+              <div style={{ marginTop: informe[tipo].armados.length ? 6 : 0 }}>
+                <strong>No alcanzó el stock y viajan cortos:</strong> {informe[tipo].recortes.join(' · ')}
+                <div className={s.hint} style={{ marginBottom: 0 }}>
+                  Si en realidad hay mercadería que el sistema no tiene cargada, corregí el stock,
+                  desconfirmá la lista y volvé a confirmar.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <Table
           cols={[
@@ -1419,8 +1456,16 @@ export function PrepararTransferModal({ id }) {
                       {editable && (
                         <>
                           {' · '}
+                          {/* Fraccionar A MANO sigue estando para el que quiere armar
+                              de más (adelantar trabajo, dejar stock hecho). Va con lo
+                              que falta ya cargado y vuelve a este mismo pedido. */}
                           <a role="button" style={{ cursor: 'pointer', color: 'var(--crm-color-primary)', fontWeight: 600 }}
-                            onClick={() => openModal('fraccionar', { prodId: p.id, sucId: t.origenId })}>
+                            onClick={() => openModal('fraccionar', {
+                              prodId: p.id,
+                              sucId: t.origenId,
+                              sugerido: { [it.presentacionId]: Math.max(0, Math.ceil(it.cantidadPreparada - dispRow - 1e-9)) },
+                              volverA: { type: 'prepararTransfer', props: { id: t.id } },
+                            })}>
                             Fraccionar
                           </a>
                         </>
