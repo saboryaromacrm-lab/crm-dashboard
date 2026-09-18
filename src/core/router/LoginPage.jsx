@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
-  Alert, Box, Button, Card, CardContent, Divider, MenuItem, Stack, TextField, Typography,
+  Alert, Autocomplete, Box, Button, Card, CardContent, Divider, MenuItem, Stack, TextField,
+  Typography,
 } from '@mui/material';
 import StorefrontIcon from '@mui/icons-material/Storefront';
 import PersonIcon from '@mui/icons-material/Person';
 import { useAuth } from '@core/auth/AuthContext.jsx';
 import { appConfig } from '@core/config/app.config.js';
+import { MarcaCoftech } from '@core/branding/FirmaCoftech.jsx';
 import { httpClient } from '@core/services/httpClient.js';
 import { leerTokenTerminal } from '@core/auth/terminal.js';
 
@@ -43,6 +45,7 @@ export function LoginPage() {
   const [entrando, setEntrando] = useState(false);
   /** `null` = todavía no se preguntó; `false` = este equipo no está registrado. */
   const [terminal, setTerminal] = useState(null);
+  const campoUsuario = useRef(null);
 
   const from = location.state?.from ?? appConfig.routes.defaultAuthenticatedRoute;
 
@@ -117,6 +120,22 @@ export function LoginPage() {
     [terminal, sucursales, sucursalId],
   );
 
+  /*
+   * EL CURSOR ARRANCA EN "USUARIO", pero recién cuando se puede escribir.
+   *
+   * El `autoFocus` del campo no alcanzaba y el motivo no es obvio: mientras la
+   * lista de usuarios no llegó, el campo está DESHABILITADO, y un campo
+   * deshabilitado no toma foco. Para cuando se habilitaba, el momento del
+   * `autoFocus` —que es el montaje— ya había pasado, así que la pantalla abría
+   * con el foco en ningún lado y había que ir al mouse igual.
+   *
+   * Solo si no hay usuario elegido: quien volvió desde la confirmación ya
+   * eligió, y robarle el foco lo mandaría a empezar de nuevo.
+   */
+  useEffect(() => {
+    if (usuarios && !usuarioId) campoUsuario.current?.focus();
+  }, [usuarios, usuarioId]);
+
   const continuar = (e) => {
     e?.preventDefault();
     setError('');
@@ -149,7 +168,19 @@ export function LoginPage() {
     <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 2 }}>
       <Card sx={{ width: 400, maxWidth: '100%' }}>
         <CardContent sx={{ p: 3.5 }}>
-          <Typography variant="h2" sx={{ mb: 0.5 }}>{appConfig.nombreCompleto}</Typography>
+          {/*
+            EL NOMBRE Y LA FIRMA, en dos pesos. El nombre del sistema manda; la
+            firma va al lado, chica y alineada a la MISMA BASE — no centrada,
+            que la dejaría flotando. `baseline` es lo que hace que se lea como
+            una sola línea y no como dos cosas apiladas.
+          */}
+          <Typography
+            variant="h2"
+            sx={{ mb: 0.5, display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 1 }}
+          >
+            {appConfig.name}
+            <MarcaCoftech />
+          </Typography>
 
           {!confirmando ? (
             <>
@@ -158,19 +189,42 @@ export function LoginPage() {
               </Typography>
               <form onSubmit={continuar}>
                 <Stack spacing={2}>
-                  <TextField
-                    select fullWidth label="Usuario" value={usuarioId}
-                    onChange={(e) => setUsuarioId(e.target.value)}
+                  {/*
+                    SE ESCRIBE, NO SE BUSCA EN LA LISTA (18/9/2026, pedido del
+                    dueño). Era un desplegable: con el equipo creciendo, entrar
+                    significaba abrirlo y recorrerlo con la vista hasta
+                    encontrarse. Ahora se tipean dos letras y queda uno solo.
+
+                    El foco inicial + `autoHighlight` es lo que lo vuelve un gesto
+                    de teclado y no de mouse: la pantalla abre con el cursor
+                    acá, se tipea, y el Enter toma el resaltado. Con la lista
+                    cerrada ese mismo Enter no elige nada y cae en el `submit`
+                    del formulario, que es justo lo que se quiere al final.
+
+                    Solo el nombre. `rolNombre` NO viaja en /auth/opciones —que
+                    es público— y agregarlo publicaría quién es el superadmin a
+                    cualquiera que abra la URL del login.
+                  */}
+                  <Autocomplete
+                    options={usuarios ?? []}
+                    value={usuario ?? null}
+                    onChange={(_, elegido) => setUsuarioId(elegido ? String(elegido.id) : '')}
+                    getOptionLabel={(u) => u?.nombre ?? ''}
+                    isOptionEqualToValue={(a, b) => a.id === b.id}
                     disabled={usuarios === null}
-                  >
-                    {/* Solo el nombre. `rolNombre` NO viaja en /auth/opciones —que es
-                        público— y este renglón mostraba "Lucas — " con el guion colgando.
-                        Agregarlo a la API para "arreglar" el guion publicaría quién es el
-                        superadmin a cualquiera que abra la URL del login. */}
-                    {(usuarios ?? []).map((u) => (
-                      <MenuItem key={u.id} value={String(u.id)}>{u.nombre}</MenuItem>
-                    ))}
-                  </TextField>
+                    autoHighlight
+                    openOnFocus
+                    noOptionsText="Ningún usuario con ese nombre"
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Usuario"
+                        placeholder="Escribí tu nombre…"
+                        inputRef={campoUsuario}
+                        inputProps={{ ...params.inputProps, autoComplete: 'off' }}
+                      />
+                    )}
+                  />
                   <TextField
                     fullWidth type="password" label="Contraseña" value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -219,7 +273,21 @@ export function LoginPage() {
               </form>
             </>
           ) : (
-            <>
+            /*
+              EL ENTER LLEGA HASTA EL FINAL (18/9/2026, pedido del dueño).
+              Esta pantalla no era un formulario: se llegaba con Enter desde la
+              anterior y acá había que soltar el teclado y buscar el mouse, en
+              la pantalla que la cajera abre cada vez que empieza un turno.
+              Ahora es un `form` con su botón `submit` enfocado, así que Enter
+              entra — sin inventar atajos: es el comportamiento que el
+              navegador ya le da a cualquier formulario.
+
+              La CONFIRMACIÓN NO SE SALTEA. Es un paso de una tecla, no un
+              estorbo: lo que viene después queda registrado a nombre de quien
+              entró y en esa sucursal, y esa es exactamente la clase de cosa
+              que conviene mirar una vez antes de que pase.
+            */
+            <form onSubmit={(e) => { e.preventDefault(); entrar(); }}>
               <Typography color="text.secondary" sx={{ mb: 2.5 }}>
                 Confirmá antes de entrar — todo lo que hagas queda registrado a tu nombre y en esa sucursal.
               </Typography>
@@ -259,14 +327,19 @@ export function LoginPage() {
               </Stack>
               {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
               <Stack direction="row" spacing={1.5}>
-                <Button fullWidth variant="outlined" onClick={() => setConfirmando(false)} disabled={entrando}>
+                {/* `type="button"`: sin eso, Volver también dispararía el
+                    submit del formulario y entraría en vez de volver. */}
+                <Button
+                  type="button" fullWidth variant="outlined"
+                  onClick={() => setConfirmando(false)} disabled={entrando}
+                >
                   Volver
                 </Button>
-                <Button fullWidth variant="contained" onClick={entrar} disabled={entrando}>
+                <Button type="submit" fullWidth variant="contained" disabled={entrando} autoFocus>
                   {entrando ? 'Entrando…' : 'Sí, entrar'}
                 </Button>
               </Stack>
-            </>
+            </form>
           )}
         </CardContent>
       </Card>

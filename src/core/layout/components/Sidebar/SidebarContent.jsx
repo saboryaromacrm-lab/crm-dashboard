@@ -4,7 +4,7 @@ import CircleIcon from '@mui/icons-material/Circle';
 import { useNavigation } from '@core/navigation/useNavigation.js';
 import { appConfig } from '@core/config/app.config.js';
 import { cx } from '@shared/utils/classNames.js';
-import { FirmaCoftech } from './FirmaCoftech.jsx';
+import { FirmaCoftech } from '@core/branding/FirmaCoftech.jsx';
 import styles from './Sidebar.module.css';
 
 /**

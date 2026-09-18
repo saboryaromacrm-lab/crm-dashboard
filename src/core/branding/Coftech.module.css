@@ -1,0 +1,134 @@
+/*
+ * LA MARCA COFTECH — la fuente y las dos formas en que aparece.
+ * ============================================================================
+ * Vive en su propio módulo porque se usa en DOS lugares: la franja al pie del
+ * sidebar y el sufijo del nombre en la pantalla de entrada. Con el CSS pegado
+ * a uno de los dos, el otro tendría que declarar la fuente de nuevo — y dos
+ * `@font-face` de la misma fuente es la clase de duplicado que después nadie
+ * limpia.
+ *
+ * LA FUENTE VIAJA CON LA APP, no se le pide a Google. El diseño original la
+ * traía de fonts.googleapis.com: dos dominios nuevos en el camino crítico de
+ * una pantalla que se abre y se recarga cien veces por día. Acá está el
+ * archivo que hace falta y nada más — el subconjunto LATINO, en una sola
+ * fuente VARIABLE que cubre del peso 400 al 700, 31 KB servidos desde el mismo
+ * dominio del CRM y cacheados para siempre por el hash que les pone el bundler.
+ *
+ * `font-display: swap` es lo que garantiza que no frene nada: el texto se
+ * pinta al instante con la tipografía del sistema y cambia sola cuando la
+ * fuente está. Nadie espera a una firma para ver el menú.
+ */
+@font-face {
+  font-family: 'Nunito Sans Firma';
+  src: url('./nunito-sans-latin.woff2') format('woff2-variations');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ==================================================================== *
+ * 1) LA FRANJA DEL PIE DEL SIDEBAR
+ * ==================================================================== */
+
+/*
+ * Los colores y la partición son los del diseño original: dos grises que se
+ * tocan en el 50% exacto, sin degradado entre ellos.
+ *
+ * LOS TAMAÑOS, EN CAMBIO, ESTÁN ESCALADOS, y no por gusto. El original está
+ * pensado para una barra de 1400 px y acá el sidebar mide 264: descontado el
+ * padding quedan unos 236 para "Coftech | Soluciones digitales" más el año.
+ * Con el 1,5 rem original eso no entra ni cerca, y la fila se partía en dos
+ * dejando el año colgado abajo. Bajados a esta escala entra todo en UNA línea,
+ * que es como está pensado el diseño: una sola fila, con el año a la derecha.
+ */
+.firma {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: 'Nunito Sans Firma', var(--crm-font-sans);
+  background: linear-gradient(90deg, #232d3a 0%, #232d3a 50%, #1c2530 50%, #1c2530 100%);
+  padding: 12px 14px;
+}
+
+.inner {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  /* NO envuelve: partirse en dos líneas es justamente lo que se corrige. */
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.izq {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Escala y resplandor como el original, con CSS en vez de estado de React. */
+.marca {
+  text-decoration: none;
+  display: inline-block;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transform-origin: left center;
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+.marca:hover,
+.marca:focus-visible {
+  transform: scale(1.05);
+  filter: drop-shadow(0 0 8px rgba(92, 184, 228, 0.6));
+}
+
+.cof { color: #5cb8e4; }
+.tech { color: #b8c5d4; }
+
+.sep { color: #5a6875; font-size: 0.7rem; flex: none; }
+/*
+ * El lema es lo ÚNICO que puede achicarse: si alguna vez el sidebar se angosta
+ * más, se corta con puntos suspensivos en vez de empujar el año a otra línea.
+ * La marca y el año no se tocan — son los dos datos que no pueden faltar.
+ */
+.lema {
+  margin: 0;
+  color: #7a8a9a;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.anio { color: #4a5565; font-size: 0.7rem; flex: none; white-space: nowrap; }
+
+/* ==================================================================== *
+ * 2) EL SUFIJO DEL NOMBRE, en la pantalla de entrada
+ * ==================================================================== */
+
+/*
+ * "by Coftech" al lado del nombre del sistema. Chico, alineado a la base del
+ * título y con un punto de luz en "Cof": la marca se reconoce por el celeste,
+ * no por el tamaño. El `letter-spacing` abierto y las minúsculas son lo que le
+ * dan el aire técnico sin gritar — a esta escala, cualquier negrita de más lo
+ * convertiría en un segundo título compitiendo con el primero.
+ */
+.sufijo {
+  font-family: 'Nunito Sans Firma', var(--crm-font-sans);
+  /* Contra un título de 1,5 rem esto da ~12,5 px: chico para no competir,
+   * grande para leerse de un vistazo. */
+  font-size: 0.52em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: filter 0.3s ease;
+}
+.sufijo:hover,
+.sufijo:focus-visible { filter: drop-shadow(0 0 7px rgba(92, 184, 228, 0.55)); }
+
+.sufijoBy { color: var(--crm-color-text-secondary, #7a8a9a); font-weight: 400; }

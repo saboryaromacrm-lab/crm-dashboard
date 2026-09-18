@@ -1,0 +1,71 @@
+import styles from './Coftech.module.css';
+
+/**
+ * LA MARCA COFTECH, en sus dos formas.
+ * ============================================================================
+ * `FirmaCoftech` es la franja del pie del sidebar; `MarcaCoftech` es el
+ * "by Coftech" chiquito que acompaña al nombre del sistema en la entrada. Las
+ * dos comparten el archivo de estilos —y con él la fuente— por eso viven acá.
+ *
+ * NO se cargan como decía el instructivo (un `<script type="text/babel">`
+ * traído de saboryaroma.com). Eso, en la pantalla que se abre y se recarga
+ * cien veces por día, habría costado en CADA carga: Babel standalone (~1,5 MB)
+ * para compilar veinte líneas mientras el cajero mira una pantalla vacía, y
+ * una petición a otro dominio en el camino crítico — si ese dominio tarda, se
+ * lo come el CRM entero. Acá van compiladas con el resto del bundle.
+ *
+ * EL HOVER ES CSS, no estado de React. El original guardaba `isHovered` en un
+ * `useState`: un re-render por cada entrada y salida del mouse sobre algo que
+ * está SIEMPRE en pantalla. El efecto es idéntico y no cuesta nada.
+ */
+
+/** Una vez por carga, no una por render: es un pie, no un reloj. */
+const ANIO = new Date().getFullYear();
+
+const WHATSAPP = 'https://wa.me/5493704819019?text=Hola,%20me%20contacto%20desde%20su%20aplicaci%C3%B3n.';
+
+const TITULO = 'Coftech · Soluciones digitales — escribinos por WhatsApp';
+
+/** La franja del pie del sidebar: marca, lema y año, en una sola fila. */
+export function FirmaCoftech() {
+  return (
+    <div className={styles.firma}>
+      <div className={styles.inner}>
+        <div className={styles.izq}>
+          <a
+            className={styles.marca}
+            href={WHATSAPP}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Coftech — escribinos por WhatsApp"
+            title={TITULO}
+          >
+            <span className={styles.cof}>Cof</span><span className={styles.tech}>tech</span>
+          </a>
+          <span className={styles.sep} aria-hidden="true">|</span>
+          <p className={styles.lema}>Soluciones digitales</p>
+        </div>
+        <span className={styles.anio}>© {ANIO}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * El "by Coftech" del título. Se dimensiona en `em`, así que acompaña al
+ * tamaño del texto que lo contenga sin que haya que ajustarlo en cada lugar.
+ */
+export function MarcaCoftech() {
+  return (
+    <a
+      className={styles.sufijo}
+      href={WHATSAPP}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={TITULO}
+    >
+      <span className={styles.sufijoBy}>by </span>
+      <span className={styles.cof}>Cof</span><span className={styles.tech}>tech</span>
+    </a>
+  );
+}
