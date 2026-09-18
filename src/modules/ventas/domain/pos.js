@@ -85,6 +85,44 @@ function comoBulto(item, f) {
 }
 
 /**
+ * EL EMPUJÓN AL MAYORISTA: cuánto le falta a este ticket para el precio por
+ * monto (18/9/2026, pedido del dueño).
+ *
+ * La venta mayorista por monto la habilita un umbral que se configura en
+ * Ventas › Configuración. Hasta ahora el cajero se enteraba SOLO cuando el
+ * ticket ya lo había superado —ahí aparece la sugerencia para aplicarlo—, o
+ * sea justo cuando ya no hay nada que hacer. El momento en que sirve decirlo
+ * es ANTES: con el cliente enfrente y el changuito a mitad de camino.
+ *
+ * Aparece pasada la MITAD del mínimo y desaparece al llegar. Los dos bordes
+ * son a propósito:
+ *
+ *   · Antes de la mitad, "te falta el 80%" no es un empujón, es un número
+ *     desalentador que encima ocupa pantalla en cada ticket chico.
+ *   · Pasado el mínimo ya no falta nada: ahí manda la sugerencia, que además
+ *     tiene el botón para aplicarla. Dos carteles diciendo cosas distintas
+ *     sobre lo mismo es peor que ninguno.
+ *
+ * Devuelve `null` —y entonces no se muestra nada— si el umbral no está
+ * configurado, si el ticket está vacío, o fuera de esa ventana.
+ */
+export function empujonMayorista(total, catalogo, umbral = 0.5) {
+  const cfg = catalogo?.montoMayorista;
+  const monto = Number(cfg?.monto) || 0;
+  const t = Number(total) || 0;
+  if (monto <= 0 || t <= 0) return null;
+  if (t >= monto) return null;
+  if (t < monto * umbral) return null;
+  return {
+    falta: r2(monto - t),
+    monto,
+    modalidad: cfg.modalidad || '',
+    /** 0–1, para la barrita: cuánto del camino lleva hecho. */
+    avance: Math.min(t / monto, 1),
+  };
+}
+
+/**
  * LA CANTIDAD QUE ESA LISTA SABE VENDER.
  *
  * `unidades` es el "Vende por" del formato: 1 suelto, 12 la caja. Devuelve el

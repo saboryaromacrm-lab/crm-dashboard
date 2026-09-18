@@ -497,6 +497,55 @@
 .regAcciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .regResumen { margin-top: auto; }
 
+/*
+ * EL EMPUJÓN AL MAYORISTA.
+ *
+ * Va entre el buscador y el ticket, que es el lugar por el que el cajero pasa
+ * la vista en cada carga. Por eso tiene que ser DELICADO: si grita, en tres
+ * tickets deja de verse. Una franja fina, sin borde duro, con un tinte cálido
+ * que la despega del blanco sin competir con los importes — y una barra de dos
+ * píxeles que dice de un vistazo cuánto falta. Nada de rojo: no es un error,
+ * es una oportunidad.
+ */
+.empujon {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 14px;
+  border-radius: var(--crm-radius-md);
+  background: color-mix(in srgb, var(--crm-color-warning, #b45309) 9%, var(--crm-color-surface));
+  border: 1px solid color-mix(in srgb, var(--crm-color-warning, #b45309) 22%, transparent);
+  animation: empujon-entra 0.28s ease-out;
+}
+.empujonTexto {
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--crm-color-text);
+}
+.empujonFalta {
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--crm-color-warning, #b45309) 78%, var(--crm-color-text));
+}
+.empujonModalidad { color: var(--crm-color-text-secondary); }
+.empujonBarra {
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--crm-color-warning, #b45309) 18%, transparent);
+}
+.empujonBarra > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--crm-color-warning, #b45309) 62%, transparent);
+  transition: width 0.35s ease-out;
+}
+@keyframes empujon-entra {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+
 /* El ticket scrollea adentro; el borde lo pone el contenedor. */
 .regTicketScroll {
   flex: 1;

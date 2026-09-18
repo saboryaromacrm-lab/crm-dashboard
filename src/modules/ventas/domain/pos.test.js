@@ -5,7 +5,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buscarEnCatalogo, calcularRenglon, porBulto, totalesTicket, unidadesDeLista,
+  buscarEnCatalogo, calcularRenglon, empujonMayorista, porBulto, totalesTicket,
+  unidadesDeLista,
 } from './pos.js';
 
 test('calcularRenglon: bruto → descuento % → oferta (importe) → IVA', () => {
@@ -141,4 +142,39 @@ test('unidadesDeLista: saca el "vende por" de la lista puesta', () => {
   assert.equal(unidadesDeLista(precios, 1), 1);
   assert.equal(unidadesDeLista(precios, 99), 1, 'lista que el artículo no tiene: suelto');
   assert.equal(unidadesDeLista(undefined, 2), 1, 'sin formato cargado: suelto');
+});
+
+/* ==================================================================== *
+ * El empujón al mayorista (18/9/2026)
+ * ==================================================================== */
+
+const CAT = { montoMayorista: { monto: 100000, modalidadId: 2, modalidad: 'Mayorista' } };
+
+test('empujonMayorista: aparece pasada la mitad y dice cuánto falta', () => {
+  const e = empujonMayorista(60000, CAT);
+  assert.equal(e.falta, 40000);
+  assert.equal(e.modalidad, 'Mayorista');
+  assert.equal(e.avance, 0.6);
+});
+
+test('empujonMayorista: callado antes de la mitad', () => {
+  assert.equal(empujonMayorista(49999, CAT), null, '"te falta el 80%" no empuja a nadie');
+  assert.notEqual(empujonMayorista(50000, CAT), null, 'justo en la mitad ya habla');
+});
+
+test('empujonMayorista: callado al llegar — ahí manda la sugerencia', () => {
+  assert.equal(empujonMayorista(100000, CAT), null);
+  assert.equal(empujonMayorista(150000, CAT), null);
+});
+
+test('empujonMayorista: sin umbral configurado no molesta', () => {
+  assert.equal(empujonMayorista(60000, { montoMayorista: null }), null);
+  assert.equal(empujonMayorista(60000, {}), null);
+  assert.equal(empujonMayorista(60000, undefined), null);
+  assert.equal(empujonMayorista(60000, { montoMayorista: { monto: 0 } }), null);
+});
+
+test('empujonMayorista: el ticket vacío no muestra nada', () => {
+  assert.equal(empujonMayorista(0, CAT), null);
+  assert.equal(empujonMayorista(null, CAT), null);
 });

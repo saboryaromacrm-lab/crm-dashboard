@@ -8,7 +8,7 @@ import {
   buscarEnCatalogo, calcularRenglon, descuentosDisponibles, descuentosParaApi,
   extrasParaApi, itemsParaApi, motivoBloqueo, parseEtiquetaBalanza,
   problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
-  totalesTicket, ultimoArticulo, unidadesDeLista,
+  empujonMayorista, totalesTicket, ultimoArticulo, unidadesDeLista,
 } from '../domain/pos.js';
 import { indicePrecios, sugerenciaPorMonto } from '../domain/listas.js';
 import { sugerenciasOfertaTicket } from '../domain/ofertas.js';
@@ -854,6 +854,16 @@ export function PosPanel() {
     [ticket.renglones, ticket.montoAplicado, totales.total, catalogoRaw, preciosDe],
   );
 
+  /**
+   * El EMPUJÓN: cuánto le falta para el mayorista, mientras todavía se puede
+   * hacer algo. Mismo insumo que la sugerencia de arriba, ventana distinta:
+   * aquella se enciende cuando ya llegó, ésta mientras está en camino.
+   */
+  const empujon = useMemo(
+    () => empujonMayorista(totales.total, catalogoRaw),
+    [totales.total, catalogoRaw],
+  );
+
   /** Desbloquea (o retira) la modalidad por monto. El motor reasigna el resto. */
   const aplicarMonto = useCallback((modalidadId) => {
     dispatch({ tipo: 'monto', modalidadId });
@@ -1393,7 +1403,25 @@ export function PosPanel() {
               ocupaba el lugar más valioso de la pantalla para decir algo que ya
               estaba dicho. El renglón recién tocado se sigue marcando en la
               tabla, que es donde se lo puede corregir.
+
+              En ese lugar va ahora lo único que este punto de la pantalla
+              puede aportar de verdad: algo que el cajero todavía PUEDE HACER.
             */}
+            {empujon && (
+              <div className={p.empujon}>
+                <span className={p.empujonTexto}>
+                  Incentivá al cliente para <strong>compra mayorista</strong>: le falta{' '}
+                  <strong className={p.empujonFalta}>{money(empujon.falta)}</strong>
+                  {empujon.modalidad ? <span className={p.empujonModalidad}> para {empujon.modalidad}</span> : null}
+                </span>
+                {/* La barra dice de un vistazo si está cerca o recién pasó la
+                    mitad: es la diferencia entre insistir y no insistir. */}
+                <span className={p.empujonBarra} aria-hidden="true">
+                  <span style={{ width: `${Math.round(empujon.avance * 100)}%` }} />
+                </span>
+              </div>
+            )}
+
             <div className={p.regTicketScroll} ref={ticketScrollRef}>
               <Ticket
                 renglones={ticket.renglones}
