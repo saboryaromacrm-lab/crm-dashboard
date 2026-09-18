@@ -9,6 +9,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import { useAuth } from '@core/auth/AuthContext.jsx';
 import { appConfig } from '@core/config/app.config.js';
 import { MarcaCoftech } from '@core/branding/FirmaCoftech.jsx';
+import { LogoSya } from '@core/branding/LogoSya.jsx';
 import { httpClient } from '@core/services/httpClient.js';
 import { leerTokenTerminal } from '@core/auth/terminal.js';
 
@@ -169,6 +170,14 @@ export function LoginPage() {
       <Card sx={{ width: 400, maxWidth: '100%' }}>
         <CardContent sx={{ p: 3.5 }}>
           {/*
+            EL LOGO ARRIBA, y el nombre debajo: es el orden en que se lee una
+            portada. Al costado del título competiría por el ancho y obligaría
+            a achicar uno de los dos; arriba, centrado y con aire, la marca se
+            ve entera y el texto queda donde el ojo ya lo busca.
+          */}
+          <LogoSya decorativo />
+
+          {/*
             EL NOMBRE Y LA FIRMA, en dos pesos. El nombre del sistema manda; la
             firma va al lado, chica y alineada a la MISMA BASE — no centrada,
             que la dejaría flotando. `baseline` es lo que hace que se lea como
@@ -176,7 +185,10 @@ export function LoginPage() {
           */}
           <Typography
             variant="h2"
-            sx={{ mb: 0.5, display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 1 }}
+            sx={{
+              mb: 0.5, display: 'flex', alignItems: 'baseline', flexWrap: 'wrap',
+              columnGap: 1, justifyContent: 'center', textAlign: 'center',
+            }}
           >
             {appConfig.name}
             <MarcaCoftech />

@@ -132,3 +132,44 @@
 .sufijo:focus-visible { filter: drop-shadow(0 0 7px rgba(92, 184, 228, 0.55)); }
 
 .sufijoBy { color: var(--crm-color-text-secondary, #7a8a9a); font-weight: 400; }
+
+/* ==================================================================== *
+ * 3) EL LOGO DE SABOR Y AROMA
+ * ==================================================================== */
+
+/*
+ * UN SOLO ARCHIVO PARA LOS DOS LUGARES.
+ *
+ * El dibujo es una silueta de UN color, así que tener un SVG blanco y otro
+ * verde serían 23 KB de trazos idénticos repetidos — y dos archivos que hay
+ * que acordarse de cambiar juntos el día que el logo cambie. Va uno solo, en
+ * el verde de marca, y donde hace falta blanco se lo pinta con un filtro.
+ *
+ * `brightness(0)` lo lleva a negro puro sin importar de qué color venga, e
+ * `invert(1)` lo pasa a blanco puro. Es exacto —no "casi blanco"— y lo hace el
+ * navegador sin descargar nada más. Ojo con el orden: invertir primero daría
+ * el complementario del verde, no blanco.
+ *
+ * (Los archivos que llegaron no servían tal cual: el blanco venía VACÍO, sin
+ * un solo trazo, y el verde traía el color declarado en negro.)
+ */
+.logo {
+  display: block;
+  width: auto;
+  /* La altura manda y el ancho la sigue: el logo es más alto que ancho y así
+   * no hay que recalcular la proporción en cada lugar donde se use. */
+  flex: none;
+  user-select: none;
+}
+
+/** En el sidebar, sobre el verde oscuro: blanco puro. */
+.logoBlanco {
+  height: 38px;
+  filter: brightness(0) invert(1);
+}
+
+/** En la entrada, en su verde, con aire arriba y abajo. */
+.logoEntrada {
+  height: 92px;
+  margin: 0 auto 14px;
+}

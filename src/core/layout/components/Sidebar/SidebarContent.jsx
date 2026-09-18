@@ -5,6 +5,7 @@ import { useNavigation } from '@core/navigation/useNavigation.js';
 import { appConfig } from '@core/config/app.config.js';
 import { cx } from '@shared/utils/classNames.js';
 import { FirmaCoftech } from '@core/branding/FirmaCoftech.jsx';
+import { LogoSya } from '@core/branding/LogoSya.jsx';
 import styles from './Sidebar.module.css';
 
 /**
@@ -21,8 +22,18 @@ export function SidebarContent({ collapsed = false, onNavigate }) {
 
   return (
     <nav className={styles.nav} aria-label="Navegación principal">
+      {/*
+        EL LOGO, SIN CAJA. Antes acá había un cuadrado con degradado y las
+        letras "SA" adentro: esa caja existía porque dos letras sueltas no se
+        leen como una marca. Con el logo de verdad sobra — y el degradado, que
+        metía dos colores más, le peleaba al verde del menú. La versión blanca
+        apoya directo sobre el fondo oscuro, que es para lo que está hecha.
+
+        `decorativo`: el nombre del sistema está escrito al lado, y un lector
+        de pantalla que anuncie las dos cosas diría la marca dos veces.
+      */}
       <div className={styles.brand}>
-        <span className={styles.brandMark}>SA</span>
+        <LogoSya variante="blanco" decorativo />
         {!collapsed && <span className={styles.brandName}>{appConfig.name}</span>}
       </div>
 

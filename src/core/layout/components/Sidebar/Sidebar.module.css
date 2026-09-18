@@ -19,21 +19,6 @@
   flex-shrink: 0;
 }
 
-.brandMark {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--crm-radius-md);
-  /* Los dos colores de la marca, juntos una sola vez: en el logo. */
-  background: linear-gradient(135deg, var(--crm-color-success), var(--crm-color-accent-2));
-  color: #fff;
-  font-weight: 800;
-  font-size: 0.8rem;
-  flex-shrink: 0;
-  box-shadow: var(--crm-shadow-sm);
-}
-
 .brandName {
   font-weight: 700;
   font-size: var(--crm-font-size-md);
