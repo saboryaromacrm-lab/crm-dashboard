@@ -61,41 +61,27 @@ export function motivoBloqueo(item) {
 }
 
 /**
- * EL MISMO ARTÍCULO, UNA ENTRADA POR FORMA DE VENDERLO.
+ * EL BULTO ESCANEADO, MARCADO PARA QUE LA FILA NO MIENTA.
  *
- * Un artículo que se vende de a 12 estaba en el catálogo una sola vez y decía
- * "Unidad", porque `detalle` sale del TIPO del producto (entero/granel) y el
- * bulto no es un tipo: es una fila de `producto_listas` con `unidades: 12`.
- * Al bulto solo se llegaba **escaneando el código de la caja** — y si la caja
- * no tiene código propio, o el cajero busca por nombre, no había forma: ponía
- * 1, cobraba precio de mostrador y la caja de 12 salía como una unidad suelta.
+ * Escanear el EAN de la caja carga las N unidades y fija la lista del formato.
+ * Eso siempre funcionó — lo que no acompañaba era lo que se leía: la fila
+ * decía "Unidad · $1.815" mientras por dentro entraban 12 al precio mayorista.
+ * Hacía lo correcto y se explicaba mal.
  *
- * Acá el bulto se vuelve visible: cada formato de a N aparece como su propia
- * opción, al lado de la unidad. No hay nada nuevo abajo — se marca igual que
- * un escaneo (`_escaneoUnidades` + `_escaneoListaId`), así que carga las N y
- * fija la lista por el mismo camino que ya existía y ya estaba probado.
- *
- * La unidad sigue primero y siempre: es la venta de todos los días, y Enter
- * agrega el primero de la lista. Elegir el bulto es un acto deliberado.
+ * Se marca de a UNO y solo en el escaneo. El buscador por nombre lista
+ * PRODUCTOS y nada más (18/9/2026, corrección del dueño): abrir ahí una fila
+ * por cada lista llenaba la pantalla con el mismo artículo repetido, y la
+ * lista se elige después, en el renglón del ticket, que es donde vive esa
+ * decisión.
  */
 function comoBulto(item, f) {
   return {
     ...item,
-    /* La CLAVE DEL TICKET no cambia: son el mismo artículo, y doce sueltas más
-     * una caja de doce tienen que sumar en un solo renglón de 24. La de la
-     * lista de resultados sí, porque React necesita distinguirlas. */
-    _uiKey: `${item.key}#${f.listaId}`,
     _escaneoUnidades: f.unidades,
     _escaneoListaId: f.listaId,
-    /** Lo que la fila necesita para MOSTRARSE como bulto y no como unidad. */
+    /** Solo la cantidad: la lista es del renglón, no del buscador. */
     _bulto: { unidades: f.unidades, precioFormato: f.precioFormato ?? 0 },
   };
-}
-
-function conSusFormatos(item) {
-  const bultos = (item.formatosVenta ?? []).filter((f) => f.unidades > 1);
-  if (!bultos.length) return [item];
-  return [{ ...item, _uiKey: item.key }, ...bultos.map((f) => comoBulto(item, f))];
 }
 
 /**
@@ -132,19 +118,15 @@ export function buscarEnCatalogo(catalogo, texto, limite = 8) {
   }
 
   /*
-   * Los bultos se abren SOLO en la búsqueda por nombre, a propósito. Los dos
-   * caminos de arriba son de ESCÁNER, y ahí un código tiene que resolver en un
-   * resultado y agregarse solo: abrirlos ahí pondría opciones debajo de algo
-   * que ya se agregó. El que busca por nombre, en cambio, está eligiendo.
-   *
-   * El límite se aplica a los ARTÍCULOS y después se abren sus formas: si no,
-   * un artículo con tres bultos se comería la lista y escondería a los otros.
+   * UNA FILA POR PRODUCTO. El buscador contesta "cuál artículo", no "a qué
+   * precio": el mismo alfajor repetido una vez por lista llena la pantalla de
+   * duplicados y esconde a los demás productos, que es justo lo que el cajero
+   * está buscando. El precio se elige después, en el renglón del ticket.
    */
   const ql = norm(q);
   return catalogo
     .filter((i) => norm(i.nombre).includes(ql) || norm(i.marca).includes(ql))
-    .slice(0, limite)
-    .flatMap(conSusFormatos);
+    .slice(0, limite);
 }
 
 /* ------------------------------------------------------------------ *
