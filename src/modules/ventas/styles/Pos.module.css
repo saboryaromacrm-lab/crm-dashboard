@@ -522,27 +522,6 @@
 .registradora .cobrar { padding: 18px; font-size: 20px; }
 
 /* ----- El "visor": último artículo cargado, con destello al entrar ----- */
-.ultimoStrip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  min-height: 60px;
-  padding: 10px 16px;
-  border: 1px solid var(--crm-color-border);
-  border-radius: var(--crm-radius-md);
-  background: var(--crm-color-surface);
-}
-.ultimoInfo { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
-.ultimoNombre { font-size: 19px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ultimoMeta { font-size: 13px; color: var(--crm-color-text-secondary); }
-.ultimoImporte { font-size: 27px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.ultimoFlash { animation: flash-ultimo 0.5s ease-out; }
-@keyframes flash-ultimo {
-  0% { background: color-mix(in srgb, var(--crm-color-success) 32%, var(--crm-color-surface)); }
-  100% { background: var(--crm-color-surface); }
-}
-
 /* Renglón recién tocado en el ticket, para seguirlo con la vista. */
 .filaUltima td { background: color-mix(in srgb, var(--crm-color-primary) 7%, transparent); }
 

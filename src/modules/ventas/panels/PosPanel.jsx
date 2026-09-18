@@ -636,7 +636,6 @@ export function PosPanel() {
    * renglón grande — como el visor de una registradora de supermercado.
    */
   const [ultimoKey, setUltimoKey] = useState(null);
-  const [flashTick, setFlashTick] = useState(0);
   const buscadorRef = useRef(null);
   const guardadoRef = useRef(null);
   const ticketScrollRef = useRef(null);
@@ -861,6 +860,36 @@ export function PosPanel() {
     toast(modalidadId ? 'Precio por monto de compra aplicado.' : 'Se retiró el precio por monto.', 'ok');
   }, [toast]);
 
+  /**
+   * QUÉ ESTÁ APLICADO AHORA, para que el selector lo diga en vez de volver
+   * siempre a "Aplicar modalidad…" (18/9/2026, pedido del dueño).
+   *
+   * Son DOS niveles porque el selector aplica MODALIDAD y el renglón guarda
+   * LISTA: "Mayorista" puede ser la 1 en un artículo y la 2 en otro, así que
+   * exigir la misma lista exacta diría "mezclado" en tickets que están
+   * perfectamente uniformes. Entonces: el selector muestra la modalidad común
+   * —que es lo que se aplicó— y al lado, solo cuando además TODOS comparten la
+   * misma lista, se nombra esa lista, que es el dato fino.
+   *
+   * Sin renglones no hay nada aplicado: el ticket vacío no está "en mostrador".
+   */
+  const modalidadComun = useMemo(() => {
+    const rs = ticket.renglones;
+    if (!rs.length) return null;
+    const ids = new Set(rs.map((r) => listasPorId.get(r.listaId)?.modalidadId ?? null));
+    const unica = ids.size === 1 ? [...ids][0] : null;
+    return unica ?? null;
+  }, [ticket.renglones, listasPorId]);
+
+  const listaComun = useMemo(() => {
+    const rs = ticket.renglones;
+    if (!rs.length) return null;
+    const ids = new Set(rs.map((r) => r.listaId ?? null));
+    if (ids.size !== 1) return null;
+    const id = [...ids][0];
+    return id == null ? null : (listasPorId.get(id) ?? null);
+  }, [ticket.renglones, listasPorId]);
+
   /** Modalidades del catálogo, para la aplicación masiva a mano. */
   const modalidades = useMemo(() => {
     const vistas = new Map();
@@ -1017,7 +1046,6 @@ export function PosPanel() {
       setClienteId(borrador.clienteId);
       setActivaId(id);
       setUltimoKey(null);
-      setFlashTick(0);
       abrirPestana(id);
       enfocarBuscador();
     } catch (e) {
@@ -1049,7 +1077,6 @@ export function PosPanel() {
       setClienteId(borrador.clienteId);
       setActivaId(borrador.id);
       setUltimoKey(null);
-      setFlashTick(0);
       abrirPestana(borrador.id);
       recargarAbiertas();
       enfocarBuscador();
@@ -1158,14 +1185,12 @@ export function PosPanel() {
     }
     dispatch({ tipo: 'agregar', item, cantidad, listaFija, descuentoCliente: clienteActual?.descuento || 0 });
     setUltimoKey(item.key);
-    setFlashTick((t) => t + 1);
   }, [toast, clienteActual, preciosDe, listasPorId]);
 
   const trasCobrar = useCallback((idCobrado) => {
     dispatch({ tipo: 'limpiar' });
     setClienteId(null);
     setUltimoKey(null);
-    setFlashTick(0);
     if (idCobrado) cerrarPestana(idCobrado);
     recargarCatalogo();   // el stock cambió con la venta
     recargarCaja();
@@ -1308,11 +1333,6 @@ export function PosPanel() {
   /* ---------- Registradora: venta abierta, a pantalla completa ---------- */
 
   if (!enLista) {
-    // El visor muestra lo último que entró; si se retomó una venta guardada,
-    // el último renglón del ticket hace de referencia.
-    const ultimo = ticket.renglones.find((r) => r.key === ultimoKey)
-      ?? ticket.renglones[ticket.renglones.length - 1] ?? null;
-
     return (
       <div className={p.registradora}>
         {/* Barra superior: pestañas + estado del puesto. Nada más. */}
@@ -1366,23 +1386,14 @@ export function PosPanel() {
           <div className={p.regIzq}>
             <Buscador catalogo={catalogo ?? []} config={config} onElegir={agregar} inputRef={buscadorRef} />
 
-            {/* El "visor" de la registradora: lo último que entró, en grande. */}
-            <div key={flashTick} className={cx(p.ultimoStrip, flashTick > 0 && p.ultimoFlash)}>
-              {ultimo ? (
-                <>
-                  <span className={p.ultimoInfo}>
-                    <span className={p.ultimoNombre}>{ultimo.nombre}</span>
-                    <span className={p.ultimoMeta}>
-                      {ultimo.detalle} · {num(ultimo.cantidad)} {ultimo.unidad} × {money(ultimo.precioUnitario)}
-                    </span>
-                  </span>
-                  <span className={p.ultimoImporte}>{money(calcularRenglon(ultimo).total)}</span>
-                </>
-              ) : (
-                <span className={s.muted}>El próximo artículo escaneado aparece acá.</span>
-              )}
-            </div>
-
+            {/*
+              SIN "VISOR" DEL ÚLTIMO ARTÍCULO (18/9/2026, pedido del dueño:
+              "no cumple ninguna función"). Repetía en grande el renglón que ya
+              está en la tabla dos centímetros más abajo, y encima resaltado —
+              ocupaba el lugar más valioso de la pantalla para decir algo que ya
+              estaba dicho. El renglón recién tocado se sigue marcando en la
+              tabla, que es donde se lo puede corregir.
+            */}
             <div className={p.regTicketScroll} ref={ticketScrollRef}>
               <Ticket
                 renglones={ticket.renglones}
@@ -1421,17 +1432,29 @@ export function PosPanel() {
                 que "Mayorista" puede ser la 1 en un artículo y la 2 en otro.
                 Cada renglón toma la mejor suya dentro de la modalidad.
               */}
+              {/* El valor sale del TICKET, no de lo último que se tocó: si el
+                  ticket entero quedó en una modalidad, el selector la muestra
+                  —se aplique como se aplique, a mano o porque cada renglón
+                  cayó ahí solo— y apretarlo es para cambiarla. Volvía a
+                  "Aplicar modalidad…" aunque estuviera aplicada, y entonces no
+                  había dónde leer con qué precios se está vendiendo. */}
               <select
                 className={s['select-inline']}
-                value=""
-                aria-label="Aplicar una modalidad de precio a todo el ticket"
+                value={modalidadComun ?? ''}
+                aria-label="Modalidad de precio de todo el ticket"
                 disabled={!ticket.renglones.length || overrideBloqueado}
-                onChange={(e) => { aplicarModalidadATodo(e.target.value); e.target.value = ''; }}
+                onChange={(e) => aplicarModalidadATodo(e.target.value)}
               >
                 <option value="">Aplicar modalidad…</option>
                 {modalidades.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
                 <option value="auto">↺ Volver al automático</option>
               </select>
+              {/* El dato fino, solo cuando es verdad para TODO el ticket. */}
+              {listaComun && (
+                <span className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
+                  todo en <strong>{listaComun.etiqueta}</strong>
+                </span>
+              )}
               <span className={p.spacer} />
               <Btn small onClick={() => openModal('delegarVenta', { ventaId: activaId, actualId: ctx.usuarioId, onChange: recargarAbiertas })}>
                 Delegar
