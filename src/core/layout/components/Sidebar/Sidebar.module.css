@@ -163,3 +163,37 @@
   font-size: var(--crm-font-size-xs);
   color: color-mix(in srgb, var(--crm-color-sidebar-text) 62%, transparent);
 }
+
+/*
+ * FIRMA DE COFTECH. Discreta por diseño: está siempre a la vista, así que
+ * compite con la navegación si pesa de más. El color vivo aparece al pasar el
+ * mouse — ahí sí se anuncia. El hover es CSS puro: sin estado, sin re-render.
+ */
+.firma {
+  display: block;
+  margin-top: var(--crm-space-3);
+  text-decoration: none;
+  line-height: 1.25;
+  opacity: 0.72;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.firma:hover,
+.firma:focus-visible {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+.firmaMarca {
+  display: block;
+  font-size: var(--crm-font-size-sm);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.firmaCof { color: #5cb8e4; }
+.firmaTech { color: #b8c5d4; }
+.firma:hover .firmaCof { text-shadow: 0 0 10px rgba(92, 184, 228, 0.55); }
+.firmaPie {
+  display: block;
+  margin-top: 1px;
+  font-size: var(--crm-font-size-xs);
+  color: color-mix(in srgb, var(--crm-color-sidebar-text) 52%, transparent);
+}

@@ -149,7 +149,7 @@ export function LoginPage() {
     <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 2 }}>
       <Card sx={{ width: 400, maxWidth: '100%' }}>
         <CardContent sx={{ p: 3.5 }}>
-          <Typography variant="h2" sx={{ mb: 0.5 }}>{appConfig.name}</Typography>
+          <Typography variant="h2" sx={{ mb: 0.5 }}>{appConfig.nombreCompleto}</Typography>
 
           {!confirmando ? (
             <>

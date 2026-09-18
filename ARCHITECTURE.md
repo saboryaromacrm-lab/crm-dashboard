@@ -1,4 +1,4 @@
-# Arquitectura — CRM Dashboard (framework modular)
+# Arquitectura — ERP Sabor y Aroma by Coftech (framework modular)
 
 Este documento describe el diseño de la base del CRM/ERP: por qué está armado
 así, cómo escala y cómo se agregan módulos sin tocar el núcleo. Está pensado

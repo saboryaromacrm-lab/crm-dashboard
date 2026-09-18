@@ -4,6 +4,7 @@ import CircleIcon from '@mui/icons-material/Circle';
 import { useNavigation } from '@core/navigation/useNavigation.js';
 import { appConfig } from '@core/config/app.config.js';
 import { cx } from '@shared/utils/classNames.js';
+import { FirmaCoftech } from './FirmaCoftech.jsx';
 import styles from './Sidebar.module.css';
 
 /**
@@ -76,6 +77,7 @@ export function SidebarContent({ collapsed = false, onNavigate }) {
       {!collapsed && (
         <div className={styles.footer}>
           <span className={styles.version}>v{appConfig.version}</span>
+          <FirmaCoftech />
         </div>
       )}
     </nav>

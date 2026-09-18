@@ -8,7 +8,7 @@ import { appConfig } from '@core/config/app.config.js';
 export function useDocumentTitle(title) {
   useEffect(() => {
     const previous = document.title;
-    document.title = title ? `${title} · ${appConfig.name}` : appConfig.name;
+    document.title = title ? `${title} · ${appConfig.name}` : appConfig.nombreCompleto;
     return () => {
       document.title = previous;
     };
