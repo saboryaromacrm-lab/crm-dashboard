@@ -85,6 +85,26 @@ function comoBulto(item, f) {
 }
 
 /**
+ * LA CANTIDAD QUE ESA LISTA SABE VENDER.
+ *
+ * `unidades` es el "Vende por" del formato: 1 suelto, 12 la caja. Devuelve el
+ * múltiplo de N igual o mayor a lo que había, con piso en N — media caja no es
+ * una cantidad que exista. Con N = 1 no toca nada, que es el caso de siempre.
+ */
+export function porBulto(cantidad, unidades) {
+  const n = Math.max(Number(unidades) || 1, 1);
+  if (n <= 1) return cantidad;
+  const c = Number(cantidad) || 0;
+  return Math.max(n, Math.ceil((c - 1e-9) / n) * n);
+}
+
+/** Cuántas unidades vende la lista que tiene puesta el renglón (1 = suelto). */
+export function unidadesDeLista(precios, listaId) {
+  const f = (precios ?? []).find((x) => x.listaId === listaId);
+  return Math.max(Number(f?.unidades) || 1, 1);
+}
+
+/**
  * Busca en el catálogo lo que el cajero tipeó o escaneó.
  * Prioridad: código exacto → código que termina igual → nombre/marca.
  * El orden importa: un escaneo tiene que resolver en un solo resultado.
@@ -436,6 +456,22 @@ export function ticketReducer(estado, accion) {
           if (accion.manual === false) return { ...r, listaManual: false };
           return {
             ...r,
+            /*
+             * "VENDE POR 12" TAMBIÉN VALE ACÁ.
+             *
+             * El formato de venta dice en cuántas unidades se vende esa lista,
+             * y hasta ahora ese número solo se respetaba por un camino: el
+             * escaneo del código de la caja. Eligiendo la lista a mano —que es
+             * como se hace cuando el cliente pide por mayor— la cantidad
+             * quedaba como estaba, así que se cobraba UNA unidad al precio de
+             * la caja. El precio de a 12 existe PORQUE se lleva de a 12: darlo
+             * por una sola es regalar la diferencia.
+             *
+             * Sube al múltiplo de arriba, nunca baja: el que ya cargó 24 se
+             * queda con 24, y el que cargó 15 pasa a 24 porque 15 no es una
+             * cantidad que esa lista sepa vender.
+             */
+            cantidad: r.fraccionable ? r.cantidad : porBulto(r.cantidad, accion.lista?.unidades),
             listaId: accion.lista.listaId,
             lista: accion.lista.etiqueta,
             listaOrigen: 'manual',

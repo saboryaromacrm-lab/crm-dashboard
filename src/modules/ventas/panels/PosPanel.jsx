@@ -8,7 +8,7 @@ import {
   buscarEnCatalogo, calcularRenglon, descuentosDisponibles, descuentosParaApi,
   extrasParaApi, itemsParaApi, motivoBloqueo, parseEtiquetaBalanza,
   problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
-  totalesTicket, ultimoArticulo,
+  totalesTicket, ultimoArticulo, unidadesDeLista,
 } from '../domain/pos.js';
 import { indicePrecios, sugerenciaPorMonto } from '../domain/listas.js';
 import { sugerenciasOfertaTicket } from '../domain/ofertas.js';
@@ -377,6 +377,12 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
              */
             const descExcedido = !puedePisarPrecio
               && (Number(r.descuentoBase ?? r.descuento) || 0) > descuentoMax + 1e-9;
+            /* De a cuántas vende la lista que tiene puesta este renglón, y si
+             * la cantidad cargada da bultos justos. Solo para mostrar: no
+             * bloquea nada. */
+            const porLista = r.fraccionable ? 1 : unidadesDeLista(preciosDe(r.key), r.listaId);
+            const esBultoJusto = porLista > 1
+              && r.cantidad > 0 && Math.abs(r.cantidad % porLista) < 1e-9;
             return (
               <tr key={r.uid} className={cx(r.key === ultimoKey && p.filaUltima)}>
                 <td>
@@ -410,6 +416,21 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                     value={r.cantidad}
                     onChange={(e) => dispatch({ tipo: 'cantidad', uid: r.uid, valor: e.target.value })}
                   />
+                  {/* El "Vende por" de la lista puesta, a la vista. Elegirla ya
+                      acomoda la cantidad; esto es para lo que se tipea después
+                      —nadie va a impedir escribir 5 en una lista de a 12, pero
+                      el renglón tiene que decir que esa cantidad no es un bulto
+                      y que el precio de a 12 se está dando por menos. */}
+                  {porLista > 1 && (
+                    <div
+                      className={cx(p.detalleCol, !esBultoJusto && p.sinStock)}
+                      title={esBultoJusto ? '' : `Esta lista se vende de a ${porLista}`}
+                    >
+                      {esBultoJusto
+                        ? `${num(r.cantidad / porLista)} × bulto de ${num(porLista)}`
+                        : `no es bulto de ${num(porLista)}`}
+                    </div>
+                  )}
                 </td>
                 {/*
                   Lista del renglón. Se muestra POR QUÉ la tiene (automática
@@ -425,8 +446,11 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                     // catálogo entero — ofrecer una lista en la que no se vende
                     // sería ofrecer un precio que no existe.
                     const precios = preciosDe(r.key) ?? [];
+                    /* `unidades` viaja con la opción: es el "Vende por" del
+                     * formato, y elegir la lista tiene que arrastrar la
+                     * cantidad que esa lista sabe vender. */
                     const opciones = precios
-                      .map((x) => ({ ...listasPorId.get(x.listaId), precio: x.precio }))
+                      .map((x) => ({ ...listasPorId.get(x.listaId), precio: x.precio, unidades: x.unidades }))
                       .filter((x) => x.listaId);
                     const motivo = ORIGEN_LISTA[r.listaOrigen];
                     const pie = (

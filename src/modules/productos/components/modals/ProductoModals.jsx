@@ -945,6 +945,10 @@ function VentaTab({ prod: p, pres = null }) {
   const meta = (id) => activas.find((l) => l.id === id);
   const ordenadas = [...rows].sort((a, b) => (meta(a.listaId)?.orden ?? 999) - (meta(b.listaId)?.orden ?? 999));
   const tieneBase = rows.some((r) => r.listaId === baseId);
+  /* La alícuota REAL de este producto, la que se usa en todos los cálculos de
+   * abajo. Un exento (0) no dice "IVA 0%": dice que no lleva. */
+  const ivaProd = Number(p.iva) || 0;
+  const ivaTexto = ivaProd > 0 ? `IVA ${num(ivaProd, ivaProd % 1 ? 1 : 0)}% incluido` : 'sin IVA (exento)';
 
   const guardar = async () => {
     for (const r of rows) {
@@ -970,6 +974,15 @@ function VentaTab({ prod: p, pres = null }) {
           : <> neto{nombreAct ? <> de <strong>{nombreAct}</strong></> : ''} ({money(neto)} {unidad})</>},
         que acompaña al costo, o un <strong>precio definido</strong> que no se mueve hasta que lo
         cambies. Si no está la fila, no se vende en esa lista.
+        {/* De dónde a dónde va el IVA: el costo y el markup viven en el NETO,
+            y los precios de abajo son FINALES. Dicho una vez acá arriba, los
+            números de cada fila se leen solos. */}
+        <div style={{ marginTop: 6 }}>
+          Este producto tiene <strong>{ivaProd > 0 ? `IVA ${num(ivaProd, ivaProd % 1 ? 1 : 0)}%` : 'IVA 0% (exento)'}</strong>:
+          el costo y el markup son <strong>netos</strong>, y los precios de cada fila
+          son <strong>finales, con el IVA ya adentro</strong> — tal como los cobra la caja y los
+          imprime el cartel.
+        </div>
       </div>
 
       {/* El código que YA tiene el artículo, para que no se lo vuelva a cargar
@@ -1107,9 +1120,22 @@ function VentaTab({ prod: p, pres = null }) {
                 display: 'flex', gap: 24, marginTop: 10, paddingTop: 10, flexWrap: 'wrap',
                 borderTop: '1px solid var(--crm-color-border)',
               }}>
+                {/*
+                  EL IVA, DICHO Y NO SOBREENTENDIDO.
+                  ------------------------------------------------------------
+                  Los dos números de acá son FINALES —con IVA adentro, como el
+                  cartel de góndola— pero el markup se calcula sobre el NETO.
+                  Sin decirlo, el 55% de markup no cierra contra ningún número
+                  visible y parece que la cuenta está mal. Va la alícuota REAL
+                  del producto (21, 10,5 o la que tenga) y el neto al lado, que
+                  es contra el que se puede verificar el markup a mano.
+                */}
                 <div>
                   <div className={s['mini-label']}>Precio final unitario</div>
                   <strong className={s.mono} style={{ fontSize: 16 }}>{money(pv.finalUnitario)}</strong>
+                  <div className={s.hint} style={{ margin: '2px 0 0' }}>
+                    {ivaTexto} · neto <span className={s.mono}>{money(pv.netoUnitario)}</span>
+                  </div>
                 </div>
                 <div>
                   <div className={s['mini-label']}>
@@ -1118,6 +1144,9 @@ function VentaTab({ prod: p, pres = null }) {
                   <strong className={s.mono} style={{ fontSize: 16, color: 'var(--crm-color-primary)' }}>
                     {money(pv.finalFormato)}
                   </strong>
+                  <div className={s.hint} style={{ margin: '2px 0 0' }}>
+                    {ivaTexto} · neto <span className={s.mono}>{money(pv.netoUnitario * unidades)}</span>
+                  </div>
                 </div>
                 {esPrecio && neto > 0 && (
                   <div>

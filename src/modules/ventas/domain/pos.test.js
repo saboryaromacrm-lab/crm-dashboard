@@ -4,7 +4,9 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buscarEnCatalogo, calcularRenglon, totalesTicket } from './pos.js';
+import {
+  buscarEnCatalogo, calcularRenglon, porBulto, totalesTicket, unidadesDeLista,
+} from './pos.js';
 
 test('calcularRenglon: bruto → descuento % → oferta (importe) → IVA', () => {
   const c = calcularRenglon({ cantidad: 3, precioUnitario: 1000, descuento: 10, ofertaDescuento: 200, iva: 21 });
@@ -109,4 +111,34 @@ test('buscarEnCatalogo: el límite cuenta productos', () => {
     ...CATALOGO[0], key: `p${n + 10}`, nombre: `Gaseosa ${n}`,
   }));
   assert.equal(buscarEnCatalogo(muchos, 'gaseosa', 3).length, 3);
+});
+
+/* ==================================================================== *
+ * "Vende por 12" también vale en la caja (18/9/2026)
+ * ==================================================================== */
+
+test('porBulto: elegir una lista de a 12 nunca deja media caja', () => {
+  assert.equal(porBulto(1, 12), 12, 'una sola al precio de la caja es regalar la diferencia');
+  assert.equal(porBulto(0, 12), 12);
+  assert.equal(porBulto(12, 12), 12, 'lo que ya es un bulto justo no se toca');
+  assert.equal(porBulto(24, 12), 24);
+  assert.equal(porBulto(15, 12), 24, 'sube al múltiplo de arriba: 15 no es una cantidad que sepa vender');
+  assert.equal(porBulto(13, 12), 24);
+});
+
+test('porBulto: una lista que vende suelto no toca la cantidad', () => {
+  assert.equal(porBulto(5, 1), 5);
+  assert.equal(porBulto(5, 0), 5, 'dato sucio = suelto');
+  assert.equal(porBulto(0.5, 1), 0.5, 'el granel conserva sus decimales');
+});
+
+test('unidadesDeLista: saca el "vende por" de la lista puesta', () => {
+  const precios = [
+    { listaId: 1, precio: 1500, unidades: 1 },
+    { listaId: 2, precio: 800, unidades: 12 },
+  ];
+  assert.equal(unidadesDeLista(precios, 2), 12);
+  assert.equal(unidadesDeLista(precios, 1), 1);
+  assert.equal(unidadesDeLista(precios, 99), 1, 'lista que el artículo no tiene: suelto');
+  assert.equal(unidadesDeLista(undefined, 2), 1, 'sin formato cargado: suelto');
 });
