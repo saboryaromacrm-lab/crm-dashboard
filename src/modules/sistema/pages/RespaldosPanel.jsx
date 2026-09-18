@@ -27,6 +27,11 @@ export function RespaldosPanel({ onAviso }) {
   const [ensayo, setEnsayo] = useState(null);
   const [confirmacion, setConfirmacion] = useState('');
   const [limpiando, setLimpiando] = useState(false);
+  /* Excepción puntual al comportamiento de fábrica (17/9/2026): de fábrica
+   * `stock` se vacía con todo lo demás. Esta casilla la saca de la lista —
+   * el servidor, antes de borrar, devuelve a disponible lo que estaba
+   * reservado (comprometido/en tránsito), así el total no cambia. */
+  const [preservarStock, setPreservarStock] = useState(false);
 
   const cargar = useCallback(() => {
     httpClient.get('/sistema/respaldos/info')
@@ -51,7 +56,7 @@ export function RespaldosPanel({ onAviso }) {
 
   const verEnsayo = async () => {
     try {
-      setEnsayo(await httpClient.get('/sistema/respaldos/limpieza/ensayo'));
+      setEnsayo(await httpClient.get(`/sistema/respaldos/limpieza/ensayo?preservarStock=${preservarStock}`));
       setConfirmacion('');
     } catch (e) {
       onAviso?.({ tipo: 'err', texto: e?.data?.message || 'No se pudo consultar la limpieza.' });
@@ -62,10 +67,10 @@ export function RespaldosPanel({ onAviso }) {
     if (limpiando || confirmacion !== 'LIMPIAR') return;
     setLimpiando(true);
     try {
-      const r = await httpClient.post('/sistema/respaldos/limpieza', { confirmar: confirmacion });
+      const r = await httpClient.post('/sistema/respaldos/limpieza', { confirmar: confirmacion, preservarStock });
       onAviso?.({
         tipo: 'ok',
-        texto: `Listo: se vaciaron ${num(r.borradas ?? 0, 0)} filas de práctica. El catálogo, los proveedores y los clientes quedaron intactos. La pantalla se recarga…`,
+        texto: `Listo: se vaciaron ${num(r.borradas ?? 0, 0)} filas de práctica.${preservarStock ? ' El stock actual se conservó.' : ''} El catálogo, los proveedores y los clientes quedaron intactos. La pantalla se recarga…`,
       });
       /* TODO lo que este navegador tiene en memoria (catálogos, stock,
        * borradores) acaba de dejar de existir: la recarga es obligatoria. */
@@ -145,6 +150,14 @@ export function RespaldosPanel({ onAviso }) {
               <strong>Antes de tocar nada: descargá un respaldo</strong> con el botón de arriba —
               es la única vuelta atrás.
             </div>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, fontWeight: 400 }}>
+              <input
+                type="checkbox"
+                checked={preservarStock}
+                onChange={(e) => { setPreservarStock(e.target.checked); setEnsayo(null); setConfirmacion(''); }}
+              />
+              Mantener el stock actual (no vaciar existencias — solo la operatoria)
+            </label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
               <Btn onClick={verEnsayo}>Ver qué se borraría</Btn>
               {ensayo && (
@@ -152,6 +165,9 @@ export function RespaldosPanel({ onAviso }) {
                   <strong>{num(ensayo.total ?? 0, 0)}</strong> filas en {ensayo.detalle?.length ?? 0} tablas
                   {' '}({(ensayo.detalle ?? []).slice(0, 6).map((d) => `${d.tabla}: ${num(d.filas, 0)}`).join(' · ')}
                   {(ensayo.detalle?.length ?? 0) > 6 ? ' …' : ''})
+                  {ensayo.preservarStock && ensayo.reservas > 0 && (
+                    <> · el stock queda, pero {num(ensayo.reservas, 0)} fila(s) reservada(s) (comprometido/en tránsito) vuelven a disponible</>
+                  )}
                 </span>
               )}
             </div>
