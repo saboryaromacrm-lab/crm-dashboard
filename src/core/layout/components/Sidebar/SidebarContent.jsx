@@ -75,10 +75,14 @@ export function SidebarContent({ collapsed = false, onNavigate }) {
       </div>
 
       {!collapsed && (
-        <div className={styles.footer}>
-          <span className={styles.version}>v{appConfig.version}</span>
+        <>
+          <div className={styles.footer}>
+            <span className={styles.version}>v{appConfig.version}</span>
+          </div>
+          {/* Fuera del pie a propósito: la franja va de borde a borde del
+              sidebar, y `.footer` tiene padding propio. */}
           <FirmaCoftech />
-        </div>
+        </>
       )}
     </nav>
   );

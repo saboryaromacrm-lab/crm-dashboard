@@ -1,27 +1,27 @@
-import styles from './Sidebar.module.css';
+import styles from './FirmaCoftech.module.css';
 
 /**
- * FIRMA DE COFTECH — el pie del sidebar.
+ * FIRMA DE COFTECH — el cierre del sidebar.
  * ============================================================================
- * Quién hizo el sistema, al pie de la navegación, con el contacto a un clic.
+ * Mismos colores, mismos tamaños y mismo hover que el diseño original: la
+ * franja oscura partida al medio, "Cof" en celeste, el separador y el año.
  *
- * NO se integra como decía el instructivo original (un `<script type="text/babel">`
- * traído de saboryaroma.com y compilado en el navegador). Ese camino sirve para
- * una página suelta, pero acá habría costado, EN CADA CARGA:
+ * LO ÚNICO QUE CAMBIA ES EL ACOMODO, y lo impone el ancho: el sidebar mide
+ * 264 px y el original está pensado para una barra de 1400. Puesto en una sola
+ * línea, "Coftech | Soluciones digitales" y el año no entran ni con calzador.
+ * Así que la misma fila se dobla —el `flex-wrap` ya estaba en el original— y
+ * el año baja abajo a la derecha. Ni un color ni un tamaño de letra cambiado.
  *
- *   · Babel standalone, que son ~1,5 MB de JavaScript cuyo único trabajo sería
- *     compilar estas veinte líneas mientras el usuario mira una pantalla vacía.
- *   · Una petición a otro dominio en el camino crítico — y si ese dominio se
- *     cae o tarda, se lo come el CRM entero.
- *   · La fuente Nunito Sans, una familia completa para escribir una palabra.
- *
- * Nada de eso se nota en una landing; en la caja, donde se abre y se recarga
- * cien veces por día, se nota. Acá va compilado con el resto del bundle: pesa
- * lo que pesan estas líneas y no agrega ni una petición.
+ * NO se carga como decía el instructivo (un `<script type="text/babel">` traído
+ * de saboryaroma.com). Eso, en la pantalla que se abre y se recarga cien veces
+ * por día, habría costado en CADA carga: Babel standalone (~1,5 MB) para
+ * compilar veinte líneas mientras el cajero mira una pantalla vacía, y una
+ * petición a otro dominio en el camino crítico — si ese dominio tarda, se lo
+ * come el CRM entero. Acá va compilada con el resto del bundle.
  *
  * EL HOVER ES CSS, no estado de React. El original guardaba `isHovered` en un
- * `useState`, o sea un re-render por cada entrada y salida del mouse sobre un
- * elemento que está SIEMPRE en pantalla. El efecto es idéntico y no cuesta nada.
+ * `useState`: un re-render por cada entrada y salida del mouse sobre algo que
+ * está SIEMPRE en pantalla. El efecto es idéntico y no cuesta nada.
  */
 
 /** Una vez por carga, no una por render: es un pie, no un reloj. */
@@ -31,17 +31,23 @@ const WHATSAPP = 'https://wa.me/5493704819019?text=Hola,%20me%20contacto%20desde
 
 export function FirmaCoftech() {
   return (
-    <a
-      className={styles.firma}
-      href={WHATSAPP}
-      target="_blank"
-      rel="noopener noreferrer"
-      title="Coftech · Soluciones digitales — escribinos por WhatsApp"
-    >
-      <span className={styles.firmaMarca}>
-        <span className={styles.firmaCof}>Cof</span><span className={styles.firmaTech}>tech</span>
-      </span>
-      <span className={styles.firmaPie}>Soluciones digitales · © {ANIO}</span>
-    </a>
+    <div className={styles.firma}>
+      <div className={styles.inner}>
+        <div className={styles.izq}>
+          <a
+            className={styles.marca}
+            href={WHATSAPP}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Coftech — escribinos por WhatsApp"
+          >
+            <span className={styles.cof}>Cof</span><span className={styles.tech}>tech</span>
+          </a>
+          <span className={styles.sep} aria-hidden="true">|</span>
+          <p className={styles.lema}>Soluciones digitales</p>
+        </div>
+        <span className={styles.anio}>© {ANIO}</span>
+      </div>
+    </div>
   );
 }
