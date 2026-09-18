@@ -158,7 +158,7 @@ function ElegirClienteModal({ clientes, actualId, onElegir, onCerrar }) {
  * código tipeado y nombre. El foco vuelve acá después de cada acción porque el
  * lector es un teclado: si el foco está en otro lado, el código se pierde.
  */
-function Buscador({ catalogo, config, onElegir, inputRef }) {
+function Buscador({ catalogo, config, onElegir, inputRef, listasPorId }) {
   const [q, setQ] = useState('');
   const [activo, setActivo] = useState(0);
 
@@ -214,34 +214,63 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
           {resultados.length === 0 && (
             <div className={p.resultado}><span className={p.resultadoMeta}>Nada coincide con «{q}».</span></div>
           )}
-          {resultados.map((item, i) => (
-            <button
-              key={item.key}
-              type="button"
-              className={cx(p.resultado, i === activo && p.resultadoActivo)}
-              onMouseEnter={() => setActivo(i)}
-              onClick={() => elegir(item)}
-            >
-              <span>
-                <span className={p.resultadoNombre}>{item.nombre}</span>
-                <span className={p.resultadoMeta}>
-                  {' · '}{item.detalle}{item.marca ? ` · ${item.marca}` : ''}
-                  {' · '}
-                  <span className={item.stock <= 0 ? p.sinStock : undefined}>
-                    {num(item.stock)} {item.unidad}
+          {resultados.map((item, i) => {
+            /* El renglón del BULTO dice tres cosas que el de la unidad no
+             * tiene: de a cuántas se vende, con qué lista, y cuánto sale
+             * cerrado. Lo demás (nombre, stock, bloqueos) es idéntico — es el
+             * mismo artículo visto de otra forma. */
+            const bulto = item._bulto;
+            const lista = bulto ? listasPorId?.get(item._escaneoListaId) : null;
+            /* El stock se sigue contando en UNIDADES, que es como está en el
+             * depósito. Al lado va cuántos bultos enteros se pueden armar con
+             * eso: "hay 30 u. · 2 cajas" evita la resta mental en el mostrador. */
+            const cajasEnteras = bulto ? Math.floor((Number(item.stock) || 0) / bulto.unidades) : 0;
+            return (
+              <button
+                key={item._uiKey ?? item.key}
+                type="button"
+                className={cx(p.resultado, i === activo && p.resultadoActivo)}
+                onMouseEnter={() => setActivo(i)}
+                onClick={() => elegir(item)}
+              >
+                <span>
+                  <span className={p.resultadoNombre}>{item.nombre}</span>
+                  <span className={p.resultadoMeta}>
+                    {' · '}
+                    {bulto
+                      ? <strong>Bulto × {num(bulto.unidades)}{lista?.etiqueta ? ` · ${lista.etiqueta}` : ''}</strong>
+                      : item.detalle}
+                    {item.marca ? ` · ${item.marca}` : ''}
+                    {' · '}
+                    <span className={item.stock <= 0 ? p.sinStock : undefined}>
+                      {num(item.stock)} {item.unidad}
+                    </span>
+                    {bulto && (
+                      <span className={cajasEnteras <= 0 ? p.sinStock : undefined}>
+                        {' · '}{num(cajasEnteras)} bulto{cajasEnteras === 1 ? '' : 's'}
+                      </span>
+                    )}
+                    {/* La marca del 0089 a la vista: el cajero ve el porqué ANTES
+                        de intentar agregarlo y comerse el rechazo. */}
+                    {item.soloCafeteria && <span className={p.sinStock}>{' · '}solo Cafetería</span>}
                   </span>
-                  {/* La marca del 0089 a la vista: el cajero ve el porqué ANTES
-                      de intentar agregarlo y comerse el rechazo. */}
-                  {item.soloCafeteria && <span className={p.sinStock}>{' · '}solo Cafetería</span>}
                 </span>
-              </span>
-              <span className={p.resultadoPrecio}>
-                {/* El FINAL con IVA: acá se le contesta el precio al cliente.
-                    El neto es la moneda del renglón, no la del mostrador. */}
-                {item.precioFinal > 0 ? money(item.precioFinal) : <span className={p.sinStock}>sin precio</span>}
-              </span>
-            </button>
-          ))}
+                <span className={p.resultadoPrecio}>
+                  {/* El FINAL con IVA: acá se le contesta el precio al cliente.
+                      El neto es la moneda del renglón, no la del mostrador.
+                      En el bulto, el número grande es el del BULTO CERRADO —
+                      es el que pregunta el que se lleva la caja. */}
+                  {bulto
+                    ? (bulto.precioFormato > 0
+                      ? money(bulto.precioFormato)
+                      : <span className={p.sinStock}>sin precio</span>)
+                    : (item.precioFinal > 0
+                      ? money(item.precioFinal)
+                      : <span className={p.sinStock}>sin precio</span>)}
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -1327,7 +1356,7 @@ export function PosPanel() {
         <div className={p.regMain}>
           {/* ------ Columna de trabajo: escanear → confirmar → corregir ------ */}
           <div className={p.regIzq}>
-            <Buscador catalogo={catalogo ?? []} config={config} onElegir={agregar} inputRef={buscadorRef} />
+            <Buscador catalogo={catalogo ?? []} config={config} onElegir={agregar} inputRef={buscadorRef} listasPorId={listasPorId} />
 
             {/* El "visor" de la registradora: lo último que entró, en grande. */}
             <div key={flashTick} className={cx(p.ultimoStrip, flashTick > 0 && p.ultimoFlash)}>

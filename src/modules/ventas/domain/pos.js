@@ -61,6 +61,44 @@ export function motivoBloqueo(item) {
 }
 
 /**
+ * EL MISMO ARTÍCULO, UNA ENTRADA POR FORMA DE VENDERLO.
+ *
+ * Un artículo que se vende de a 12 estaba en el catálogo una sola vez y decía
+ * "Unidad", porque `detalle` sale del TIPO del producto (entero/granel) y el
+ * bulto no es un tipo: es una fila de `producto_listas` con `unidades: 12`.
+ * Al bulto solo se llegaba **escaneando el código de la caja** — y si la caja
+ * no tiene código propio, o el cajero busca por nombre, no había forma: ponía
+ * 1, cobraba precio de mostrador y la caja de 12 salía como una unidad suelta.
+ *
+ * Acá el bulto se vuelve visible: cada formato de a N aparece como su propia
+ * opción, al lado de la unidad. No hay nada nuevo abajo — se marca igual que
+ * un escaneo (`_escaneoUnidades` + `_escaneoListaId`), así que carga las N y
+ * fija la lista por el mismo camino que ya existía y ya estaba probado.
+ *
+ * La unidad sigue primero y siempre: es la venta de todos los días, y Enter
+ * agrega el primero de la lista. Elegir el bulto es un acto deliberado.
+ */
+function comoBulto(item, f) {
+  return {
+    ...item,
+    /* La CLAVE DEL TICKET no cambia: son el mismo artículo, y doce sueltas más
+     * una caja de doce tienen que sumar en un solo renglón de 24. La de la
+     * lista de resultados sí, porque React necesita distinguirlas. */
+    _uiKey: `${item.key}#${f.listaId}`,
+    _escaneoUnidades: f.unidades,
+    _escaneoListaId: f.listaId,
+    /** Lo que la fila necesita para MOSTRARSE como bulto y no como unidad. */
+    _bulto: { unidades: f.unidades, precioFormato: f.precioFormato ?? 0 },
+  };
+}
+
+function conSusFormatos(item) {
+  const bultos = (item.formatosVenta ?? []).filter((f) => f.unidades > 1);
+  if (!bultos.length) return [item];
+  return [{ ...item, _uiKey: item.key }, ...bultos.map((f) => comoBulto(item, f))];
+}
+
+/**
  * Busca en el catálogo lo que el cajero tipeó o escaneó.
  * Prioridad: código exacto → código que termina igual → nombre/marca.
  * El orden importa: un escaneo tiene que resolver en un solo resultado.
@@ -72,12 +110,20 @@ export function buscarEnCatalogo(catalogo, texto, limite = 8) {
   const exacto = catalogo.filter((i) => i.codigoBarras && i.codigoBarras === q);
   if (exacto.length) return exacto;
 
-  // Código de un FORMATO de venta (el EAN de la caja): devuelve el producto
-  // marcado con las unidades del formato — escanear la caja carga las N de
-  // una, y el motor de listas resuelve solo el precio mayorista.
+  /*
+   * Código de un FORMATO de venta (el EAN de la caja): devuelve el producto
+   * marcado con las unidades del formato — escanear la caja carga las N de
+   * una, y el motor de listas resuelve solo el precio mayorista.
+   *
+   * Se marca con `comoBulto`, el MISMO marcado que usa el buscador por nombre.
+   * Antes solo llevaba las dos banderas internas, así que hacía lo correcto
+   * —12 unidades, precio mayorista— mientras la fila en pantalla seguía
+   * diciendo "Unidad · $1.815": el cajero escaneaba una caja y leía el precio
+   * de una botella. Hacía lo mismo y se explicaba distinto.
+   */
   for (const i of catalogo) {
     const f = (i.formatosVenta ?? []).find((x) => x.codigoBarras && x.codigoBarras === q);
-    if (f) return [{ ...i, _escaneoUnidades: f.unidades, _escaneoListaId: f.listaId }];
+    if (f) return [comoBulto(i, f)];
   }
 
   if (/^\d{3,}$/.test(q)) {
@@ -85,10 +131,20 @@ export function buscarEnCatalogo(catalogo, texto, limite = 8) {
     if (parcial.length) return parcial.slice(0, limite);
   }
 
+  /*
+   * Los bultos se abren SOLO en la búsqueda por nombre, a propósito. Los dos
+   * caminos de arriba son de ESCÁNER, y ahí un código tiene que resolver en un
+   * resultado y agregarse solo: abrirlos ahí pondría opciones debajo de algo
+   * que ya se agregó. El que busca por nombre, en cambio, está eligiendo.
+   *
+   * El límite se aplica a los ARTÍCULOS y después se abren sus formas: si no,
+   * un artículo con tres bultos se comería la lista y escondería a los otros.
+   */
   const ql = norm(q);
   return catalogo
     .filter((i) => norm(i.nombre).includes(ql) || norm(i.marca).includes(ql))
-    .slice(0, limite);
+    .slice(0, limite)
+    .flatMap(conSusFormatos);
 }
 
 /* ------------------------------------------------------------------ *
