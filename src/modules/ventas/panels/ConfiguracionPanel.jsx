@@ -558,7 +558,7 @@ export function ConfiguracionPanel() {
           />
           <Interruptor
             label="Permitir vender sin stock"
-            hint="Dejarlo apagado: el inventario en negativo no se recupera más."
+            hint="Prendido, la caja no se frena: vende igual y cada renglón que se va a negativo deja una incidencia en Almacén › Incidencias › Ventas sin stock, con el comprobante y el cajero, para ir a contar la góndola. Apagado, el cajero no puede cobrar hasta que alguien cargue el stock."
             checked={draft.permitirStockNegativo}
             onChange={set('permitirStockNegativo')}
           />

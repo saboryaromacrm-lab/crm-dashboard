@@ -145,6 +145,44 @@ export const TIPOS_INCIDENCIA = [
   'Diferencia de inventario', 'Producto defectuoso', 'Producto vencido',
 ];
 
+/**
+ * VENTA SIN STOCK (0096) — la incidencia que NO se carga a mano.
+ * ============================================================================
+ * La escribe sola la caja cuando un renglón se va a negativo. No está en
+ * `TIPOS_INCIDENCIA` a propósito: ese es el menú de "reportar una anomalía", y
+ * esta no se reporta — pasa.
+ *
+ * No se llama "error de stock": el sistema no se equivocó, vendió lo que se le
+ * pidió. Lo que dice es que el inventario tenía MENOS de lo que había en la
+ * góndola, y que hay que ir a contar.
+ */
+export const TIPO_VENTA_SIN_STOCK = 'venta_sin_stock';
+
+/** Cómo se lee cada tipo en pantalla (los que no están, se muestran tal cual). */
+export const ETIQUETA_TIPO_INCIDENCIA = {
+  [TIPO_VENTA_SIN_STOCK]: 'Venta sin stock',
+  faltante: 'Faltante en recepción',
+};
+
+/**
+ * Las dos salidas de una venta sin stock. Ninguna toca stock comprometido —
+ * acá nunca hubo nada retenido, la mercadería ya salió por la puerta.
+ */
+export const RESOLUCIONES_SIN_STOCK = {
+  ajustado: 'Conté la góndola y ajusto el stock',
+  error_carga: 'Fue un error de carga (no tocar el stock)',
+};
+
+/** Cómo se lee una resolución ya cerrada. */
+export const ETIQUETA_RESOLUCION = {
+  ...RESOLUCIONES_SIN_STOCK,
+  venta_anulada: 'Se anuló la venta',
+  liberar: 'Liberado a disponible',
+  merma: 'Baja por merma',
+  defectuoso: 'Baja: producto defectuoso',
+  vencido: 'Baja: producto vencido',
+};
+
 // ---- Roles y permisos ----
 // Los roles son DINÁMICOS: viven en la base (tabla roles) con su lista de
 // permisos, y viajan resueltos en cada usuario del bootstrap (rolClave,

@@ -809,7 +809,10 @@ const operacionesAlmacen = (q = '') => httpClient.get('/operaciones/almacen' + q
 
 const crearIncidencia = (o) => _mutate(() => httpClient.post('/incidencias', o));
 const avanzarIncidencia = (id) => _mutate(() => httpClient.post('/incidencias/' + id + '/avanzar'));
-const resolverIncidencia = (id, resolucion) => _mutate(() => httpClient.post('/incidencias/' + id + '/resolver', { resolucion }));
+/* `contado` solo viaja en la resolución `ajustado` de una venta sin stock:
+ * es cuánto hay EN LA GÓNDOLA, y el stock queda en ese número. */
+const resolverIncidencia = (id, resolucion, contado) => _mutate(() => httpClient.post('/incidencias/' + id + '/resolver',
+  contado === undefined ? { resolucion } : { resolucion, contado }));
 
 /**
  * Un `<input type="date">` entrega `yyyy-mm-dd`, que `new Date()` interpreta
