@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Button, Snackbar, Alert } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
 import { FullScreenLoader } from '@shared/components/FullScreenLoader/FullScreenLoader.jsx';
 import { cx } from '@shared/utils/classNames.js';
+import { pedidosCafe } from '@core/services/pedidosCafe.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { ModalHost } from '../components/ModalHost.jsx';
 import { Btn, s } from '../components/ui.jsx';
@@ -23,6 +24,7 @@ import { OperacionesPanel } from '../panels/OperacionesPanel.jsx';
 import { IncidenciasPanel } from '../panels/IncidenciasPanel.jsx';
 import { CafeteriaPanel } from '../panels/CafeteriaPanel.jsx';
 import { CafeteriaPedidosPanel } from '../panels/CafeteriaPedidosPanel.jsx';
+import { CafeteriaProductosPanel } from '../panels/CafeteriaProductosPanel.jsx';
 import { VencimientosPanel } from '../panels/VencimientosPanel.jsx';
 import { ConteosPanel } from '../panels/ConteosPanel.jsx';
 
@@ -53,6 +55,7 @@ const PANEL_COMPONENTS = {
   cafeteria: CafeteriaPanel,
   // La pantalla del rol Cafetería: armar el pedido a la distribuidora.
   'cafeteria-pedidos': CafeteriaPedidosPanel,
+  'cafeteria-productos': CafeteriaProductosPanel,
   // El vigía de fechas: lógica de la app externa, datos 100% del sistema.
   vencimientos: VencimientosPanel,
   // El físico contra el virtual (0066): sesiones de conteo por diferencia.
@@ -68,6 +71,9 @@ const PANEL_COMPONENTS = {
 export function InventoryShell({ title, subtitle }) {
   const { store, panels, panel, goPanel, toast, toastState, closeToast } = useProductos();
   const [refreshing, setRefreshing] = useState(false);
+  const pedidosCafeSinResolver = useSyncExternalStore(
+    pedidosCafe.subscribe, pedidosCafe.sinResolver, pedidosCafe.sinResolver,
+  );
 
   const counts = {
     incidencias: store.incidenciasAbiertas().length,
@@ -75,8 +81,15 @@ export function InventoryShell({ title, subtitle }) {
     // Facturas de papel esperando que alguien las cargue: sin el aviso, el papel
     // se queda en la bandeja como se quedaba en el cajón.
     lecturas: store.state.lecturasPendientes || 0,
-    // La demanda del café que espera: pedidos pendientes o armándose.
-    pedidosCafe: store.state.pedidosCafeteriaPendientes || 0,
+    /*
+     * LA DEMANDA DEL CAFÉ QUE ESPERA — de lo que le pidieron A ESTA SUCURSAL.
+     *
+     * Sale del mismo poller que la campanita del encabezado y no del snapshot
+     * del inventario: ese snapshot es COMPARTIDO (mismo ETag para todos), así
+     * que desde el 0098 —cada sucursal ve solo sus pedidos— el número de ahí
+     * era el total de todas, y a Norte le sonaba por un pedido del Depósito.
+     */
+    pedidosCafe: pedidosCafeSinResolver,
     // Lo que apura del vigía de fechas: vencidos sin procesar + vencen en ≤7 días.
     vencimientos: store.state.vencimientosUrgentes || 0,
   };

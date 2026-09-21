@@ -21,6 +21,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import LocalCafeIcon from '@mui/icons-material/LocalCafe';
+import BakeryDiningIcon from '@mui/icons-material/BakeryDining';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 
@@ -89,10 +90,23 @@ export const ALMACEN_PANELS = [
   { id: 'vencimientos',   label: 'Vencimientos',   icon: EventBusyIcon,      permiso: 'almacen.vencimientos', badge: 'vencimientos' },
   // Punto de SALIDA hacia coffit: el CRM no lleva el stock del café. El globito
   // avisa la demanda del café que espera (pedidos pendientes o armándose).
-  { id: 'cafeteria',      label: 'Cafetería',      icon: LocalCafeIcon,      permiso: 'almacen.cafeteria', badge: 'pedidosCafe' },
+  /* Dos permisos: la distribuidora entra por `almacen.cafeteria` y el rol
+     Cafetería por el suyo — es la misma pantalla, y cada uno ve y opera lo
+     que la API le deja. Sin esto, el rol Cafetería no tenía cómo llegar. */
+  /* `labelCafe`: cómo se llama la sección para el rol Cafetería. Para ella,
+     "Cafetería" es su propio nombre — el otro lado del puente se llama
+     "Sabor y Aroma". Ver `domain/cafeteria.voz.js`. */
+  { id: 'cafeteria',      label: 'Cafetería',      labelCafe: 'Sabor y Aroma',      icon: LocalCafeIcon,      permiso: ['almacen.cafeteria', 'almacen.cafeteria-entradas'], badge: 'pedidosCafe' },
   /*
    * La pantalla DE la cafetería: armar el pedido a la distribuidora. Es la
    * única sección del rol Cafetería — ese usuario entra al CRM y ve SOLO esto.
    */
-  { id: 'cafeteria-pedidos', label: 'Pedido a la distribuidora', icon: LocalCafeIcon, permiso: 'almacen.cafeteria-pedidos' },
+  /*
+   * La puerta chica al catálogo del café: la cafetería da de alta lo que
+   * elabora sin entrar a Compras › Productos, que abre el catálogo entero con
+   * precios, costos y proveedores. Escribir es de `almacen.cafeteria-entradas`
+   * (café y admin); mirar, de toda la sección.
+   */
+  { id: 'cafeteria-productos', label: 'Productos Coffit', labelCafe: 'Mis productos', icon: BakeryDiningIcon, permiso: ['almacen.cafeteria', 'almacen.cafeteria-entradas'] },
+  { id: 'cafeteria-pedidos', label: 'Pedido a la distribuidora', labelCafe: 'Pedido a Sabor y Aroma', icon: LocalCafeIcon, permiso: 'almacen.cafeteria-pedidos' },
 ];

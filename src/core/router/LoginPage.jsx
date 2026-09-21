@@ -111,14 +111,27 @@ export function LoginPage() {
    * no sabe quién es superadmin, y publicarlo sería regalar a quién atacar —
    * por eso el default es "vacío que el servidor juzga" y no "campo que
    * desaparece para el superadmin". */
-  const sinSucursal = !terminal && !sucursalId;
+  /*
+   * HAY PUESTOS QUE NO ESTÁN EN NINGUNA SUCURSAL (0098) — hoy, la cafetería:
+   * no está adentro de un local, habla CON los locales. A esa persona no se le
+   * pregunta nada, ni siquiera con el equipo registrado: elegir una sería
+   * inventar un dato, y después ese dato se cuela en lo que graba.
+   *
+   * `pideSucursal` viene por usuario desde `/auth/opciones` y es lo ÚNICO que
+   * ese endpoint público suma: no dice qué rol es ni qué puede hacer. Y es una
+   * comodidad de la pantalla, no el candado — el servidor decide igual por el
+   * rol, así que mandar una sucursal a mano desde afuera no cambia nada.
+   */
+  const noVaSucursal = usuario ? usuario.pideSucursal === false : false;
+  const sinSucursal = !noVaSucursal && !terminal && !sucursalId;
   const sucursal = useMemo(
     () => {
+      if (noVaSucursal) return { id: null, nombre: '' };
       if (terminal) return terminal.sucursal;
       if (!sucursalId) return { id: null, nombre: 'Sin especificar' };
       return sucursales.find((s) => s.id === Number(sucursalId));
     },
-    [terminal, sucursales, sucursalId],
+    [noVaSucursal, terminal, sucursales, sucursalId],
   );
 
   /*
@@ -249,7 +262,22 @@ export function LoginPage() {
                     eso lo hace un jefe desde Sistema › Este equipo, y así el
                     cambio queda registrado en vez de pasar en el aire.
                   */}
-                  {terminal ? (
+                  {noVaSucursal ? (
+                    /* Ni desplegable ni cartel de equipo: este puesto trabaja
+                       fuera de las sucursales y la pregunta no aplica. */
+                    <Stack
+                      direction="row" spacing={1.5} alignItems="center"
+                      sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}
+                    >
+                      <StorefrontIcon color="primary" />
+                      <div>
+                        <Typography variant="subtitle2">No trabajás en una sucursal</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          La sucursal la elegís en cada envío y en cada pedido
+                        </Typography>
+                      </div>
+                    </Stack>
+                  ) : terminal ? (
                     <Stack
                       direction="row" spacing={1.5} alignItems="center"
                       sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}
@@ -322,17 +350,21 @@ export function LoginPage() {
                 <Stack direction="row" spacing={1.5} alignItems="center">
                   <StorefrontIcon color="primary" />
                   <div>
-                    <Typography variant="subtitle2">{sucursal?.nombre}</Typography>
+                    <Typography variant="subtitle2">
+                      {noVaSucursal ? 'Sin sucursal' : sucursal?.nombre}
+                    </Typography>
                     <Typography variant="caption" color="text.secondary">
                       {/* Vacío llega acá también la cajera que se olvidó de
                           elegir: el texto tiene que servirle a los dos — al
                           superadmin le cuenta qué pasa, a ella la manda de
                           vuelta al campo antes de que el servidor la rechace. */}
-                      {terminal
-                        ? `Sucursal de este equipo (${terminal.nombre})`
-                        : sinSucursal
-                          ? 'Así entra solo el superadmin (parado en la central); si no lo sos, volvé y elegí la sucursal'
-                          : 'Sucursal de trabajo de esta sesión'}
+                      {noVaSucursal
+                        ? 'Este puesto trabaja fuera de las sucursales'
+                        : terminal
+                          ? `Sucursal de este equipo (${terminal.nombre})`
+                          : sinSucursal
+                            ? 'Así entra solo el superadmin (parado en la central); si no lo sos, volvé y elegí la sucursal'
+                            : 'Sucursal de trabajo de esta sesión'}
                     </Typography>
                   </div>
                 </Stack>

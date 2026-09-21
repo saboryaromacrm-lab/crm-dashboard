@@ -60,7 +60,6 @@ function nuevoEstado() {
     // Cuántas facturas de papel esperan que alguien las cargue (para el globito
     // del menú). Es solo el número: la bandeja la pide su panel.
     lecturasPendientes: 0,
-    pedidosCafeteriaPendientes: 0,
     // Lo que apura del vigía de fechas (vencidos sin procesar + vence en ≤7 días).
     vencimientosUrgentes: 0,
     ctx: _loadCtx(),
@@ -421,6 +420,17 @@ function tiposMovPermitidos() {
 function setCtx(k, v) { state.ctx[k] = v; _persistCtx(); emit(); }
 
 /* ---------------- Carga y sincronización con la API ---------------- */
+/**
+ * El resultado de una mutación que falló, igual en los cuatro caminos.
+ *
+ * Lleva el `status` además del texto: hay respuestas que no son un error a
+ * secas —un 409 es "esto ya existe, confirmá"— y quien llama tiene que poder
+ * distinguirlas sin ponerse a leer el mensaje.
+ */
+function _fallo(e) {
+  return { ok: false, error: _errMsg(e), status: e?.status, datos: e?.data ?? null };
+}
+
 function _errMsg(e) {
   const d = e instanceof HttpError ? e.data : null;
   if (d && d.message) return Array.isArray(d.message) ? d.message.join(', ') : d.message;
@@ -444,7 +454,6 @@ function mergeState(data) {
   }));
   state.incidencias = (data.incidencias || []).map((i) => ({ ...i, presId: i.presentacionId ?? null }));
   state.lecturasPendientes = Number(data.lecturasPendientes) || 0;
-  state.pedidosCafeteriaPendientes = Number(data.pedidosCafeteriaPendientes) || 0;
   state.vencimientosUrgentes = Number(data.vencimientosUrgentes) || 0;
 }
 
@@ -625,7 +634,21 @@ async function init() {
       state.ctx.usuarioId = jefe ? jefe.id : null;
     }
     if (state.ctx.sucursalId != null && !getSucursal(state.ctx.sucursalId)) state.ctx.sucursalId = null;
-    if (state.ctx.sucursalId == null && distribuidora()) state.ctx.sucursalId = distribuidora().id;
+    /*
+     * HAY SESIONES SIN SUCURSAL (0098) y se quedan sin ninguna.
+     *
+     * El servidor devuelve `sucursal: null` para los puestos que trabajan
+     * fuera de los locales —la cafetería—, y caer a la distribuidora acá
+     * sería volver a ponerle la que el login se ocupó de no preguntarle:
+     * los formularios arrancarían apuntando al Depósito y ella mandaría las
+     * medialunas ahí sin haber elegido nada. Sin sucursal, cada formulario la
+     * pregunta.
+     */
+    const sesionSinSucursal = !!sesion && sesion.sucursal == null;
+    if (state.ctx.sucursalId == null && !sesionSinSucursal && distribuidora()) {
+      state.ctx.sucursalId = distribuidora().id;
+    }
+    if (sesionSinSucursal) state.ctx.sucursalId = null;
     _persistCtx();
     _loaded = true; _loadError = null;
   } catch (e) {
@@ -644,7 +667,7 @@ async function _mutate(fn) {
     await refetch();
     return Object.assign({ ok: true }, (data && typeof data === 'object') ? data : {});
   } catch (e) {
-    return { ok: false, error: _errMsg(e) };
+    return _fallo(e);
   }
 }
 
@@ -679,7 +702,7 @@ async function _mutateStock(fn) {
     }
     return Object.assign({ ok: true }, (data && typeof data === 'object') ? data : {});
   } catch (e) {
-    return { ok: false, error: _errMsg(e) };
+    return _fallo(e);
   }
 }
 
@@ -787,7 +810,7 @@ const guardarBorradorPedido = async (id, o) => {
     const data = await httpClient.put(`/transferencias/${id}/borrador`, { usuarioId: state.ctx.usuarioId, ...o });
     return Object.assign({ ok: true }, data && typeof data === 'object' ? data : {});
   } catch (e) {
-    return { ok: false, error: _errMsg(e) };
+    return _fallo(e);
   }
 };
 const enviarBorradorPedido = (id) => _mutate(
@@ -809,7 +832,7 @@ const _directo = async (fn) => {
   try {
     return { ok: true, data: await fn() };
   } catch (e) {
-    return { ok: false, error: _errMsg(e) };
+    return _fallo(e);
   }
 };
 const listarConteos = () => _directo(() => httpClient.get('/conteos'));
@@ -1046,6 +1069,15 @@ const envioCafeteria = (id) => httpClient.get('/cafeteria/envios/' + id);
 const resumenCafeteria = (filtros) => httpClient.get('/cafeteria/resumen' + _qsPagos(filtros || {}));
 /** Lo enviado a coffit en el período, agregado por artículo (con filtros). */
 const metricaCafeteria = (filtros) => httpClient.get('/cafeteria/metrica' + _qsPagos(filtros || {}));
+/** Último costo declarado por la cafetería, por `producto-presentación`. Se
+ *  propone en el formulario de entrada: es una sugerencia, no un dato. */
+const costosEntradaCafeteria = () => httpClient.get('/cafeteria/costos-entrada');
+/* Los productos que elabora la cafetería: su propia puerta al catálogo, con lo
+ * justo (nombre, si se cuenta o se pesa, y el precio del mostrador). */
+const productosCafeteria = () => httpClient.get('/cafeteria/productos');
+const crearProductoCafeteria = (o) => _mutate(() => httpClient.post('/cafeteria/productos', o));
+const editarProductoCafeteria = (id, o) => _mutate(() => httpClient.patch(`/cafeteria/productos/${id}`, o));
+const bajaProductoCafeteria = (id, activar) => _mutate(() => httpClient.post(`/cafeteria/productos/${id}/baja`, { activar }));
 const crearEnvioCafeteria = (o) => _mutate(() => httpClient.post('/cafeteria/envios', { usuarioId: state.ctx.usuarioId ?? undefined, ...o }));
 /**
  * Editar un envío YA ENVIADO: la API revierte el egreso viejo y aplica el
@@ -1173,7 +1205,8 @@ export const inventoryStore = {
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
   papelFactura, leerRenglonesLectura,
   pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
-  enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria,
+  enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria, costosEntradaCafeteria,
+  productosCafeteria, crearProductoCafeteria, editarProductoCafeteria, bajaProductoCafeteria,
   crearEnvioCafeteria, editarEnvioCafeteria, anularEnvioCafeteria,
   pedidosCafeteria, pedidoCafeteria, crearPedidoCafeteria, tomarPedidoCafeteria, anularPedidoCafeteria,
   vencimientos, resumenVencimientos, reportesVencimientos, crearSesionVencimientos,

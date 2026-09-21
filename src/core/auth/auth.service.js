@@ -24,8 +24,11 @@ function aUsuarioSesion(s) {
     roles: [s.usuario.rolClave],
     permissions: s.usuario.permisos ?? [],
     rolNombre: s.usuario.rolNombre,
-    sucursalId: s.sucursal.id,
-    sucursalNombre: s.sucursal.nombre,
+    /* PUEDE NO HABER SUCURSAL (0098): hay puestos que trabajan fuera de los
+     * locales —la cafetería— y el servidor devuelve `sucursal: null` para que
+     * el encabezado no muestre una que nadie eligió. */
+    sucursalId: s.sucursal?.id ?? null,
+    sucursalNombre: s.sucursal?.nombre ?? '',
   };
 }
 
@@ -98,7 +101,7 @@ export const authService = {
     httpClient.olvidarBlobs();
     // La elección del login ES el contexto de trabajo: los módulos arrancan
     // parados en esa sucursal y operando como ese usuario.
-    actualizarCtx({ sucursalId: res.sucursal.id, usuarioId: res.usuario.id }, res.usuario.id);
+    actualizarCtx({ sucursalId: res.sucursal?.id ?? null, usuarioId: res.usuario.id }, res.usuario.id);
     return aUsuarioSesion(sesion);
   },
 

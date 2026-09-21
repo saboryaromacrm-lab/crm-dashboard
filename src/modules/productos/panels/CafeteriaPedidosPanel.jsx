@@ -10,14 +10,16 @@
  * El admin también puede abrir esta pantalla (tiene la sección), pero su lugar
  * de trabajo es la bandeja de Pedidos en Almacén › Cafetería.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { fmtFecha } from '../domain/format.js';
 import { ESTADOS_PEDIDO_CAFE } from '../domain/constants.js';
+import { esVozDelCafe, vozCafeteria } from '../domain/cafeteria.voz.js';
 import { Table, PanelHead, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
 
 export function CafeteriaPedidosPanel() {
-  const { store, openModal, toast } = useProductos();
+  const { store, openModal, toast, can } = useProductos();
+  const v = useMemo(() => vozCafeteria(esVozDelCafe(can)), [can]);
   const [pedidos, setPedidos] = useState([]);
   const [cargando, setCargando] = useState(true);
 
@@ -48,6 +50,7 @@ export function CafeteriaPedidosPanel() {
       <tr key={p.id} className={s.clickable} onClick={() => openModal('pedidoCafeteriaDetalle', { id: p.id })}>
         <td className={s.mono}>{p.codigo}</td>
         <td>{fmtFecha(p.fecha)}</td>
+        <td>{p.sucursalNombre || <span className={s.muted}>—</span>}</td>
         <td><Pill pill={est.pill} label={est.label || p.estado} /></td>
         <td className={s.num}>{p.renglones}</td>
         <td>{p.envioCodigo ? <span className={s.mono}>{p.envioCodigo}</span> : <span className={s.muted}>—</span>}</td>
@@ -58,8 +61,8 @@ export function CafeteriaPedidosPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
-        title="Pedido a la distribuidora"
-        desc="Armá el pedido de mercadería del café y seguile el estado. El detalle final es el del envío que lo cumple."
+        title={v.pedidoTitulo}
+        desc={v.pedidoSub}
         actions={(
           <Btn variant="btn-primary" onClick={() => openModal('pedidoCafeteria', {})}>
             + Nuevo pedido
@@ -69,7 +72,7 @@ export function CafeteriaPedidosPanel() {
 
       <Table
         cols={[
-          { h: 'Código' }, { h: 'Fecha' }, { h: 'Estado' },
+          { h: 'Código' }, { h: 'Fecha' }, { h: v.pedidoColSuc }, { h: 'Estado' },
           { h: 'Renglones', num: true }, { h: 'Envío' },
         ]}
         empty={cargando ? 'Cargando…' : 'Sin pedidos todavía. "+ Nuevo pedido" arma el primero.'}
@@ -79,9 +82,11 @@ export function CafeteriaPedidosPanel() {
       </Table>
 
       <div className={s.hint}>
-        <strong>Pendiente</strong> = la distribuidora todavía no lo tomó (se puede anular).{' '}
+        <strong>Pendiente</strong> = la sucursal todavía no lo tomó (se puede anular).{' '}
         <strong>Armando</strong> = lo están preparando. <strong>Enviado</strong> = salió: el detalle
-        real viaja en el envío y coffit lo recibe por la sincronización de siempre.
+        real viaja en el envío y llega a coffit por la sincronización de siempre.{' '}
+        <strong>Cada pedido lo ve solo la sucursal a la que se lo pediste</strong>, y de ahí sale la
+        mercadería — por eso conviene pedirle a la que tiene lo que necesitás.
       </div>
     </div>
   );

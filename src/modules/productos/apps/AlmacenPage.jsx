@@ -4,6 +4,7 @@ import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { ProductosProvider } from '../context/ProductosContext.jsx';
 import { InventoryShell } from '../pages/InventoryShell.jsx';
 import { ALMACEN_PANELS } from '../config/productos.config.js';
+import { esVozDelCafe } from '../domain/cafeteria.voz.js';
 
 /**
  * Página del módulo Almacén. El menú interno se arma SOLO con las secciones
@@ -16,7 +17,18 @@ import { ALMACEN_PANELS } from '../config/productos.config.js';
 export function AlmacenPage() {
   const { can } = usePermissions();
   const [params] = useSearchParams();
-  const panels = useMemo(() => ALMACEN_PANELS.filter((p) => can(p.permiso)), [can]);
+  /* `permiso` puede ser una lista: alcanza con tener uno. Una sección a la
+     que llegan dos roles por caminos distintos no debería necesitar dos
+     entradas de menú que hacen exactamente lo mismo. */
+  const panels = useMemo(() => {
+    /* `labelCafe` es el nombre de la sección visto desde el café. Se resuelve
+       acá, donde se arma el menú, y no adentro de cada panel: el nombre de una
+       sección es una sola cosa y tiene que decidirse en un solo lugar. */
+    const cafe = esVozDelCafe(can);
+    return ALMACEN_PANELS
+      .filter((p) => (Array.isArray(p.permiso) ? p.permiso.some(can) : can(p.permiso)))
+      .map((p) => (cafe && p.labelCafe ? { ...p, label: p.labelCafe } : p));
+  }, [can]);
   const pedido = params.get('panel');
   const inicial = panels.some((p) => p.id === pedido) ? pedido : panels[0]?.id;
 

@@ -104,7 +104,19 @@ export function ProductoFormModal({ prodId }) {
   /** Granel que NO se vende suelto: existe solo para fraccionarse. */
   const [soloFraccionar, setSoloFraccionar] = useState(!!prod?.soloFraccionar);
   /** Uso exclusivo de Cafetería (0089): no se vende en el mostrador. */
+  /*
+   * LAS DOS MARCAS DE CAFETERÍA SE TURNAN: prender una apaga la otra.
+   *
+   * Antes una quedaba deshabilitada mientras la otra estuviera prendida, y eso
+   * dejaba dos agujeros: se podían prender las dos empezando por la de abajo
+   * (el aviso salía y Guardar seguía habilitado), y para CAMBIAR de una a la
+   * otra había que acordarse de apagar la primera. Turnarlas no puede fallar
+   * en ninguno de los dos sentidos y ahorra un click. La API valida lo mismo.
+   */
   const [soloCafeteria, setSoloCafeteria] = useState(!!prod?.soloCafeteria);
+  const [origenCafeteria, setOrigenCafeteria] = useState(!!prod?.origenCafeteria);
+  const marcarSoloCafeteria = (v) => { setSoloCafeteria(v); if (v) setOrigenCafeteria(false); };
+  const marcarOrigenCafeteria = (v) => { setOrigenCafeteria(v); if (v) setSoloCafeteria(false); };
   /** Catálogo que se está administrando encima del formulario (o null). */
   const [admin, setAdmin] = useState(null);
 
@@ -162,6 +174,7 @@ export function ProductoFormModal({ prodId }) {
       esGranel,
       soloFraccionar: esGranel ? soloFraccionar : false,
       soloCafeteria,
+      origenCafeteria,
     };
     if (!ed && f.proveedorId) {
       o.proveedorId = parseInt(f.proveedorId, 10);
@@ -235,7 +248,7 @@ export function ProductoFormModal({ prodId }) {
         )}
 
         <label className={s['granel-toggle']}>
-          <input type="checkbox" checked={soloCafeteria} onChange={(e) => setSoloCafeteria(e.target.checked)} />
+          <input type="checkbox" checked={soloCafeteria} onChange={(e) => marcarSoloCafeteria(e.target.checked)} />
           <span>
             <span className={s['t-title']}>Uso exclusivo de Cafetería — no se vende en el mostrador</span><br />
             <span className={s['t-sub']}>
@@ -245,6 +258,43 @@ export function ProductoFormModal({ prodId }) {
             </span>
           </span>
         </label>
+        {/*
+          EL ESPEJO DEL DE ARRIBA (0097), y no se pisan: aquel dice "esto no se
+          vende acá", este dice "esto no se compra acá". Marcarlo habilita que
+          el producto llegue por un envío de la cafetería, y es la lista blanca
+          de ese circuito.
+        */}
+        <label className={s['granel-toggle']}>
+          <input
+            type="checkbox" checked={origenCafeteria}
+            onChange={(e) => marcarOrigenCafeteria(e.target.checked)}
+          />
+          <span>
+            <span className={s['t-title']}>Lo elabora la cafetería — llega por un envío de ella</span><br />
+            <span className={s['t-sub']}>
+              La medialuna, el sándwich, el café molido: entran al stock por Almacén › Cafetería ›
+              «Nos mandó», con el costo que declara la cafetería, y se venden en el mostrador como
+              cualquier otro producto. No lleva formato de compra ni proveedor.
+            </span>
+          </span>
+        </label>
+        {/* Lo que SÍ puede pasar ahora: que el cambio haya apagado la otra marca
+            sin que la persona lo pida. Se avisa solo si de verdad cambió algo
+            que estaba guardado — no en cada tilde. */}
+        {ed && prod?.soloCafeteria && origenCafeteria && (
+          <div className={cx(s.callout, s.warn)}>
+            Al marcar <strong>«lo elabora»</strong> se destildó <strong>«uso exclusivo»</strong>:
+            son excluyentes. Este producto pasa de ser algo que la cafetería consume a algo que
+            la cafetería produce.
+          </div>
+        )}
+        {ed && prod?.origenCafeteria && soloCafeteria && (
+          <div className={cx(s.callout, s.warn)}>
+            Al marcar <strong>«uso exclusivo»</strong> se destildó <strong>«lo elabora»</strong>:
+            son excluyentes. Ojo: este producto deja de poder llegar por un envío de la cafetería.
+          </div>
+        )}
+
         {/* El destilde vuelve el producto vendible YA: si nunca se vendió, lo
             más probable es que no tenga precio cargado — avisarlo acá, antes
             de guardar, y no después de la primera venta rara. */}

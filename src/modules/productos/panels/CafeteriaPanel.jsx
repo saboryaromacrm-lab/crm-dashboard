@@ -8,14 +8,18 @@
  *    el acto: con el envío ya se da por hecho que coffit recibió) y la
  *    corrección es EDITARLO — cada cambio sube la versión y coffit lo ve en su
  *    próxima sincronización.
- *  · MÉTRICA — qué se le mandó al café en el período, agregado por artículo,
- *    con filtros. El agregado lo hace la API: acá solo se muestra.
+ *  · RECIBIDOS — el camino de vuelta (0097): lo que la cafetería ELABORA y
+ *    manda a una sucursal para venderse en el mostrador. Mismo documento, otro
+ *    sentido: ahí el stock INGRESA y el costo lo declara ella.
+ *  · MÉTRICA — qué se movió en el período, agregado por artículo y con filtros,
+ *    por sentido. El agregado lo hace la API: acá solo se muestra.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money, num, fmtFecha, isoDate } from '../domain/format.js';
-import { ESTADOS_ENVIO_CAFE, ESTADOS_PEDIDO_CAFE, MODOS_ENVIO_CAFE } from '../domain/constants.js';
+import { ESTADOS_PEDIDO_CAFE, MODOS_ENVIO_CAFE, estadoEnvioCafe } from '../domain/constants.js';
+import { esVozDelCafe, vozCafeteria } from '../domain/cafeteria.voz.js';
 import { Table, PanelHead, Stat, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
 
 const inicioDeMes = () => {
@@ -23,9 +27,12 @@ const inicioDeMes = () => {
   return isoDate(new Date(d.getFullYear(), d.getMonth(), 1));
 };
 
-const PESTANAS = [
-  { id: 'pedidos', label: 'Pedidos' },
-  { id: 'envios', label: 'Envíos' },
+/* Los rótulos salen del diccionario de voz: la misma pestaña se llama distinto
+ * según de qué lado del puente esté el que mira. Ver `domain/cafeteria.voz.js`. */
+const pestanasDe = (v) => [
+  { id: 'pedidos', label: v.tabPedidos },
+  { id: 'envios', label: v.tabSalida },
+  { id: 'recibidos', label: v.tabEntrada },
   { id: 'metrica', label: 'Métrica' },
 ];
 
@@ -33,20 +40,40 @@ export function CafeteriaPanel() {
   const { store, can, openModal, toast } = useProductos();
   /* Ver la seccion habilita mandar mercaderia: es lo que ya permite la API. */
   const puedeOperar = can('almacen.cafeteria');
+  /* El rol Cafetería carga SUS envíos (los de entrada) y nada más; el admin
+   * puede los dos. El candado de verdad está en la API — esto solo evita
+   * ofrecer un botón que iba a rebotar. */
+  const puedeCargarEntradas = puedeOperar || can('almacen.cafeteria-entradas');
+  /* Toda la pantalla habla en la voz del que la abre. Un solo lugar donde se
+   * decide quién está mirando; de ahí en más se piden textos, no roles. */
+  const v = useMemo(() => vozCafeteria(esVozDelCafe(can)), [can]);
+  const PESTANAS = useMemo(() => pestanasDe(v), [v]);
 
-  // Arranca en Pedidos: es la cola de trabajo (el aviso del admin cae acá).
-  const [pestana, setPestana] = useState('pedidos');
+  /*
+   * DÓNDE ARRANCA LA PANTALLA, según para qué la abre cada uno.
+   *
+   * Para la distribuidora es Pedidos: la cola de trabajo, donde cae el aviso.
+   * Para la cafetería NO, y esto se vio usándolo: entraba, veía «Sin pedidos
+   * del café» y ningún botón, porque lo suyo —cargar lo que mandó— vive en la
+   * pestaña de al lado. La persona quedaba parada en una pantalla sin nada
+   * que hacer, que es la peor forma de esconder una función.
+   */
+  const soloCafe = puedeCargarEntradas && !puedeOperar;
+  const [pestana, setPestana] = useState(soloCafe ? 'recibidos' : 'pedidos');
   const [desde, setDesde] = useState(inicioDeMes());
   const [hasta, setHasta] = useState(isoDate(new Date()));
 
-  /* ---- Envíos ---- */
+  /* ---- Envíos (los dos sentidos: se piden por separado y se muestran por
+     separado, porque mezclarlos daría un total que no significa nada) ---- */
   const [estadoF, setEstadoF] = useState('');
   const [envios, setEnvios] = useState([]);
+  const [recibidos, setRecibidos] = useState([]);
   const [resumen, setResumen] = useState(null);
   const [cargando, setCargando] = useState(true);
 
   /* ---- Métrica ---- */
   const [buscar, setBuscar] = useState('');
+  const [sentidoMet, setSentidoMet] = useState('salida');
   const [metrica, setMetrica] = useState(null);
 
   /* ---- Pedidos (la demanda del café) ---- */
@@ -56,13 +83,15 @@ export function CafeteriaPanel() {
     setCargando(true);
     try {
       const filtros = { desde: desde || undefined, hasta: hasta || undefined };
-      const [lista, res, met, peds] = await Promise.all([
-        store.enviosCafeteria({ ...filtros, estado: estadoF || undefined }),
+      const [lista, entr, res, met, peds] = await Promise.all([
+        store.enviosCafeteria({ ...filtros, estado: estadoF || undefined, sentido: 'salida' }),
+        store.enviosCafeteria({ ...filtros, estado: estadoF || undefined, sentido: 'entrada' }),
         store.resumenCafeteria(filtros),
-        store.metricaCafeteria({ ...filtros, buscar: buscar.trim() || undefined }),
+        store.metricaCafeteria({ ...filtros, buscar: buscar.trim() || undefined, sentido: sentidoMet }),
         store.pedidosCafeteria({ limit: 100 }),
       ]);
       setEnvios(lista);
+      setRecibidos(entr);
       setResumen(res);
       setMetrica(met);
       setPedidos(peds);
@@ -71,7 +100,7 @@ export function CafeteriaPanel() {
     } finally {
       setCargando(false);
     }
-  }, [store, desde, hasta, estadoF, buscar, toast]);
+  }, [store, desde, hasta, estadoF, buscar, sentidoMet, toast]);
   useEffect(() => { cargar(); }, [cargar]);
 
   /*
@@ -93,10 +122,12 @@ export function CafeteriaPanel() {
 
   const clave = `${pestana}|${desde}|${hasta}|${estadoF}`;
   const pag = usePaginado(envios, 'cafeteria', clave);
-  const pagMet = usePaginado(metrica?.productos ?? [], 'cafeteria-metrica', `${desde}|${hasta}|${buscar}`);
+  const pagRec = usePaginado(recibidos, 'cafeteria-recibidos', clave);
+  const pagMet = usePaginado(metrica?.productos ?? [], 'cafeteria-metrica', `${desde}|${hasta}|${buscar}|${sentidoMet}`);
 
-  const filasEnvios = pag.visibles.map((e) => {
-    const est = ESTADOS_ENVIO_CAFE[e.estado] || {};
+  /** La fila es la misma en los dos sentidos: cambia el título de la columna. */
+  const filaEnvio = (e) => {
+    const est = estadoEnvioCafe(e.estado, e.sentido);
     return (
       <tr
         key={e.id}
@@ -120,7 +151,9 @@ export function CafeteriaPanel() {
         <td className={cx(s.num, s.mono)}>{money(e.totalCosto)}</td>
       </tr>
     );
-  });
+  };
+  const filasEnvios = pag.visibles.map(filaEnvio);
+  const filasRecibidos = pagRec.visibles.map(filaEnvio);
 
   const filasMetrica = pagMet.visibles.map((p) => (
     <tr key={`${p.productoId}-${p.presentacionId ?? 0}`}>
@@ -136,13 +169,34 @@ export function CafeteriaPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
-        title="Cafetería"
-        desc='El punto de salida hacia coffit: el envío egresa a costo y del otro lado entra al almacén "Sabor y Aroma", donde coffit clasifica. Acá no hay existencias.'
-        actions={puedeOperar && pestana === 'envios' && (
-          <Btn variant="btn-primary" onClick={() => openModal('envioCafeteria', {})}>
-            + Nuevo envío
-          </Btn>
-        )}
+        title={v.titulo}
+        desc={v.desc}
+        /*
+          EL BOTÓN NO DEPENDE DE LA PESTAÑA QUE SE ESTÉ MIRANDO. Antes sí, y el
+          resultado era que desde Pedidos o desde Métrica no había forma de
+          cargar nada: cargar un envío es algo que se puede hacer siempre, y la
+          pestaña es dónde se MIRA, no qué se PUEDE.
+
+          En la pestaña de un sentido se ofrece ese sentido; en las otras dos,
+          lo que esa persona hace todos los días. El admin no ve los dos
+          botones a la vez: sería un segundo botón principal que casi nunca se
+          usa, compitiendo con el que sí.
+        */
+        actions={(() => {
+          const entrada = pestana === 'recibidos' || (soloCafe && pestana !== 'envios');
+          if (entrada && puedeCargarEntradas) {
+            return (
+              <Btn variant="btn-primary" onClick={() => openModal('envioCafeteria', { sentido: 'entrada' })}>
+                {v.btnEntrada}
+              </Btn>
+            );
+          }
+          return puedeOperar && v.btnSalida ? (
+            <Btn variant="btn-primary" onClick={() => openModal('envioCafeteria', {})}>
+              {v.btnSalida}
+            </Btn>
+          ) : null;
+        })()}
       />
 
       {/* Pestañas. El contador de Pedidos es la demanda que espera respuesta. */}
@@ -183,10 +237,14 @@ export function CafeteriaPanel() {
         <>
           <Table
             cols={[
-              { h: 'Código' }, { h: 'Fecha' }, { h: 'Pidió' }, { h: 'Estado' },
+              { h: 'Código' }, { h: 'Fecha' }, { h: v.pedidoColSuc }, { h: 'Estado' },
               { h: 'Renglones', num: true }, { h: 'Envío' },
             ]}
-            empty={cargando ? 'Cargando…' : 'Sin pedidos del café. Cuando la cafetería arme uno, aparece acá (y suena el aviso).'}
+            empty={cargando
+              ? 'Cargando…'
+              : (soloCafe
+                ? 'Todavía no pediste nada.'
+                : 'Sin pedidos para esta sucursal. Cuando la cafetería le pida algo, aparece acá (y suena el aviso).')}
           >
             {pedidos.map((p) => {
               const est = ESTADOS_PEDIDO_CAFE[p.estado] || {};
@@ -194,7 +252,14 @@ export function CafeteriaPanel() {
                 <tr key={p.id} className={s.clickable} onClick={() => openModal('pedidoCafeteriaDetalle', { id: p.id })}>
                   <td className={s.mono}>{p.codigo}</td>
                   <td>{fmtFecha(p.fecha)}</td>
-                  <td>{p.usuarioNombre || '—'}</td>
+                  <td>
+                    {p.sucursalNombre || <span className={s.muted}>—</span>}
+                    {/* Quién lo pidió va debajo: importa, pero la sucursal es
+                        la que decide quién lo ve y de dónde sale la mercadería. */}
+                    {!soloCafe && p.usuarioNombre && (
+                      <div className={s.hint} style={{ margin: 0 }}>{p.usuarioNombre}</div>
+                    )}
+                  </td>
                   <td><Pill pill={est.pill} label={est.label || p.estado} /></td>
                   <td className={s.num}>{p.renglones}</td>
                   <td>{p.envioCodigo ? <span className={s.mono}>{p.envioCodigo}</span> : <span className={s.muted}>—</span>}</td>
@@ -203,9 +268,22 @@ export function CafeteriaPanel() {
             })}
           </Table>
           <div className={s.hint}>
-            La demanda del café. <strong>Tomar</strong> le avisa a la cafetería que se está armando;{' '}
-            <strong>Convertir en envío</strong> abre el alta con lo pedido precargado — corregís a lo
-            que de verdad va y el pedido queda cerrado. Lo pedido es propuesta; el envío es la verdad.
+            {soloCafe ? (
+              <>
+                Tus pedidos a Sabor y Aroma. <strong>Pendiente</strong> = todavía no lo tomaron (lo
+                podés anular). <strong>Armando</strong> = lo están preparando.{' '}
+                <strong>Enviado</strong> = ya salió, y el detalle real es el del envío.
+              </>
+            ) : (
+              <>
+                La demanda del café <strong>para esta sucursal</strong>: cada local ve los que le
+                pidieron a él, y el envío que lo cumple sale de acá.{' '}
+                <strong>Tomar</strong> le avisa a la cafetería que se está armando;{' '}
+                <strong>Convertir en envío</strong> abre el alta con lo pedido precargado — corregís
+                a lo que de verdad va y el pedido queda cerrado. Lo pedido es propuesta; el envío es
+                la verdad.
+              </>
+            )}
           </div>
         </>
       )}
@@ -213,11 +291,19 @@ export function CafeteriaPanel() {
       {pestana === 'envios' && (
         <>
           <div className={s.stats}>
-            <Stat label="Enviado (a costo)" value={money(resumen?.enviado ?? 0)} />
-            <Stat label="Envíos" value={resumen?.enviosCantidad ?? 0} />
-            <Stat label="Gastos imputados" value={money(resumen?.gastos ?? 0)} />
+            <Stat label={v.statSalida} value={money(resumen?.enviado ?? 0)} />
+            <Stat label={v.statEntrada} value={money(resumen?.recibido ?? 0)} />
+            {/* El número que antes no existía: de qué lado quedó la cuenta
+                entre los dos negocios en el período. */}
             <Stat
-              label="Costo total del período"
+              label={(resumen?.saldo ?? 0) >= 0 ? v.saldoCasa : v.saldoCafe}
+              value={money(Math.abs(resumen?.saldo ?? 0))}
+            />
+            <Stat label="Gastos imputados" value={money(resumen?.gastos ?? 0)} />
+            {/* Es "le mandamos + gastos", no el costo de los dos sentidos:
+                al lado de "Nos mandó" el nombre viejo se leía como un error. */}
+            <Stat
+              label={v.costoTotal}
               value={money(resumen?.costoTotal ?? 0)}
               accent="accent-amber"
             />
@@ -240,21 +326,91 @@ export function CafeteriaPanel() {
 
           <Table
             cols={[
-              { h: 'Código' }, { h: 'Fecha' }, { h: 'Origen' }, { h: 'Estado' },
+              { h: 'Código' }, { h: 'Fecha' }, { h: v.colSucSalida }, { h: 'Estado' },
               { h: 'Versión', num: true }, { h: 'Renglones', num: true }, { h: 'Total a costo', num: true },
             ]}
-            empty={cargando ? 'Cargando…' : 'Sin envíos en el período. "+ Nuevo envío" registra el primero.'}
+            empty={cargando
+              ? 'Cargando…'
+              : (soloCafe
+                ? 'Sabor y Aroma no te mandó nada en el período.'
+                : 'Sin envíos en el período. "+ Nuevo envío" registra el primero.')}
             pag={pag}
           >
             {filasEnvios}
           </Table>
 
           <div className={s.hint}>
-            <strong>El envío egresa el stock en el acto</strong>, con el costo congelado — no hay
-            etapas: con esto ya se da por hecho que el café lo recibió. Para corregir uno, entrá
-            al detalle y usá <strong>Editar</strong> (la versión sube y coffit se entera por
-            sincronización). <strong>Costo total del período</strong> = enviado + gastos imputados
-            a Cafetería.
+            {soloCafe ? (
+              <>
+                Lo que Sabor y Aroma te mandó en el período, al costo con el que salió de sus
+                depósitos. <strong>Esto no lo cargás vos</strong>: lo registran ellos al despachar,
+                y te llega a coffit por la sincronización de siempre. Si algo no coincide con lo
+                que recibiste, avisales para que lo corrijan — la versión del envío sube y vos ves
+                la corrección acá.
+              </>
+            ) : (
+              <>
+                <strong>El envío egresa el stock en el acto</strong>, con el costo congelado — no hay
+                etapas: con esto ya se da por hecho que el café lo recibió. Para corregir uno, entrá
+                al detalle y usá <strong>Editar</strong> (la versión sube y coffit se entera por
+                sincronización).
+              </>
+            )}
+          </div>
+        </>
+      )}
+
+      {pestana === 'recibidos' && (
+        <>
+          <div className={s.toolbar}>
+            <label className={s.hint} style={{ margin: 0 }}>
+              Desde <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+            </label>
+            <label className={s.hint} style={{ margin: 0 }}>
+              Hasta <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+            </label>
+            <select className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)}>
+              <option value="">Recibidos y anulados</option>
+              <option value="enviado">Solo recibidos</option>
+              <option value="anulado">Solo anulados</option>
+            </select>
+            <Btn small onClick={cargar} disabled={cargando}>{cargando ? 'Cargando…' : 'Actualizar'}</Btn>
+          </div>
+
+          <Table
+            cols={[
+              { h: 'Código' }, { h: 'Fecha' }, { h: v.colSucEntrada }, { h: 'Estado' },
+              { h: 'Versión', num: true }, { h: 'Renglones', num: true }, { h: 'Total declarado', num: true },
+            ]}
+            empty={cargando
+              ? 'Cargando…'
+              : (soloCafe
+                ? 'Todavía no mandaste nada en el período.'
+                : 'La cafetería todavía no mandó nada en el período.')}
+            pag={pagRec}
+          >
+            {filasRecibidos}
+          </Table>
+
+          <div className={s.hint}>
+            {soloCafe ? (
+              <>
+                <strong>Lo que mandás entra al stock de la sucursal en el acto</strong> y lo pueden
+                vender enseguida. El <strong>costo lo declarás vos</strong> —ellos no pueden
+                saberlo— y de ese número sale la rentabilidad cuando lo vendan: si está mal, la
+                ganancia de ese producto queda mal y nadie lo nota. Solo podés mandar los productos
+                que están marcados como <strong>elaborados por vos</strong>. Anular saca del stock
+                lo que habías mandado: si ya lo vendieron, no se puede.
+              </>
+            ) : (
+              <>
+                <strong>La mercadería ingresa al stock de la sucursal en el acto</strong> y ya se puede
+                vender en el mostrador. El <strong>costo lo declara la cafetería</strong> — el sistema
+                no puede saberlo — y de ese número sale la rentabilidad cuando se venda. Solo se pueden
+                cargar productos marcados <strong>“Lo elabora la cafetería”</strong> en su ficha.
+                Anular saca del stock lo que había ingresado: si ya se vendió, no se puede.
+              </>
+            )}
           </div>
         </>
       )}
@@ -262,11 +418,11 @@ export function CafeteriaPanel() {
       {pestana === 'metrica' && (
         <>
           <div className={s.stats}>
-            <Stat label="Envíos en el período" value={metrica?.envios ?? 0} />
+            <Stat label={sentidoMet === 'entrada' ? 'Envíos del café' : 'Envíos en el período'} value={metrica?.envios ?? 0} />
             <Stat label="Artículos distintos" value={metrica?.articulos ?? 0} />
             <Stat label="Kg totales (granel + paquetes)" value={`${num(metrica?.kgTotales ?? 0, 1)} kg`} />
             <Stat
-              label="Enviado a costo"
+              label={sentidoMet === 'entrada' ? 'Recibido (costo declarado)' : 'Enviado a costo'}
               value={money(metrica?.costoTotal ?? 0)}
               accent="accent-amber"
             />
@@ -279,6 +435,12 @@ export function CafeteriaPanel() {
             <label className={s.hint} style={{ margin: 0 }}>
               Hasta <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
             </label>
+            {/* Un sentido por vez: sumar lo que mandamos con lo que nos
+                mandaron en una sola tabla daría un total sin significado. */}
+            <select className={s['select-inline']} value={sentidoMet} onChange={(e) => setSentidoMet(e.target.value)}>
+              <option value="salida">{v.metricaSalida}</option>
+              <option value="entrada">{v.metricaEntrada}</option>
+            </select>
             <input
               type="search"
               placeholder="Buscar artículo…"
@@ -303,7 +465,7 @@ export function CafeteriaPanel() {
           <div className={s.hint}>
             Suma <strong>solo lo enviado</strong> (lo anulado no existió) al costo <strong>congelado</strong> de
             cada envío — editar precios hoy no cambia lo que ya salió. Ordenado por plata: lo de
-            arriba es lo que más le cuesta el café al negocio.
+            arriba es lo que más pesa.
           </div>
         </>
       )}

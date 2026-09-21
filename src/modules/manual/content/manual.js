@@ -2742,7 +2742,7 @@ export const MANUAL = [
   {
     id: 'cafeteria',
     titulo: 'Cafetería (coffit)',
-    resumen: 'El puente con el otro negocio del dueño: envíos a costo hacia coffit, que es el dueño del stock del café.',
+    resumen: 'El puente con el otro negocio del dueño, en los dos sentidos: le mandamos mercadería a costo, y ella nos manda lo que elabora para vender en el mostrador.',
     temas: [
       {
         id: 'cafeteria-como-funciona',
@@ -2852,6 +2852,125 @@ export const MANUAL = [
             texto: 'Decisiones ya tomadas que el desarrollo de coffit NO debe rediscutir: coffit es el dueño del stock del café (el CRM no lo espeja); el envío va a costo; la clasificación de la mercadería es de coffit; el precio de venta del café es de coffit. Están fundamentadas en la memoria del proyecto y en esta guía.',
           },
           { t: 'ruta', texto: 'crm-api/docs/contrato-coffit.md · GET /api/cafeteria/sync · GET /api/cafeteria/envios/:id' },
+        ],
+      },
+      {
+        id: 'cafeteria-vuelta',
+        actualizado: '2026-09-21',
+        titulo: 'El camino de vuelta: lo que la cafetería nos manda',
+        bloques: [
+          {
+            t: 'p',
+            texto: 'Desde el **21/9/2026** la mercadería va en los **dos sentidos**. La cafetería manda **lo que ella elabora** —medialunas, sándwiches, café molido— a la sucursal que elija, y eso **ingresa al stock y se vende en el mostrador** como cualquier otro producto. Vive en la misma pantalla, en la pestaña **«Nos mandó»**.',
+          },
+          {
+            t: 'tabla',
+            cols: ['Pieza', 'Le mandamos (salida)', 'Nos mandó (entrada)'],
+            filas: [
+              ['**El stock**', 'EGRESA de la distribuidora', 'INGRESA a la sucursal elegida'],
+              ['**El costo**', 'Lo sabe el sistema (el del formato de compra)', '**Lo declara la cafetería**, renglón por renglón'],
+              ['**Qué productos**', 'Cualquiera del catálogo', 'Solo los marcados «Lo elabora la cafetería»'],
+              ['**La sucursal**', 'De dónde sale (por defecto, la distribuidora)', '**A dónde llega** — la elige quien envía'],
+              ['**El código**', 'CAF0001', 'RCA0001'],
+              ['**Quién lo carga**', 'La distribuidora', 'El rol **Cafetería** (y el admin)'],
+              ['**Coffit**', 'Lo recibe por sincronización', '**No lo ve**: es mercadería que ella misma despachó'],
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: 'EL COSTO LO DECLARA LA CAFETERÍA, y de ahí sale la rentabilidad. El sistema no puede saber cuánto cuesta una medialuna: la hizo coffit. Ese número se congela en el renglón igual que en una salida, y es el que se usa cuando el producto se vende en el mostrador. **Si el costo declarado no es real, la rentabilidad de esos productos miente** — y miente en silencio. Por eso el sistema lo exige: una entrada sin costo no se puede guardar.',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**Primero, el producto.** Lo da de alta **la cafetería misma**, en Almacén › **Mis productos** (para vos, *Productos Coffit*): nombre, si se cuenta o se pesa, **cuánto le cuesta hacerlo** y a cuánto lo vende el mostrador. Nada más, porque un producto que no se compra no tiene proveedor ni formato de compra: el costo no sale de ningún lado, lo declara ella. Queda marcado como elaborado por ella —la lista blanca del envío— y aparece enseguida en el buscador. Es el espejo de «uso exclusivo de Cafetería» y no se pisan: aquel dice *esto no se vende acá*, este dice *esto no se compra acá*; un producto no puede ser los dos. **Crear y editar** es de la cafetería y del administrador; el resto del personal solo mira la lista. Y sigue estando todo en Compras › Productos para el que tenga esa llave: esta pantalla es la puerta chica, no una segunda verdad.',
+              '**Después, el envío.** Almacén › Cafetería › **Nos mandó** › «+ Envío de la cafetería»: la sucursal a la que llega, los renglones con su cantidad **y su costo**, y listo. La mercadería ya está en el stock y se puede cobrar. La sucursal viene puesta con la última que se usó, y **cada renglón propone el costo del envío anterior** — si las medialunas entran siempre a $850, no hay que tipearlo cada mañana. Es una propuesta: se pisa escribiendo encima, y un renglón con cantidad y sin costo se marca en amarillo y no deja enviar.',
+              '**Corregir** es lo mismo que en una salida: Editar. En una entrada el costo **se vuelve a declarar** — si se tipeó mal, obligarla a conservar el número viejo sería dejar el error adentro para siempre. La versión sube igual.',
+              '**Si hoy ya se cargó un envío idéntico** —misma sucursal, mismo detalle, mismo costo— el sistema **no lo guarda de una**: avisa con el código del que ya está y pregunta. Casi siempre es la misma carga hecha dos veces (dos pestañas, la página que se colgó, dos personas), y eso duplica stock que nadie mira hasta que el inventario no cierra. Si de verdad la cafetería mandó dos veces lo mismo, se confirma y va.',
+            '**Las cantidades son enteras** salvo en el granel, que es lo único que se fracciona: media medialuna no existe, y un decimal ahí deja una existencia que nunca va a cerrar contra lo que se cuenta en la góndola.',
+            '**Anular** saca del stock lo que había ingresado. **Si esa mercadería ya se vendió, no se puede**: rebota con el faltante a la vista en vez de dejar el stock en negativo. El negativo de una venta es un hecho que pasó; este sería uno inventado por corregir un papel.',
+              '**El rol Cafetería carga SUS envíos y nada más.** No puede cargar, editar ni anular una salida: eso egresa stock real de la distribuidora.',
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'info',
+            texto: 'EL SALDO ENTRE LOS DOS NEGOCIOS. La pestaña «Le mandamos» ahora muestra los dos totales del período y la diferencia: *«le mandé $800.000 y me mandó $300.000»*. Es el número que antes no existía. Y la **Métrica** tiene un selector de sentido, porque sumar lo que mandamos con lo que nos mandaron en una sola tabla daría un total sin significado.',
+          },
+          {
+            t: 'nota',
+            texto: 'COFFIT NO VE LAS ENTRADAS, y es a propósito: su sincronización devuelve **solo las salidas**, que son las que ella tiene que ingresar en su almacén. Las entradas son mercadería que ella misma despachó y ya tiene anotada de su lado — mandárselas le rompería el contrato a una aplicación externa, y el error aparecería en SU sistema y no en el nuestro.',
+          },
+          { t: 'ruta', texto: 'Almacén › Cafetería › Nos mandó (cargar: rol Cafetería o admin) · Compras › Productos › ficha (la marca «Lo elabora la cafetería»)' },
+        ],
+      },
+      {
+        id: 'cafeteria-primera-persona',
+        actualizado: '2026-09-21',
+        titulo: 'La cafetería, tratada como lo que es',
+        bloques: [
+          {
+            t: 'p',
+            texto: 'Desde el **21/9/2026** la cafetería **no es una sucursal**: es el otro lado de un puente. Tres cosas cambian, y las tres salen de ahí.',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**No elige sucursal al entrar.** El desplegable del login no le aparece, y si alguien mandara una a mano el servidor la descarta. La sucursal se pregunta donde de verdad importa: **a dónde llega** lo que manda y **a quién le pide**. Lo decide el ROL (`roles.sin_sucursal`), así que el día que haya otro puesto que trabaja afuera —un repartidor, un vendedor de calle— funciona sin tocar nada.',
+              '**La pantalla le habla a ella.** Lo que para la distribuidora es «Le mandamos», para el café es **«Recibidos de Sabor y Aroma»**; lo que acá es «Nos mandó», allá es **«Envíos a Sabor y Aroma»**. La sección se llama **Sabor y Aroma** en su menú, y los totales, las columnas y los avisos van en primera persona. Es la misma pantalla y los mismos datos: cambia quién la cuenta.',
+              '**El pedido dice a quién se le pide.** Elige la sucursal, ve **la disponibilidad de ESA sucursal** —no la suma de todas, que no le servía para nada— y de ahí sale la mercadería.',
+            ],
+          },
+          {
+            t: 'tabla',
+            cols: ['El pedido', 'Quién lo ve', 'Por qué'],
+            filas: [
+              ['**La sucursal a la que se le pidió**', 'Solo ella', 'Es la que tiene que armarlo y de la que sale el stock'],
+              ['**El dueño y los administradores**', 'Todos', 'Un pedido que cae en un local donde nadie mira el CRM se moriría en silencio'],
+              ['**La cafetería**', 'Todos los suyos', 'Los hizo ella; está afuera de las sucursales'],
+              ['**Los pedidos viejos** (sin sucursal)', 'Solo el dueño', 'Nacieron antes de esto: atribuirlos a un local sería inventar un dato'],
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: 'EL ENVÍO SALE DE LA SUCURSAL A LA QUE SE LE PIDIÓ, y no se puede cambiar: al convertir el pedido en envío la sucursal viene puesta y bloqueada. Lo decide el servidor y no el formulario — si dependiera de lo que manda la pantalla, un campo mal precargado le bajaría el stock a un local que no tenía nada que ver. Es también lo que hace que la disponibilidad que el café miró al pedir sea la misma de la que después sale la mercadería.',
+          },
+          {
+            t: 'nota',
+            texto: 'EL GLOBITO Y LA CAMPANITA cuentan ahora SOLO lo de la sucursal donde estás parado. Antes el número venía del snapshot del inventario, que es el mismo para todos: desde que cada local ve lo suyo, ese número habría sido el total de todas y a Norte le habría sonado por un pedido del Depósito.',
+          },
+          { t: 'ruta', texto: 'Login (sin desplegable de sucursal para ese rol) · Almacén › Sabor y Aroma (lo que ve el café) · Almacén › Cafetería › Pedidos (lo que ve cada sucursal) · migración 0098' },
+        ],
+      },
+      {
+        id: 'cafeteria-costo-ficha',
+        actualizado: '2026-09-21',
+        titulo: 'El costo del café, y desde cuándo es el mismo',
+        bloques: [
+          {
+            t: 'p',
+            texto: 'Desde el **21/9/2026** el costo de lo que la cafetería elabora **vive en la ficha del producto**, en Almacén › Mis productos. El envío lo **toma de ahí solo**: se acabó tipearlo renglón por renglón todas las mañanas.',
+          },
+          {
+            t: 'lista',
+            items: [
+              '**Se puede pisar en un envío puntual.** Si una tanda salió más cara, se corrige ese renglón y listo — ese número queda **congelado en ese envío** y NO cambia la ficha. Era del documento, no del producto.',
+              '**Al revés también:** cambiar el costo en la ficha no toca ni un envío ya cargado. La rentabilidad de un período cerrado no se mueve nunca.',
+              '**El margen se calcula solo** con el costo y el precio de la misma fila, y se ve en vivo mientras se carga: si el costo se pasa del precio, el cartel dice que se está perdiendo plata **antes** de guardar.',
+            ],
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: 'HACE CUÁNTO NO SE TOCA CADA NÚMERO, al lado de cada número. Es el punto de todo esto: un costo que nadie movió en cuatro meses se muestra en pantalla igual de seguro que uno de ayer, y de ahí sale un margen que miente sin que nada avise. Ahora cada uno dice desde cuándo es el mismo — **en amarillo pasado el mes, en rojo pasados los tres**— y el aviso viaja también al renglón del envío, que es donde el número se usa de verdad.',
+          },
+          {
+            t: 'nota',
+            texto: 'GUARDAR SIN CAMBIAR NADA NO REINICIA EL RELOJ. Si lo hiciera, el aviso de «costo viejo» se apagaría con solo abrir y cerrar la ficha, que es exactamente lo contrario de para lo que sirve. Es la misma regla con la que el sistema ya venía anotando los cambios de precio, y por eso las dos antigüedades de la pantalla significan lo mismo. **Sin costo cargado** se muestra distinto de **costo cero**: uno es un dato que falta, el otro es una decisión.',
+          },
+          { t: 'ruta', texto: 'Almacén › Mis productos (Productos Coffit, para la distribuidora) · el costo viaja propuesto a Almacén › Sabor y Aroma › Envíos · migración 0099' },
         ],
       },
     ],
@@ -3059,6 +3178,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**21/9/2026**', '**LA CAFETERÍA TAMBIÉN MANDA: el camino de vuelta** (pedido del dueño). Hasta hoy la mercadería iba en una sola dirección — la distribuidora le enviaba al café, a costo congelado —. Ahora el café manda **lo que él elabora** (medialunas, sándwiches, café molido) a la sucursal que elija, y eso **ingresa al stock y se vende en el mostrador** como cualquier otro producto. **LA DECISIÓN DE FONDO: no es una tabla nueva.** El documento es el MISMO en los dos sentidos —cabecera, renglones, remito, versión, anulación—; lo único que cambia es de qué lado se mueve el stock y de dónde sale el costo. Duplicar la tabla habría duplicado el remito, el editar, el anular, la métrica y el sync: cinco lugares que después hay que acordarse de cambiar juntos, y el quinto es el que se olvida. Así que se agregó **un campo, `sentido`**, y una sola función (`moverStock`) que decide cómo se mueve el stock en los tres caminos — en vez de cuatro `if` repartidos. **EL COSTO LO DECLARA LA CAFETERÍA**, porque es la única que puede saberlo: el sistema no tiene forma de costear una medialuna que hizo coffit. Se congela igual que en una salida y de ahí sale la rentabilidad cuando el producto se vende. Una entrada sin costo **no se guarda**: sin él, ese producto quedaría con rentabilidad inventada y nadie lo notaría. **LA LISTA BLANCA**: solo se puede mandar lo marcado **«Lo elabora la cafetería»** en la ficha del producto — el espejo de «uso exclusivo de Cafetería», y no se pisan (aquel dice *esto no se vende acá*, este dice *esto no se compra acá*). Sin esa marca, cualquiera podría mandar harina &ldquo;desde la cafetería&rdquo; con un costo puesto a dedo, y ese costo pisaría el costo real del proveedor en la rentabilidad. **LA SUCURSAL LA ELIGE QUIEN ENVÍA** y no se adivina: en una salida hay un origen obvio (la distribuidora), en una entrada no hay destino obvio, y adivinarlo dejaría la mercadería en una sucursal que no la recibió. **ANULAR UNA ENTRADA EGRESA**, y ahí la validación de stock es la que importa: si esas medialunas ya se vendieron, deshacer el ingreso **rebota** en vez de dejar el stock en negativo — el negativo de una venta es un hecho que pasó, este sería uno inventado por corregir un papel. **COFFIT NO VE LAS ENTRADAS**: su sincronización se acotó a las salidas. Es la mercadería que ella misma despachó y ya tiene anotada; mandarle documentos de un sentido que no conoce sería romperle el contrato a una aplicación externa en silencio, y el error aparecería en SU sistema. **EL ROL CAFETERÍA carga SUS envíos y nada más** (llave `almacen.cafeteria-entradas`): no puede crear, editar ni anular una salida, que egresa stock real de la distribuidora — el candado vive en el servicio y no en el controller, para que los tres caminos contesten igual. **LA PANTALLA** se parte en cuatro pestañas (Pedidos · Le mandamos · Nos mandó · Métrica), con el **saldo entre los dos negocios** —el número que antes no existía— y un selector de sentido en la métrica, porque sumar los dos lados en una sola tabla daría un total sin significado. El formulario es UNO solo: la única diferencia visible es que el costo se tipea en vez de mostrarse, y el buscador ofrece solo lo que la cafetería elabora. Detalles chicos que importan: el estado se lee **&ldquo;Recibido&rdquo;** en una entrada (misma palabra en la base, otra en pantalla), el buscador **no muestra &ldquo;$0,00 de costo&rdquo;** en una entrada (sería decir algo falso justo antes de pedir el número), y el &ldquo;disponible&rdquo; no aparece porque la mercadería viene de afuera. Migración 0097: el enum del sentido, la columna, el tipo de movimiento `ingreso_cafeteria` (no &ldquo;devolución&rdquo;: no es una devolución de nada), la marca en el producto y la llave del rol. **Verificado**: 24 comprobaciones de servicio sobre la base local — incluidas la lista blanca, el costo obligatorio, la sucursal obligatoria, el candado del rol, que la salida sigue igual, la edición, la anulación, la anulación frenada por mercadería ya vendida y el sync acotado — y el circuito real en pantalla: se cargó un envío de 40 medialunas a $250 en Sabor y Aroma Centro, el stock quedó en 40, el movimiento salió como `ingreso_cafeteria` (+), el saldo mostró $10.000 a favor de la cafetería, y el producto apareció en el catálogo del POS de esa sucursal con su precio, listo para cobrar. Datos de prueba borrados.'],
               ['**21/9/2026**', '**LA FOTO VIEJA DE ALMAC\u00c9N, y una forma de saber qu\u00e9 versi\u00f3n est\u00e1 corriendo**. Lo destap\u00f3 el due\u00f1o probando lo de vender sin stock: vendi\u00f3, la venta pas\u00f3, el stock baj\u00f3 \u2014 y en Almac\u00e9n no aparec\u00eda ninguna incidencia. **La incidencia exist\u00eda**: estaba en la base desde el primer segundo, con sus tres n\u00fameros y su comprobante. Lo que fallaba era la pantalla. **POR QU\u00c9**: el m\u00f3dulo de inventario (Almac\u00e9n y Compras comparten motor) se carga **una vez por carga de p\u00e1gina** y despu\u00e9s solo se entera de lo que pasa por sus propias manos. Mientras las incidencias nac\u00edan ah\u00ed adentro \u2014 un faltante al recibir una transferencia \u2014 eso alcanzaba, porque la misma operaci\u00f3n que las creaba refrescaba sola. Con las ventas sin stock dej\u00f3 de alcanzar: la incidencia nace en la **caja**, que es otro m\u00f3dulo con su propio estado. El cajero vende, entra a Almac\u00e9n y mira la foto que se baj\u00f3 al abrir el navegador. &ldquo;Vend\u00ed y no aparece&rdquo; no era un error de quien miraba: era que nadie le volv\u00eda a preguntar al servidor. **Es un error introducido con la funci\u00f3n**, y no se vio en las pruebas porque todas recargaban la p\u00e1gina antes de mirar \u2014 justo el gesto que lo tapaba. **EL ARREGLO**: entrar a Almac\u00e9n o a Compras vuelve a preguntar. Es barato desde que el snapshot se parte en tres con su ETag (17/9): lo que no cambi\u00f3 vuelve como **304 sin cuerpo**. Medido en pantalla: entrar con todo igual son **63 ms y 0 bytes**; con una venta nueva baja solo `base`, que es la parte chica. No se refrescan las &ldquo;secciones&rdquo; (pagos, vencimientos, cafeter\u00eda) porque esas las pide el panel que se abre, y volver a pedirlas todas ser\u00eda cobrar por pantallas que quiz\u00e1 nadie mire. **LA SEGUNDA PARTE, que sali\u00f3 del mismo problema**: mientras se buscaba la causa no hab\u00eda forma de saber, desde afuera, si la API de producci\u00f3n estaba corriendo el c\u00f3digo nuevo o el viejo. `/health` contesta 200 en los dos casos y todas las rutas que lo delatar\u00edan piden sesi\u00f3n, as\u00ed que &ldquo;no funciona&rdquo; y &ldquo;no se deploy\u00f3&rdquo; eran indistinguibles. Ahora hay **`/api/health/version`**, p\u00fablica, que devuelve cu\u00e1ntas **migraciones** tiene aplicadas la base: sube con cada una, as\u00ed que alcanza para saber si la \u00faltima lleg\u00f3. Es un conteo \u2014 no dice nada del negocio ni de nadie. **NO toca `/health`** a prop\u00f3sito: ese es el chequeo de salud del contenedor, y si consultara la base un hipo de Postgres marcar\u00eda el servicio como ca\u00eddo y Docker lo reiniciar\u00eda. Y si la base no contesta devuelve `null` en vez de romper: un diagn\u00f3stico que se cae cuando hay un problema es lo contrario de lo que hace falta. **Verificado como lo hace el cajero**: venta en la caja, y a Almac\u00e9n **por el men\u00fa, sin recargar** \u2014 la incidencia aparece al toque y el contador del men\u00fa sube.'],
               ['**21/9/2026**', '**VENDER SIN STOCK, PERO CON RASTRO** (pedido del due\u00f1o). La caja ya no se frena cuando el sistema dice que no hay: se vende, y cada rengl\u00f3n que se fue a negativo deja una incidencia en **Almac\u00e9n \u203a Incidencias \u203a Ventas sin stock**. El nombre no es &ldquo;errores de stock&rdquo; y la diferencia importa: el sistema no se equivoc\u00f3, vendi\u00f3 lo que se le pidi\u00f3 \u2014 lo que la incidencia dice es que el inventario ten\u00eda MENOS de lo que hab\u00eda en la g\u00f3ndola, y que hay que ir a contar. Llamarlo error invita a leerlo como una falla del programa y a ignorarlo. **Qu\u00e9 guarda cada una**: producto, sucursal, cu\u00e1nto dec\u00eda el sistema, cu\u00e1nto se vendi\u00f3, la diferencia, el comprobante con su cliente, el cajero y la hora. Y anota la **diferencia**, no lo vendido: si hab\u00eda 3 y se vendieron 10, faltan 7 \u2014 anotar la venta entera inflar\u00eda el problema. Es **una por rengl\u00f3n** en negativo, no una por venta ni una acumulada por producto: la acumulada queda m\u00e1s corta de leer pero se pelea consigo misma cuando alguien la cierra mientras siguen entrando ventas. **EL CHOQUE QUE HUBO QUE RESOLVER**: cerrar una incidencia hoy MUEVE STOCK \u2014 las que exist\u00edan (el faltante de una transferencia) tienen mercader\u00eda retenida en cuarentena, y resolverlas es liberarla o darla de baja. Una venta sin stock no retuvo nada, la mercader\u00eda ya sali\u00f3 por la puerta: por ese camino o rebotaba con &ldquo;el stock comprometido cambi\u00f3&rdquo;, o peor, alguien terminaba inventando unidades. As\u00ed que tiene **su propio cierre**, con dos salidas: *&ldquo;Cont\u00e9 la g\u00f3ndola y ajusto&rdquo;* \u2014 se escribe cu\u00e1ntas hay y el stock **queda en ese n\u00famero**, con un movimiento de ajuste firmado \u2014 o *&ldquo;Fue un error de carga&rdquo;*, que cierra sin tocar stock. El ajuste **no suma lo que faltaba**: entre la venta y el cierre pudo entrar mercader\u00eda, y sumar a ciegas dejar\u00eda el n\u00famero peor que antes. Las resoluciones viejas (liberar, merma) est\u00e1n **bloqueadas** para este tipo, en la pantalla y en el servidor. **Anular la venta cierra su incidencia sola** (`venta anulada`): la anulaci\u00f3n devuelve el stock, as\u00ed que el negativo dej\u00f3 de existir \u2014 y un pendiente falso es lo que ense\u00f1a a ignorar la lista. **Lo que NO cuesta nada**: la venta que tiene stock no hace ni una consulta de m\u00e1s (el disponible ya estaba le\u00eddo para el chequeo de siempre), y el alta no escribe movimiento de stock porque el egreso de la venta ya es el registro de la salida \u2014 sumarle otro contar\u00eda la misma salida dos veces. **Lo que S\u00cd hab\u00eda que arreglar**: `incidencias` viajaba ENTERA en la foto del inventario, que es la llamada que abre Almac\u00e9n y Compras. Mientras era un faltante cada tanto estaba acotado; con esto pasando a ser cosa de todos los d\u00edas, esa tabla se volv\u00eda una bola de nieve. Ahora el listado trae **todas las abiertas** (son las que hay que cerrar y las que cuenta el badge) y **las \u00faltimas 300 resueltas**, por \u00edndice. Migraci\u00f3n 0096: las tres columnas, los dos \u00edndices, y el interruptor &ldquo;Permitir vender sin stock&rdquo; **prendido** \u2014 en todas las sucursales y para todos los roles, como se pidi\u00f3. **Verificado**: 33 comprobaciones de servicio sobre la base local (vender con stock no crea nada, vender sin stock deja la incidencia con sus tres n\u00fameros y su venta, sin movimiento de m\u00e1s, anular la cierra, ajustar deja el stock en lo contado con su movimiento firmado, error de carga no toca nada, no se resuelve dos veces, las resoluciones viejas rebotan, el listado viene acotado) y el circuito real en pantalla: vend\u00ed 10 de un producto con 3, la caja no se fren\u00f3, la fila apareci\u00f3 con 3 / 10 / 7 y el comprobante, cont\u00e9 4 y el stock pas\u00f3 de \u22127 a 4 con un ajuste de 11 firmado. Las incidencias de siempre quedaron intactas: sus columnas, su texto y sus seis tipos. Datos de prueba borrados.'],
               ['**21/9/2026**', '**CARGAR POR BULTOS EN EL TICKET** (pedido del dueño, con captura). Vender dos cajas de 16 era escribir **32**: la cuenta la hacía el cajero de cabeza, con el cliente enfrente, y si erraba el renglón avisaba en rojo pero la cuenta seguía siendo suya. Ahora al lado de las unidades hay **− [bultos] +**: dos clics son dos cajas, y el campo del medio acepta el número directo, que es lo rápido cuando son diez. Las **unidades siguen siendo la verdad** —el bulto es otra forma de escribir el mismo número—, y debajo el renglón lee en palabras qué hay cargado: &ldquo;2 × bulto de 16&rdquo; cuando da justo, **&ldquo;2 bultos + 5 u&rdquo;** cuando no. **LOS BOTONES REDONDEAN, NO SUMAN SUELTOS**, y eso costó una corrección en la prueba: la primera versión conservaba los sueltos, así que desde el 1 que trae un renglón nuevo el primer **+** daba **17** en vez de 16 — justo lo que el botón existe para evitar. Ahora **+** va al bulto redondo de arriba y **−** al de abajo (desde 37: + da 48, − da 32), y el **−** se apaga en un bulto para que no pueda vaciar un renglón cargado. Escribir en el campo de bultos es EXACTO: diez bultos son 160, sin arrastrar los sueltos que hubiera. **HAY DOS BULTOS Y NO SIGNIFICAN LO MISMO**, y esa distinción es todo el diseño: el **&ldquo;Vende por N&rdquo; de la lista** es una REGLA (el precio de a 16 existe porque se lleva de a 16, y por eso una cantidad que no da bultos justos se marca en rojo), mientras que el **bulto de la ficha** —el que identifica el DUN— es una COMODIDAD para cargar: en mostrador vender 5 sueltos de una caja de 10 es normal y ahí **nunca** se pinta de rojo. Si la lista vende por N, ese número gana: manda sobre el precio. El **granel no tiene bulto** (se vende por kg) y los botones no aparecen. Para que el bulto de la ficha llegue a la caja se agregó `unidadesPorBulto` al catálogo del POS —solo cuando aporta (> 1), nunca en el granel, y **no** en los paquetes fraccionados, porque ese número es el de la caja de la madre y no dice nada de cuántos paquetes entran en un bulto—. Un detalle que la prueba en pantalla encontró: el renglón se arma por DOS caminos (el que nace al agregar un artículo y el que se reconstruye al retomar un ticket guardado), y el dato hay que pasarlo en los dos — con uno solo, los botones aparecían en mayorista pero no en mostrador. La lógica quedó en funciones puras y probadas (`bultoDeFila`, `desgloseBulto`, `textoBulto`, `bultoArriba`, `bultoAbajo`): **56 pruebas en verde**. Verificado en la caja de verdad con tres productos de prueba —uno con bulto solo de ficha, uno con lista de a 16, y un granel— recorriendo los siete pasos de la tabla de arriba, más el precio (2 bultos de una lista de $12.800 dan $25.600) y el rojo apareciendo solo donde corresponde. Datos de prueba borrados.'],

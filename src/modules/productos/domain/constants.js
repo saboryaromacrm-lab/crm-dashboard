@@ -70,6 +70,18 @@ export const ESTADOS_ENVIO_CAFE = {
   anulado: { label: 'Anulado', pill: 'est-cancelada' },
 };
 
+/**
+ * El MISMO estado se lee al revés según el sentido (0097): el envío que sale
+ * está "enviado" y el que llega está "recibido". Es una palabra, no un estado
+ * nuevo — agregar un valor al enum solo por cómo suena habría obligado a
+ * tocar la base, la API y los dos caminos de anulación.
+ */
+export function estadoEnvioCafe(estado, sentido) {
+  const base = ESTADOS_ENVIO_CAFE[estado] || { label: estado, pill: null };
+  if (sentido === 'entrada' && estado === 'enviado') return { ...base, label: 'Recibido' };
+  return base;
+}
+
 /* El pedido del café: demanda, no envío. pendiente → armando → enviado · anulado. */
 export const ESTADOS_PEDIDO_CAFE = {
   pendiente: { label: 'Pendiente', pill: 'est-pendiente' },
