@@ -42,6 +42,10 @@ export const VENTAS_PANELS = [
   { id: 'listas', label: 'Formato de venta', icon: SellIcon, permiso: 'ventas.listas' },
   { id: 'ofertas', label: 'Ofertas', icon: LocalOfferIcon, permiso: 'ventas.ofertas' },
   { id: 'cambiosPrecio', label: 'Cambios de precio', icon: TrendingUpIcon, permiso: 'ventas.cambios' },
-  { id: 'carteles', label: 'Carteles de góndola', icon: LocalOfferIcon, permiso: 'ventas.cambios' },
+  /* `ventas.carteles` es de fábrica para todos los roles (ver `permisos-base.ts`
+     en la API): rehacer el cartel de un estante es trabajo de mostrador. Pedía
+     `ventas.cambios`, que es la llave de los CAMBIOS DE PRECIO — usarla para
+     esto obligaba a abrir de más por la puerta de al lado. */
+  { id: 'carteles', label: 'Carteles de góndola', icon: LocalOfferIcon, permiso: 'ventas.carteles' },
   { id: 'configuracion', label: 'Configuración', icon: SettingsIcon, permiso: 'ventas.configuracion' },
 ];
