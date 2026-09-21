@@ -17,7 +17,7 @@ const ProveedoresContext = createContext(null);
 
 export function ProveedoresProvider({ children, panels = [], defaultPanel }) {
   const [proveedores, setProveedores] = useState([]);
-  const [contadores, setContadores] = useState({ ctasctes: 0, echeqs: 0, pedidos: 0 });
+  const [contadores, setContadores] = useState({ ctasctes: 0, echeqs: 0, pedidos: 0, cuentas: 0 });
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
 
@@ -35,13 +35,16 @@ export function ProveedoresProvider({ children, panels = [], defaultPanel }) {
 
   const cargarContadores = useCallback(async () => {
     try {
-      const [k, e, p] = await Promise.all([
+      const [k, e, p, c] = await Promise.all([
         provApi.statsCompromisos(), provApi.statsEcheqs(), provApi.statsPedidos(),
+        // Su llave es aparte: sin permiso, el 403 no puede voltear los otros badges.
+        provApi.cuentasDisponibles({ estado: 'abiertas' }).catch(() => null),
       ]);
       setContadores({
         ctasctes: (k?.vencidos?.n ?? 0) + (k?.prox3?.n ?? 0),
         echeqs: (e?.vencidos?.n ?? 0) + (e?.prox3?.n ?? 0),
         pedidos: p?.pendientes ?? 0,
+        cuentas: c?.total ?? 0,
       });
     } catch { /* API caída: los badges quedan como estaban */ }
   }, []);

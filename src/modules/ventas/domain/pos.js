@@ -13,6 +13,8 @@ import { contextoResolucion, resolverRenglon } from './listas.js';
 import { resolverOfertas } from './ofertas.js';
 
 export const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+/** Miles con punto, como en toda la caja. Enteros: el bulto no existe en el granel. */
+const ent = (n) => Math.round(Number(n) || 0).toLocaleString('es-AR');
 
 /* ------------------------------------------------------------------ *
  * Códigos de barras
@@ -140,6 +142,68 @@ export function porBulto(cantidad, unidades) {
 export function unidadesDeLista(precios, listaId) {
   const f = (precios ?? []).find((x) => x.listaId === listaId);
   return Math.max(Number(f?.unidades) || 1, 1);
+}
+
+/**
+ * DE A CUÁNTO SUMA EL BOTÓN DE BULTOS, y si esa cantidad es OBLIGATORIA.
+ * ============================================================================
+ * Hay dos bultos distintos y no significan lo mismo:
+ *
+ *   · el "vende por N" de la LISTA — es una regla: el precio de a 12 existe
+ *     porque se lleva de a 12, así que 15 no es una cantidad que esa lista
+ *     sepa vender y el renglón lo avisa;
+ *   · el bulto de la FICHA (el que identifica el DUN) — es una comodidad para
+ *     cargar: vender 5 sueltos de una caja de 10 en mostrador es normal.
+ *
+ * La lista gana cuando existe, porque manda sobre el precio. El granel no
+ * tiene bulto: se vende por kg.
+ */
+export function bultoDeFila(renglon, porLista) {
+  if (renglon?.fraccionable) return { unidades: 0, exigido: false };
+  if (porLista > 1) return { unidades: porLista, exigido: true };
+  const ficha = Number(renglon?.unidadesPorBulto) || 0;
+  return ficha > 1 ? { unidades: ficha, exigido: false } : { unidades: 0, exigido: false };
+}
+
+/** En cuántos bultos y cuántos sueltos se parte una cantidad. */
+export function desgloseBulto(cantidad, unidades) {
+  const n = Number(unidades) || 0;
+  const c = Math.max(0, Number(cantidad) || 0);
+  if (n <= 1) return { bultos: 0, sueltas: c, exacto: false };
+  const bultos = Math.floor((c + 1e-9) / n);
+  return { bultos, sueltas: r2(c - bultos * n), exacto: c > 0 && r2(c % n) === 0 };
+}
+
+/**
+ * EL SALTO DE LOS BOTONES − y +: al bulto redondo de abajo y al de arriba.
+ *
+ * Es lo único que se comporta como espera quien aprieta. El renglón nace en 1
+ * unidad, así que "conservar los sueltos" haría que el primer + diera 17 en vez
+ * de 16 — y el botón existe justamente para no tener que pensar en 16. Sobre
+ * una cantidad con sueltos (37 = 2 bultos + 5) el + lleva a 3 bultos justos y
+ * el − a 2: redondea hacia donde apunta la flecha, como cualquier escalón.
+ */
+export function bultoArriba(cantidad, unidades) {
+  const n = Number(unidades) || 0;
+  if (n <= 1) return Math.max(0, Number(cantidad) || 0);
+  return (Math.floor((Math.max(0, Number(cantidad) || 0) + 1e-9) / n) + 1) * n;
+}
+
+export function bultoAbajo(cantidad, unidades) {
+  const n = Number(unidades) || 0;
+  const c = Math.max(0, Number(cantidad) || 0);
+  if (n <= 1) return c;
+  // Nunca por debajo de un bulto: el − se apaga ahí, y bajar a 0 borraría la
+  // cantidad de un renglón cargado sin que nadie lo haya pedido.
+  return Math.max(n, (Math.ceil(c / n - 1e-9) - 1) * n);
+}
+
+/** "2 bultos + 5 u" — cómo se lee esa cantidad en la caja. */
+export function textoBulto(cantidad, unidades) {
+  const { bultos, sueltas, exacto } = desgloseBulto(cantidad, unidades);
+  if (exacto) return `${ent(bultos)} × bulto de ${ent(unidades)}`;
+  if (!bultos) return `${ent(sueltas)} u · bulto de ${ent(unidades)}`;
+  return `${ent(bultos)} bulto${bultos === 1 ? '' : 's'} + ${ent(sueltas)} u`;
 }
 
 /**
@@ -429,6 +493,8 @@ export function ticketReducer(estado, accion) {
         etiquetas: item.etiquetas ?? [],
         unidad: item.unidad,
         fraccionable: item.fraccionable,
+        /** El bulto de la ficha, para el botón de bultos (0 = no tiene). */
+        unidadesPorBulto: item.unidadesPorBulto ?? 0,
         iva: item.iva,
         stock: item.stock,
         listaId: listaFija?.listaId ?? null,
@@ -457,6 +523,22 @@ export function ticketReducer(estado, accion) {
         renglones: estado.renglones.map((r) =>
           r.uid === accion.uid ? { ...r, cantidad: Math.max(0, Number(accion.valor) || 0) } : r),
       });
+    /**
+     * CANTIDAD ESCRITA EN BULTOS: `n` bultos son EXACTAMENTE `n × unidades`.
+     *
+     * Sin arrastrar los sueltos que hubiera: quien escribe "10" en bultos está
+     * pidiendo diez bultos, no diez más lo que había. Los botones − y + no
+     * pasan por acá — mandan la cantidad ya redondeada por `bultoArriba` /
+     * `bultoAbajo`, que es lo que hace que el primer + dé un bulto justo.
+     */
+    case 'bultos':
+      return recalcular({
+        ...estado,
+        renglones: estado.renglones.map((r) => (r.uid === accion.uid
+          ? { ...r, cantidad: Math.max(0, r2((Number(accion.bultos) || 0) * (Number(accion.unidades) || 1))) }
+          : r)),
+      });
+
     /**
      * Descuento puesto A MANO por el vendedor. Escribe la BASE, no el que se
      * ve: si el renglón está bajo un descuento con nombre más grande, tipear un
@@ -811,6 +893,8 @@ export function ticketDesdeBorrador(borrador, catalogo) {
       detalle: cat?.detalle ?? '—',
       unidad: cat?.unidad ?? 'u',
       fraccionable: cat?.fraccionable ?? false,
+      /** El bulto de la ficha, para el botón de bultos en mostrador (0 = no tiene). */
+      unidadesPorBulto: cat?.unidadesPorBulto ?? 0,
       iva: it.iva,
       stock: cat?.stock ?? 0,
       marca: cat?.marca ?? '',

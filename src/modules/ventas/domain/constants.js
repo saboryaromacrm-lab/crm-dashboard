@@ -31,6 +31,9 @@ export const TIPOS_DOC = {
 export const MEDIOS_PAGO = {
   efectivo: 'Efectivo',
   transferencia: 'Transferencia',
+  // El cliente le transfiere DIRECTO a un proveedor al que se le debe
+  // (Proveedores › Cuentas disponibles). Esa plata nunca entra al banco propio.
+  transferencia_proveedor: 'Transf. a proveedor',
   tarjeta_debito: 'Tarjeta de débito',
   tarjeta_credito: 'Tarjeta de crédito',
   cheque: 'Cheque',

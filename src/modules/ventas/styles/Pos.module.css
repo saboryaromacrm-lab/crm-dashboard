@@ -262,6 +262,63 @@
 }
 .inputAlerta { border-color: var(--crm-color-danger); }
 
+/* ---------------- Cantidad: unidades + bultos ---------------- */
+/* Las unidades y el bulto, en la misma línea: son el mismo número escrito de
+   dos formas, así que leerlos juntos es leer una sola cosa. Si la columna se
+   angosta, el bulto baja abajo en vez de apretar el campo de unidades. */
+.cantFila {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bultoStep {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-sm);
+  overflow: hidden;
+  background: var(--crm-color-surface);
+  flex: none;
+}
+
+/* El área de toque es lo que hace que esto sirva en la caja: 26 px de lado,
+   apretables sin apuntar. */
+.bultoBtn {
+  width: 26px;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--crm-color-text) 7%, var(--crm-color-surface));
+  color: var(--crm-color-text);
+}
+.bultoBtn:hover:not(:disabled) { background: color-mix(in srgb, var(--crm-color-primary) 22%, var(--crm-color-surface)); }
+.bultoBtn:disabled { opacity: 0.35; cursor: default; }
+
+/* Angosto a propósito: acá van unidades de bulto (1, 2, 10), no importes. */
+.inputBulto {
+  width: 38px;
+  padding: 5px 2px;
+  text-align: center;
+  font-family: inherit;
+  font-size: var(--crm-font-size-sm);
+  border: 0;
+  border-left: 1px solid var(--crm-color-border);
+  border-right: 1px solid var(--crm-color-border);
+  background: transparent;
+  color: var(--crm-color-text);
+}
+.inputBulto:focus { outline: none; background: color-mix(in srgb, var(--crm-color-primary) 10%, transparent); }
+/* Sin las flechitas del navegador: ya están − y +, y ocupan lugar. */
+.inputBulto::-webkit-outer-spin-button,
+.inputBulto::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.inputBulto { appearance: textfield; -moz-appearance: textfield; }
+
 /* Selector de lista dentro del renglón del ticket: chico, sin robar espacio. */
 .selectMini {
   padding: 4px 6px;
@@ -667,3 +724,43 @@
   border: 1px solid color-mix(in srgb, var(--crm-color-accent-2) 35%, transparent);
   white-space: nowrap;
 }
+
+/* ---------------- Transferencia a cuenta de proveedor ---------------- */
+/* Debajo del renglón del medio: proveedor → cuenta, y en grande lo que el
+   cajero le dicta al cliente (titular y alias, con copiar). */
+.terc {
+  margin: -2px 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--crm-radius-md);
+  background: var(--crm-color-surface);
+  border: 1px solid var(--crm-color-border, rgba(0, 0, 0, 0.12));
+}
+.tercSelects {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: var(--crm-space-3);
+}
+.tercCard {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--crm-radius-md);
+  background: color-mix(in srgb, var(--crm-color-success) 10%, var(--crm-color-surface));
+}
+.tercTitular { font-size: 18px; font-weight: 800; }
+.tercAliasFila { display: flex; align-items: center; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
+.tercAlias {
+  font-size: 17px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  user-select: all;
+  word-break: break-all;
+}
+.tercDatos {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--crm-color-text-muted);
+}
+@media (max-width: 640px) { .tercSelects { grid-template-columns: 1fr; } }

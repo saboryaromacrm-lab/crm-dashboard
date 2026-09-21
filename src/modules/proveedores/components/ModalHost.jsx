@@ -6,6 +6,7 @@ import { CompromisoModal, PagarCompromisoModal } from './modals/CompromisosModal
 import { EcheqModal } from './modals/EcheqsModals.jsx';
 import { AjusteModal } from './modals/EdocModals.jsx';
 import { PagoProveedorModal, AnularPagoModal } from './modals/PagosModals.jsx';
+import { CuentaDisponibleModal, ResumenCuentaModal } from './modals/CuentasDisponiblesModals.jsx';
 
 /** Un solo host: el contexto dice qué modal está abierto y con qué props.
  *  El estado de cuenta ya NO es un modal: es la pantalla EdocProveedorPage. */
@@ -21,6 +22,9 @@ const MODALS = {
   ajuste: AjusteModal,
   pagoProveedor: PagoProveedorModal,
   anularPago: AnularPagoModal,
+  // Cuentas disponibles (0095): el balde y su resumen para el proveedor.
+  cuentaDisponible: CuentaDisponibleModal,
+  resumenCuenta: ResumenCuentaModal,
 };
 
 export function ModalHost() {

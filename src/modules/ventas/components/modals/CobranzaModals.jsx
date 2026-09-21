@@ -4,6 +4,8 @@ import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { ventasApi } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO, nroComprobante } from '../../domain/constants.js';
+import { sugerirImporteCuenta, validarTransferenciaProveedor } from '../../domain/cuentasProveedor.js';
+import { CuentaProveedorPicker } from '../CuentaProveedorPicker.jsx';
 import {
   Table, Btn, Di, ModalShell, VentaTag, CobranzaEstadoPill, SaldoMonto,
   money, fmtFecha, isoDate, s,
@@ -12,6 +14,7 @@ import {
 /** Redondeo a 2 decimales: mismo criterio que el backend, sin arrastre binario. */
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const EPS = 0.005;
+const TERC = 'transferencia_proveedor';
 
 /* ==================================================================== *
  * Alta de cobranza
@@ -23,7 +26,7 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
   const [clienteId, setClienteId] = useState(clienteInicial ? String(clienteInicial) : '');
   const [fecha, setFecha] = useState(() => isoDate(new Date()));
   const [observaciones, setObservaciones] = useState('');
-  const [pagos, setPagos] = useState([{ medio: 'efectivo', importe: '', referencia: '' }]);
+  const [pagos, setPagos] = useState([{ medio: 'efectivo', importe: '', referencia: '', cuentaDisponibleId: null }]);
   /** { [ventaId]: importe } — solo los renglones que el usuario decidió imputar. */
   const [imputado, setImputado] = useState({});
   const [enviando, setEnviando] = useState(false);
@@ -45,6 +48,22 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
 
   const comprobantes = cuenta?.comprobantes ?? [];
 
+  /* Transferencia a cuenta de proveedor: mismas reglas y mismo selector que
+   * el cobro del POS. Las cuentas se piden al elegir el medio. */
+  const hayTerc = pagos.some((x) => x.medio === TERC);
+  const { data: cuentasTerc, loading: cargandoTerc, error: errorTerc, reload: recargarTerc } = useResource(
+    'cuentas-para-cobrar', ventasApi.cuentasParaCobrar, { enabled: hayTerc },
+  );
+  const avisoTerc = useMemo(() => {
+    if (!hayTerc) return null;
+    for (const x of pagos) {
+      if (x.medio !== TERC || !(Number(x.importe) > 0)) continue;
+      const m = validarTransferenciaProveedor(x.importe, (cuentasTerc ?? []).find((c) => c.id === x.cuentaDisponibleId));
+      if (m) return m;
+    }
+    return null;
+  }, [hayTerc, pagos, cuentasTerc]);
+
   const totalPagos = r2(pagos.reduce((a, p) => a + (Number(p.importe) || 0), 0));
   const totalImputado = r2(Object.values(imputado).reduce((a, v) => a + (Number(v) || 0), 0));
   const aCuenta = r2(totalPagos - totalImputado);
@@ -52,8 +71,14 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
 
   /* ---------------------------- Pagos ---------------------------- */
   const setPago = (i, campo, valor) =>
-    setPagos((ps) => ps.map((p, j) => (j === i ? { ...p, [campo]: valor } : p)));
-  const agregarPago = () => setPagos((ps) => [...ps, { medio: medios[0], importe: '', referencia: '' }]);
+    setPagos((ps) => ps.map((p, j) => (j === i
+      ? { ...p, [campo]: valor, ...(campo === 'medio' && valor !== TERC ? { cuentaDisponibleId: null } : {}) }
+      : p)));
+  /** Sin importe tipeado, se propone cubrir lo que le falta a la cuenta. */
+  const elegirCuenta = (i, c) => setPagos((ps) => ps.map((p, j) => (j !== i ? p : (c
+    ? { ...p, cuentaDisponibleId: c.id, importe: Number(p.importe) > 0 ? p.importe : String(sugerirImporteCuenta(c, 0)) }
+    : { ...p, cuentaDisponibleId: null }))));
+  const agregarPago = () => setPagos((ps) => [...ps, { medio: medios[0], importe: '', referencia: '', cuentaDisponibleId: null }]);
   const quitarPago = (i) => setPagos((ps) => (ps.length > 1 ? ps.filter((_, j) => j !== i) : ps));
 
   /* -------------------------- Imputación -------------------------- */
@@ -86,6 +111,7 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
     if (!clienteId) { toast('Elegí el cliente.', 'err'); return; }
     if (totalPagos <= 0) { toast('Cargá al menos un medio de pago con importe.', 'err'); return; }
     if (excedido) { toast('Estás imputando más de lo cobrado.', 'err'); return; }
+    if (avisoTerc) { toast(avisoTerc, 'err'); return; }
 
     for (const c of comprobantes) {
       const v = Number(imputado[c.id]) || 0;
@@ -105,7 +131,10 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
       observaciones,
       pagos: pagos
         .filter((p) => Number(p.importe) > 0)
-        .map((p) => ({ medio: p.medio, importe: r2(p.importe), referencia: p.referencia })),
+        .map((p) => ({
+          medio: p.medio, importe: r2(p.importe), referencia: p.referencia,
+          ...(p.medio === TERC ? { cuentaDisponibleId: p.cuentaDisponibleId } : {}),
+        })),
       imputaciones: Object.entries(imputado)
         .map(([ventaId, importe]) => ({ ventaId: Number(ventaId), importe: r2(importe) }))
         .filter((i) => i.importe > 0),
@@ -151,7 +180,8 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
       {/* ---------------- Medios de pago ---------------- */}
       <div className={s['section-title']}>Cómo paga</div>
       {pagos.map((p, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.4fr auto', gap: 'var(--crm-space-3)', alignItems: 'end', marginBottom: 10 }}>
+        <div key={i}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.4fr auto', gap: 'var(--crm-space-3)', alignItems: 'end', marginBottom: 10 }}>
           <div className={s.field} style={{ marginBottom: 0 }}>
             {i === 0 && <label>Medio</label>}
             <select value={p.medio} onChange={(e) => setPago(i, 'medio', e.target.value)}>
@@ -164,9 +194,22 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
           </div>
           <div className={s.field} style={{ marginBottom: 0 }}>
             {i === 0 && <label>Referencia</label>}
-            <input placeholder="N° de operación, cheque…" value={p.referencia} onChange={(e) => setPago(i, 'referencia', e.target.value)} />
+            {/* En la transferencia a proveedor la referencia la escribe el sistema: proveedor · titular · alias. */}
+            <input
+              placeholder={p.medio === TERC ? 'La pone el sistema' : 'N° de operación, cheque…'}
+              value={p.medio === TERC ? '' : p.referencia} disabled={p.medio === TERC}
+              onChange={(e) => setPago(i, 'referencia', e.target.value)}
+            />
           </div>
           <Btn variant="btn-delete" small onClick={() => quitarPago(i)} disabled={pagos.length === 1}>Quitar</Btn>
+        </div>
+        {p.medio === TERC && (
+          <CuentaProveedorPicker
+            cuentas={cuentasTerc} loading={cargandoTerc && !cuentasTerc} error={errorTerc}
+            cuentaId={p.cuentaDisponibleId} importe={p.importe}
+            onSeleccionar={(c) => elegirCuenta(i, c)} onRefrescar={recargarTerc}
+          />
+        )}
         </div>
       ))}
       <Btn small onClick={agregarPago}>+ Otro medio de pago</Btn>

@@ -13,6 +13,7 @@ import { CtasCtesPanel } from '../panels/CtasCtesPanel.jsx';
 import { EcheqsPanel } from '../panels/EcheqsPanel.jsx';
 import { EdocPanel } from '../panels/EdocPanel.jsx';
 import { PadronPanel } from '../panels/PadronPanel.jsx';
+import { CuentasDisponiblesPanel } from '../panels/CuentasDisponiblesPanel.jsx';
 
 /** Los `id` coinciden con `PROVEEDORES_PANELS` (config). */
 const PANEL_COMPONENTS = {
@@ -20,6 +21,7 @@ const PANEL_COMPONENTS = {
   ctasctes: CtasCtesPanel,
   echeqs: EcheqsPanel,
   edoc: EdocPanel,
+  cuentas: CuentasDisponiblesPanel,
   padron: PadronPanel,
 };
 

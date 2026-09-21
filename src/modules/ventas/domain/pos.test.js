@@ -5,7 +5,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buscarEnCatalogo, calcularRenglon, empujonMayorista, porBulto, totalesTicket,
+  buscarEnCatalogo, bultoAbajo, bultoArriba, bultoDeFila, calcularRenglon, desgloseBulto,
+  empujonMayorista, porBulto, textoBulto, totalesTicket,
   unidadesDeLista,
 } from './pos.js';
 
@@ -177,4 +178,64 @@ test('empujonMayorista: sin umbral configurado no molesta', () => {
 test('empujonMayorista: el ticket vacío no muestra nada', () => {
   assert.equal(empujonMayorista(0, CAT), null);
   assert.equal(empujonMayorista(null, CAT), null);
+});
+
+/* ==================================================================== *
+ * EL BULTO DEL RENGLÓN (21/9/2026)
+ * ==================================================================== */
+
+test('el bulto de la lista gana, y es obligatorio', () => {
+  const r = { fraccionable: false, unidadesPorBulto: 10 };
+  assert.deepEqual(bultoDeFila(r, 16), { unidades: 16, exigido: true });
+});
+
+test('sin bulto de lista manda el de la ficha, y NO es obligatorio', () => {
+  // Mostrador: vender 5 sueltos de una caja de 10 es normal, no se avisa nada.
+  assert.deepEqual(bultoDeFila({ fraccionable: false, unidadesPorBulto: 10 }, 1), { unidades: 10, exigido: false });
+});
+
+test('sin ninguno de los dos, no hay bulto', () => {
+  assert.deepEqual(bultoDeFila({ fraccionable: false, unidadesPorBulto: 1 }, 1), { unidades: 0, exigido: false });
+  assert.deepEqual(bultoDeFila({ fraccionable: false }, 1), { unidades: 0, exigido: false });
+});
+
+test('el granel no tiene bulto: se vende por kg', () => {
+  assert.deepEqual(bultoDeFila({ fraccionable: true, unidadesPorBulto: 10 }, 16), { unidades: 0, exigido: false });
+});
+
+test('el desglose parte la cantidad en bultos y sueltos', () => {
+  assert.deepEqual(desgloseBulto(32, 16), { bultos: 2, sueltas: 0, exacto: true });
+  assert.deepEqual(desgloseBulto(37, 16), { bultos: 2, sueltas: 5, exacto: false });
+  assert.deepEqual(desgloseBulto(5, 16), { bultos: 0, sueltas: 5, exacto: false });
+  assert.deepEqual(desgloseBulto(16, 16), { bultos: 1, sueltas: 0, exacto: true });
+  // Cantidad 0: no es "exacto" — no hay nada cargado todavía.
+  assert.deepEqual(desgloseBulto(0, 16), { bultos: 0, sueltas: 0, exacto: false });
+  // Sin bulto, todo es suelto.
+  assert.deepEqual(desgloseBulto(7, 1), { bultos: 0, sueltas: 7, exacto: false });
+});
+
+test('el texto dice la cantidad como la lee el cajero', () => {
+  assert.equal(textoBulto(32, 16), '2 × bulto de 16');
+  assert.equal(textoBulto(37, 16), '2 bultos + 5 u');
+  assert.equal(textoBulto(21, 16), '1 bulto + 5 u');
+  assert.equal(textoBulto(5, 16), '5 u · bulto de 16');
+  // Miles con punto, como en el resto de la caja.
+  assert.equal(textoBulto(16000, 16), '1.000 × bulto de 16');
+});
+
+test('el + va al bulto redondo de arriba (el primero da un bulto justo, no 17)', () => {
+  assert.equal(bultoArriba(1, 16), 16);
+  assert.equal(bultoArriba(16, 16), 32);
+  assert.equal(bultoArriba(37, 16), 48);
+  assert.equal(bultoArriba(0, 16), 16);
+  assert.equal(bultoArriba(5, 1), 5);   // sin bulto no mueve nada
+});
+
+test('el − va al bulto redondo de abajo y nunca borra la cantidad', () => {
+  assert.equal(bultoAbajo(37, 16), 32);
+  assert.equal(bultoAbajo(32, 16), 16);
+  assert.equal(bultoAbajo(17, 16), 16);
+  // Piso en un bulto: bajar a 0 vaciaría un renglón cargado sin que nadie lo pida.
+  assert.equal(bultoAbajo(16, 16), 16);
+  assert.equal(bultoAbajo(3, 16), 16);
 });

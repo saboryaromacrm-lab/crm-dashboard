@@ -8,7 +8,8 @@ import {
   buscarEnCatalogo, calcularRenglon, descuentosDisponibles, descuentosParaApi,
   extrasParaApi, itemsParaApi, motivoBloqueo, parseEtiquetaBalanza,
   problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
-  empujonMayorista, totalesTicket, ultimoArticulo, unidadesDeLista,
+  bultoAbajo, bultoArriba, bultoDeFila, desgloseBulto, empujonMayorista, textoBulto,
+  totalesTicket, ultimoArticulo, unidadesDeLista,
 } from '../domain/pos.js';
 import { indicePrecios, sugerenciaPorMonto } from '../domain/listas.js';
 import { sugerenciasOfertaTicket } from '../domain/ofertas.js';
@@ -381,8 +382,16 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
              * la cantidad cargada da bultos justos. Solo para mostrar: no
              * bloquea nada. */
             const porLista = r.fraccionable ? 1 : unidadesDeLista(preciosDe(r.key), r.listaId);
-            const esBultoJusto = porLista > 1
-              && r.cantidad > 0 && Math.abs(r.cantidad % porLista) < 1e-9;
+            /* De a cuánto suma el botón de bultos: el "vende por N" de la lista
+             * si lo hay, si no el bulto de la ficha (mostrador). `exigido` es
+             * lo que separa una REGLA de una comodidad — ver `bultoDeFila`. */
+            const bulto = bultoDeFila(r, porLista);
+            const partes = desgloseBulto(r.cantidad, bulto.unidades);
+            const incumple = bulto.exigido && r.cantidad > 0 && !partes.exacto;
+            /** − y + van al bulto redondo de abajo y de arriba (ver `bultoArriba`). */
+            const irBulto = (fn) => dispatch({
+              tipo: 'cantidad', uid: r.uid, valor: fn(r.cantidad, bulto.unidades),
+            });
             return (
               <tr key={r.uid} className={cx(r.key === ultimoKey && p.filaUltima)}>
                 <td>
@@ -408,27 +417,59 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                   )}
                 </td>
                 <td className={p.num}>
-                  <input
-                    className={cx(p.inputMini, sinStock && p.inputAlerta)}
-                    type="number"
-                    min="0"
-                    step={r.fraccionable ? '0.001' : '1'}
-                    value={r.cantidad}
-                    onChange={(e) => dispatch({ tipo: 'cantidad', uid: r.uid, valor: e.target.value })}
-                  />
-                  {/* El "Vende por" de la lista puesta, a la vista. Elegirla ya
-                      acomoda la cantidad; esto es para lo que se tipea después
-                      —nadie va a impedir escribir 5 en una lista de a 12, pero
-                      el renglón tiene que decir que esa cantidad no es un bulto
-                      y que el precio de a 12 se está dando por menos. */}
-                  {porLista > 1 && (
+                  <div className={p.cantFila}>
+                    <input
+                      className={cx(p.inputMini, sinStock && p.inputAlerta)}
+                      type="number"
+                      min="0"
+                      step={r.fraccionable ? '0.001' : '1'}
+                      value={r.cantidad}
+                      title="Unidades"
+                      onChange={(e) => dispatch({ tipo: 'cantidad', uid: r.uid, valor: e.target.value })}
+                    />
+                    {/* EL BULTO, al lado de las unidades. Antes había que llegar
+                        al número haciendo la cuenta de cabeza: para una caja de
+                        16, dos cajas eran "escribí 32". Acá − y + mueven de a un
+                        bulto —conservando los sueltos que hubiera— y el campo
+                        del medio acepta el número directo, que es lo rápido
+                        cuando son diez. Las unidades siguen siendo la verdad:
+                        esto es otra forma de escribir el mismo número. */}
+                    {bulto.unidades > 1 && (
+                      <div className={p.bultoStep}>
+                        <button
+                          type="button" className={p.bultoBtn} title={`Bajar al bulto de abajo (${num(bulto.unidades)} u)`}
+                          disabled={r.cantidad <= bulto.unidades} onClick={() => irBulto(bultoAbajo)}
+                        >
+                          −
+                        </button>
+                        <input
+                          className={p.inputBulto}
+                          type="number" min="0" step="1" value={partes.bultos}
+                          title={`Bultos de ${num(bulto.unidades)} u`}
+                          onChange={(e) => dispatch({
+                            tipo: 'bultos', uid: r.uid, unidades: bulto.unidades, bultos: e.target.value,
+                          })}
+                        />
+                        <button
+                          type="button" className={p.bultoBtn} title={`Subir al bulto de arriba (${num(bulto.unidades)} u)`}
+                          onClick={() => irBulto(bultoArriba)}
+                        >
+                          +
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {/* CÓMO SE LEE ESA CANTIDAD. En rojo solo cuando el bulto es
+                      una REGLA de la lista y no se cumple: el precio de a 12
+                      existe porque se lleva de a 12. El bulto de la ficha no
+                      obliga a nada —vender 5 sueltos de una caja de 10 en
+                      mostrador es normal— así que ahí nunca se pinta. */}
+                  {bulto.unidades > 1 && (
                     <div
-                      className={cx(p.detalleCol, !esBultoJusto && p.sinStock)}
-                      title={esBultoJusto ? '' : `Esta lista se vende de a ${porLista}`}
+                      className={cx(p.detalleCol, incumple && p.sinStock)}
+                      title={incumple ? `Esta lista se vende de a ${num(bulto.unidades)}` : ''}
                     >
-                      {esBultoJusto
-                        ? `${num(r.cantidad / porLista)} × bulto de ${num(porLista)}`
-                        : `no es bulto de ${num(porLista)}`}
+                      {textoBulto(r.cantidad, bulto.unidades)}
                     </div>
                   )}
                 </td>

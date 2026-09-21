@@ -855,6 +855,7 @@ export function cuerpoOrdenDePago({ pago: p, imputaciones, moneda, ahora, usuari
 const MEDIOS_CAJA = {
   efectivo: 'Efectivo',
   transferencia: 'Transferencia',
+  transferencia_proveedor: 'Transf. a proveedor',
   tarjeta_debito: 'Tarjeta de debito',
   tarjeta_credito: 'Tarjeta de credito',
   cheque: 'Cheque',

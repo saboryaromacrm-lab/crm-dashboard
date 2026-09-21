@@ -102,6 +102,8 @@ export const ventasApi = {
   delegarVenta: (id, paraUsuarioId) => httpClient.post(`/ventas/${id}/delegar`, { paraUsuarioId }),
   descartarVenta: (id) => httpClient.delete(`/ventas/${id}`),
   cuentaCliente: (clienteId) => httpClient.get(`/ventas/cuenta/${clienteId}`),
+  /** Las cuentas de proveedor abiertas para recibir transferencias de clientes (Cuentas disponibles). */
+  cuentasParaCobrar: () => httpClient.get('/cuentas-disponibles/para-cobrar'),
 
   /**
    * Todo lo vendible de una sucursal:

@@ -98,6 +98,19 @@ export const provApi = {
   /** Descontar fletes SIN pago nuevo: lo adelantado cubre todo lo que se paga. */
   descontarFletes: (data) => httpClient.post('/pagos-proveedor/descontar-fletes', data),
 
+  /*
+   * CUENTAS DISPONIBLES (0095): la transferencia tercerizada. Las cuentas se
+   * crean acá; los PAGOS no (nacen del cobro en la caja o del recibo).
+   */
+  cuentasDisponibles: (filtros) => httpClient.get(`/cuentas-disponibles${qs(filtros)}`),
+  cuentaDisponible: (id) => httpClient.get(`/cuentas-disponibles/${id}`),
+  resumenCuenta: (id) => httpClient.get(`/cuentas-disponibles/${id}/resumen`),
+  crearCuentaDisponible: (data) => httpClient.post('/cuentas-disponibles', data),
+  editarCuentaDisponible: (id, data) => httpClient.patch(`/cuentas-disponibles/${id}`, data),
+  borrarCuentaDisponible: (id) => httpClient.delete(`/cuentas-disponibles/${id}`),
+  pagosCuentasDisponibles: (filtros) => httpClient.get(`/cuentas-disponibles/pagos${qs(filtros)}`),
+  reporteCuentasDisponibles: (filtros) => httpClient.get(`/cuentas-disponibles/reporte${qs(filtros)}`),
+
   /* La caja de la sucursal (para el pago en efectivo desde el cajón) */
   cajaActual: (sucursalId) => httpClient.get(`/caja/actual/${sucursalId}`),
 };

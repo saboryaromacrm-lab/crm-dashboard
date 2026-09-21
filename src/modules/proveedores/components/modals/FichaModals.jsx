@@ -22,8 +22,9 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
     proveeMercaderia: true, proveeGastos: false, letraGasto: '',
     condicionCompra: 'factura', medioHabitual: '', diasPago: '', modoCuenta: 'facturas',
     porcSinFactura: '',
+    minimoTransferencia: '',
   });
-  const [cuentas, setCuentas] = useState([{ cbuAlias: '', descripcion: '' }]);
+  const [cuentas, setCuentas] = useState([{ cbuAlias: '', titular: '', descripcion: '' }]);
 
   useEffect(() => {
     if (!original) return;
@@ -38,6 +39,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       diasPago: original.diasPago ?? '',
       modoCuenta: original.modoCuenta ?? 'facturas',
       porcSinFactura: original.porcSinFactura ? String(original.porcSinFactura) : '',
+      minimoTransferencia: Number(original.minimoTransferencia) > 0 ? String(original.minimoTransferencia) : '',
     });
   }, [original]);
 
@@ -48,7 +50,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
   );
   useEffect(() => {
     if (cuentasApi?.length) {
-      setCuentas(cuentasApi.map((c) => ({ cbuAlias: c.cbuAlias, descripcion: c.descripcion })));
+      setCuentas(cuentasApi.map((c) => ({ cbuAlias: c.cbuAlias, titular: c.titular ?? '', descripcion: c.descripcion })));
     }
   }, [cuentasApi]);
 
@@ -79,6 +81,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       porcSinFactura: f.condicionCompra === 'factura'
         ? 0
         : (f.porcSinFactura === '' ? (f.condicionCompra === 'liquidacion' ? 100 : 0) : Number(f.porcSinFactura)),
+      minimoTransferencia: f.minimoTransferencia === '' ? 0 : Number(f.minimoTransferencia),
     };
     const res = await act(
       editando ? provApi.editarProveedor(proveedorId, payload) : provApi.crearProveedor(payload),
@@ -169,6 +172,12 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
             <option value="libre">Libre (pagos a cuenta)</option>
           </select>
         </div>
+        <div className={s.field}>
+          <label>Mínimo por transferencia</label>
+          {/* "Menos de $50.000 no me transfieras": rige para las transferencias de
+              clientes a sus cuentas disponibles, salvo la que cierra la cuenta. */}
+          <input type="number" min="0" step="1" value={f.minimoTransferencia} onChange={set('minimoTransferencia')} placeholder="0 = sin mínimo" />
+        </div>
       </div>
 
       <div className={s['form-grid']}>
@@ -210,12 +219,16 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       {cuentas.map((cta, i) => (
         <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
           <input
+            value={cta.titular} placeholder="Titular (a nombre de quién)"
+            onChange={setCta(i, 'titular')} style={{ flex: 1 }}
+          />
+          <input
             value={cta.cbuAlias} placeholder="CBU de 22 dígitos o alias"
             onChange={setCta(i, 'cbuAlias')} style={{ flex: 1 }}
           />
           <input
-            value={cta.descripcion} placeholder="Descripción (Galicia, del titular…)"
-            onChange={setCta(i, 'descripcion')} style={{ flex: 1 }}
+            value={cta.descripcion} placeholder="Descripción (Galicia…)"
+            onChange={setCta(i, 'descripcion')} style={{ flex: 0.8 }}
           />
           {cuentas.length > 1 && (
             <Btn small onClick={() => setCuentas((xs) => xs.filter((_, j) => j !== i))}>×</Btn>
@@ -223,7 +236,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
         </div>
       ))}
       {cuentas.length < 5 && (
-        <Btn small onClick={() => setCuentas((xs) => [...xs, { cbuAlias: '', descripcion: '' }])}>
+        <Btn small onClick={() => setCuentas((xs) => [...xs, { cbuAlias: '', titular: '', descripcion: '' }])}>
           + Agregar cuenta
         </Btn>
       )}

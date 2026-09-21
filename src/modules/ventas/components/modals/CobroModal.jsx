@@ -5,6 +5,8 @@ import { useResource } from '../../hooks/useResource.js';
 import { ventasApi } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO, nroComprobante } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
+import { sugerirImporteCuenta, validarTransferenciaProveedor } from '../../domain/cuentasProveedor.js';
+import { CuentaProveedorPicker } from '../CuentaProveedorPicker.jsx';
 import { Table, Btn, Di, ModalShell, VentaTag, money, fmtFechaHora, s } from '../ui.jsx';
 import { configImpresion, imprimirVenta } from '@core/services/imprimir.js';
 import p from '../../styles/Pos.module.css';
@@ -35,12 +37,14 @@ import p from '../../styles/Pos.module.css';
  * tiene cuenta corriente habilitada — si no, toda venta es al contado y no hay
  * nada que elegir. Los medios de pago arrancan en efectivo por el total.
  */
+const TERC = 'transferencia_proveedor';
+
 export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrado }) {
   const { getCliente, config, ctx, closeModal, toast, operadorId } = useVentas();
   const cliente = getCliente(clienteId);
 
   const [condicionPago, setCondicionPago] = useState('contado');
-  const [pagos, setPagos] = useState(() => [{ medio: 'efectivo', importe: String(totales.total) }]);
+  const [pagos, setPagos] = useState(() => [{ medio: 'efectivo', importe: String(totales.total), cuentaDisponibleId: null }]);
   const [entregado, setEntregado] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -89,6 +93,26 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   const pagado = r2(pagos.reduce((a, x) => a + (Number(x.importe) || 0), 0));
   const faltante = r2(totalCobrar - pagado);
 
+  /*
+   * TRANSFERENCIA A CUENTA DE PROVEEDOR: las cuentas abiertas se piden recién
+   * cuando algún renglón elige ese medio, y frescas en cada cobro — el resto
+   * de cada cuenta cambia con cada venta de cualquier sucursal. La API
+   * revalida con candado; acá el rechazo se ve antes de apretar.
+   */
+  const hayTerc = condicionPago === 'contado' && pagos.some((x) => x.medio === TERC);
+  const { data: cuentasTerc, loading: cargandoTerc, error: errorTerc, reload: recargarTerc } = useResource(
+    'cuentas-para-cobrar', ventasApi.cuentasParaCobrar, { enabled: hayTerc },
+  );
+  const avisoTerc = useMemo(() => {
+    if (!hayTerc) return null;
+    for (const x of pagos) {
+      if (x.medio !== TERC || !(Number(x.importe) > 0)) continue;
+      const m = validarTransferenciaProveedor(x.importe, (cuentasTerc ?? []).find((c) => c.id === x.cuentaDisponibleId));
+      if (m) return m;
+    }
+    return null;
+  }, [hayTerc, pagos, cuentasTerc]);
+
   /**
    * Medios que EXIGEN factura (configuración, 19/8/2026): un peso cobrado con
    * uno de estos bloquea "Liquidar" — la venta sale facturada sí o sí. Solo
@@ -114,8 +138,18 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   }, [condicionPago, cuenta, cliente, totales.total]);
 
   /* ------------------------------- Pagos ------------------------------- */
+  // Cambiar de medio suelta la cuenta de proveedor que pudiera tener el renglón.
   const setPago = (i, campo, valor) =>
-    setPagos((ps) => ps.map((x, j) => (j === i ? { ...x, [campo]: valor } : x)));
+    setPagos((ps) => ps.map((x, j) => (j === i
+      ? { ...x, [campo]: valor, ...(campo === 'medio' && valor !== TERC ? { cuentaDisponibleId: null } : {}) }
+      : x)));
+  /** Al elegir la cuenta se propone el importe: lo que le falta, o lo que resta de la venta. */
+  const elegirCuenta = (i, cuenta) => setPagos((ps) => ps.map((x, j) => {
+    if (j !== i) return x;
+    if (!cuenta) return { ...x, cuentaDisponibleId: null };
+    const otros = r2(ps.reduce((a, y, k) => (k === i ? a : a + (Number(y.importe) || 0)), 0));
+    return { ...x, cuentaDisponibleId: cuenta.id, importe: String(sugerirImporteCuenta(cuenta, r2(totalCobrar - otros))) };
+  }));
   /** El renglón nuevo arranca con lo que falta: el caso típico es partir el pago. */
   const agregarPago = () => setPagos((ps) => {
     const asignado = r2(ps.reduce((a, x) => a + (Number(x.importe) || 0), 0));
@@ -123,6 +157,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
     return [...ps, {
       medio: medios.find((m) => m !== 'efectivo') || medios[0],
       importe: resto > 0 ? String(resto) : '',
+      cuentaDisponibleId: null,
     }];
   });
   const quitarPago = (i) => setPagos((ps) => (ps.length > 1 ? ps.filter((_, j) => j !== i) : ps));
@@ -159,6 +194,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
       toast(faltante > 0 ? `Faltan ${money(faltante)}.` : `Sobran ${money(-faltante)}.`, 'err');
       return;
     }
+    if (avisoTerc) { toast(avisoTerc, 'err'); return; }
     if (excedeCredito && config.ctaCteBloquearSuperado) {
       toast('Supera el límite de crédito del cliente.', 'err');
       return;
@@ -176,7 +212,10 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
           operadorId: operadorId ?? undefined,
           observaciones,
           pagos: condicionPago === 'contado'
-            ? pagos.filter((x) => Number(x.importe) > 0).map((x) => ({ medio: x.medio, importe: r2(x.importe) }))
+            ? pagos.filter((x) => Number(x.importe) > 0).map((x) => ({
+              medio: x.medio, importe: r2(x.importe),
+              ...(x.medio === TERC ? { cuentaDisponibleId: x.cuentaDisponibleId } : {}),
+            }))
             : [],
         });
       } catch (e1) {
@@ -284,7 +323,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
 
   const pagosOk = condicionPago === 'cuenta_corriente'
     ? !(excedeCredito && config.ctaCteBloquearSuperado)
-    : Math.abs(faltante) <= 0.01;
+    : Math.abs(faltante) <= 0.01 && !avisoTerc;
   const puedeLiquidar = pagosOk && condicionPago === 'contado' && !medioExigeFactura && !enviando;
   const puedeFacturar = pagosOk && !enviando;
 
@@ -396,7 +435,8 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
 
           <div className={s['section-title']}>Medios de pago</div>
           {pagos.map((x, i) => (
-            <div key={i} className={p.pagoFila}>
+            <div key={i}>
+            <div className={p.pagoFila}>
               <div className={s.field} style={{ marginBottom: 0 }}>
                 {i === 0 && <label>Medio</label>}
                 <select value={x.medio} onChange={(e) => setPago(i, 'medio', e.target.value)}>
@@ -415,6 +455,14 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
                 <Btn small onClick={() => completar(i)}>Resto</Btn>
                 <Btn variant="btn-delete" small onClick={() => quitarPago(i)} disabled={pagos.length === 1}>×</Btn>
               </div>
+            </div>
+            {x.medio === TERC && (
+              <CuentaProveedorPicker
+                cuentas={cuentasTerc} loading={cargandoTerc && !cuentasTerc} error={errorTerc}
+                cuentaId={x.cuentaDisponibleId} importe={x.importe}
+                onSeleccionar={(c) => elegirCuenta(i, c)} onRefrescar={recargarTerc}
+              />
+            )}
             </div>
           ))}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
