@@ -570,6 +570,36 @@ async function refetch() {
   emit();
 }
 
+/**
+ * VOLVER A MIRAR AL ENTRAR AL MÓDULO (21/9/2026).
+ *
+ * `init()` corre UNA vez por carga de página: después de eso, el store solo se
+ * entera de lo que pasa por sus propias manos. Mientras las incidencias nacían
+ * dentro de Almacén (un faltante al recibir una transferencia) eso alcanzaba —
+ * la operación que las creaba refrescaba sola.
+ *
+ * Con las ventas sin stock dejó de alcanzar: la incidencia nace en la CAJA, que
+ * es otro módulo con su propio estado. El cajero vende, entra a Almacén y no ve
+ * nada, porque está mirando la foto que se bajó al abrir el navegador. "Vendí y
+ * no aparece" no es un error del que mira: es que nadie le volvió a preguntar
+ * al servidor.
+ *
+ * Preguntar es BARATO desde que el snapshot se parte en tres con su ETag: lo
+ * que no cambió vuelve como 304 sin cuerpo. Entrar a Almacén con todo igual son
+ * tres respuestas vacías; con una venta nueva, baja `base` (lo chico) y nada más.
+ *
+ * NO refresca las "secciones" (pagos, vencimientos, cafetería): esas son
+ * consultas propias de cada panel, las pide el panel que se abre, y volver a
+ * pedirlas todas acá sería cobrar por pantallas que quizá nadie mire.
+ */
+async function revalidar() {
+  if (!_loaded || _loading) return;
+  try {
+    mergeState(await cargarSnapshot());
+    emit();
+  } catch { /* sin conexión: se sigue con la copia que hay, no se rompe la pantalla */ }
+}
+
 async function init() {
   if (_loaded || _loading) return;
   _loading = true;
@@ -1117,7 +1147,7 @@ export const inventoryStore = {
   get loaded() { return _loaded; },
   get loadError() { return _loadError; },
   subscribe, getVersion,
-  init, reset, refetch, cargarSeccion, movimientosPorFechas,
+  init, reset, refetch, revalidar, cargarSeccion, movimientosPorFechas,
   getProducto, getSucursal, getProveedor, getUsuario, presDe, distribuidora,
   unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry,
   rolActual, can, tiposMovPermitidos, setCtx,

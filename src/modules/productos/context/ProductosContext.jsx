@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useInventory } from '../hooks/useInventory.js';
 
 /**
@@ -17,6 +17,17 @@ const ProductosContext = createContext(null);
 
 export function ProductosProvider({ children, panels = [], defaultPanel }) {
   const store = useInventory();
+
+  /*
+   * AL ENTRAR AL MÓDULO, VOLVER A PREGUNTAR (21/9/2026).
+   *
+   * El store se carga una vez por carga de página. Alcanzaba cuando todo lo
+   * que muestra nacía acá adentro; desde que la CAJA crea incidencias al
+   * vender sin stock, no: el cajero vendía, entraba a Almacén y veía la foto
+   * vieja. Cuesta tres pedidos condicionales que vuelven 304 cuando no cambió
+   * nada — ver `revalidar` en el store.
+   */
+  useEffect(() => { store.revalidar(); }, [store]);
 
   const [panel, setPanel] = useState(defaultPanel || panels[0]?.id || 'dashboard');
   const [panelParams, setPanelParams] = useState({});
