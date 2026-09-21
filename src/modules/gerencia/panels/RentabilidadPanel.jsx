@@ -167,6 +167,16 @@ export function RentabilidadPanel() {
               label="Stock sin factura hoy" valor={money(stock.valorReal)}
               detalle={`${stock.productos} producto(s) · si se vende todo, se absorben ${money(stock.ivaAbsorber)} más`}
             />
+            {/* LO QUE ENTRÓ POR FINANCIAR, en su propio renglón. No suma al
+                margen de ningún producto y no tiene que sumar: un mes con
+                muchas cuotas parecería un mes de mejores márgenes, y lo único
+                que pasó es que se le cobró más caro al que pagó en cuotas. */}
+            {data?.recargoCuotas?.cobros > 0 && (
+              <Stat
+                label="Recargo por cuotas" valor={money(data.recargoCuotas.total)}
+                detalle={`${data.recargoCuotas.cobros} cobro(s) financiado(s) · ${data.recargoCuotas.sobreVentaPct}% de lo vendido. No es margen: es lo que se le cobró al cliente por pagar en cuotas, y es lo que se queda la tarjeta.`}
+              />
+            )}
             <Stat
               label="IVA débito (ventas facturadas)" valor={money(f.debitoVentas)}
               detalle={`${f.ventasFacturadas} factura(s) de venta en el período`}

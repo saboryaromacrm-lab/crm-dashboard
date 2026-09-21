@@ -572,6 +572,23 @@ export function ConfiguracionPanel() {
               onChange={(mediosPago, mediosFacturar) => setDraft((d) => ({ ...d, mediosPago, mediosFacturar }))}
             />
           </Campo>
+          <Campo
+            label="Recargo por cuotas — tarjeta de crédito (%)"
+            hint="Lo que cobra la tarjeta por financiar, trasladado al cliente: en la caja, elegir un plan SUBE el total y el recargo va como un renglón propio del comprobante. Corre solo sobre la parte que se paga con la tarjeta. En cero no recarga nada, y el plan se sigue pudiendo elegir."
+          >
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {[1, 3, 6].map((n) => (
+                <label key={n} style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 96 }}>
+                  <span className={s.hint} style={{ margin: 0 }}>{n} cuota{n === 1 ? '' : 's'}</span>
+                  <input
+                    type="number" min="0" max="100" step="0.5"
+                    value={draft[`recargoCuotas${n}`] ?? 0}
+                    onChange={setNum(`recargoCuotas${n}`)}
+                  />
+                </label>
+              ))}
+            </div>
+          </Campo>
         </Seccion>
 
         <Seccion titulo="Lector de códigos y balanza">

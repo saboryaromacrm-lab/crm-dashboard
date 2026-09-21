@@ -38,6 +38,10 @@ import p from '../../styles/Pos.module.css';
  * nada que elegir. Los medios de pago arrancan en efectivo por el total.
  */
 const TERC = 'transferencia_proveedor';
+const CREDITO = 'tarjeta_credito';
+/* Los planes que existen. Lista cerrada, igual que en la API: un campo libre
+ * dejaría cobrar "en 4" sin tener % cargado para 4, y el recargo saldría 0. */
+const PLANES = [1, 3, 6];
 
 export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrado }) {
   const { getCliente, config, ctx, closeModal, toast, operadorId } = useVentas();
@@ -90,8 +94,33 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
     return habilitados.length ? habilitados : Object.keys(MEDIOS_PAGO);
   }, [config.mediosPago]);
 
-  const pagado = r2(pagos.reduce((a, x) => a + (Number(x.importe) || 0), 0));
-  const faltante = r2(totalCobrar - pagado);
+  /*
+   * EL RECARGO POR CUOTAS (0100). El total que se cobra deja de ser el de la
+   * mercadería: financiar cuesta, y ese costo se le traslada al cliente.
+   *
+   * LA BASE ES LO QUE QUEDA PARA LA TARJETA, no el total de la venta: si el
+   * cliente paga la mitad en efectivo, el recargo corre sobre la otra mitad.
+   * Cobrarle financiación a la plata que puso en mano sería cobrarle de más.
+   *
+   * El importe de ese renglón NO se tipea: sale de la cuenta. La cajera elige
+   * el plan y el sistema dice cuánto pasa por el posnet — que es el número que
+   * de verdad se aprieta en la terminal. La API lo recalcula igual: acá se
+   * muestra, allá se decide.
+   */
+  const idxPlan = pagos.findIndex((x) => x.medio === CREDITO && x.cuotas);
+  const pctRecargo = idxPlan >= 0 ? Number(config[`recargoCuotas${pagos[idxPlan].cuotas}`]) || 0 : 0;
+  const baseTarjeta = idxPlan < 0 ? 0 : r2(totalCobrar - r2(pagos.reduce(
+    (a, x, j) => (j === idxPlan ? a : a + (Number(x.importe) || 0)), 0,
+  )));
+  const recargo = pctRecargo > 0 && baseTarjeta > 0 ? r2((baseTarjeta * pctRecargo) / 100) : 0;
+  /** Los pagos con el renglón financiado ya resuelto: es lo que se manda y lo que se suma. */
+  const pagosReales = idxPlan < 0
+    ? pagos
+    : pagos.map((x, j) => (j === idxPlan ? { ...x, importe: r2(baseTarjeta + recargo) } : x));
+  const totalFinal = r2(totalCobrar + recargo);
+
+  const pagado = r2(pagosReales.reduce((a, x) => a + (Number(x.importe) || 0), 0));
+  const faltante = r2(totalFinal - pagado);
 
   /*
    * TRANSFERENCIA A CUENTA DE PROVEEDOR: las cuentas abiertas se piden recién
@@ -212,8 +241,12 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
           operadorId: operadorId ?? undefined,
           observaciones,
           pagos: condicionPago === 'contado'
-            ? pagos.filter((x) => Number(x.importe) > 0).map((x) => ({
+            ? pagosReales.filter((x) => Number(x.importe) > 0).map((x) => ({
               medio: x.medio, importe: r2(x.importe),
+              /* El PLAN, no el recargo ni el porcentaje: el servidor los
+               * calcula con su propia configuración. Mandarle el monto sería
+               * dejar que la caja declare cuánto de una venta es financiación. */
+              ...(x.medio === CREDITO && x.cuotas ? { cuotas: Number(x.cuotas) } : {}),
               ...(x.medio === TERC ? { cuentaDisponibleId: x.cuentaDisponibleId } : {}),
             }))
             : [],
@@ -353,7 +386,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
           onClick: () => confirmar('factura'),
         },
         {
-          texto: enviando ? 'Registrando…' : `Liquidar ${money(totalCobrar)} · F10`,
+          texto: enviando ? 'Registrando…' : `Liquidar ${money(totalFinal)} · F10`,
           clase: puedeLiquidar ? 'btn-primary' : 'btn-ghost',
           onClick: () => confirmar('ticket'),
         },
@@ -361,8 +394,26 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
     >
       <div className={p.cobroTotal}>
         <span className={p.cobroTotalLabel}>Total</span>
-        <span className={p.cobroTotalValor}>{money(totalCobrar)}</span>
+        <span className={p.cobroTotalValor}>{money(totalFinal)}</span>
       </div>
+      {/* Con recargo, el total grande ya no es el de la mercadería: se muestra
+          de dónde salió, para que el número no aparezca cambiado sin
+          explicación justo cuando el cliente está mirando. */}
+      {recargo > 0 && (
+        <div className={cx(s.callout, s.info)} style={{ marginTop: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <span>Mercadería</span><strong>{money(totalCobrar)}</strong>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <span>Recargo {pagos[idxPlan].cuotas} cuota{pagos[idxPlan].cuotas === 1 ? '' : 's'} ({pctRecargo}%) sobre {money(baseTarjeta)}</span>
+            <strong>{money(recargo)}</strong>
+          </div>
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            El recargo va como un renglón propio del comprobante: el cliente ve
+            qué le costó pagar en cuotas.
+          </div>
+        </div>
+      )}
 
 
       {/* El selector solo existe cuando hay algo que elegir: cliente con cta. cte. */}
@@ -445,17 +496,45 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
               </div>
               <div className={s.field} style={{ marginBottom: 0 }}>
                 {i === 0 && <label>Importe</label>}
+                {/* CON PLAN, EL IMPORTE NO SE TIPEA: sale de la cuenta (lo que
+                    queda para la tarjeta + el recargo). Es el número que se
+                    aprieta en el posnet, y dejarlo editable invitaría a cobrar
+                    uno distinto del que el comprobante va a decir. */}
                 <input
                   type="number" min="0" step="0.01"
-                  value={x.importe}
+                  value={i === idxPlan && recargo > 0 ? String(r2(baseTarjeta + recargo)) : x.importe}
+                  readOnly={i === idxPlan && recargo > 0}
+                  title={i === idxPlan && recargo > 0 ? 'Lo calcula el plan de cuotas' : undefined}
                   onChange={(e) => setPago(i, 'importe', e.target.value)}
                 />
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <Btn small onClick={() => completar(i)}>Resto</Btn>
+                <Btn small onClick={() => completar(i)} disabled={i === idxPlan && recargo > 0}>Resto</Btn>
                 <Btn variant="btn-delete" small onClick={() => quitarPago(i)} disabled={pagos.length === 1}>×</Btn>
               </div>
             </div>
+            {/* EL PLAN DE CUOTAS, solo donde aplica. "Sin plan" es una opción y
+                no un vacío: se puede cobrar con crédito en una sola vez sin
+                que el sistema tenga que suponer nada. */}
+            {x.medio === CREDITO && (
+              <div className={s.field} style={{ marginTop: 6, marginBottom: 0 }}>
+                <label>En cuántas cuotas</label>
+                <select
+                  value={x.cuotas ?? ''}
+                  onChange={(e) => setPago(i, 'cuotas', e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">Sin plan (una sola vez, sin recargo)</option>
+                  {PLANES.map((n) => {
+                    const pct = Number(config[`recargoCuotas${n}`]) || 0;
+                    return (
+                      <option key={n} value={n}>
+                        {n} cuota{n === 1 ? '' : 's'}{pct > 0 ? ` · +${pct}%` : ' · sin recargo'}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
             {x.medio === TERC && (
               <CuentaProveedorPicker
                 cuentas={cuentasTerc} loading={cargandoTerc && !cuentasTerc} error={errorTerc}

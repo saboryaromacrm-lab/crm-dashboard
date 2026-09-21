@@ -709,7 +709,10 @@ export function DetalleArqueo({ arqueo }) {
         </span>
       </div>
       <Table
-        cols={[{ h: 'Medio' }, { h: 'Ventas', num: true }, { h: 'Cobranzas', num: true }, { h: 'Total', num: true }]}
+        cols={[
+          { h: 'Medio' }, { h: 'Ventas', num: true }, { h: 'Cobranzas', num: true },
+          { h: 'De eso, recargo', num: true }, { h: 'Total', num: true },
+        ]}
         empty="No entró dinero en este turno."
       >
         {medios.map(([medio, m]) => (
@@ -717,10 +720,26 @@ export function DetalleArqueo({ arqueo }) {
             <td>{MEDIOS_PAGO[medio] || medio}</td>
             <td className={s.num}>{money(m.ventas)}</td>
             <td className={s.num}>{money(m.cobranzas)}</td>
+            {/* EL RECARGO POR CUOTAS, DENTRO DEL MISMO COBRO. Va al lado del
+                medio y no en una fila aparte porque es plata que entró por ESE
+                medio: separarla en otro renglón haría que los totales de la
+                tabla dejaran de sumar el total cobrado. */}
+            <td className={s.num}>
+              {m.recargo > 0
+                ? <span style={{ color: 'var(--crm-color-warning)' }}>{money(m.recargo)}</span>
+                : <span className={s.muted}>—</span>}
+            </td>
             <td className={s.num}><strong>{money(m.total)}</strong></td>
           </tr>
         ))}
       </Table>
+      {arqueo.recargos > 0 && (
+        <div className={s.hint}>
+          De los {money(arqueo.totalCobrado)} que entraron, <strong>{money(arqueo.recargos)}</strong> son
+          recargo por cuotas: no es venta de mercadería, es lo que se le cobró al cliente por
+          financiar. Esa plata es la que se va a quedar la tarjeta cuando liquide.
+        </div>
+      )}
 
       <MovimientosDelTurno movimientos={arqueo.movimientos} />
 
