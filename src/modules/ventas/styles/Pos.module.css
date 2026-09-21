@@ -268,10 +268,33 @@
    angosta, el bulto baja abajo en vez de apretar el campo de unidades. */
 .cantFila {
   display: flex;
-  align-items: center;
+  /* Arriba y no al centro: los dos campos tienen que alinearse por su caja,
+     no por el bloque entero — si no, el que tiene nombre mas largo empuja al
+     otro hacia abajo y quedan en escalera. */
+  align-items: flex-start;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 10px;
   flex-wrap: wrap;
+}
+
+/* Cada campo con su nombre debajo: el control arriba, que es lo que se toca,
+   y el nombre abajo en chico, que es lo que se lee UNA vez y despues ya se
+   sabe. Van juntos para que el nombre no se despegue de su campo cuando la
+   columna se angosta. */
+.cantCampo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Deliberadamente discreto: es una aclaracion, no un dato. Compite con el
+   numero si se le da mas peso, y el numero es lo que el cajero mira. */
+.cantNombre {
+  font-size: 11px;
+  line-height: 1.1;
+  color: var(--crm-color-text-muted);
+  white-space: nowrap;
 }
 
 .bultoStep {

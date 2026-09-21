@@ -417,47 +417,58 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                   )}
                 </td>
                 <td className={p.num}>
+                  {/*
+                    BULTOS PRIMERO, UNIDADES DESPUÉS (21/9/2026, pedido del dueño).
+                    Es el orden en que se piensa la compra mayorista: "llevá dos
+                    cajas" y recién después cuántas unidades son. Y cada campo
+                    dice qué es — dos números pegados sin nombre se confunden, y
+                    acá confundirlos es cobrar 16 en vez de 1.
+                  */}
                   <div className={p.cantFila}>
-                    <input
-                      className={cx(p.inputMini, sinStock && p.inputAlerta)}
-                      type="number"
-                      min="0"
-                      step={r.fraccionable ? '0.001' : '1'}
-                      value={r.cantidad}
-                      title="Unidades"
-                      onChange={(e) => dispatch({ tipo: 'cantidad', uid: r.uid, valor: e.target.value })}
-                    />
-                    {/* EL BULTO, al lado de las unidades. Antes había que llegar
-                        al número haciendo la cuenta de cabeza: para una caja de
-                        16, dos cajas eran "escribí 32". Acá − y + mueven de a un
-                        bulto —conservando los sueltos que hubiera— y el campo
-                        del medio acepta el número directo, que es lo rápido
-                        cuando son diez. Las unidades siguen siendo la verdad:
-                        esto es otra forma de escribir el mismo número. */}
                     {bulto.unidades > 1 && (
-                      <div className={p.bultoStep}>
-                        <button
-                          type="button" className={p.bultoBtn} title={`Bajar al bulto de abajo (${num(bulto.unidades)} u)`}
-                          disabled={r.cantidad <= bulto.unidades} onClick={() => irBulto(bultoAbajo)}
-                        >
-                          −
-                        </button>
-                        <input
-                          className={p.inputBulto}
-                          type="number" min="0" step="1" value={partes.bultos}
-                          title={`Bultos de ${num(bulto.unidades)} u`}
-                          onChange={(e) => dispatch({
-                            tipo: 'bultos', uid: r.uid, unidades: bulto.unidades, bultos: e.target.value,
-                          })}
-                        />
-                        <button
-                          type="button" className={p.bultoBtn} title={`Subir al bulto de arriba (${num(bulto.unidades)} u)`}
-                          onClick={() => irBulto(bultoArriba)}
-                        >
-                          +
-                        </button>
+                      <div className={p.cantCampo}>
+                        <div className={p.bultoStep}>
+                          <button
+                            type="button" className={p.bultoBtn} title={`Bajar al bulto de abajo (${num(bulto.unidades)} u)`}
+                            disabled={r.cantidad <= bulto.unidades} onClick={() => irBulto(bultoAbajo)}
+                          >
+                            −
+                          </button>
+                          <input
+                            className={p.inputBulto}
+                            type="number" min="0" step="1" value={partes.bultos}
+                            title={`Bultos de ${num(bulto.unidades)} ${r.unidad}`}
+                            onChange={(e) => dispatch({
+                              tipo: 'bultos', uid: r.uid, unidades: bulto.unidades, bultos: e.target.value,
+                            })}
+                          />
+                          <button
+                            type="button" className={p.bultoBtn} title={`Subir al bulto de arriba (${num(bulto.unidades)} u)`}
+                            onClick={() => irBulto(bultoArriba)}
+                          >
+                            +
+                          </button>
+                        </div>
+                        {/* De a cuántas viene el bulto, bajo el control que lo mueve:
+                            sin eso "2" no dice si son 24 o 32. */}
+                        <span className={p.cantNombre}>bultos de {num(bulto.unidades)}</span>
                       </div>
                     )}
+                    <div className={p.cantCampo}>
+                      <input
+                        className={cx(p.inputMini, sinStock && p.inputAlerta)}
+                        type="number"
+                        min="0"
+                        step={r.fraccionable ? '0.001' : '1'}
+                        value={r.cantidad}
+                        title="Unidades: es la cantidad que se cobra"
+                        onChange={(e) => dispatch({ tipo: 'cantidad', uid: r.uid, valor: e.target.value })}
+                      />
+                      {/* LAS UNIDADES SON LA VERDAD: el bulto es otra forma de
+                          escribir este mismo número, y es este el que se cobra.
+                          Por eso lleva la unidad del artículo (u / kg / paq.). */}
+                      <span className={p.cantNombre}>{r.unidad === 'kg' ? 'kg' : 'unidades'}</span>
+                    </div>
                   </div>
                   {/* CÓMO SE LEE ESA CANTIDAD. En rojo solo cuando el bulto es
                       una REGLA de la lista y no se cumple: el precio de a 12
