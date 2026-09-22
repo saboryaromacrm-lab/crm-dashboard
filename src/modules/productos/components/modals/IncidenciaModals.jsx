@@ -12,7 +12,7 @@ import { IncidPill, s } from '../ui.jsx';
 
 /* ============================== NUEVA INCIDENCIA ============================== */
 export function IncidenciaModal({ pre = {} }) {
-  const { store, act, closeModal, sucOperativa } = useProductos();
+  const { store, act, closeModal, toast, sucOperativa } = useProductos();
 
   const prodInicial = pre.productoId || store.state.productos[0]?.id;
 
@@ -30,14 +30,37 @@ export function IncidenciaModal({ pre = {} }) {
   const unidad = store.unidadDe(prod, presNum);
   const unitLabel = unidad === 'kg' ? 'kg' : presNum ? 'paquetes' : 'unidades';
 
-  const crear = () =>
-    act(
+  /*
+   * LA CANTIDAD VIAJA COMO NÚMERO, no como el texto del campo.
+   *
+   * Acá iba `cantidad: cant` directo, que es lo que devuelve un `<input>`: la
+   * cadena "10". El DTO de la API pide `@IsNumber()`, así que rebotaba con las
+   * tres quejas juntas —no es número, es menor al mínimo y mayor al máximo—
+   * sobre un campo que en pantalla tenía un 10 bien escrito. Un mensaje que no
+   * se puede entender mirando el formulario.
+   *
+   * Y se valida ANTES de mandar. El servidor tiene las mismas reglas y las
+   * sigue teniendo —es el que manda—, pero enterarse de que falta la cantidad
+   * después del viaje, y en el idioma del validador, es peor que no avisar.
+   */
+  const crear = () => {
+    const c = Number(cant);
+    if (cant === '' || !Number.isFinite(c) || c <= 0) {
+      toast('Poné cuánta mercadería queda comprometida.', 'err');
+      return undefined;
+    }
+    if (c > disp + 1e-9) {
+      toast(`No hay tanto disponible en esta sucursal: hay ${store.fmtCant(prod, presNum, disp)}.`, 'err');
+      return undefined;
+    }
+    return act(
       store.crearIncidencia({
         tipo, productoId: prod.id, sucursalId: parseInt(sucId, 10), presId: presNum,
-        cantidad: cant, responsableId: parseInt(userId, 10), motivo: motivo.trim(),
+        cantidad: c, responsableId: parseInt(userId, 10), motivo: motivo.trim(),
       }),
       'Incidencia creada.',
     );
+  };
 
   return (
     <ModalShell
