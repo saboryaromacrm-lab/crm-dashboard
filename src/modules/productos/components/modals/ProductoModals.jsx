@@ -114,6 +114,15 @@ export function ProductoFormModal({ prodId }) {
    * en ninguno de los dos sentidos y ahorra un click. La API valida lo mismo.
    */
   const [soloCafeteria, setSoloCafeteria] = useState(!!prod?.soloCafeteria);
+  /* Lo disponible de este exclusivo en todas las sucursales, en su unidad
+     base (los paquetes vuelven a kg). Solo para el aviso de abajo. */
+  const stockExclusivo = ed && prod?.soloCafeteria
+    ? store.suma({ productoId: prod.id, presentacionId: null, estado: 'disponible' })
+      + (prod.presentaciones || []).reduce(
+        (a, pr) => a + store.suma({ productoId: prod.id, presentacionId: pr.id, estado: 'disponible' }) * (Number(pr.tamKg) || 0),
+        0,
+      )
+    : 0;
   const [origenCafeteria, setOrigenCafeteria] = useState(!!prod?.origenCafeteria);
   const marcarSoloCafeteria = (v) => { setSoloCafeteria(v); if (v) setOrigenCafeteria(false); };
   const marcarOrigenCafeteria = (v) => { setOrigenCafeteria(v); if (v) setSoloCafeteria(false); };
@@ -303,6 +312,17 @@ export function ProductoFormModal({ prodId }) {
             Al guardar, este producto <strong>vuelve a poder venderse en el mostrador</strong>.
             Revisá que tenga precio cargado (Formato de venta): si no lo tiene, el POS lo va a
             mostrar «sin precio» y no lo va a poder cobrar.
+          </div>
+        )}
+        {/* LA PLATA YA SE FUE (0101). Lo que hay en stock de un exclusivo se le
+            imputó a Coffit al comprarlo; destildar no lo devuelve. Se avisa
+            acá, con el número, y no se descubre en el resumen del mes. */}
+        {ed && prod?.soloCafeteria && !soloCafeteria && stockExclusivo > 1e-9 && (
+          <div className={cx(s.callout, s.warn)}>
+            Hay <strong>{store.fmtCant(prod, null, stockExclusivo)}</strong> en stock que ya se
+            le imputaron a Coffit en la factura de compra. Destildar la marca <strong>no mueve
+            esa plata</strong>: si esa mercadería la va a vender la distribuidora, cargá un envío
+            de la cafetería («Nos mandó») por esa cantidad para que vuelva a ser tuya.
           </div>
         )}
 

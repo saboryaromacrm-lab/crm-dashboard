@@ -52,6 +52,9 @@ export function GastoFormModal({ gastoId, onChange }) {
     proveedorId: '',
     categoriaId: '',
     sucursalId: '',
+    /* A qué negocio se imputa (0101). La base y la API ya lo tenían; el
+       formulario lo había perdido en la simplificación 0067. */
+    negocio: 'distribuidora',
     condicionPago: 'contado',
     vencimiento: '',
     iva: '',
@@ -94,6 +97,7 @@ export function GastoFormModal({ gastoId, onChange }) {
       proveedorId: original.proveedorId ?? '',
       categoriaId: original.categoriaId ?? '',
       sucursalId: original.sucursalId ?? '',
+      negocio: original.negocio || 'distribuidora',
       condicionPago: original.condicionPago,
       vencimiento: original.vencimiento ? String(original.vencimiento).slice(0, 10) : '',
       iva: original.iva || '',
@@ -307,6 +311,8 @@ export function GastoFormModal({ gastoId, onChange }) {
        * el jefe no podía sacarle la sucursal a un gasto nunca más.
        */
       ...(esJefe ? { sucursalId: sucursalGasto || null } : {}),
+      /* El negocio es imputación, no importe: se puede corregir aunque haya pagos. */
+      negocio: f.negocio,
       /*
        * LOS CAMPOS QUE EL GASTO PAGADO TIENE BLOQUEADOS NO VIAJAN. El servidor
        * rechaza la edición entera si llega cualquiera de ellos con pagos
@@ -456,6 +462,16 @@ export function GastoFormModal({ gastoId, onChange }) {
           <select value={f.categoriaId} onChange={set('categoriaId')}>
             <option value="">Elegí el rubro</option>
             {categoriasActivas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </div>
+        <div className={s.field}>
+          <label>De qué negocio es</label>
+          {/* Mismo CUIT, dos negocios: separar acá es lo que permite responder
+              "¿cuánto me cuesta la cafetería por mes?" sin inventar una
+              sucursal con stock. El resumen del café lo suma solo. */}
+          <select value={f.negocio} onChange={set('negocio')}>
+            <option value="distribuidora">Distribuidora (Sabor y Aroma)</option>
+            <option value="cafeteria">Cafetería (Coffit)</option>
           </select>
         </div>
         <div className={s.field}>

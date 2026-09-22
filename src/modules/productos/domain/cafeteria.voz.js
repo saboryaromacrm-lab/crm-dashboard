@@ -32,6 +32,10 @@ const CASA = {
   tabPedidos: 'Pedidos',
   tabSalida: 'Le mandamos',
   tabEntrada: 'Nos mandó',
+  tabDeposito: 'Depósito del café',
+  depositoSub: 'Mercadería de uso exclusivo de la cafetería guardada en las sucursales. Ya es del café —se le imputó al comprarla— y sale cuando él la pide. Valuada al costo de hoy.',
+  depositoVacio: 'No hay mercadería exclusiva del café en stock. Lo que se compre de un artículo marcado «uso exclusivo de Cafetería» aparece acá.',
+  depositoBtn: null,
 
   btnSalida: '+ Nuevo envío',
   btnEntrada: '+ Envío de la cafetería',
@@ -77,6 +81,10 @@ const CAFE = {
   tabPedidos: 'Mis pedidos',
   tabSalida: 'Recibidos de Sabor y Aroma',
   tabEntrada: 'Envíos a Sabor y Aroma',
+  tabDeposito: 'Disponible en depósito',
+  depositoSub: 'Lo que Sabor y Aroma compró para vos y tiene guardado. Ya es tuyo: pedilo cuando lo necesites y te lo mandan.',
+  depositoVacio: 'No hay nada guardado para vos ahora mismo.',
+  depositoBtn: 'Pedir de acá',
 
   btnSalida: null,
   btnEntrada: '+ Nuevo envío a Sabor y Aroma',

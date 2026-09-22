@@ -1040,7 +1040,12 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
  * de plata: es "esto necesito" — el que arma el envío corrige a lo que de
  * verdad va, y el envío cierra el pedido.
  */
-export function PedidoCafeteriaFormModal() {
+/**
+ * `inicial` (0101): el pedido armado desde «Disponible en depósito» llega con
+ * los renglones y la sucursal ya puestos — el café marca cuánto quiere de lo
+ * que ya es suyo, en vez de buscarlo de nuevo en el catálogo.
+ */
+export function PedidoCafeteriaFormModal({ inicial = null }) {
   const { store, closeModal, toast, can, ctx } = useProductos();
   const v = useMemo(() => vozCafeteria(esVozDelCafe(can)), [can]);
   /*
@@ -1053,7 +1058,8 @@ export function PedidoCafeteriaFormModal() {
    * lugar, y volver a elegirla cada vez es trabajo puro.
    */
   const [sucId, setSucId] = useState(() => String(
-    (() => { try { return localStorage.getItem(ULTIMA_SUC_PEDIDO) || ''; } catch { return ''; } })()
+    inicial?.sucursalId
+    || (() => { try { return localStorage.getItem(ULTIMA_SUC_PEDIDO) || ''; } catch { return ''; } })()
     || ctx.sucursalId || '',
   ));
   /* El mismo candado del envío: dos clicks mandaban dos pedidos iguales, y del
@@ -1063,7 +1069,9 @@ export function PedidoCafeteriaFormModal() {
   const [enviando, setEnviando] = useState(false);
   const [obs, setObs] = useState('');
   /** { prodId, presId, cantidad } */
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState(() => (inicial?.items ?? []).map((it) => ({
+    prodId: it.prodId, presId: it.presId ?? null, cantidad: it.cantidad ?? '',
+  })));
 
   const setItem = (i, patch) => setItems((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)));
   const delItem = (i) => setItems((r) => r.filter((_, j) => j !== i));

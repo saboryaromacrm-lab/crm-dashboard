@@ -31,6 +31,7 @@ const inicioDeMes = () => {
  * según de qué lado del puente esté el que mira. Ver `domain/cafeteria.voz.js`. */
 const pestanasDe = (v) => [
   { id: 'pedidos', label: v.tabPedidos },
+  { id: 'deposito', label: v.tabDeposito },
   { id: 'envios', label: v.tabSalida },
   { id: 'recibidos', label: v.tabEntrada },
   { id: 'metrica', label: 'Métrica' },
@@ -79,6 +80,21 @@ export function CafeteriaPanel() {
   /* ---- Pedidos (la demanda del café) ---- */
   const [pedidos, setPedidos] = useState([]);
 
+  /* ---- El depósito del café (0101): se pide SOLO al abrir su pestaña ----
+   * No va en la carga general: es una foto de stock, no del período, y las
+   * otras cuatro consultas ya son bastante para abrir la pantalla. Se
+   * vuelve a pedir cuando el store versiona (un envío la cambia). */
+  const [deposito, setDeposito] = useState(null);
+  const version = store.getVersion?.() ?? 0;
+  useEffect(() => {
+    if (pestana !== 'deposito') return undefined;
+    let vivo = true;
+    store.depositoCafeteria()
+      .then((d) => { if (vivo) setDeposito(d); })
+      .catch(() => { if (vivo) toast('No se pudo leer el depósito del café.', 'err'); });
+    return () => { vivo = false; };
+  }, [store, pestana, version, toast]);
+
   const cargar = useCallback(async () => {
     setCargando(true);
     try {
@@ -112,7 +128,6 @@ export function CafeteriaPanel() {
    * Cafetería disparaba OCHO consultas en vez de cuatro — envíos, resumen,
    * métrica y pedidos, dos veces cada una.
    */
-  const version = store.getVersion?.() ?? 0;
   const versionVista = useRef(version);
   useEffect(() => {
     if (versionVista.current === version) return;
@@ -354,6 +369,88 @@ export function CafeteriaPanel() {
                 etapas: con esto ya se da por hecho que el café lo recibió. Para corregir uno, entrá
                 al detalle y usá <strong>Editar</strong> (la versión sube y coffit se entera por
                 sincronización).
+              </>
+            )}
+          </div>
+        </>
+      )}
+
+      {pestana === 'deposito' && (
+        <>
+          <div className={s.stats}>
+            <Stat label="En depósito hoy (a costo)" value={money(deposito?.valor ?? 0)} accent="accent-amber" />
+            <Stat label="Artículos con stock" value={deposito?.articulos?.length ?? 0} />
+            {/* Del período de arriba, no de hoy: cuánto se compró directo para el
+                café. Lo que ya salió está en la pestaña de envíos. */}
+            <Stat label="Comprado para el café en el período" value={money(resumen?.compradoDirecto ?? 0)} />
+            <Stat label="Facturas con mercadería del café" value={resumen?.comprasCantidad ?? 0} />
+          </div>
+
+          <div className={s.hint} style={{ marginTop: 0 }}>{v.depositoSub}</div>
+
+          <Table
+            cols={[
+              { h: 'Artículo' }, { h: 'Código' },
+              ...(deposito?.sucursales ?? []).map((su) => ({ h: su.nombre, num: true })),
+              { h: 'Total', num: true }, { h: 'Costo u.', num: true }, { h: 'Valor', num: true },
+              ...(v.depositoBtn ? [{ h: '' }] : []),
+            ]}
+            empty={deposito ? v.depositoVacio : 'Cargando…'}
+          >
+            {(deposito?.articulos ?? []).map((a) => {
+              /* El pedido sale de la sucursal que más tiene de ESTE artículo:
+                 es la que casi seguro puede mandarlo entero. Se puede cambiar
+                 en el formulario. */
+              const [sucMax] = Object.entries(a.porSucursal).sort((x, y) => y[1] - x[1])[0] ?? [];
+              return (
+                <tr key={`${a.productoId}-${a.presentacionId ?? 0}`}>
+                  <td>{a.nombre}</td>
+                  <td className={s.mono} style={{ fontSize: 12 }}>{a.codigoPropio || '—'}</td>
+                  {(deposito?.sucursales ?? []).map((su) => {
+                    const n = a.porSucursal[su.id] ?? 0;
+                    return (
+                      <td key={su.id} className={cx(s.num, s.mono)} style={{ opacity: n > 0 ? 1 : 0.3 }}>
+                        {num(n, a.unidad === 'kg' ? 2 : 0)}
+                      </td>
+                    );
+                  })}
+                  <td className={cx(s.num, s.mono)} style={{ fontWeight: 600 }}>{num(a.total, a.unidad === 'kg' ? 2 : 0)} {a.unidad}</td>
+                  <td className={cx(s.num, s.mono)}>{money(a.costoU)}</td>
+                  <td className={cx(s.num, s.mono)}>{money(a.valor)}</td>
+                  {v.depositoBtn && (
+                    <td className={s.num}>
+                      <Btn
+                        small
+                        onClick={() => openModal('pedidoCafeteria', {
+                          inicial: {
+                            sucursalId: Number(sucMax) || undefined,
+                            items: [{ prodId: a.productoId, presId: a.presentacionId, cantidad: '' }],
+                          },
+                        })}
+                      >
+                        Pedir
+                      </Btn>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </Table>
+
+          <div className={s.hint}>
+            {soloCafe ? (
+              <>
+                Esto <strong>ya es tuyo</strong>: Sabor y Aroma lo compró para vos y te lo imputó al
+                comprarlo. Está guardado en las sucursales hasta que lo pidas — el pedido sale de la
+                sucursal que lo tiene, y cuando te lo mandan deja de figurar acá.
+              </>
+            ) : (
+              <>
+                Es el stock de los artículos marcados <strong>«uso exclusivo de Cafetería»</strong> en
+                su ficha. Su costo <strong>ya se le imputó al café en la factura de compra</strong>, así
+                que el envío que lo lleve no vuelve a moverle plata: solo cruza la calle. Lo que la
+                distribuidora también vende (el azúcar, la harina) no entra acá — se le imputa al café
+                recién cuando se le manda.
               </>
             )}
           </div>

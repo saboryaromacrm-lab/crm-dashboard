@@ -1067,6 +1067,8 @@ const actualizarPapelPago = (id, datos) => _mutate(() => httpClient.patch(`/pago
 const enviosCafeteria = (filtros) => httpClient.get('/cafeteria/envios' + _qsPagos(filtros || {}));
 const envioCafeteria = (id) => httpClient.get('/cafeteria/envios/' + id);
 const resumenCafeteria = (filtros) => httpClient.get('/cafeteria/resumen' + _qsPagos(filtros || {}));
+/** Lo que es del café y está guardado en las sucursales (0101): artículos exclusivos, a costo. */
+const depositoCafeteria = () => httpClient.get('/cafeteria/deposito');
 /** Lo enviado a coffit en el período, agregado por artículo (con filtros). */
 const metricaCafeteria = (filtros) => httpClient.get('/cafeteria/metrica' + _qsPagos(filtros || {}));
 /** Último costo declarado por la cafetería, por `producto-presentación`. Se
@@ -1205,7 +1207,7 @@ export const inventoryStore = {
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
   papelFactura, leerRenglonesLectura,
   pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
-  enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria, costosEntradaCafeteria,
+  enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria, costosEntradaCafeteria, depositoCafeteria,
   productosCafeteria, crearProductoCafeteria, editarProductoCafeteria, bajaProductoCafeteria,
   crearEnvioCafeteria, editarEnvioCafeteria, anularEnvioCafeteria,
   pedidosCafeteria, pedidoCafeteria, crearPedidoCafeteria, tomarPedidoCafeteria, anularPedidoCafeteria,

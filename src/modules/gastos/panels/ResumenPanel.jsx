@@ -40,12 +40,14 @@ export function ResumenPanel() {
   const [desde, setDesde] = useState(inicioDeAnio());
   const [hasta, setHasta] = useState(hoyISO());
   const [sucursalId, setSucursalId] = useState('');
+  const [negocio, setNegocio] = useState('');
 
-  const key = `resumen:${desde}:${hasta}:${sucursalId}`;
+  const key = `resumen:${desde}:${hasta}:${sucursalId}:${negocio}`;
   const { data, loading, error, reload } = useResource(key, () => gastosApi.resumen({
     desde: desde || undefined,
     hasta: hasta || undefined,
     sucursalId: sucursalId || undefined,
+    negocio: negocio || undefined,
   }));
 
   const r = data;
@@ -70,6 +72,11 @@ export function ResumenPanel() {
         <select className={s['select-inline']} value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
           <option value="">Todas las sucursales</option>
           {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+        </select>
+        <select className={s['select-inline']} value={negocio} onChange={(e) => setNegocio(e.target.value)}>
+          <option value="">Los dos negocios</option>
+          <option value="distribuidora">Distribuidora</option>
+          <option value="cafeteria">Cafetería</option>
         </select>
         <Btn small onClick={reload} disabled={loading}>{loading ? 'Cargando…' : 'Actualizar'}</Btn>
       </div>

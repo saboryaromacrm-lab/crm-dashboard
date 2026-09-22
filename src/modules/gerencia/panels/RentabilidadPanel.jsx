@@ -188,6 +188,31 @@ export function RentabilidadPanel() {
             />
           </div>
 
+          {/* ---- La plata sigue a la mercadería: qué parte de las compras es del café (0101) ---- */}
+          {data.coffit && (data.coffit.compradoDirecto > 0 || data.coffit.enviadoDesdeStock > 0) && (
+            <div>
+              <div className={s['section-title']}>Compras del período: distribuidora y Coffit</div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <Stat
+                  label="Comprado a proveedores" valor={money(data.coffit.comprasBrutas)}
+                  detalle="Facturado + liquidado, neto. Es lo que dice el libro: el CUIT es uno solo."
+                />
+                <Stat
+                  label="Directo para Coffit" valor={money(data.coffit.compradoDirecto)}
+                  detalle="Artículos de uso exclusivo del café. Se le imputaron en la factura y esperan en el depósito hasta que los pide."
+                />
+                <Stat
+                  label="Enviado a Coffit desde tu stock" valor={money(data.coffit.enviadoDesdeStock)}
+                  detalle="Lo que también vendés (azúcar, harina) y le mandaste: se le imputa recién al salir, al costo del envío."
+                />
+                <Stat
+                  label="Compras propias de la distribuidora" valor={money(data.coffit.comprasPropias)} tono="ok"
+                  detalle="Lo que de verdad compraste para vos. Es el número que mirar contra la venta del período."
+                />
+              </div>
+            </div>
+          )}
+
           {/* ---- La tabla, con sus cuatro lentes ---- */}
           <div className={s.toolbar}>
             {Object.entries(LENTES).map(([k, v]) => (

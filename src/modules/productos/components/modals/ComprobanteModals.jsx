@@ -608,6 +608,20 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   const hayBonif = (Number(bonifPct) || 0) > 0 || (bonifManual ?? 0) > 0;
   const factorBonif = bruto > 0 ? 1 - bonifImporte / bruto : 1;
 
+  /*
+   * LO QUE DE ESTE PAPEL ES DE COFFIT (0101). Sale de la marca de la ficha
+   * («uso exclusivo de Cafetería»), no de un tilde: el que carga no decide
+   * nada, pero LO VE antes de guardar — y si está mal, se corrige en la ficha
+   * ahora y no en el resumen del mes. La API congela lo mismo en la factura.
+   */
+  const delCafe = items.reduce((acc, it) => {
+    const p = it.productoId ? store.getProducto(parseInt(it.productoId, 10)) : null;
+    if (!p?.soloCafeteria) return acc;
+    acc.renglones += 1;
+    acc.neto += calcRow(it).neto * factorBonif;
+    return acc;
+  }, { renglones: 0, neto: 0 });
+
   // El IVA se recalcula renglón por renglón sobre el neto bonificado: con dos
   // alícuotas distintas (21 y 10,5) no alcanza con prorratear el IVA total.
   /* En una liquidación el IVA es 0 acá TAMBIÉN, no solo en la API: si la pantalla
@@ -1872,6 +1886,19 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           <strong>TOTAL</strong><strong>{money(total)}</strong>
         </div>
 
+        {delCafe.renglones > 0 && (
+          <div
+            style={{
+              display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6,
+              borderTop: '1px dashed var(--crm-color-border)', color: 'var(--crm-color-text-secondary)',
+            }}
+            title="Artículos marcados «uso exclusivo de Cafetería» en su ficha. La factura sigue siendo de la distribuidora frente al proveedor y frente a ARCA; esto es a quién le pesa el costo."
+          >
+            <span>De eso, para Coffit ({delCafe.renglones} renglón{delCafe.renglones === 1 ? '' : 'es'} de uso exclusivo)</span>
+            <strong>{money(delCafe.neto)}</strong>
+          </div>
+        )}
+
         {/* EL CONTROL QUE HACE QUE ESTO VALGA LA PENA: el total del QR contra el
             total de lo cargado. Si cierra, los renglones están BIEN — no
             "parecen bien". Si no cierra, falta o sobra algo y se ve cuánto. */}
@@ -2685,7 +2712,11 @@ export function ComprobanteDetalleModal({ id }) {
     const p = store.getProducto(it.productoId);
     return (
       <tr key={i}>
-        <td>{p ? p.nombre : '—'}</td>
+        <td>
+          {p ? p.nombre : '—'}
+          {/* La marca CONGELADA en el renglón, no la de la ficha de hoy. */}
+          {it.paraCafeteria && <span className={s.hint} style={{ margin: 0 }}> · para Coffit</span>}
+        </td>
         <td>{p ? store.presLabel(p, it.presentacionId) : '—'}</td>
         <td className={s.num}>{num(it.cantidad, 3)}</td>
         <td className={s.num}>{money(it.costoUnitario)}</td>
@@ -2803,6 +2834,12 @@ export function ComprobanteDetalleModal({ id }) {
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span>Neto gravado</span><strong>{money(c.subtotalNeto)}</strong>
         </div>
+        {c.netoCafeteria > 0.009 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--crm-color-text-secondary)' }}>
+            <span>De eso, para Coffit <span className={s.muted}>· artículos de uso exclusivo</span></span>
+            <strong>{money(c.netoCafeteria)}</strong>
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span>IVA</span><strong>{money(c.ivaTotal)}</strong>
         </div>
