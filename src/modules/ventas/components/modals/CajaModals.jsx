@@ -313,8 +313,14 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
  * Contador de billetes
  * ==================================================================== */
 
-/** Denominaciones vigentes de mayor a menor, como se apila el cajón. */
-const DENOMINACIONES = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.25, 0.1, 0.05];
+/**
+ * Denominaciones de mayor a menor, como se apila el cajón.
+ *
+ * Llega hasta $20 y ahí se corta: de $10 para abajo no circula nada en la
+ * caja, y ocho renglones que siempre quedan en cero son ocho lugares donde
+ * el Enter se pierde mientras se cuenta.
+ */
+const DENOMINACIONES = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20];
 
 /**
  * Contar el cajón sin calculadora: cantidad de cada billete/moneda y el total
@@ -326,15 +332,15 @@ function ContadorBilletesModal({ inicial, onUsar, onCerrar }) {
   const [cant, setCant] = useState(() => ({ ...(inicial || {}) }));
   const refs = useRef({});
 
-  // La cuenta va en centavos: 3 monedas de $0,05 son 15 centavos justos,
-  // no 0.15000000000000002.
-  const totalCentavos = useMemo(() => DENOMINACIONES.reduce((acc, d) => {
+  /* Todas las denominaciones son pesos enteros, así que la suma es exacta sin
+   * dar vueltas por los centavos (lo que hacía falta cuando la lista bajaba
+   * hasta los $0,05 y 3 × 0,05 daba 0.15000000000000002). */
+  const total = useMemo(() => DENOMINACIONES.reduce((acc, d) => {
     const n = Math.floor(Number(cant[d])) || 0;
-    return acc + (n > 0 ? Math.round(d * 100) * n : 0);
+    return acc + (n > 0 ? d * n : 0);
   }, 0), [cant]);
-  const total = totalCentavos / 100;
 
-  const etiqueta = (d) => `$ ${d.toLocaleString('es-AR', { minimumFractionDigits: d < 1 ? 2 : 0 })}`;
+  const etiqueta = (d) => `$ ${d.toLocaleString('es-AR')}`;
 
   const fila = (d, i) => {
     const n = Math.floor(Number(cant[d])) || 0;
@@ -356,7 +362,7 @@ function ContadorBilletesModal({ inicial, onUsar, onCerrar }) {
           }}
         />
         <span className={cx(s.mono, !n && s.muted)} style={{ textAlign: 'right' }}>
-          {n ? money((Math.round(d * 100) * n) / 100) : '—'}
+          {n ? money(d * n) : '—'}
         </span>
       </div>
     );
@@ -365,21 +371,15 @@ function ContadorBilletesModal({ inicial, onUsar, onCerrar }) {
   return (
     <ModalShell
       title="Contar el efectivo"
-      subtitle="Cantidad de cada billete y moneda: el total se calcula solo. Enter salta al siguiente."
-      wide
+      subtitle="Cuántos de cada billete: el total se calcula solo. Enter baja al siguiente."
       onClose={onCerrar}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: onCerrar },
         { texto: `Usar este total (${money(total)})`, clase: 'btn-primary', onClick: () => onUsar(cant, total) },
       ]}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 32px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {DENOMINACIONES.slice(0, 9).map((d, i) => fila(d, i))}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {DENOMINACIONES.slice(9).map((d) => fila(d, -1))}
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {DENOMINACIONES.map((d, i) => fila(d, i))}
       </div>
 
       <div
