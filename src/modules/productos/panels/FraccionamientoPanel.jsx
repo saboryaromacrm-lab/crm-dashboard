@@ -10,7 +10,7 @@
  * que se quiera, todas las veces que se quiera, y el stock lo sigue moviendo
  * únicamente quien fracciona.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { analizarCodigo } from '@core/services/barcode.js';
 import { httpClient } from '@core/services/httpClient.js';
@@ -21,8 +21,8 @@ import {
 } from '@core/services/imprimir.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { useSeccion } from '../hooks/useSeccion.js';
-import { money, num, fmtFechaHora, fmtFechaVenc } from '../domain/format.js';
-import { Table, PanelHead, Btn, usePaginado, s } from '../components/ui.jsx';
+import { money, num, fmtFechaHora, fmtFechaVenc, fmtTam } from '../domain/format.js';
+import { Table, PanelHead, Stat, Btn, usePaginado, s } from '../components/ui.jsx';
 import { DisenadorEtiquetaFraccionado } from '../components/DisenadorEtiquetaFraccionado.jsx';
 import { AyudaEncabezadoNavegador } from '../components/AyudaEncabezado.jsx';
 
@@ -31,6 +31,7 @@ const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacrit
 
 const PESTANAS = [
   { id: 'fraccionar', label: 'Fraccionar' },
+  { id: 'catalogo', label: 'Por categoría y gramaje' },
   { id: 'etiquetas', label: 'Etiquetas' },
 ];
 
@@ -98,9 +99,261 @@ export function FraccionamientoPanel() {
       </div>
 
       {pestana === 'fraccionar' && <TabFraccionar puede={puede} />}
+      {pestana === 'catalogo' && <TabPorCategoria />}
       {pestana === 'etiquetas' && <TabEtiquetas puede={puede} />}
       {pestana === 'sinPrecio' && <TabSinPrecio filas={sinPrecio} store={store} openModal={openModal} />}
     </div>
+  );
+}
+
+/* ====================== POR CATEGORÍA Y GRAMAJE ====================== *
+ *
+ * La otra forma de mirar los fraccionados: no producto por producto, sino
+ * agrupados. Son dos preguntas distintas que se hacen todo el tiempo y que la
+ * lista plana no contesta:
+ *
+ *   · "de yerba, ¿cuántos paquetes tengo y de qué tamaños?"  → categoría › gramaje
+ *   · "de medio kilo, ¿cuánto hay en total?"                 → gramaje › categoría
+ *
+ * Por eso el orden se da vuelta en vez de elegir uno: la misma información
+ * contestando dos preguntas, sin tener que armar una segunda pantalla.
+ *
+ * EL STOCK POR SUCURSAL ES OPCIONAL y arranca apagado. Con cinco sucursales la
+ * tabla se va de ancho, y la pregunta más común —cuánto hay en total— se
+ * responde peor con cinco columnas que con una.
+ *
+ * Todo sale del snapshot que ya está en memoria: esta pestaña no le pide nada
+ * al servidor.
+ */
+function TabPorCategoria() {
+  const { store, openModal } = useProductos();
+  const sucursales = store.state.sucursales;
+
+  const [q, setQ] = useState('');
+  const [orden, setOrden] = useState('categoria');   // 'categoria' | 'gramaje'
+  const [porSucursal, setPorSucursal] = useState(false);
+  const [ocultarCeros, setOcultarCeros] = useState(false);
+  const [cerrados, setCerrados] = useState(() => new Set());
+
+  const version = store.getVersion?.() ?? 0;
+
+  /* Un renglón por paquete, ya valuado. Agrupar y sumar después es sobre esto. */
+  const paquetes = useMemo(() => {
+    const ql = norm(q);
+    const filas = [];
+    for (const p of store.state.productos) {
+      if (p.tipo !== 'granel' || !(p.presentaciones || []).length) continue;
+      if ((p.estado || 'activo') === 'archivado') continue;
+      if (ql && !norm(p.nombre).includes(ql) && !norm(p.marca).includes(ql)
+        && !norm(p.categoria).includes(ql)) continue;
+      for (const pr of p.presentaciones) {
+        const porSuc = sucursales.map((su) => store.cant(p.id, su.id, pr.id, 'disponible'));
+        const total = porSuc.reduce((a, x) => a + x, 0);
+        if (ocultarCeros && total <= 1e-9) continue;
+        filas.push({
+          p,
+          pr,
+          porSuc,
+          total,
+          categoria: p.categoria || 'Sin categoría',
+          /* La clave del gramaje son los KILOS, no la etiqueta: "500 g" y
+             "0,5 kg" son el mismo tamaño y tienen que caer en el mismo grupo. */
+          tamKg: Number(pr.tamKg) || 0,
+        });
+      }
+    }
+    return filas;
+  }, [store, version, q, ocultarCeros, sucursales]);
+
+  /* Los dos niveles, en el orden elegido. */
+  const grupos = useMemo(() => {
+    const porCat = orden === 'categoria';
+    const claveN1 = porCat ? (f) => f.categoria : (f) => fmtTam(f.tamKg);
+    const claveN2 = porCat ? (f) => fmtTam(f.tamKg) : (f) => f.categoria;
+    /* Los gramajes ordenan por TAMAÑO, de mayor a menor, como se apila en el
+       depósito. Ordenar "1 kg, 250 g, 500 g" por texto es exactamente lo que
+       vuelve inútil una lista de tamaños. Las categorías, alfabético. */
+    const ordN1 = porCat ? (a, b) => a.nombre.localeCompare(b.nombre) : (a, b) => b.orden - a.orden;
+    const ordN2 = porCat ? (a, b) => b.orden - a.orden : (a, b) => a.nombre.localeCompare(b.nombre);
+
+    const mapa = new Map();
+    for (const f of paquetes) {
+      const n1 = claveN1(f);
+      if (!mapa.has(n1)) {
+        mapa.set(n1, { nombre: n1, orden: porCat ? 0 : f.tamKg, total: 0, distintos: 0, porSuc: sucursales.map(() => 0), hijos: new Map() });
+      }
+      const g1 = mapa.get(n1);
+      g1.total += f.total;
+      g1.distintos += 1;
+      f.porSuc.forEach((n, i) => { g1.porSuc[i] += n; });
+
+      const n2 = claveN2(f);
+      if (!g1.hijos.has(n2)) {
+        g1.hijos.set(n2, { nombre: n2, orden: porCat ? f.tamKg : 0, total: 0, porSuc: sucursales.map(() => 0), filas: [] });
+      }
+      const g2 = g1.hijos.get(n2);
+      g2.total += f.total;
+      f.porSuc.forEach((n, i) => { g2.porSuc[i] += n; });
+      g2.filas.push(f);
+    }
+    const lista = [...mapa.values()].sort(ordN1);
+    for (const g1 of lista) {
+      g1.hijos = [...g1.hijos.values()].sort(ordN2);
+      for (const g2 of g1.hijos) g2.filas.sort((a, b) => a.p.nombre.localeCompare(b.p.nombre));
+    }
+    return lista;
+  }, [paquetes, orden, sucursales]);
+
+  const totales = useMemo(() => ({
+    distintos: paquetes.length,
+    enStock: paquetes.reduce((a, f) => a + f.total, 0),
+    gramajes: new Set(paquetes.map((f) => f.tamKg)).size,
+    categorias: new Set(paquetes.map((f) => f.categoria)).size,
+  }), [paquetes]);
+
+  const alternar = (nombre) => setCerrados((c) => {
+    const n = new Set(c);
+    if (n.has(nombre)) n.delete(nombre); else n.add(nombre);
+    return n;
+  });
+
+  const cols = [
+    { h: orden === 'categoria' ? 'Categoría · gramaje · producto' : 'Gramaje · categoría · producto' },
+    { h: 'Código' },
+    ...(porSucursal ? sucursales.map((su) => ({ h: su.nombre, num: true })) : []),
+    { h: 'Total', num: true },
+  ];
+
+  /* El cero se atenúa: lo que HAY tiene que saltar a la vista. */
+  const celda = (n, clave, peso) => (
+    <td key={clave} className={cx(s.num, s.mono)} style={{ opacity: n > 1e-9 ? 1 : 0.3, fontWeight: peso }}>
+      {num(n, 0)}
+    </td>
+  );
+
+  const filas = [];
+  for (const g1 of grupos) {
+    const plegado = cerrados.has(g1.nombre);
+    filas.push(
+      <tr
+        key={'g1-' + g1.nombre}
+        className={s.clickable}
+        onClick={() => alternar(g1.nombre)}
+        style={{ background: 'rgba(127,127,127,.07)' }}
+      >
+        <td colSpan={2} style={{ fontWeight: 700 }}>
+          <span style={{ display: 'inline-block', width: 15, color: 'var(--crm-color-text-muted)' }}>
+            {plegado ? '▸' : '▾'}
+          </span>
+          {g1.nombre}
+          <span className={s.muted} style={{ fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
+            {g1.distintos} paquete{g1.distintos === 1 ? '' : 's'} distinto{g1.distintos === 1 ? '' : 's'}
+          </span>
+        </td>
+        {porSucursal && g1.porSuc.map((n, i) => celda(n, 'g1s' + i, 700))}
+        {celda(g1.total, 'g1t', 700)}
+      </tr>,
+    );
+    if (plegado) continue;
+
+    for (const g2 of g1.hijos) {
+      filas.push(
+        <tr key={'g2-' + g1.nombre + '-' + g2.nombre}>
+          <td colSpan={2} style={{ paddingLeft: 32, color: 'var(--crm-color-text-secondary)', fontWeight: 600 }}>
+            {g2.nombre}
+          </td>
+          {porSucursal && g2.porSuc.map((n, i) => celda(n, 'g2s' + i, 600))}
+          {celda(g2.total, 'g2t', 600)}
+        </tr>,
+      );
+      for (const f of g2.filas) {
+        filas.push(
+          <tr
+            key={'f-' + f.p.id + '-' + f.pr.id}
+            className={s.clickable}
+            onClick={() => openModal('productoDetalle', { prodId: f.p.id })}
+          >
+            <td style={{ paddingLeft: 50 }}>
+              <div>{f.p.nombre}</div>
+              <div className={s.muted} style={{ fontSize: 12 }}>
+                {f.p.marca || 'Sin marca'}{orden === 'categoria' ? '' : ' · ' + f.categoria}
+              </div>
+            </td>
+            <td className={s.mono} style={{ fontSize: 12 }}>{f.pr.codigoBarras || '—'}</td>
+            {porSucursal && f.porSuc.map((n, i) => celda(n, 'fs' + i))}
+            {celda(f.total, 'ft')}
+          </tr>,
+        );
+      }
+    }
+  }
+
+  const botonOrden = (id, texto) => (
+    <button
+      type="button"
+      className={cx(s.badge)}
+      style={{
+        cursor: 'pointer', padding: '6px 12px', fontSize: 12.5,
+        borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--crm-color-border)',
+        ...(orden === id
+          ? { background: 'var(--crm-color-primary)', color: 'var(--crm-color-primary-contrast)', borderColor: 'var(--crm-color-primary)' }
+          : {}),
+      }}
+      onClick={() => { setOrden(id); setCerrados(new Set()); }}
+    >
+      {texto}
+    </button>
+  );
+
+  return (
+    <>
+      <div className={s.stats}>
+        <Stat label="Paquetes distintos" value={num(totales.distintos, 0)} />
+        <Stat label="Paquetes en stock" value={num(totales.enStock, 0)} />
+        <Stat label="Gramajes distintos" value={num(totales.gramajes, 0)} />
+        <Stat label="Categorías" value={num(totales.categorias, 0)} />
+      </div>
+
+      <div className={s.toolbar}>
+        <input
+          type="search"
+          value={q}
+          placeholder="Buscar por producto, marca o categoría…"
+          onChange={(e) => setQ(e.target.value)}
+          style={{ minWidth: 230, flex: 1 }}
+        />
+        <span className={s.hint} style={{ margin: 0 }}>Agrupar por</span>
+        {botonOrden('categoria', 'Categoría › gramaje')}
+        {botonOrden('gramaje', 'Gramaje › categoría')}
+        <label className={s.hint} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={porSucursal} onChange={(e) => setPorSucursal(e.target.checked)} />
+          Ver stock por sucursal
+        </label>
+        <label className={s.hint} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={ocultarCeros} onChange={(e) => setOcultarCeros(e.target.checked)} />
+          Ocultar los que están en cero
+        </label>
+      </div>
+
+      <Table
+        grupos={porSucursal
+          ? [{ h: '', span: 2 }, { h: 'Stock por sucursal (paquetes)', span: sucursales.length + 1 }]
+          : undefined}
+        cols={cols}
+        empty={q || ocultarCeros
+          ? 'Nada coincide con el filtro.'
+          : 'No hay fraccionados en el catálogo: primero cargale presentaciones al producto a granel.'}
+      >
+        {filas}
+      </Table>
+
+      <div className={s.hint}>
+        Cuenta <strong>paquetes</strong>, no kilos: es la unidad con la que se vende y con la que
+        se cuenta la góndola. El gramaje agrupa por <strong>tamaño real</strong>, así que “500 g”
+        y “0,5 kg” caen juntos aunque cada producto lo escriba a su manera. Clic en un grupo para
+        plegarlo; clic en un producto para abrir su ficha.
+      </div>
+    </>
   );
 }
 
