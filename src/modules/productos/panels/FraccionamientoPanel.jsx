@@ -21,18 +21,23 @@ import {
 } from '@core/services/imprimir.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { useSeccion } from '../hooks/useSeccion.js';
-import { money, num, fmtFechaHora, fmtFechaVenc, fmtTam } from '../domain/format.js';
+import { money, num, fmtFechaVenc, fmtTam } from '../domain/format.js';
 import { Table, PanelHead, Stat, Btn, usePaginado, s } from '../components/ui.jsx';
 import { DisenadorEtiquetaFraccionado } from '../components/DisenadorEtiquetaFraccionado.jsx';
 import { AyudaEncabezadoNavegador } from '../components/AyudaEncabezado.jsx';
+import { TabHistorial, TabOperadores } from './FraccionamientoHistorial.jsx';
 
 /** Texto comparable: sin mayúsculas ni acentos. */
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
+/* Sin pestaña "Fraccionar" (23/9/2026, pedido del dueño): el registro se abre
+ * desde el Historial, y corregir una tanda vive en "Por categoría y gramaje",
+ * que ya lista cada paquete con su stock. */
 const PESTANAS = [
-  { id: 'fraccionar', label: 'Fraccionar' },
+  { id: 'historial', label: 'Historial' },
   { id: 'catalogo', label: 'Por categoría y gramaje' },
   { id: 'etiquetas', label: 'Etiquetas' },
+  { id: 'operadores', label: 'Operadores' },
 ];
 
 /** Módulo (barra fina) mínimo para que una térmica de 203 dpi lea seguro. */
@@ -42,7 +47,7 @@ export function FraccionamientoPanel() {
   const { store, can, openModal } = useProductos();
   useSeccion('movimientos');
   const puede = can('fraccionar');
-  const [pestana, setPestana] = useState('fraccionar');
+  const [pestana, setPestana] = useState('historial');
 
   /*
    * LOS PAQUETES SIN PRECIO. El formato de venta del paquete arrancó en blanco
@@ -98,9 +103,10 @@ export function FraccionamientoPanel() {
         )}
       </div>
 
-      {pestana === 'fraccionar' && <TabFraccionar puede={puede} />}
-      {pestana === 'catalogo' && <TabPorCategoria />}
+      {pestana === 'historial' && <TabHistorial puede={puede} />}
+      {pestana === 'catalogo' && <TabPorCategoria puede={puede} />}
       {pestana === 'etiquetas' && <TabEtiquetas puede={puede} />}
+      {pestana === 'operadores' && <TabOperadores />}
       {pestana === 'sinPrecio' && <TabSinPrecio filas={sinPrecio} store={store} openModal={openModal} />}
     </div>
   );
@@ -125,7 +131,7 @@ export function FraccionamientoPanel() {
  * Todo sale del snapshot que ya está en memoria: esta pestaña no le pide nada
  * al servidor.
  */
-function TabPorCategoria() {
+function TabPorCategoria({ puede }) {
   const { store, openModal } = useProductos();
   const sucursales = store.state.sucursales;
 
@@ -222,7 +228,10 @@ function TabPorCategoria() {
     { h: 'Código' },
     ...(porSucursal ? sucursales.map((su) => ({ h: su.nombre, num: true })) : []),
     { h: 'Total', num: true },
+    ...(puede ? [{ h: '', cls: 'actions-col' }] : []),
   ];
+  /* Las filas de grupo no llevan acción: una celda vacía mantiene la grilla. */
+  const sinAccion = (clave) => (puede ? <td key={clave} /> : null);
 
   /* El cero se atenúa: lo que HAY tiene que saltar a la vista. */
   const celda = (n, clave, peso) => (
@@ -252,6 +261,7 @@ function TabPorCategoria() {
         </td>
         {porSucursal && g1.porSuc.map((n, i) => celda(n, 'g1s' + i, 700))}
         {celda(g1.total, 'g1t', 700)}
+        {sinAccion('g1a')}
       </tr>,
     );
     if (plegado) continue;
@@ -264,6 +274,7 @@ function TabPorCategoria() {
           </td>
           {porSucursal && g2.porSuc.map((n, i) => celda(n, 'g2s' + i, 600))}
           {celda(g2.total, 'g2t', 600)}
+          {sinAccion('g2a')}
         </tr>,
       );
       for (const f of g2.filas) {
@@ -282,6 +293,18 @@ function TabPorCategoria() {
             <td className={s.mono} style={{ fontSize: 12 }}>{f.pr.codigoBarras || '—'}</td>
             {porSucursal && f.porSuc.map((n, i) => celda(n, 'fs' + i))}
             {celda(f.total, 'ft')}
+            {puede && (
+              <td className={s['actions-col']}>
+                {/* "Puse 20 y son 19": ajusta los paquetes y devuelve los kilos al granel. */}
+                <Btn
+                  small
+                  title="Corregir una tanda mal cargada: ajusta los paquetes y devuelve los kilos al granel"
+                  onClick={(e) => { e.stopPropagation(); openModal('corregirFraccionado', { prodId: f.p.id, presId: f.pr.id }); }}
+                >
+                  Corregir
+                </Btn>
+              </td>
+            )}
           </tr>,
         );
       }
@@ -337,7 +360,10 @@ function TabPorCategoria() {
 
       <Table
         grupos={porSucursal
-          ? [{ h: '', span: 2 }, { h: 'Stock por sucursal (paquetes)', span: sucursales.length + 1 }]
+          ? [
+            { h: '', span: 2 }, { h: 'Stock por sucursal (paquetes)', span: sucursales.length + 1 },
+            ...(puede ? [{ h: '', span: 1 }] : []),
+          ]
           : undefined}
         cols={cols}
         empty={q || ocultarCeros
@@ -352,6 +378,7 @@ function TabPorCategoria() {
         se cuenta la góndola. El gramaje agrupa por <strong>tamaño real</strong>, así que “500 g”
         y “0,5 kg” caen juntos aunque cada producto lo escriba a su manera. Clic en un grupo para
         plegarlo; clic en un producto para abrir su ficha.
+        {puede && <> Si una tanda se cargó mal ("puse 20 y son 19"), <strong>Corregir</strong> ajusta los paquetes y devuelve los kilos al granel.</>}
       </div>
     </>
   );
@@ -390,190 +417,6 @@ function TabSinPrecio({ filas, store, openModal }) {
         ))}
       </Table>
     </div>
-  );
-}
-
-/* ============================== FRACCIONAR ============================== */
-function TabFraccionar({ puede }) {
-  const { store, openModal } = useProductos();
-  const [q, setQ] = useState('');
-
-  const ql = norm(q);
-  const granel = store.state.stock
-    .filter((st) => !st.presentacionId && st.estado === 'disponible' && st.cantidad > 1e-9 && store.getProducto(st.productoId).tipo === 'granel')
-    .filter((st) => {
-      if (!ql) return true;
-      const p = store.getProducto(st.productoId);
-      return norm(p.nombre).includes(ql) || norm(p.marca).includes(ql);
-    });
-
-  const pag = usePaginado(granel, 'fraccionamiento', q);
-
-  const filas = pag.visibles.map((st) => {
-      const p = store.getProducto(st.productoId), su = store.getSucursal(st.sucursalId);
-      /*
-       * UN GRANEL SIN TAMAÑOS NO SE PUEDE FRACCIONAR, y son muchos (62 de 164
-       * al 15/8/2026): el sistema no sabe de cuántos kilos es cada paquete. Se
-       * dice EN LA FILA y no recién adentro del modal, que era donde el usuario
-       * se enteraba —con la sección de paquetes vacía y un botón que no hacía
-       * nada—. El botón sigue estando y lleva a la explicación de qué falta y
-       * dónde se carga: esconderlo dejaría el producto sin ninguna pista.
-       */
-      const sinTamanos = !(p.presentaciones || []).length;
-      return (
-        <tr key={st.id}>
-          <td>
-            {p.nombre}
-            {sinTamanos && (
-              <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-accent-2)' }}>
-                sin tamaños de paquete definidos
-              </div>
-            )}
-          </td>
-          <td>{su.nombre}</td>
-          <td className={s.num}>{num(st.cantidad, 3)} kg</td>
-          <td className={s['actions-col']}>
-            {puede
-              ? (
-                <Btn
-                  variant={sinTamanos ? undefined : 'btn-fracc'}
-                  small
-                  onClick={() => openModal('fraccionar', { prodId: p.id, sucId: st.sucursalId })}
-                >
-                  Fraccionar
-                </Btn>
-              )
-              : <span className={s.muted}>sin permiso</span>}
-          </td>
-        </tr>
-      );
-    });
-
-  const hist = store.state.movimientos
-    .filter((m) => m.tipo === 'fraccionamiento')
-    .sort((a, b) => b.id - a.id)
-    .slice(0, 8)
-    .map((m) => (
-      <tr key={m.id}>
-        <td>{fmtFechaHora(m.fecha)}</td>
-        <td>{m.productoNombre}</td>
-        <td>{m.sucursalNombre}</td>
-        <td>{m.descripcion}</td>
-      </tr>
-    ));
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
-      <div className={s.toolbar}>
-        <input
-          type="search"
-          placeholder="Buscar por nombre o marca (filtra el granel y sus paquetes)..."
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-      </div>
-      <h3 className={s['card-title']}>Granel disponible para fraccionar</h3>
-      <Table
-        cols={[{ h: 'Producto' }, { h: 'Sucursal' }, { h: 'Granel', num: true }, { h: '', cls: 'actions-col' }]}
-        empty="No hay stock a granel disponible."
-        pag={pag}
-      >
-        {filas}
-      </Table>
-
-      <TablaPaquetes q={q} puede={puede} />
-
-      <h3 className={s['card-title']} style={{ marginTop: 12 }}>Fraccionamientos recientes</h3>
-      <Table cols={[{ h: 'Fecha' }, { h: 'Producto' }, { h: 'Sucursal' }, { h: 'Detalle' }]} empty="Sin fraccionamientos aún.">
-        {hist}
-      </Table>
-    </div>
-  );
-}
-
-/* ===================== LOS PAQUETES Y SU STOCK ===================== *
- *
- * Debajo del granel, lo que salió de él: SOLO los fraccionados, con una columna
- * por sucursal. La madre ya está arriba y su kilaje suelto no se repite acá — lo
- * que se lee en esta tabla es "cuántos paquetes hay y dónde".
- *
- * Desde acá se corrige una tanda mal cargada, que es el único lugar donde tiene
- * sentido: se ve el número que está mal.
- */
-function TablaPaquetes({ q, puede }) {
-  const { store, openModal } = useProductos();
-  const sucursales = store.state.sucursales;
-
-  const ql = norm(q);
-  const paquetes = [];
-  for (const p of store.state.productos) {
-    if (p.tipo !== 'granel' || !(p.presentaciones || []).length) continue;
-    if (ql && !norm(p.nombre).includes(ql) && !norm(p.marca).includes(ql)) continue;
-    for (const pr of p.presentaciones) paquetes.push({ p, pr });
-  }
-  paquetes.sort((a, b) => a.p.nombre.localeCompare(b.p.nombre) || b.pr.tamKg - a.pr.tamKg);
-
-  const pag = usePaginado(paquetes, 'paquetesFraccionados', q);
-
-  return (
-    <>
-      <h3 className={s['card-title']} style={{ marginTop: 12 }}>Paquetes fraccionados y su stock</h3>
-      <Table
-        grupos={[
-          { h: 'Paquete', span: 2 },
-          { h: 'Stock por sucursal (paquetes)', span: sucursales.length + 1 },
-          { h: '', span: 1 },
-        ]}
-        cols={[
-          { h: 'Código' }, { h: 'Producto' },
-          ...sucursales.map((su) => ({ h: su.nombre, num: true })),
-          { h: 'Total', num: true },
-          { h: '', cls: 'actions-col' },
-        ]}
-        empty="No hay fraccionados en el catálogo: primero cargale presentaciones al producto a granel."
-        pag={pag}
-      >
-        {pag.visibles.map(({ p, pr }) => {
-          const porSuc = sucursales.map((su) => store.cant(p.id, su.id, pr.id, 'disponible'));
-          const total = porSuc.reduce((a, x) => a + x, 0);
-          return (
-            <tr key={`${p.id}-${pr.id}`}>
-              <td className={s.mono} style={{ fontSize: 12 }}>{pr.codigoBarras || '—'}</td>
-              <td>
-                <div>{p.nombre}</div>
-                <div className={s.muted} style={{ fontSize: 12 }}>
-                  {store.presLabel(p, pr.id)} · {p.marca || 'Sin marca'}
-                </div>
-              </td>
-              {porSuc.map((cantidad, i) => (
-                // El cero se atenúa: lo que HAY tiene que saltar a la vista.
-                <td
-                  key={sucursales[i].id}
-                  className={cx(s.num, s.mono)}
-                  style={cantidad > 1e-9 ? undefined : { opacity: 0.35 }}
-                >
-                  {num(cantidad, 0)}
-                </td>
-              ))}
-              <td className={cx(s.num, s.mono)}><strong>{num(total, 0)}</strong></td>
-              <td className={s['actions-col']}>
-                {puede
-                  ? (
-                    <Btn
-                      small
-                      title="Corregir una tanda mal cargada: ajusta los paquetes y devuelve los kilos al granel"
-                      onClick={() => openModal('corregirFraccionado', { prodId: p.id, presId: pr.id })}
-                    >
-                      Corregir
-                    </Btn>
-                  )
-                  : <span className={s.muted}>sin permiso</span>}
-              </td>
-            </tr>
-          );
-        })}
-      </Table>
-    </>
   );
 }
 

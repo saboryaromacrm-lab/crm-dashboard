@@ -776,7 +776,26 @@ const eliminarProveedor = (id) => _mutate(() => httpClient.delete('/proveedores/
 
 /* Sin `opCompra`: el ingreso de mercadería es la factura de Compras (18/8/2026). */
 const opVenta = (o) => _mutateStock(() => httpClient.post('/operaciones/venta', o));
-const opFraccionar = (o) => _mutateStock(() => httpClient.post('/operaciones/fraccionar', o));
+/**
+ * Registrar fraccionado (0102): cabecera + renglones de uno o varios productos,
+ * todo o nada. La respuesta trae la foto de CADA producto tocado: se aplican
+ * todas y no se recarga el inventario entero.
+ */
+const opFraccionarRegistro = async (o) => {
+  try {
+    const data = await httpClient.post('/operaciones/fraccionar-registro', o);
+    if (Array.isArray(data?.fotos) && data.fotos.every((f) => Array.isArray(f.stock) && f.producto?.id != null)) {
+      data.fotos.forEach(_aplicarFotoProducto);
+      await _refrescarSecciones();
+      emit();
+    } else {
+      await refetch();
+    }
+    return Object.assign({ ok: true }, data);
+  } catch (e) {
+    return _fallo(e);
+  }
+};
 
 /**
  * Corregir una tanda mal cargada. Manda el usuario: una corrección de stock sin
@@ -854,7 +873,23 @@ const aplicarConteo = (id) => _mutate(() => httpClient.post(`/conteos/${id}/apli
 const editarItemTransferencia = (id, itemId, o) => _mutate(() => httpClient.patch(`/transferencias/${id}/items/${itemId}`, o));
 const agregarItemTransferencia = (id, o) => _mutate(() => httpClient.post(`/transferencias/${id}/items`, o));
 const quitarItemTransferencia = (id, itemId) => _mutate(() => httpClient.delete(`/transferencias/${id}/items/${itemId}`));
-const confirmarListaTransferencia = (id, tipo, listo) => _mutate(() => httpClient.post(`/transferencias/${id}/lista`, { tipo, listo, usuarioId: state.ctx.usuarioId }));
+const confirmarListaTransferencia = (id, tipo, listo, operadorId) => _mutate(() => httpClient.post(`/transferencias/${id}/lista`, {
+  tipo, listo, usuarioId: state.ctx.usuarioId, ...(operadorId ? { operadorId } : {}),
+}));
+
+/* ---------------- Historial de fraccionamiento y operadores (0102) ----------------
+ * Lecturas directas: nada de esto vive en el bootstrap ni lo recarga. */
+const _qs = (params) => {
+  const u = new URLSearchParams();
+  for (const [k, v] of Object.entries(params || {})) if (v !== '' && v != null) u.set(k, String(v));
+  const s = u.toString();
+  return s ? '?' + s : '';
+};
+const historialFraccionamientos = (params) => _directo(() => httpClient.get('/fraccionamientos' + _qs(params)));
+const exportarFraccionamientos = (params) => _directo(() => httpClient.get('/fraccionamientos/exportar' + _qs(params)));
+const operadoresFraccion = (todos = false) => _directo(() => httpClient.get('/fraccionamientos/operadores' + (todos ? '?todos=1' : '')));
+const crearOperadorFraccion = (o) => _directo(() => httpClient.post('/fraccionamientos/operadores', o));
+const editarOperadorFraccion = (id, o) => _directo(() => httpClient.patch('/fraccionamientos/operadores/' + id, o));
 /** Recepción CONTADA: items = [{itemId, cantidadRecibida}]. La diferencia genera incidencia sola. */
 const recibirTransferencia = (id, o) => _mutate(() => httpClient.post('/transferencias/' + id + '/recibir', o));
 /** El libro del almacén: una fila por documento, valuada a costo congelado. */
@@ -1189,12 +1224,14 @@ export const inventoryStore = {
   getProducto, getSucursal, getProveedor, getUsuario, presDe, distribuidora,
   unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry,
   rolActual, can, tiposMovPermitidos, setCtx,
-  opFraccionar, opCorregirFraccionado, opVenta, opSimple,
+  opFraccionarRegistro, opCorregirFraccionado, opVenta, opSimple,
   avanzarTransferencia, cancelarTransferencia,
   abrirBorradorPedido, guardarBorradorPedido, enviarBorradorPedido, descartarBorradorPedido,
   listarConteos, crearConteo, getConteo, contarItemConteo, cerrarConteo, reabrirConteo,
   marcarRecontarConteo, descartarConteo, aplicarConteo,
   editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
+  historialFraccionamientos, exportarFraccionamientos,
+  operadoresFraccion, crearOperadorFraccion, editarOperadorFraccion,
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
   sugerenciasArchivado, archivarLote,

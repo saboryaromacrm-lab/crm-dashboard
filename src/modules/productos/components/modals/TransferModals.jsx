@@ -18,6 +18,7 @@ import { sucursalOptions, sucursalOptionsOtras, presentacionOptions, usuarioOpti
 import { Table, TransferPill, Btn, s } from '../ui.jsx';
 import { LISTAS_PREP, GRUPOS_PEDIDO, listaDeProducto, puedeMandar, disponibleTotal } from '../../domain/pedido.js';
 import { ExplorarProductosModal } from './ExplorarProductosModal.jsx';
+import { SelectorOperador, useOperadoresFraccion } from '../OperadorFraccion.jsx';
 
 /* ---------------- Preparación: helpers compartidos ---------------- */
 
@@ -1234,6 +1235,9 @@ export function PrepararTransferModal({ id }) {
    * encargado necesita revisar antes de despachar.
    */
   const [informe, setInforme] = useState({});
+  /* Quién fracciona lo que la confirmación arme sola (0102). */
+  const ops = useOperadoresFraccion(t?.origenId);
+  const [operadorId, setOperadorId] = useState(null);
 
   const grupos = useMemo(() => {
     const g = { enteros: [], granel: [] };
@@ -1270,6 +1274,23 @@ export function PrepararTransferModal({ id }) {
   const enPrep = t.estado === 'preparada';
   const destino = store.getSucursal(t.destinoId);
 
+  /*
+   * ¿CONFIRMAR LA LISTA DE GRANEL VA A FRACCIONAR? La misma cuenta que hace el
+   * servidor (`completarPreparado`): un paquete corto con granel suelto que
+   * alcanza para al menos uno. Solo entonces el operador es obligatorio — una
+   * lista con los paquetes ya hechos no fracciona nada.
+   */
+  const granelArma = grupos.granel.some(({ it, p }) => {
+    if (p.tipo !== 'granel' || !it.presentacionId) return false;
+    const tam = (p.presentaciones || []).find((x) => x.id === it.presentacionId)?.tamKg;
+    if (!(tam > 0)) return false;
+    const e = edits[it.id]?.prep;
+    const prep = e != null ? Math.max(parseFloat(e) || 0, 0) : it.cantidadPreparada;
+    if (prep <= store.cant(p.id, t.origenId, it.presentacionId, 'disponible') + 1e-9) return false;
+    return store.cant(p.id, t.origenId, null, 'disponible') / tam + 1e-9 >= 1;
+  });
+  const faltaOperador = granelArma && ops.disponibles.length > 0 && !operadorId;
+
   const setEdit = (itemId, patch) => setEdits((e) => ({ ...e, [itemId]: { ...(e[itemId] || {}), ...patch } }));
   const limpiarEdit = (itemId) => setEdits((e) => { const n = { ...e }; delete n[itemId]; return n; });
 
@@ -1295,7 +1316,7 @@ export function PrepararTransferModal({ id }) {
     for (const { it } of grupos[tipo]) {
       if (!(await guardarItem(it))) { setOcupado(false); return; }
     }
-    const res = await store.confirmarListaTransferencia(t.id, tipo, listo);
+    const res = await store.confirmarListaTransferencia(t.id, tipo, listo, tipo === 'granel' && listo ? operadorId : null);
     setOcupado(false);
     if (!res.ok) { toast(res.error, 'err'); return; }
     const armados = res.armados ?? [];
@@ -1366,9 +1387,28 @@ export function PrepararTransferModal({ id }) {
           </span>
           <span style={{ flex: 1 }} />
           {filas.length > 0 && <Btn small onClick={() => imprimirLista(t, store, tipo, filas)}>Imprimir</Btn>}
+          {/* Siempre a la vista en la lista de granel (si hay operadores): si
+              la cuenta de la pantalla quedó vieja y el servidor igual tiene
+              que fraccionar, lo pide, y acá se contesta sin salir del pedido. */}
+          {tipo === 'granel' && editable && filas.length > 0 && ops.disponibles.length > 0 && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span className={s.hint} style={{ margin: 0 }}>
+                Fracciona{granelArma ? <span className={s.req}> *</span> : ''}
+              </span>
+              <SelectorOperador ops={ops} value={operadorId} onChange={setOperadorId} compacto label="Quién fracciona" />
+            </span>
+          )}
           {puedeTocar && enPrep && filas.length > 0 && (confirmada
             ? <Btn small onClick={() => confirmar(tipo, false)} disabled={ocupado}>Desconfirmar</Btn>
-            : <Btn variant="btn-primary" small onClick={() => confirmar(tipo, true)} disabled={ocupado}>Confirmar lista</Btn>
+            : (
+              <Btn
+                variant="btn-primary" small onClick={() => confirmar(tipo, true)}
+                disabled={ocupado || (tipo === 'granel' && faltaOperador)}
+                title={tipo === 'granel' && faltaOperador ? 'Confirmar va a fraccionar lo que falta: elegí quién fracciona.' : undefined}
+              >
+                Confirmar lista
+              </Btn>
+            )
           )}
         </div>
 
@@ -1460,10 +1500,13 @@ export function PrepararTransferModal({ id }) {
                               de más (adelantar trabajo, dejar stock hecho). Va con lo
                               que falta ya cargado y vuelve a este mismo pedido. */}
                           <a role="button" style={{ cursor: 'pointer', color: 'var(--crm-color-primary)', fontWeight: 600 }}
-                            onClick={() => openModal('fraccionar', {
-                              prodId: p.id,
+                            onClick={() => openModal('registrarFraccionado', {
                               sucId: t.origenId,
-                              sugerido: { [it.presentacionId]: Math.max(0, Math.ceil(it.cantidadPreparada - dispRow - 1e-9)) },
+                              inicial: [{
+                                productoId: p.id,
+                                presId: it.presentacionId,
+                                cant: Math.max(0, Math.ceil(it.cantidadPreparada - dispRow - 1e-9)),
+                              }],
                               volverA: { type: 'prepararTransfer', props: { id: t.id } },
                             })}>
                             Fraccionar

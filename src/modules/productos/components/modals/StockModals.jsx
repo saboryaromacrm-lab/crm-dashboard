@@ -6,6 +6,7 @@ import { TIPOS_MOV } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions, presentacionOptions } from '../selectOptions.jsx';
 import { s } from '../ui.jsx';
+import { SelectorOperador, useOperadoresFraccion } from '../OperadorFraccion.jsx';
 
 /*
  * SIN modal de compra (18/8/2026, pedido del dueño): la mercadería entra por la
@@ -77,132 +78,6 @@ export function VenderModal({ prodId, sucId: sucInit, pre = {} }) {
   );
 }
 
-/* ============================== FRACCIONAR ============================== */
-export function FraccionarModal({ prodId, sucId: sucInit, sugerido = null, volverA = null }) {
-  const { store, act, closeModal, openModal } = useProductos();
-  const prod = store.getProducto(prodId);
-  // Todo se fracciona en la DISTRIBUIDORA (ahí llega la mercadería a granel):
-  // no se elige sucursal. Si la fila que abrió el modal trae otra, se respeta.
-  const sucId = sucInit || store.distribuidora()?.id || store.state.ctx.sucursalId;
-  /*
-   * ARRANCA CON LO QUE FALTA, NO EN CERO (17/9/2026).
-   *
-   * Abierto desde la preparación de un pedido, quien llama YA SABE cuántos
-   * paquetes faltan — está escrito en el renglón. Pedirle al fraccionador que
-   * lo vuelva a calcular y lo tipee es hacerle hacer de nuevo una cuenta que
-   * la pantalla tiene hecha, y es donde se cuela el error de dedo.
-   */
-  const [cants, setCants] = useState(() => Object.fromEntries(
-    prod.presentaciones.map((pr) => [pr.id, String(Math.max(0, Math.round(sugerido?.[pr.id] ?? 0)))]),
-  ));
-  /*
-   * Y AL SALIR SE VUELVE DE DONDE SE VINO.
-   *
-   * La pantalla muestra UN modal por vez: abrir Fraccionar reemplazaba al del
-   * pedido, y al terminar `act()` cerraba todo y dejaba al fraccionador en el
-   * listado, sin el pedido que estaba preparando y sin saber si el fraccionado
-   * había quedado. Quedaba: lo que no quedaba era el camino de vuelta.
-   */
-  const volver = () => { if (volverA) openModal(volverA.type, volverA.props); else closeModal(); };
-
-  if (prod.tipo !== 'granel') return null;
-
-  let total = 0;
-  prod.presentaciones.forEach((pr) => { const q = Math.round(Number(cants[pr.id]) || 0); if (q > 0) total += q * pr.tamKg; });
-  const disp = store.cant(prod.id, parseInt(sucId, 10), null, 'disponible');
-  const rest = disp - total;
-  const excede = rest < -1e-9;
-  /*
-   * UN GRANEL PUEDE NO TENER NINGÚN TAMAÑO DEFINIDO, y es lo más común de lo
-   * que parece: son 62 de los 164 granel activos. Sin esto, el modal abría con
-   * la sección "Paquetes a armar" VACÍA y un botón Fraccionar que no podía
-   * hacer nada — se lee como "me pide el tamaño y no me da las opciones", que
-   * es exactamente lo que pasa. La pantalla ahora dice qué falta y dónde se
-   * carga, en vez de dejar al usuario adivinando.
-   */
-  const sinTamanos = !prod.presentaciones.length;
-
-  const fraccionar = async () => {
-    /* NÚMEROS, no el texto del input. `cants` guarda strings —arranca en '0' y
-     * el input escribe texto—, y el DTO valida `@IsNumber()`: un "5" rebotaba
-     * con tres constraints por renglón y ni una palabra sobre el fraccionado.
-     * La cuenta de arriba SÍ convertía, así que el modal mostraba bien "total
-     * a fraccionar: 8 kg" y el servidor rechazaba igual — el peor síntoma
-     * posible, porque la pantalla se ve correcta. Misma trampa que `opSimple`
-     * (19/8) y que `opVenta`, acá abajo. Se redondea igual que el total, que
-     * es lo que el usuario leyó antes de apretar. */
-    const asignaciones = prod.presentaciones.map((pr) => ({
-      presId: pr.id,
-      cant: Math.round(Number(cants[pr.id]) || 0),
-    }));
-    const ok = await act(store.opFraccionar({ productoId: prod.id, sucursalId: parseInt(sucId, 10), asignaciones }), 'Fraccionamiento registrado.');
-    // `act` cierra el modal al salir bien: si vinimos de un pedido, se reabre.
-    if (ok && volverA) openModal(volverA.type, volverA.props);
-  };
-
-  return (
-    <ModalShell
-      title={'Fraccionar — ' + prod.nombre}
-      onClose={volver}
-      footer={[
-        { texto: volverA ? 'Volver al pedido' : 'Cancelar', clase: 'btn-ghost', onClick: volver },
-        {
-          texto: 'Fraccionar',
-          clase: 'btn-primary',
-          onClick: fraccionar,
-          // Sin tamaños no hay nada que armar; con el total en 0 tampoco, y
-          // excediendo el granel el servidor lo rechaza igual.
-          disabled: sinTamanos || excede || !(total > 0),
-        },
-      ]}
-    >
-      <div className={s.field}>
-        <label>Se fracciona en</label>
-        <strong style={{ fontSize: 14 }}>{store.getSucursal(parseInt(sucId, 10))?.nombre ?? '—'}</strong>
-      </div>
-
-      {sinTamanos && (
-        <div className={cx(s.callout, s.warn)}>
-          <strong>{prod.nombre} no tiene tamaños de paquete definidos</strong>, así que todavía no
-          se puede fraccionar: el sistema no sabe de cuántos kilos es cada paquete.
-          <div className={s.hint} style={{ margin: '6px 0 0' }}>
-            Se cargan en <strong>Compras › Productos</strong>, abriendo este producto, en la
-            pestaña <strong>Presentaciones</strong>: ahí se define cada tamaño (500 g, 1 kg…) con
-            su código de barras. Después el paquete se precia en su propia ficha.
-          </div>
-        </div>
-      )}
-
-      {!sinTamanos && <div className={s['mini-label']}>Paquetes a armar por presentación</div>}
-      <div className={s['pres-list']}>
-        {prod.presentaciones.map((pr) => (
-          <div key={pr.id} className={s['pres-row']} style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <div>
-              <div className={s['mini-label']}>
-                {pr.precioFinal != null
-                  ? money(pr.precioFinal)
-                  : <span style={{ color: 'var(--crm-color-danger)' }}>sin precio</span>}
-                {' · '}{num(pr.tamKg, 3)} kg
-              </div>
-            </div>
-            <div><input type="number" min="0" step="1" value={cants[pr.id]} onChange={(e) => setCants((c) => ({ ...c, [pr.id]: e.target.value }))} /></div>
-          </div>
-        ))}
-      </div>
-      {/* El resumen de kilos no tiene nada que resumir sin tamaños: repetir
-          "total 0 kg" al lado del aviso solo agrega ruido. */}
-      {!sinTamanos && (
-        <div className={cx(s.callout, excede ? s.warn : total > 0 ? s.ok : undefined)}>
-          Granel disponible: <strong>{num(disp, 3)} kg</strong> · Total a fraccionar: <strong>{num(total, 3)} kg</strong> ·{' '}
-          {excede
-            ? '⚠ Excede el granel disponible.'
-            : <>Quedarían <strong>{num(rest, 3)} kg</strong> a granel.</>}
-        </div>
-      )}
-    </ModalShell>
-  );
-}
-
 /* ========================= CORREGIR UN FRACCIONADO ========================= *
  *
  * "Puse 20 paquetes de 500 g y son 19." La corrección mueve las DOS puntas —los
@@ -223,6 +98,8 @@ export function CorregirFraccionadoModal({ prodId, presId, sucId: sucInit }) {
   const actual = store.cant(prodId, suc, presId, 'disponible');
   const [real, setReal] = useState(String(Math.round(actual)));
   const [motivo, setMotivo] = useState('');
+  const ops = useOperadoresFraccion(suc);
+  const [operadorId, setOperadorId] = useState(null);
 
   // Al cambiar de sucursal, el "hay" es otro: el campo lo sigue.
   const cambiarSuc = (v) => {
@@ -242,7 +119,9 @@ export function CorregirFraccionadoModal({ prodId, presId, sucId: sucInit }) {
 
   const guardar = () => {
     act(
-      store.opCorregirFraccionado({ productoId: prodId, presId, sucursalId: suc, cantidadReal: n, motivo }),
+      store.opCorregirFraccionado({
+        productoId: prodId, presId, sucursalId: suc, cantidadReal: n, motivo, ...(operadorId ? { operadorId } : {}),
+      }),
       delta === 0 ? 'No había nada que corregir.' : 'Corrección registrada.',
     );
   };
@@ -276,6 +155,7 @@ export function CorregirFraccionadoModal({ prodId, presId, sucId: sucInit }) {
         <label>Motivo</label>
         <input value={motivo} placeholder="se cargó de más, salieron 19 y no 20…" onChange={(e) => setMotivo(e.target.value)} />
       </div>
+      <SelectorOperador ops={ops} value={operadorId} onChange={setOperadorId} opcional label="¿De quién era la tanda?" />
 
       {/* La ecuación, en vivo: es lo que evita que esto se sienta magia. */}
       <div className={cx(s.callout, faltaGranel ? s.warn : delta === 0 ? s.info : s.ok)}>
