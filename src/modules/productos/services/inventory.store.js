@@ -1169,6 +1169,8 @@ const guardarPercepcionesProveedor = (id, percepciones) => _mutate(() => httpCli
 /** Importación masiva: la API escribe el catálogo entero en una transacción.
  *  La del PADRÓN de proveedores vive en el módulo Proveedores (27/8). */
 const importarCatalogo = (proveedorId, items) => _mutate(() => httpClient.post('/productos/importar', { proveedorId, items }));
+/** Solo costos, sin el maestro (23/9): matchea por código contra el catálogo ya cargado. */
+const importarCostos = (proveedorId, items) => _mutate(() => httpClient.post('/productos/importar-costos', { proveedorId, items }));
 
 const actualizarCostos = (o) => _mutate(() => httpClient.post('/precios/costos', o));
 const actualizarMargenes = (o) => _mutate(() => httpClient.post('/precios/margenes', o));
@@ -1194,7 +1196,7 @@ export const inventoryStore = {
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
   sugerenciasArchivado, archivarLote,
-  guardarPresentaciones, importarCatalogo,
+  guardarPresentaciones, importarCatalogo, importarCostos,
   crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, siguienteCodigo, siguienteEan,
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,

@@ -189,6 +189,7 @@ export function ProductosPanel() {
           <div style={{ display: 'flex', gap: 8 }}>
             <Btn onClick={() => openModal('margenesMasivos', { productos })}>Actualizar márgenes</Btn>
             <Btn onClick={() => openModal('importarCatalogo', {})}>Importar catálogo</Btn>
+            <Btn onClick={() => openModal('importarCostos', {})}>Actualizar costos</Btn>
             <Btn variant="btn-primary" onClick={() => openModal('producto', {})}>+ Nuevo producto</Btn>
           </div>
         )}

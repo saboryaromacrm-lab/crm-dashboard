@@ -194,6 +194,65 @@ const NO_MARCAS = new Set(['GRANEL', 'VARIOS', 'SIN MARCA', '']);
  *   redondeo                         el de la configuración de ventas
  *   ivaPorDefecto                    si el archivo no lo trae
  */
+/**
+ * SOLO COSTOS, sin el maestro (23/9/2026): actualizar el formato de compra
+ * de un proveedor cuando el catálogo ya está cargado. Un solo archivo — el
+ * de compras — y el matching es por código interno contra el CATÁLOGO QUE YA
+ * ESTÁ EN MEMORIA (`catalogo`, lo que trae `store.state.productos`), no
+ * contra un maestro que habría que volver a exportar.
+ *
+ * No crea productos: un código sin match no tiene de dónde sacar nombre,
+ * marca ni categoría, así que queda listado aparte para cargarlo a mano.
+ */
+export function armarPlanCostos(comprasFilas, catalogo, proveedorId, costoNetoEntry = () => null) {
+  const porCodigo = new Map((catalogo || []).map((p) => [String(p.codigoPropio ?? '').trim(), p]));
+  const vistos = new Set();
+  const items = [];
+  const filas = [];
+
+  for (const c of comprasFilas || []) {
+    const codigo = String(c.Codigo ?? '').trim();
+    if (!codigo) { filas.push({ codigo: '', nombre: '', estado: 'sin_codigo' }); continue; }
+    if (vistos.has(codigo)) { filas.push({ codigo, nombre: '', estado: 'repetido' }); continue; }
+
+    const prod = porCodigo.get(codigo);
+    const cantidad = num(c.Cantidad) || 1;
+    const costo = num(c.PrecioLista);
+    const descs = [num(c.PorcDesc), num(c.PorcDesc2), num(c.PorcDesc3), num(c.PorcDesc4)];
+    const flete = num(c.CostoFlete);
+    const factor = descs.reduce((a, d) => a * (1 - d / 100), 1);
+    const netoUnit = (costo * factor * (1 + flete / 100)) / cantidad;
+
+    if (!prod) { filas.push({ codigo, nombre: '', estado: 'no_encontrado', netoUnit }); continue; }
+    if (prod.estado === 'archivado') { filas.push({ codigo, nombre: prod.nombre, estado: 'archivado', netoUnit }); continue; }
+
+    vistos.add(codigo);
+    const formatoPrevio = (prod.formatosCompra || prod.proveedores || []).find((f) => f.proveedorId === proveedorId);
+    filas.push({
+      codigo, nombre: prod.nombre, estado: formatoPrevio ? 'actualiza' : 'agrega',
+      costoAnterior: formatoPrevio ? costoNetoEntry(formatoPrevio, prod.iva) : null,
+      netoUnit,
+    });
+    items.push({
+      codigoPropio: codigo,
+      cantidad, costo, descuento: descs[0], descuento2: descs[1], descuento3: descs[2], descuento4: descs[3],
+      flete, modoCosto: 'lista', codigoProveedor: c.CodigoPrv || '',
+    });
+  }
+
+  return {
+    items,
+    filas,
+    resumen: {
+      actualiza: filas.filter((f) => f.estado === 'actualiza').length,
+      agrega: filas.filter((f) => f.estado === 'agrega').length,
+      noEncontrados: filas.filter((f) => f.estado === 'no_encontrado').length,
+      archivados: filas.filter((f) => f.estado === 'archivado').length,
+      repetidos: filas.filter((f) => f.estado === 'repetido').length,
+    },
+  };
+}
+
 export function armarPlan({ maestro = [], compras = [], ventas = [] }, opciones = {}) {
   const {
     listaMinorista = null, listaMayorista = null,
