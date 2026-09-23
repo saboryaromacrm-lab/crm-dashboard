@@ -1171,6 +1171,8 @@ const guardarPercepcionesProveedor = (id, percepciones) => _mutate(() => httpCli
 const importarCatalogo = (proveedorId, items) => _mutate(() => httpClient.post('/productos/importar', { proveedorId, items }));
 /** Solo costos, sin el maestro (23/9): matchea por código contra el catálogo ya cargado. */
 const importarCostos = (proveedorId, items) => _mutate(() => httpClient.post('/productos/importar-costos', { proveedorId, items }));
+/** Solo categoría, subcategoría y etiquetas, sin el maestro (23/9): mismo espíritu que `importarCostos`. */
+const actualizarClasificacion = (items) => _mutate(() => httpClient.post('/productos/actualizar-clasificacion', { items }));
 
 const actualizarCostos = (o) => _mutate(() => httpClient.post('/precios/costos', o));
 const actualizarMargenes = (o) => _mutate(() => httpClient.post('/precios/margenes', o));
@@ -1196,7 +1198,7 @@ export const inventoryStore = {
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
   sugerenciasArchivado, archivarLote,
-  guardarPresentaciones, importarCatalogo, importarCostos,
+  guardarPresentaciones, importarCatalogo, importarCostos, actualizarClasificacion,
   crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, siguienteCodigo, siguienteEan,
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,

@@ -135,12 +135,18 @@ export function ProductosPanel() {
    * El precio de venta sale de `precioBaseVenta` + `precioFinal`, los mismos
    * dos pasos que ya usan la ficha y el remito para mostrar "el precio": no
    * se reinventa la cuenta acá.
+   *
+   * Categoría, Subcategoría y Etiquetas son las tres columnas que después
+   * lee «Actualizar categoría y etiquetas»: este mismo archivo, editado en
+   * la planilla, es el que se vuelve a subir. Las etiquetas van separadas
+   * por coma DENTRO de la celda — el delimitador del archivo es `;`, así
+   * que no chocan.
    */
   const exportar = () => descargarCsv(
     'productos.csv',
     [
       'Código interno', 'Código de barras', 'Producto', 'Marca', 'Categoría', 'Subcategoría',
-      'Tipo', 'Estado', 'IVA %', 'Costo neto', 'Precio de venta', 'Disponible', 'Unidad', 'Publicado',
+      'Etiquetas', 'Tipo', 'Estado', 'IVA %', 'Costo neto', 'Precio de venta', 'Disponible', 'Unidad', 'Publicado',
     ],
     productos.map((p) => {
       const esGranel = p.tipo === 'granel';
@@ -149,7 +155,7 @@ export function ProductosPanel() {
         : store.suma({ productoId: p.id, estado: 'disponible' });
       return [
         p.codigoPropio || '', p.codigoBarras || '', p.nombre, p.marca || '', p.categoria || '',
-        p.subcategoria || '', esGranel ? 'A granel' : 'Entero',
+        p.subcategoria || '', (p.etiquetasNombres || []).join(', '), esGranel ? 'A granel' : 'Entero',
         ESTADOS_PRODUCTO[p.estado]?.label || 'Activo', csvNum(p.iva ?? 21, 1),
         csvNum(p.costoNeto, 2), csvNum(store.precioFinal(store.precioBaseVenta(p), p.iva), 2),
         csvNum(disponible, 2), esGranel ? 'kg' : 'u.', p.publicado ? 'Sí' : 'No',
@@ -224,6 +230,7 @@ export function ProductosPanel() {
             <Btn onClick={() => openModal('margenesMasivos', { productos })}>Actualizar márgenes</Btn>
             <Btn onClick={() => openModal('importarCatalogo', {})}>Importar catálogo</Btn>
             <Btn onClick={() => openModal('importarCostos', {})}>Actualizar costos</Btn>
+            <Btn onClick={() => openModal('actualizarClasificacion', {})}>Actualizar categoría y etiquetas</Btn>
             <Btn onClick={exportar} disabled={!productos.length}>Exportar CSV</Btn>
             <Btn variant="btn-primary" onClick={() => openModal('producto', {})}>+ Nuevo producto</Btn>
           </div>
