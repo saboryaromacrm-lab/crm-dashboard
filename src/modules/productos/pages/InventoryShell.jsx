@@ -179,13 +179,18 @@ export function InventoryShell({ title, subtitle }) {
 
       <ModalHost />
 
-      {/* Arriba a la derecha: los modales grandes tapaban el aviso de abajo y
-          los errores de una acción no se llegaban a leer. */}
+      {/* Abajo a la derecha, y por ENCIMA de cualquier modal (23/9/2026):
+          el aviso vivía arriba a la derecha y en formularios largos —el
+          "Guardar" queda abajo— pasaba lejos de donde estaban mirando: se
+          guardaba igual, pero nadie lo notaba hasta cerrar el modal. Abajo
+          es donde está la vista justo después de tocar Guardar. El zIndex
+          explícito es lo que evita que un modal grande vuelva a taparlo. */}
       <Snackbar
         open={toastState.open}
         autoHideDuration={4000}
         onClose={closeToast}
-        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        sx={{ zIndex: (theme) => theme.zIndex.modal + 50 }}
       >
         <Alert
           onClose={closeToast}
