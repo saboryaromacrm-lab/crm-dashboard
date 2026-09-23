@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
+import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { num } from '../domain/format.js';
+import { ESTADOS_PRODUCTO } from '../domain/constants.js';
 import {
   Table, PanelHead, TipoBadge, EstadoProductoBadge, Btn, usePaginado, s,
 } from '../components/ui.jsx';
@@ -123,6 +125,38 @@ export function ProductosPanel() {
   const hayFiltro = !!(q || tipo || marca || categoria || proveedorId || estadoF !== 'vigentes');
   const stop = (e) => e.stopPropagation();
 
+  /**
+   * EXPORTAR A CSV (23/9/2026) — exactamente lo que se está mirando, filtros
+   * incluidos: sale de `productos`, la misma lista filtrada que arma la
+   * tabla, y no de `filasLista` (esa además desdobla cada fraccionado en su
+   * propia fila para escanear, algo que acá no aporta — es un listado de
+   * productos, no de códigos de barras).
+   *
+   * El precio de venta sale de `precioBaseVenta` + `precioFinal`, los mismos
+   * dos pasos que ya usan la ficha y el remito para mostrar "el precio": no
+   * se reinventa la cuenta acá.
+   */
+  const exportar = () => descargarCsv(
+    'productos.csv',
+    [
+      'Código interno', 'Código de barras', 'Producto', 'Marca', 'Categoría', 'Subcategoría',
+      'Tipo', 'Estado', 'IVA %', 'Costo neto', 'Precio de venta', 'Disponible', 'Unidad', 'Publicado',
+    ],
+    productos.map((p) => {
+      const esGranel = p.tipo === 'granel';
+      const disponible = esGranel
+        ? store.suma({ productoId: p.id, presentacionId: null, estado: 'disponible' })
+        : store.suma({ productoId: p.id, estado: 'disponible' });
+      return [
+        p.codigoPropio || '', p.codigoBarras || '', p.nombre, p.marca || '', p.categoria || '',
+        p.subcategoria || '', esGranel ? 'A granel' : 'Entero',
+        ESTADOS_PRODUCTO[p.estado]?.label || 'Activo', csvNum(p.iva ?? 21, 1),
+        csvNum(p.costoNeto, 2), csvNum(store.precioFinal(store.precioBaseVenta(p), p.iva), 2),
+        csvNum(disponible, 2), esGranel ? 'kg' : 'u.', p.publicado ? 'Sí' : 'No',
+      ];
+    }),
+  );
+
   const pag = usePaginado(filasLista, 'productos', `${q}|${tipo}|${marca}|${categoria}|${proveedorId}|${estadoF}`);
 
   const filas = pag.visibles.map(({ clave, p, pr }) => {
@@ -190,6 +224,7 @@ export function ProductosPanel() {
             <Btn onClick={() => openModal('margenesMasivos', { productos })}>Actualizar márgenes</Btn>
             <Btn onClick={() => openModal('importarCatalogo', {})}>Importar catálogo</Btn>
             <Btn onClick={() => openModal('importarCostos', {})}>Actualizar costos</Btn>
+            <Btn onClick={exportar} disabled={!productos.length}>Exportar CSV</Btn>
             <Btn variant="btn-primary" onClick={() => openModal('producto', {})}>+ Nuevo producto</Btn>
           </div>
         )}
@@ -244,7 +279,7 @@ export function ProductosPanel() {
       {hayFiltro && (
         <div className={s.hint} style={{ margin: 0 }}>
           {productos.length} de {store.state.productos.length} productos.
-          {isAdmin && ' «Actualizar márgenes» alcanza solo a los filtrados.'}
+          {isAdmin && ' «Actualizar márgenes» y «Exportar CSV» alcanzan solo a los filtrados.'}
         </div>
       )}
       <Table
