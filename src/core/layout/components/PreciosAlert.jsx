@@ -7,9 +7,7 @@
  *
  * Ojo con la asimetría respecto del aviso de pedidos web: ese va PARA la
  * administración; este va para el CAJERO, porque es el que tiene precios viejos
- * en pantalla. Lo que se filtra acá no es quién lo recibe sino **quién lo
- * provocó**: solo avisa cuando el precio lo movió la administración, que es la
- * única que toca precios.
+ * en pantalla.
  *
  * El resto de las decisiones son las del aviso de pedidos, por las mismas razones:
  *  - El primer tick NO alerta: al abrir el CRM el catálogo ya está fresco. La
@@ -55,16 +53,6 @@ function usuarioDeSesion() {
   return leerSesion()?.usuario?.id ?? null;
 }
 
-/**
- * ¿El cambio lo hizo la administración? Es la condición para avisar.
- *
- * `rol` en null = cambio sin autor registrado. También avisa: un cajero no
- * tiene con qué mover un precio, así que una modificación sin firma salió
- * igualmente de una operación de administración (típicamente la recepción de
- * una factura, que ES la lista de precios nueva del proveedor).
- */
-const cambioDeAdministracion = (rol) => rol == null || rol === 'admin' || rol === 'superadmin';
-
 export function PreciosAlert() {
   const { can } = usePermissions();
   const { ultimo, hayNovedad } = useSyncExternalStore(
@@ -72,14 +60,19 @@ export function PreciosAlert() {
   );
 
   /*
-   * Un cambio que no corresponde avisar (lo hizo este mismo usuario, o no lo
-   * hizo la administración) se da por VISTO en silencio. Si no, quedaría
-   * pendiente para siempre y el próximo cambio que sí importa no se distinguiría
-   * de este.
+   * EL ÚNICO CAMBIO QUE NO SE AVISA ES EL PROPIO — y se da por VISTO en
+   * silencio, para que no quede pendiente para siempre tapando al siguiente.
+   *
+   * Antes había un segundo filtro: avisar solo si el autor era `admin` o
+   * `superadmin`. Se fue (23/9/2026) porque no protegía de nada y sí podía
+   * romper: mover un precio ya exige el permiso `precios`, así que quien llega
+   * al historial es por definición alguien que puede: comparar además contra
+   * dos nombres de rol escritos a mano solo agregaba la forma de apagar el
+   * cartel sin que nadie se entere el día que exista un rol nuevo con esa llave.
    */
   const yo = useRef(usuarioDeSesion());
   const propio = ultimo?.usuarioId != null && ultimo.usuarioId === yo.current;
-  const paraElCajero = hayNovedad && !propio && cambioDeAdministracion(ultimo?.usuarioRol);
+  const paraElCajero = hayNovedad && !propio;
   const aDescartar = hayNovedad && !paraElCajero;
   useEffect(() => { if (aDescartar) cambiosPrecio.marcarVisto(); }, [aDescartar]);
 

@@ -29,6 +29,8 @@ const INTERVALO_MS = 30000;
 let _ultimo = null;
 /** Id ya reconocido por este navegador. `null` = todavía no hubo un tick. */
 let _visto = null;
+/** La sesión no tiene permiso para leer la firma: no se vuelve a intentar. */
+let _bloqueado = false;
 /**
  * Snapshot memoizado. `useSyncExternalStore` exige que la misma lectura
  * devuelva el MISMO objeto mientras nada cambió: si se armara uno nuevo en cada
@@ -57,11 +59,33 @@ async function tick() {
     // cajero acaba de cargar ya viene con estos precios.
     if (_visto === null) _visto = id;
     publicar();
-  } catch { /* API caída: el próximo tick reintenta */ }
+  } catch (e) {
+    /*
+     * UN "NO PODÉS" NO SE REINTENTA, Y NO SE CALLA (23/9/2026).
+     *
+     * Este `catch` era mudo, y eso escondió el aviso roto durante semanas: el
+     * endpoint pedía la llave de precios, el cajero —el único para el que
+     * existe el cartel— recibía 403 en cada tick y acá se perdía sin dejar
+     * rastro. La pantalla se veía igual de sana con el poller funcionando que
+     * con el poller rebotando cada 30 segundos.
+     *
+     * Ahora un 401/403 apaga el reloj (reintentar no va a cambiar el permiso) y
+     * deja dicho por qué. Lo demás —API caída, wifi que se cortó— sigue siendo
+     * transitorio y lo reintenta el próximo tick, que es lo correcto.
+     */
+    if (e?.status === 401 || e?.status === 403) {
+      _bloqueado = true;
+      detenerPolling();
+      console.warn(
+        '[precios] Esta sesión no puede leer /precios/ultimo-cambio '
+        + `(${e.status}): el aviso de cambio de precios queda apagado.`,
+      );
+    }
+  }
 }
 
 function asegurarPolling() {
-  if (_timer) return;
+  if (_timer || _bloqueado) return;
   tick();
   _timer = setInterval(tick, INTERVALO_MS);
 }
