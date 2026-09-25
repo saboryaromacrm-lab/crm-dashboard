@@ -163,6 +163,9 @@ export const ventasApi = {
   abrirCaja: (data) => httpClient.post('/caja/abrir', data),
   cerrarCaja: (id, data) => httpClient.post(`/caja/${id}/cerrar`, data),
   controlCaja: (id, data) => httpClient.post(`/caja/${id}/control`, data),
+  explicarControl: (id, controlId, data) => httpClient.patch(`/caja/${id}/control/${controlId}`, data),
+  /** El conteo a ciegas del cierre: devuelve el arqueo completo (ver caja.module). */
+  conteoCierre: (id, data) => httpClient.post(`/caja/${id}/conteo-cierre`, data),
   movimientoCaja: (id, data) => httpClient.post(`/caja/${id}/movimiento`, data),
 
   /* Pagos a proveedores (la plata que sale, desde la caja o desde Gastos) */

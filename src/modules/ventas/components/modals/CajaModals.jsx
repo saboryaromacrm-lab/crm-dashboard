@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
-import { ventasApi } from '../../services/ventas.api.js';
+import { errorMsg, ventasApi } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
 import { imprimirArqueoCaja } from '@core/services/imprimir.js';
@@ -127,12 +127,47 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
 
   const elegido = proveedores.find((pv) => pv.id === Number(proveedorId));
 
-  const registrar = async () => {
-    if (!(Number(importe) > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return; }
+  /*
+   * SE CONFIRMA DOS VECES (25/9/2026, pedido del dueño). Un ingreso o egreso
+   * manual mueve el efectivo esperado del cajón y no se puede borrar: un cero
+   * de más en el importe ($50.000.000 en vez de $5.000) quedaba firmado en el
+   * arqueo sin que nadie lo viera. El primer "Registrar" valida y muestra el
+   * resumen; recién "Sí, registrar" lo guarda. Cambiar cualquier dato vuelve
+   * a pedir la confirmación.
+   */
+  const [confirmando, setConfirmando] = useState(false);
+  const enviando = useRef(false);
+  const firma = [tipo, destino, importe, motivo, tipoProveedor, proveedorId, referencia, esFlete].join('|');
+  const firmaConfirmada = useRef('');
+  if (confirmando && firmaConfirmada.current !== firma) setConfirmando(false);
 
+  const validar = () => {
+    if (!(Number(importe) > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return false; }
     if (esPagoProveedor) {
-      if (!tipoProveedor) { toast('Elegí el tipo de proveedor: mercadería o gastos.', 'err'); return; }
-      if (!proveedorId) { toast('Elegí a qué proveedor se le pagó.', 'err'); return; }
+      if (!tipoProveedor) { toast('Elegí el tipo de proveedor: mercadería o gastos.', 'err'); return false; }
+      if (!proveedorId) { toast('Elegí a qué proveedor se le pagó.', 'err'); return false; }
+    } else if (!motivo.trim()) { toast('Indicá el motivo.', 'err'); return false; }
+    return true;
+  };
+
+  const pedirConfirmacion = () => {
+    if (!validar()) return;
+    firmaConfirmada.current = firma;
+    setConfirmando(true);
+  };
+
+  const registrar = async () => {
+    if (!validar() || enviando.current) return;
+    enviando.current = true;
+    try {
+      await guardar();
+    } finally {
+      enviando.current = false;
+    }
+  };
+
+  const guardar = async () => {
+    if (esPagoProveedor) {
       const ok = await act(
         ventasApi.crearPagoProveedor({
           proveedorId: Number(proveedorId),
@@ -158,7 +193,6 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
       return;
     }
 
-    if (!motivo.trim()) { toast('Indicá el motivo.', 'err'); return; }
     const ok = await act(
       ventasApi.movimientoCaja(cajaSesionId, {
         tipo, importe: r2(importe), motivo,
@@ -176,11 +210,33 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
     <ModalShell
       title="Movimiento de caja"
       onClose={closeModal}
-      footer={[
-        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: esPagoProveedor ? 'Registrar pago' : 'Registrar', clase: 'btn-primary', onClick: registrar },
-      ]}
+      footer={confirmando
+        ? [
+          { texto: 'Volver a editar', clase: 'btn-ghost', onClick: () => setConfirmando(false) },
+          { texto: 'Sí, registrar', clase: tipo === 'egreso' ? 'btn-delete' : 'btn-primary', onClick: registrar },
+        ]
+        : [
+          { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+          { texto: esPagoProveedor ? 'Registrar pago' : 'Registrar', clase: 'btn-primary', onClick: pedirConfirmacion },
+        ]}
     >
+      {confirmando && (
+        <div className={cx(s.callout, s.warn)} style={{ marginBottom: 'var(--crm-space-3)' }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>
+            ¿Confirmás {tipo === 'egreso' ? 'la SALIDA' : 'la ENTRADA'} de{' '}
+            <span style={{ fontSize: 20 }}>{money(r2(importe))}</span>
+            {tipo === 'egreso' ? ' del cajón' : ' al cajón'}?
+          </div>
+          <div>
+            {esPagoProveedor
+              ? <>{esFlete ? 'Flete' : 'Pago'} en efectivo a <strong>{elegido?.nombre ?? 'el proveedor'}</strong>{motivo.trim() ? <> · {motivo.trim()}</> : null}</>
+              : <>Motivo: <strong>{motivo.trim()}</strong></>}
+          </div>
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            Cambia el efectivo esperado del arqueo y no se puede borrar. Revisá el importe antes de confirmar.
+          </div>
+        </div>
+      )}
       <div className={s.hint}>
         Entradas y salidas de dinero que no son ventas ni cobranzas. Impactan directo en el
         arqueo del turno.
@@ -428,116 +484,171 @@ function useContadorBilletes(setMonto) {
  * ==================================================================== */
 
 /**
- * Conteo de efectivo EN MEDIO del turno: compara lo contado contra lo que el
- * sistema espera y deja el registro (fecha/hora, montos, diferencia, quién).
- * No mueve dinero ni cambia el estado — es puro control entre arqueos.
+ * Conteo de efectivo EN MEDIO del turno, A CIEGAS (25/9/2026, pedido del
+ * dueño): se cuenta sin ver lo que el sistema espera, se registra, y recién
+ * ahí aparecen el esperado y la diferencia. Con el esperado a la vista, el
+ * conteo se volvía "copiar el número"; ahora el conteo es el que se registra,
+ * tal cual. Si hay diferencia, se pide el porqué en un segundo paso (el
+ * servidor solo deja escribir el texto: el conteo no se toca).
  */
 export function ControlCajaModal({ cajaSesionId, onChange }) {
-  const { ctx, act, closeModal, toast, operadorId } = useVentas();
+  const { ctx, closeModal, toast, operadorId } = useVentas();
   const [contado, setContado] = useState('');
-  const [observaciones, setObservaciones] = useState('');
+  const [nota, setNota] = useState('');
+  const [explicacion, setExplicacion] = useState('');
+  /** El control ya registrado: con él llegan el esperado y la diferencia. */
+  const [control, setControl] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const candado = useRef(false);
+  const avisoSalida = useRef(false);
   const contador = useContadorBilletes(setContado);
 
-  const { data: arqueo, loading, error } = useResource(
-    `control-arqueo:${cajaSesionId}`,
-    () => ventasApi.cajaArqueo(cajaSesionId),
-  );
+  const conDiferencia = !!control && Math.abs(control.diferencia) > 0.009;
+  /* La nota que vino CON el conteo ("saqué $5.000 de cambio") ya explica. */
+  const faltaExplicar = conDiferencia && !nota.trim();
 
-  const diferencia = useMemo(() => {
-    if (!arqueo || contado === '') return null;
-    return r2(Number(contado) - arqueo.esperadoEfectivo);
-  }, [arqueo, contado]);
-
-  const registrar = async () => {
-    if (contado === '' || Number(contado) < 0) { toast('Contá el efectivo e ingresá el monto.', 'err'); return; }
-    if (diferencia !== null && Math.abs(diferencia) > 0.009 && !observaciones.trim()) {
-      toast('Hay diferencia: dejá una observación de por qué.', 'err');
-      return;
+  const conCandado = async (fn) => {
+    if (candado.current) return;
+    candado.current = true;
+    setEnviando(true);
+    try { await fn(); } catch (e) { toast(errorMsg(e), 'err'); } finally {
+      candado.current = false;
+      setEnviando(false);
     }
-    const ok = await act(
-      ventasApi.controlCaja(cajaSesionId, {
+  };
+
+  const registrar = () => {
+    if (contado === '' || !(Number(contado) >= 0)) { toast('Contá el efectivo e ingresá el monto.', 'err'); return; }
+    return conCandado(async () => {
+      const c = await ventasApi.controlCaja(cajaSesionId, {
         contadoEfectivo: r2(contado),
-        observaciones,
+        observaciones: nota.trim(),
         usuarioId: ctx.usuarioId ?? undefined,
         // El relevo (0088): el conteo lo firma quien está parado en la caja.
         operadorId: operadorId ?? undefined,
-      }),
-      'Control de caja registrado.',
-      { recargar: false },
-    );
-    if (ok) onChange?.();
+      });
+      setControl(c);
+      onChange?.();
+    });
   };
 
-  if (loading || error || !arqueo) {
+  const explicar = () => {
+    if (!explicacion.trim()) { toast('Escribí por qué hay diferencia.', 'err'); return; }
+    return conCandado(async () => {
+      await ventasApi.explicarControl(cajaSesionId, control.id, { observaciones: explicacion.trim() });
+      toast('Control registrado con su explicación.', 'ok');
+      onChange?.();
+      closeModal();
+    });
+  };
+
+  /* Salir sin explicar una diferencia se avisa una vez: el conteo ya quedó
+   * registrado igual, pero sin el porqué el que revisa no tiene por dónde
+   * empezar. La segunda vez deja salir — nunca se queda nadie encerrado. */
+  const salir = () => {
+    if (faltaExplicar && !avisoSalida.current) {
+      avisoSalida.current = true;
+      toast('El conteo ya quedó registrado. Explicá la diferencia antes de salir.', 'err');
+      return;
+    }
+    closeModal();
+  };
+
+  if (!control) {
     return (
-      <ModalShell title="Control de caja" onClose={closeModal} footer={[{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }]}>
-        {loading
-          ? <div className={s['empty-state']}>Calculando el efectivo esperado…</div>
-          : <div className={cx(s.callout, s.warn)}>{error || 'No se pudo calcular el arqueo.'}</div>}
+      <ModalShell
+        title="Control de caja"
+        onClose={closeModal}
+        footer={[
+          { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+          { texto: enviando ? 'Registrando…' : 'Registrar conteo', clase: 'btn-primary', onClick: registrar, disabled: enviando },
+        ]}
+      >
+        <div className={s.hint}>
+          Contá el efectivo del cajón <strong>sin mirar el sistema</strong>. Al registrar, el conteo
+          queda guardado tal cual y recién ahí aparecen el esperado y la diferencia. El turno sigue
+          abierto y se puede seguir vendiendo.
+        </div>
+
+        <div className={s['form-grid']}>
+          <div className={s.field}>
+            <label>Efectivo contado <span className={s.req}>*</span></label>
+            <input
+              type="number" min="0" step="any" autoFocus
+              placeholder="Lo que hay en el cajón"
+              value={contado}
+              onChange={(e) => setContado(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); registrar(); } }}
+            />
+            {contador.boton}
+          </div>
+          <div className={s.field}>
+            <label>Nota (opcional)</label>
+            <input
+              value={nota}
+              placeholder="Ej.: saqué $5.000 para cambio"
+              onChange={(e) => setNota(e.target.value)}
+            />
+          </div>
+        </div>
+        {contador.modal}
       </ModalShell>
     );
   }
 
   return (
     <ModalShell
-      title="Control de caja"
-      onClose={closeModal}
-      footer={[
-        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Registrar control', clase: 'btn-primary', onClick: registrar },
-      ]}
+      title="Control de caja — resultado"
+      onClose={salir}
+      footer={faltaExplicar
+        ? [{ texto: enviando ? 'Guardando…' : 'Guardar explicación', clase: 'btn-primary', onClick: explicar, disabled: enviando }]
+        : [{ texto: 'Listo', clase: 'btn-primary', onClick: closeModal }]}
     >
+      <ResultadoConteo
+        esperado={control.esperadoEfectivo}
+        contado={control.contadoEfectivo}
+        diferencia={control.diferencia}
+      />
       <div className={s.hint}>
-        Conteo <strong>sin cerrar el turno</strong>: queda registrado con fecha, hora,
-        montos y diferencia. El turno sigue abierto y se puede seguir vendiendo.
+        El conteo quedó registrado en los controles del turno{conDiferencia ? ', con su diferencia' : ''}.
       </div>
-
-      <div className={s['form-grid']}>
-        <div className={s.field}>
-          <label>Efectivo esperado (sistema)</label>
-          <input value={money(arqueo.esperadoEfectivo)} readOnly tabIndex={-1} />
-          <div className={s.hint} style={{ margin: '6px 0 0' }}>
-            Fondo inicial + efectivo cobrado + ingresos − egresos, al momento.
+      {conDiferencia && (nota.trim()
+        ? <div className={s.callout}>Tu nota: {nota.trim()}</div>
+        : (
+          <div className={s.field}>
+            <label>¿Por qué hay diferencia? <span className={s.req}>*</span></label>
+            <input
+              autoFocus
+              value={explicacion}
+              placeholder="Ej.: un vuelto mal dado, un egreso sin cargar"
+              onChange={(e) => setExplicacion(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); explicar(); } }}
+            />
           </div>
-        </div>
-        <div className={s.field}>
-          <label>Efectivo contado <span className={s.req}>*</span></label>
-          <input
-            type="number" min="0" step="100" autoFocus
-            placeholder="Lo que hay en el cajón"
-            value={contado}
-            onChange={(e) => setContado(e.target.value)}
-          />
-          {contador.boton}
-        </div>
-      </div>
-      {contador.modal}
-
-      {diferencia !== null && (
-        <div
-          className={cx(s.callout, Math.abs(diferencia) > 0.009 && s.warn)}
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}
-        >
-          <span>{Math.abs(diferencia) < 0.01 ? 'Sin diferencia' : 'Diferencia'}</span>
-          <strong style={{
-            fontSize: 22,
-            color: Math.abs(diferencia) < 0.01 ? 'var(--crm-color-success)' : 'var(--crm-color-danger)',
-          }}
-          >
-            {diferencia > 0 ? '+' : ''}{money(diferencia)}
-          </strong>
-        </div>
-      )}
-
-      <div className={s.field}>
-        <label>Observaciones {diferencia !== null && Math.abs(diferencia) > 0.009 && <span className={s.req}>*</span>}</label>
-        <input
-          value={observaciones}
-          placeholder={diferencia !== null && Math.abs(diferencia) > 0.009 ? 'Explicá la diferencia' : 'Opcional'}
-          onChange={(e) => setObservaciones(e.target.value)}
-        />
-      </div>
+        ))}
     </ModalShell>
+  );
+}
+
+/**
+ * Los tres números de un conteo, grandes: es lo que se viene a leer después de
+ * contar. La diferencia en verde si cierra, en rojo si no, con su signo.
+ */
+function ResultadoConteo({ esperado, contado, diferencia }) {
+  const ok = Math.abs(diferencia) < 0.01;
+  return (
+    <div className={cx(s.callout, !ok && s.warn)} style={{ marginBottom: 'var(--crm-space-3)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '4px 16px', justifyContent: 'start', alignItems: 'baseline' }}>
+        <span>Contado</span>
+        <strong style={{ fontSize: 22 }}>{money(contado)}</strong>
+        <span>Esperado (sistema)</span>
+        <strong style={{ fontSize: 18 }}>{money(esperado)}</strong>
+        <span>Diferencia</span>
+        <strong style={{ fontSize: 22, color: ok ? 'var(--crm-color-success)' : 'var(--crm-color-danger)' }}>
+          {ok ? 'Sin diferencia' : `${diferencia > 0 ? '+' : ''}${money(diferencia)} ${diferencia > 0 ? '(sobra)' : '(falta)'}`}
+        </strong>
+      </div>
+    </div>
   );
 }
 
@@ -546,7 +657,7 @@ export function ControlCajaModal({ cajaSesionId, onChange }) {
  * ==================================================================== */
 
 /** Historial de controles intermedios del turno (fecha/hora, montos, diferencia). */
-function ControlesDelTurno({ controles }) {
+function ControlesDelTurno({ controles, ciego }) {
   const { usuarios } = useVentas();
   if (!controles?.length) return null;
   return (
@@ -558,6 +669,9 @@ function ControlesDelTurno({ controles }) {
       ]}
       >
         {controles.map((c) => {
+          /* A ciegas el esperado y la diferencia no se muestran (con el turno
+           * abierto el servidor ni los manda): solo lo que se contó. */
+          const oculto = ciego || c.esperadoEfectivo == null;
           const ok = Math.abs(c.diferencia) < 0.01;
           return (
             <tr key={c.id}>
@@ -565,12 +679,14 @@ function ControlesDelTurno({ controles }) {
                 {fmtFechaHora(c.fecha)}
                 {c.observaciones && <div className={s.hint} style={{ margin: 0 }}>{c.observaciones}</div>}
               </td>
-              <td className={s.num}>{money(c.esperadoEfectivo)}</td>
+              <td className={s.num}>{oculto ? <span className={s.muted}>—</span> : money(c.esperadoEfectivo)}</td>
               <td className={s.num}>{money(c.contadoEfectivo)}</td>
               <td className={s.num}>
-                <strong style={{ color: ok ? 'var(--crm-color-success)' : 'var(--crm-color-danger)' }}>
-                  {c.diferencia > 0 ? '+' : ''}{money(c.diferencia)}
-                </strong>
+                {oculto ? <span className={s.muted}>—</span> : (
+                  <strong style={{ color: ok ? 'var(--crm-color-success)' : 'var(--crm-color-danger)' }}>
+                    {c.diferencia > 0 ? '+' : ''}{money(c.diferencia)}
+                  </strong>
+                )}
               </td>
               <td>{usuarios.find((u) => u.id === c.usuarioId)?.nombre || '—'}</td>
             </tr>
@@ -642,11 +758,20 @@ function Renglon({ label, valor, tenue }) {
   );
 }
 
-/** Detalle del arqueo. Se comparte entre el cierre y el historial de turnos. */
-export function DetalleArqueo({ arqueo }) {
-  const medios = Object.entries(arqueo.medios || {});
-  const efectivo = arqueo.medios?.efectivo?.total ?? 0;
+/**
+ * Detalle del arqueo. Se comparte entre el cierre y el historial de turnos.
+ *
+ * `ciego`: el turno abierto visto por quien tiene que contarlo. Sin el efectivo
+ * cobrado, el esperado ni el total cobrado —con cualquiera de los tres se
+ * reconstruye el esperado—. El servidor ya los saca para el que no es jefe
+ * (`arqueo.ciego`); el cierre lo fuerza para todos hasta que se declara el conteo.
+ */
+export function DetalleArqueo({ arqueo, ciego: forzarCiego = false }) {
   const cerrado = arqueo.sesion?.estado === 'cerrada';
+  const ciego = !cerrado && (forzarCiego || !!arqueo.ciego);
+  const medios = Object.entries(arqueo.medios || {}).filter(([m]) => !ciego || m !== 'efectivo');
+  const efectivo = arqueo.medios?.efectivo?.total ?? 0;
+  const aCiegas = <span className={s.muted}>se ve después de contar</span>;
   const dif = arqueo.sesion?.diferencia ?? 0;
   const difOk = Math.abs(dif) < 0.01;
 
@@ -661,18 +786,20 @@ export function DetalleArqueo({ arqueo }) {
       */}
       <div className={cx(s.cadena, s.cuentaBloque)}>
         <Renglon label="Fondo inicial" valor={money(arqueo.montoInicial)} />
-        <Renglon label="+ Cobrado en efectivo" valor={money(efectivo)} />
+        <Renglon label="+ Cobrado en efectivo" valor={ciego ? aCiegas : money(efectivo)} />
         <Renglon label="+ Otros ingresos" valor={money(arqueo.ingresos)} tenue={!arqueo.ingresos} />
         <Renglon label="− Egresos" valor={money(arqueo.egresos)} tenue={!arqueo.egresos} />
 
         <div className={s.pasoResultado}>
           <span>Efectivo esperado</span>
-          <strong
-            className={s.mono}
-            style={{ color: arqueo.esperadoEfectivo < 0 ? 'var(--crm-color-danger)' : 'var(--crm-color-accent)' }}
-          >
-            {money(arqueo.esperadoEfectivo)}
-          </strong>
+          {ciego ? aCiegas : (
+            <strong
+              className={s.mono}
+              style={{ color: arqueo.esperadoEfectivo < 0 ? 'var(--crm-color-danger)' : 'var(--crm-color-accent)' }}
+            >
+              {money(arqueo.esperadoEfectivo)}
+            </strong>
+          )}
         </div>
 
         {/* Solo con el turno cerrado hay conteo contra el cual comparar. */}
@@ -703,17 +830,19 @@ export function DetalleArqueo({ arqueo }) {
       </div>
 
       <div className={s['section-title']}>
-        Por medio de pago
-        <span className={s.hint} style={{ margin: '0 0 0 8px', fontWeight: 400 }}>
-          total cobrado {money(arqueo.totalCobrado)}
-        </span>
+        {ciego ? 'Otros medios de pago' : 'Por medio de pago'}
+        {!ciego && (
+          <span className={s.hint} style={{ margin: '0 0 0 8px', fontWeight: 400 }}>
+            total cobrado {money(arqueo.totalCobrado)}
+          </span>
+        )}
       </div>
       <Table
         cols={[
           { h: 'Medio' }, { h: 'Ventas', num: true }, { h: 'Cobranzas', num: true },
           { h: 'De eso, recargo', num: true }, { h: 'Total', num: true },
         ]}
-        empty="No entró dinero en este turno."
+        empty={ciego ? 'Todavía no entró dinero por otros medios.' : 'No entró dinero en este turno.'}
       >
         {medios.map(([medio, m]) => (
           <tr key={medio}>
@@ -733,7 +862,7 @@ export function DetalleArqueo({ arqueo }) {
           </tr>
         ))}
       </Table>
-      {arqueo.recargos > 0 && (
+      {arqueo.recargos > 0 && !ciego && (
         <div className={s.hint}>
           De los {money(arqueo.totalCobrado)} que entraron, <strong>{money(arqueo.recargos)}</strong> son
           recargo por cuotas: no es venta de mercadería, es lo que se le cobró al cliente por
@@ -743,7 +872,7 @@ export function DetalleArqueo({ arqueo }) {
 
       <MovimientosDelTurno movimientos={arqueo.movimientos} />
 
-      <ControlesDelTurno controles={arqueo.controles} />
+      <ControlesDelTurno controles={arqueo.controles} ciego={ciego} />
     </>
   );
 }
@@ -779,27 +908,69 @@ function sacarComprobanteArqueo(arqueo, { sucursales, usuarios, ctx, reimpresion
 }
 
 export function CerrarCajaModal({ cajaSesionId, onChange }) {
-  const { act, closeModal, toast, setOperador, sucursales, usuarios, ctx } = useVentas();
+  const { ctx, act, closeModal, toast, setOperador, sucursales, usuarios, operadorId } = useVentas();
   const [declarado, setDeclarado] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const contador = useContadorBilletes(setDeclarado);
 
   const { data: arqueo, loading, error } = useResource(`arqueo:${cajaSesionId}`, () => ventasApi.cajaArqueo(cajaSesionId));
 
-  // Solo se cuenta el EFECTIVO: los demás medios se concilian contra el banco.
-  const diferencia = useMemo(() => {
-    if (!arqueo || declarado === '') return null;
-    return r2(Number(declarado) - arqueo.esperadoEfectivo);
-  }, [arqueo, declarado]);
+  /*
+   * EL CIERRE ES A CIEGAS (25/9/2026, pedido del dueño), para todos: se cuenta
+   * sin ver el esperado. "Ver resultado" manda el conteo al servidor, que
+   * devuelve el arqueo completo — y si el conteo NO coincide, lo deja
+   * registrado como control ANTES de mostrar el esperado. Así "volver a contar"
+   * sigue siendo posible (un billete pegado pasa) pero el primer número queda.
+   *
+   * El resultado es además la confirmación del cierre: el turno cerrado no se
+   * reabre, así que recién "Sí, cerrar el turno" lo cierra. Con diferencia, la
+   * explicación es obligatoria (el servidor también la exige).
+   */
+  const [resultado, setResultado] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const candado = useRef(false);
+  const conDiferencia = !!resultado && Math.abs(resultado.diferencia) > 0.009;
 
-  const cerrar = async () => {
+  const verResultado = async () => {
     /* El campo vacío NO es "cero contado": era un `r2('')` = 0 que cerraba el
      * turno con una diferencia inventada del tamaño de todo el efectivo del día,
-     * firmada y sin poder reabrirse. El control intermedio ya exigía el conteo;
-     * el cierre, que es el que queda, no lo pedía. */
+     * firmada y sin poder reabrirse. */
     if (declarado === '') { toast('Contá el efectivo del cajón e ingresá el monto.', 'err'); return; }
+    if (!(Number(declarado) >= 0)) { toast('El efectivo contado no puede ser negativo.', 'err'); return; }
+    if (candado.current) return;
+    candado.current = true;
+    setEnviando(true);
+    try {
+      setResultado(await ventasApi.conteoCierre(cajaSesionId, {
+        contadoEfectivo: r2(declarado),
+        usuarioId: ctx.usuarioId ?? undefined,
+        // El relevo (0088): el conteo lo firma quien está en la caja.
+        operadorId: operadorId ?? undefined,
+      }));
+    } catch (e) {
+      toast(errorMsg(e), 'err');
+    } finally {
+      candado.current = false;
+      setEnviando(false);
+    }
+  };
+
+  const cerrar = async () => {
+    if (!resultado || candado.current) return;
+    if (conDiferencia && !observaciones.trim()) { toast('Hay diferencia: escribí por qué antes de cerrar.', 'err'); return; }
+    candado.current = true;
+    setEnviando(true);
+    try {
+      await guardarCierre();
+    } finally {
+      candado.current = false;
+      setEnviando(false);
+    }
+  };
+
+  const guardarCierre = async () => {
     const ok = await act(
-      ventasApi.cerrarCaja(cajaSesionId, { declaradoEfectivo: r2(declarado), observaciones }),
+      ventasApi.cerrarCaja(cajaSesionId, { declaradoEfectivo: resultado.contado, observaciones: observaciones.trim() }),
       'Turno cerrado.',
       { recargar: false },
     );
@@ -810,15 +981,19 @@ export function CerrarCajaModal({ cajaSesionId, onChange }) {
        * Con este comprobante se rinde la plata, asi que pedirlo con un boton
        * aparte lo volveria opcional: el turno que se cierra sin papel deja al
        * cajero entregando efectivo contra nada. Se imprime con la sesion YA
-       * cerrada (`sesionCerrada`) para que el papel lleve el conteo, la
-       * diferencia y la hora de cierre definitivos, no los de un segundo antes.
+       * cerrada (`sesionCerrada`) y con el arqueo COMPLETO que devolvio el
+       * conteo (el de la pantalla, a ciegas, no tiene el esperado).
        *
        * Si el navegador bloquea la ventana emergente se avisa: siempre se puede
        * reimprimir desde el historial del turno.
        */
-      const sesionCerrada = ok?.id ? ok : { ...arqueo.sesion, estado: 'cerrada', cierre: new Date(), declaradoEfectivo: r2(declarado), diferencia: r2(Number(declarado) - arqueo.esperadoEfectivo) };
+      const completo = resultado.arqueo;
+      const sesionCerrada = ok?.id ? ok : {
+        ...completo.sesion, estado: 'cerrada', cierre: new Date(),
+        declaradoEfectivo: resultado.contado, diferencia: resultado.diferencia,
+      };
       const salio = sacarComprobanteArqueo(
-        { ...arqueo, sesion: sesionCerrada },
+        { ...completo, sesion: sesionCerrada },
         { sucursales, usuarios, ctx },
       );
       if (!salio) toast('El turno se cerro, pero el navegador bloqueo la impresion. Reimprimilo desde el historial.', 'err');
@@ -832,7 +1007,7 @@ export function CerrarCajaModal({ cajaSesionId, onChange }) {
   if (loading) {
     return (
       <ModalShell title="Cerrar caja" onClose={closeModal} footer={[{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }]}>
-        <div className={s['empty-state']}>Calculando el arqueo…</div>
+        <div className={s['empty-state']}>Preparando el arqueo…</div>
       </ModalShell>
     );
   }
@@ -844,71 +1019,81 @@ export function CerrarCajaModal({ cajaSesionId, onChange }) {
     );
   }
 
+  /* ---------------- Paso 1: contar a ciegas ---------------- */
+  if (!resultado) {
+    return (
+      <ModalShell
+        title="Cerrar caja — conteo a ciegas"
+        wide
+        onClose={closeModal}
+        footer={[
+          { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+          { texto: enviando ? 'Verificando…' : 'Ver resultado', clase: 'btn-primary', onClick: verResultado, disabled: enviando },
+        ]}
+      >
+        <div className={s.callout}>
+          Contá el efectivo del cajón <strong>sin mirar el sistema</strong> y escribí lo que contaste.
+          El esperado aparece después. Si no coincide, ese primer conteo <strong>queda registrado</strong>{' '}
+          aunque vuelvas a contar.
+        </div>
+
+        <div className={s['form-grid']}>
+          <div className={s.field}>
+            <label>Efectivo contado <span className={s.req}>*</span></label>
+            <input
+              type="number" min="0" step="any" autoFocus
+              placeholder="Lo que hay en el cajón"
+              value={declarado}
+              onChange={(e) => setDeclarado(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); verResultado(); } }}
+            />
+            {contador.boton}
+          </div>
+        </div>
+        {contador.modal}
+
+        <DetalleArqueo arqueo={arqueo} ciego />
+      </ModalShell>
+    );
+  }
+
+  /* ---------------- Paso 2: resultado y confirmación ---------------- */
   return (
     <ModalShell
-      title="Cerrar caja — arqueo"
+      title="Cerrar caja — resultado"
       wide
       onClose={closeModal}
       footer={[
-        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Cerrar turno', clase: 'btn-delete', onClick: cerrar },
+        /* Volver a contar NO borra nada: si hubo diferencia, el primer conteo
+         * ya está en los controles del turno. */
+        { texto: 'Volver a contar', clase: 'btn-ghost', onClick: () => { setResultado(null); setObservaciones(''); }, disabled: enviando },
+        { texto: enviando ? 'Cerrando…' : 'Sí, cerrar el turno', clase: 'btn-delete', onClick: cerrar, disabled: enviando },
       ]}
     >
-      <DetalleArqueo arqueo={arqueo} />
-
-      <div className={s['section-title']}>Conteo de efectivo</div>
-      <div className={s['form-grid']}>
-        <div className={s.field}>
-          <label>Efectivo esperado (sistema)</label>
-          <input value={money(arqueo.esperadoEfectivo)} readOnly tabIndex={-1} />
-          <div className={s.hint} style={{ margin: '6px 0 0' }}>
-            Fondo inicial + efectivo cobrado + ingresos − egresos.
-          </div>
-        </div>
-        <div className={s.field}>
-          <label>Efectivo contado <span className={s.req}>*</span></label>
-          <input
-            type="number" min="0" step="100" autoFocus
-            placeholder="0,00"
-            value={declarado}
-            onChange={(e) => setDeclarado(e.target.value)}
-          />
-          {contador.boton}
-        </div>
-      </div>
-      {contador.modal}
-
-      {diferencia !== null && (
-        <div
-          className={cx(s.callout, Math.abs(diferencia) > 0.009 && s.warn)}
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}
-        >
-          <span>Diferencia</span>
-          <strong style={{
-            fontSize: 22,
-            color: Math.abs(diferencia) < 0.01
-              ? 'var(--crm-color-success)'
-              : 'var(--crm-color-danger)',
-          }}
-          >
-            {diferencia > 0 ? '+' : ''}{money(diferencia)}
-          </strong>
+      <ResultadoConteo esperado={resultado.arqueo.esperadoEfectivo} contado={resultado.contado} diferencia={resultado.diferencia} />
+      {resultado.control && (
+        <div className={s.hint}>
+          Como no coincidió, este conteo quedó registrado en los controles del turno. Si volvés a
+          contar, los dos conteos quedan a la vista de quien revise.
         </div>
       )}
 
       <div className={s.field}>
-        <label>Observaciones</label>
+        <label>Observaciones {conDiferencia && <span className={s.req}>*</span>}</label>
         <input
+          autoFocus={conDiferencia}
           value={observaciones}
-          placeholder={diferencia && Math.abs(diferencia) > 0.009 ? 'Explicá la diferencia' : 'Opcional'}
+          placeholder={conDiferencia ? 'Explicá por qué hay diferencia' : 'Opcional'}
           onChange={(e) => setObservaciones(e.target.value)}
         />
       </div>
 
       <div className={s.hint}>
-        El turno queda cerrado con su arqueo y no se puede reabrir. La diferencia se guarda
-        tal cual, incluso negativa: es el control.
+        El turno cerrado <strong>no se puede reabrir</strong>. Si el contado tiene un cero de más o de
+        menos, volvé a contar. La diferencia se guarda tal cual, incluso negativa: es el control.
       </div>
+
+      <DetalleArqueo arqueo={resultado.arqueo} />
     </ModalShell>
   );
 }
@@ -922,8 +1107,9 @@ export function ArqueoTurnoModal({ cajaSesionId }) {
     { texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal },
     /* Reimprimir SIEMPRE, no solo los turnos cerrados: con el turno abierto el
      * papel sale sin conteo y avisandolo, que es justo lo que se necesita para
-     * un control a mitad del dia. */
-    {
+     * un control a mitad del dia. Salvo A CIEGAS: el papel del turno abierto
+     * lleva el esperado, y el que cuenta no lo tiene que ver. */
+    !arqueo?.ciego && {
       texto: 'Imprimir',
       clase: 'btn-primary',
       onClick: () => {
@@ -932,7 +1118,7 @@ export function ArqueoTurnoModal({ cajaSesionId }) {
         if (!salio) toast('El navegador bloqueó la ventana de impresión.', 'err');
       },
     },
-  ];
+  ].filter(Boolean);
   if (loading) {
     return <ModalShell title="Arqueo del turno" onClose={closeModal} footer={footer}>
       <div className={s['empty-state']}>Cargando…</div>
@@ -975,6 +1161,13 @@ export function ArqueoTurnoModal({ cajaSesionId }) {
           <span className={s.v}>{sesion.cierre ? fmtFechaHora(sesion.cierre) : '—'}</span>
         </div>
       </div>
+
+      {arqueo.ciego && (
+        <div className={s.callout}>
+          El efectivo esperado de un turno abierto se ve después de contar: en <strong>Control de
+          caja</strong> o al <strong>cerrar la caja</strong>.
+        </div>
+      )}
 
       <DetalleArqueo arqueo={arqueo} />
 

@@ -1636,7 +1636,7 @@ export const MANUAL = [
       },
       {
         id: 'arqueo-caja',
-        actualizado: '2026-08-26',
+        actualizado: '2026-09-25',
         titulo: 'Arqueo de caja',
         bloques: [
           {
@@ -1648,14 +1648,19 @@ export const MANUAL = [
             cols: ['Momento', 'Qué pasa'],
             filas: [
               ['**Apertura**', 'El fondo inicial es **obligatorio y mayor a cero**: sin punto de partida declarado no hay arqueo posible, así que el turno no se abre'],
-              ['**Control de caja** (durante el turno)', 'Se cuenta el efectivo SIN cerrar nada: queda registrado con **fecha, hora, esperado, contado, diferencia y quién contó**. Si hay diferencia, la observación es obligatoria. Se pueden hacer todos los que hagan falta; el turno sigue abierto'],
-              ['**Cierre**', 'El arqueo final: se cuenta el efectivo, la diferencia (contado − sistema) se guarda tal cual — incluso negativa — y el turno queda **cerrado definitivo**, sin reapertura. Los totales por medio quedan como foto'],
+              ['**Control de caja** (durante el turno)', 'Se cuenta el efectivo **a ciegas** y SIN cerrar nada: el conteo se registra tal cual y recién ahí aparecen el esperado y la diferencia. Queda con **fecha, hora, esperado, contado, diferencia y quién contó**. Si hay diferencia, se pide el porqué. Se pueden hacer todos los que hagan falta; el turno sigue abierto'],
+              ['**Cierre**', 'El arqueo final, **a ciegas**: se escribe lo contado y recién después se ve el esperado. Si no coincide, ese primer conteo **queda registrado** en los controles aunque se vuelva a contar. Con diferencia, la explicación es obligatoria. La diferencia (contado − sistema) se guarda tal cual — incluso negativa — y el turno queda **cerrado definitivo**, sin reapertura, con doble confirmación. Los totales por medio quedan como foto'],
             ],
           },
           {
             t: 'nota',
             tono: 'ok',
             texto: 'Los controles intermedios sirven para achicar la ventana del problema: un faltante detectado a las 14:00 se investiga sobre 3 horas de ventas, no sobre el día entero. El historial completo se ve en el detalle de cada turno (Ventas › Caja, clic en la fila).',
+          },
+          {
+            t: 'nota',
+            tono: 'warn',
+            texto: '**Por qué a ciegas**: con el esperado a la vista, contar se vuelve copiar el número. Mientras el turno está abierto, el cajero **no ve el efectivo esperado en ninguna pantalla** (ni el efectivo cobrado ni el total, que lo delatarían): el servidor ni se lo manda. Lo ve después de declarar su conteo. Administración (admin y superadmin) sí lo ve siempre, en el detalle del turno.',
           },
           {
             t: 'p',

@@ -7,8 +7,35 @@ import assert from 'node:assert/strict';
 import {
   buscarEnCatalogo, bultoAbajo, bultoArriba, bultoDeFila, calcularRenglon, desgloseBulto,
   empujonMayorista, porBulto, textoBulto, totalesTicket,
-  unidadesDeLista,
+  unidadesDeLista, ticketDesdeBorrador, ticketReducer, ticketInicial,
 } from './pos.js';
+
+test('cantidad: lo que se vende por unidad va entero; el granel suelto admite decimales', () => {
+  const base = { precioUnitario: 100, precioLista: 100, descuento: 0, ofertaDescuento: 0, iva: 21 };
+  let t = {
+    ...ticketInicial,
+    renglones: [
+      { ...base, uid: 1, key: 'p1', productoId: 1, fraccionable: false, cantidad: 1 },
+      { ...base, uid: 2, key: 'p2', productoId: 2, fraccionable: true, cantidad: 1 },
+    ],
+  };
+  t = ticketReducer(t, { tipo: 'cantidad', uid: 1, valor: '2.7' });
+  t = ticketReducer(t, { tipo: 'cantidad', uid: 2, valor: '2.7' });
+  assert.equal(t.renglones.find((r) => r.uid === 1).cantidad, 2, 'por unidad: se descarta el decimal');
+  assert.equal(t.renglones.find((r) => r.uid === 2).cantidad, 2.7, 'granel suelto: se respeta');
+});
+
+test('ticketDesdeBorrador: un recargo de cuotas que quedó de un cobro fallido no se levanta como cargo', () => {
+  const t = ticketDesdeBorrador({
+    items: [],
+    extras: [
+      { concepto: 'Envío', importe: 1000, iva: 21 },
+      { concepto: 'Recargo 3 cuotas (20%)', importe: 111.74, iva: 21 },
+      { concepto: 'Recargo 1 cuota (10%)', importe: 50, iva: 21 },
+    ],
+  }, []);
+  assert.deepEqual(t.extras.map((e) => e.concepto), ['Envío']);
+});
 
 test('calcularRenglon: bruto → descuento % → oferta (importe) → IVA', () => {
   const c = calcularRenglon({ cantidad: 3, precioUnitario: 1000, descuento: 10, ofertaDescuento: 200, iva: 21 });

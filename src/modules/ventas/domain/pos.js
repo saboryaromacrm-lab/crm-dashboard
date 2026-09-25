@@ -517,11 +517,17 @@ export function ticketReducer(estado, accion) {
       };
       return recalcular({ ...estado, renglones: [...estado.renglones, renglon], uid: estado.uid + 1 });
     }
+    /* Lo que se vende por unidad va ENTERO (25/9/2026): solo el granel suelto
+     * (`fraccionable`) admite decimales. La parte decimal se descarta al
+     * tipear; la API igual la rechaza si llegara por otro lado. */
     case 'cantidad':
       return recalcular({
         ...estado,
-        renglones: estado.renglones.map((r) =>
-          r.uid === accion.uid ? { ...r, cantidad: Math.max(0, Number(accion.valor) || 0) } : r),
+        renglones: estado.renglones.map((r) => {
+          if (r.uid !== accion.uid) return r;
+          const v = Math.max(0, Number(accion.valor) || 0);
+          return { ...r, cantidad: r.fraccionable ? v : Math.trunc(v) };
+        }),
       });
     /**
      * CANTIDAD ESCRITA EN BULTOS: `n` bultos son EXACTAMENTE `n × unidades`.
@@ -924,11 +930,21 @@ export function ticketDesdeBorrador(borrador, catalogo) {
     };
   });
 
-  const extras = (borrador.extras ?? []).map((e) => ({
-    uid: uid++, concepto: e.concepto, importe: e.importe, iva: e.iva,
-  }));
+  /* El recargo por cuotas no es un cargo del ticket: lo agrega el cobro. Uno
+   * que haya quedado de un cobro fallido (antes del 25/9/2026) no se levanta,
+   * o se mostraría y se cobraría como un "cargo extra" más. */
+  const extras = (borrador.extras ?? [])
+    .filter((e) => !esRecargoCuotas(e.concepto))
+    .map((e) => ({
+      uid: uid++, concepto: e.concepto, importe: e.importe, iva: e.iva,
+    }));
 
   return { renglones, extras, uid };
+}
+
+/** El renglón que agrega el plan de cuotas: "Recargo 3 cuotas (20%)". Mismo patrón que la API. */
+export function esRecargoCuotas(concepto) {
+  return /^Recargo \d+ cuotas? \(/.test(String(concepto ?? ''));
 }
 
 /** Etiqueta del último artículo cargado, para la tabla de ventas abiertas. */

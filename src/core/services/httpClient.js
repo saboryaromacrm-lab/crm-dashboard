@@ -41,6 +41,30 @@ class HttpError extends Error {
 }
 
 /**
+ * LA FALLA DEL SERVIDOR, EN CASTELLANO Y DICIENDO QUÉ HACER (25/9/2026).
+ *
+ * Un 500 llegaba como "Internal server error": en inglés y sin decir si la
+ * operación se hizo. Si el servidor mandó un mensaje propio (uno escrito a
+ * propósito, en castellano) se respeta; el genérico de Nest se reemplaza.
+ *
+ * El 500 y el 504 dicen "fijate si quedó hecha" porque de verdad no se sabe:
+ * el 504 es el proxy que se cansó de esperar mientras el servidor seguía, y
+ * repetir un cobro a ciegas lo duplicaría. El 502/503 es el servidor caído o
+ * reiniciándose (un deploy): ahí la operación no llegó.
+ */
+function mensajeFallaServidor(status, data) {
+  const propio = typeof data?.message === 'string' ? data.message.trim() : '';
+  if (propio && !/^internal server error$/i.test(propio)) return propio;
+  if (status === 502 || status === 503) {
+    return 'El sistema se está reiniciando o actualizando. Esperá un minuto y volvé a intentar.';
+  }
+  if (status === 504) {
+    return 'El servidor tardó demasiado en responder. La operación pudo haberse hecho igual: fijate antes de repetirla.';
+  }
+  return 'Falló algo en el servidor. Antes de repetir, fijate si la operación quedó hecha (por ejemplo, en Ventas). Si vuelve a pasar, avisá al administrador.';
+}
+
+/**
  * Los endpoints que la API abre a propósito. Un 401 acá NO es una sesión
  * vencida: es "la contraseña está mal". Si no se distinguiera, escribir mal la
  * clave en el login limpiaría la sesión y recargaría la pantalla.
@@ -253,7 +277,10 @@ async function intentarRequest(method, path, { body, headers, signal, sinRedirig
     if (!response.ok) {
       throw new HttpError(`Request failed: ${response.status}`, {
         status: response.status,
-        data,
+        // El 502 de un proxy llega como página HTML (un string): no se esparce.
+        data: response.status >= 500
+          ? { ...(data && typeof data === 'object' ? data : {}), message: mensajeFallaServidor(response.status, data) }
+          : data,
       });
     }
     return data;

@@ -578,12 +578,17 @@ export function NotaCreditoModal({ venta, onCambio }) {
                     type="number"
                     min={0}
                     max={devolvible}
-                    step="any"
+                    /* Por unidad se devuelve entero; solo el granel suelto (kg) admite decimales. */
+                    step={it.unidad === 'kg' ? 'any' : 1}
                     disabled={agotado}
                     style={{ width: 90, textAlign: 'right' }}
                     value={cants[it.id] ?? ''}
                     placeholder="0"
-                    onChange={(e) => setCants((p) => ({ ...p, [it.id]: e.target.value }))}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const limpio = it.unidad === 'kg' || v === '' ? v : String(Math.trunc(Number(v) || 0));
+                      setCants((p) => ({ ...p, [it.id]: limpio }));
+                    }}
                   />
                 ) : (
                   agotado
