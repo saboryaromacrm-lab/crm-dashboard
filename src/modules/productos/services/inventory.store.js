@@ -217,9 +217,20 @@ function formatoActivo(prod) {
   if (!arr.length) return null;
   return arr.find((e) => e.usarParaPrecio) || arr[0];
 }
-function costoNeto(prod) { return costoNetoEntry(formatoActivo(prod), prod?.iva); }
+/*
+ * Sin la llave del detalle de compra (25/9/2026) los formatos llegan sin
+ * precios —solo quién provee— y el servidor manda el costo ya resuelto
+ * (`costosOcultos`). Recalcularlo acá daría 0.
+ */
+function costoNeto(prod) {
+  if (prod?.costosOcultos) return Number(prod.costoNeto) || 0;
+  return costoNetoEntry(formatoActivo(prod), prod?.iva);
+}
 /** La base del precio del producto (0072): con todo facturado, = costoNeto. */
-function costoPrecio(prod) { return costoPrecioEntry(formatoActivo(prod), prod?.iva); }
+function costoPrecio(prod) {
+  if (prod?.costosOcultos) return Number(prod.costoPrecioNeto) || 0;
+  return costoPrecioEntry(formatoActivo(prod), prod?.iva);
+}
 
 /**
  * REDONDEO DE GÓNDOLA — espejo exacto de `pricing.ts` del backend.

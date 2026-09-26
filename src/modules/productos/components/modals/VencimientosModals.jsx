@@ -72,7 +72,8 @@ export function VencimientoProcesarModal({ registro }) {
   const { store, act, closeModal, can } = useProductos();
   const [vendidas, setVendidas] = useState('0');
   const disponible = store.cant(registro.productoId, registro.sucursalId, registro.presentacionId ?? null, 'disponible');
-  const puedeBajar = can('inventario');
+  // Dar de baja lo vencido es una merma: alcanza con `merma` (la API igual).
+  const puedeBajar = can('inventario') || can('merma');
 
   const v = Number(vendidas) || 0;
   const perdidas = Math.max(0, Math.round((registro.cantidad - v) * 100) / 100);

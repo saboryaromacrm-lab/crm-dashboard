@@ -35,7 +35,7 @@ function Proximamente({ seccion }) {
 
 /* ---------------- Modal de usuario (alta / edición) ---------------- */
 
-function UsuarioModal({ usuario, roles, onGuardar, onCerrar }) {
+function UsuarioModal({ usuario, roles, sucursales = [], onGuardar, onCerrar }) {
   const esAlta = !usuario;
   const [nombre, setNombre] = useState(usuario?.nombre ?? '');
   const [rolId, setRolId] = useState(usuario?.rolId ?? roles.find((r) => r.clave === 'cajero')?.id ?? roles[0]?.id);
@@ -45,6 +45,15 @@ function UsuarioModal({ usuario, roles, onGuardar, onCerrar }) {
    * servidor — el campo siempre arranca vacío y vacío = no cambiarlo. */
   const [relevoCaja, setRelevoCaja] = useState(usuario?.relevoCaja ?? false);
   const [pin, setPin] = useState('');
+  /* EN QUÉ SUCURSALES ENTRA (0105). Ninguna tildada = todas, lo de siempre. */
+  const [sucs, setSucs] = useState(() => new Set(usuario?.sucursales ?? []));
+  const rolElegido = roles.find((r) => r.id === Number(rolId));
+  const cruza = rolElegido?.clave === 'admin' || rolElegido?.clave === 'superadmin' || (rolElegido?.permisos ?? []).includes('*');
+  const tildar = (id) => setSucs((prev) => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
   const [guardando, setGuardando] = useState(false);
 
   const guardar = async () => {
@@ -52,6 +61,7 @@ function UsuarioModal({ usuario, roles, onGuardar, onCerrar }) {
     const ok = await onGuardar({
       nombre, rolId: Number(rolId), activo,
       relevoCaja,
+      sucursales: [...sucs],
       ...(password ? { password } : {}),
       ...(pin ? { pin } : {}),
     });
@@ -95,6 +105,33 @@ function UsuarioModal({ usuario, roles, onGuardar, onCerrar }) {
           Usuario activo (desactivado no puede operar)
         </label>
       )}
+
+      {/* EN QUÉ SUCURSALES PUEDE ENTRAR (0105): al entrar solo se le ofrecen esas
+          y el servidor rechaza las demás. La administración cruza igual. */}
+      <div className={s.field} style={{ marginTop: 12 }}>
+        <label>Sucursales donde trabaja</label>
+        {cruza ? (
+          <div className={s.hint} style={{ margin: 0 }}>
+            La administración entra a todas y cambia de sucursal desde el encabezado.
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
+              {sucursales.map((su) => (
+                <label key={su.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', fontWeight: 400 }}>
+                  <input type="checkbox" checked={sucs.has(su.id)} onChange={() => tildar(su.id)} />
+                  {su.nombre}
+                </label>
+              ))}
+            </div>
+            <div className={s.hint} style={{ margin: '4px 0 0' }}>
+              {sucs.size
+                ? 'Al entrar solo puede elegir estas. Si ya tiene una sesión abierta, se cierra al guardar.'
+                : 'Ninguna tildada: puede entrar en cualquier sucursal.'}
+            </div>
+          </>
+        )}
+      </div>
 
       {/* EL RELEVO DE CAJA (0088): "la cajera se ausenta, cobra el repositor".
           El relevo toma la registradora de una sesión ajena con su PIN y firma
@@ -413,7 +450,7 @@ export function GerenciaPage() {
       {tab === 'usuarios' && (
         <Table
           cols={[
-            { h: 'Usuario' }, { h: 'Rol' }, { h: 'Estado' }, { h: 'Contraseña' },
+            { h: 'Usuario' }, { h: 'Rol' }, { h: 'Sucursales' }, { h: 'Estado' }, { h: 'Contraseña' },
             { h: 'Acciones', cls: 'actions-col' },
           ]}
           empty={usuarios === null ? 'Cargando…' : 'Sin usuarios.'}
@@ -428,6 +465,11 @@ export function GerenciaPage() {
                   {esSuper && <span className={cx(s.pill, s['st-disponible'])} style={{ marginLeft: 6 }}>Superadmin</span>}
                 </td>
                 <td>{nombreRol.get(u.rolId) ?? u.rolNombre}</td>
+                <td>
+                  {u.sucursales?.length && !['admin', 'superadmin'].includes(u.rolClave)
+                    ? u.sucursales.map((id) => sucursales.find((x) => x.id === id)?.nombre ?? `#${id}`).join(', ')
+                    : <span className={s.muted}>Todas</span>}
+                </td>
                 <td>
                   <span className={cx(s.pill, u.activo ? s['st-disponible'] : s['est-cancelada'])}>
                     {u.activo ? 'Activo' : 'Desactivado'}
@@ -612,6 +654,7 @@ export function GerenciaPage() {
         <UsuarioModal
           usuario={modal.datos}
           roles={roles}
+          sucursales={sucursales}
           onCerrar={() => setModal(null)}
           onGuardar={(payload) => (modal.datos
             ? mutar(() => httpClient.patch(`/usuarios/${modal.datos.id}`, payload), 'Usuario actualizado.')

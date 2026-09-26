@@ -18,19 +18,18 @@ import { money, num, fmtTam } from '../../domain/format.js';
 import { ModalShell } from '../Modal.jsx';
 import { Table, Btn, s } from '../ui.jsx';
 import { SelectorOperador, useOperadoresFraccion } from '../OperadorFraccion.jsx';
+import { AvisoMomento, CamposMomento, useMomentoFraccion } from '../MomentoFraccion.jsx';
 
 const norm = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
-/* Los mismos cortes que la API (inventario.service): la mañana va hasta las
- * 14, y se asienta hasta 30 días atrás. */
-const TURNO_TARDE_DESDE = 14;
-const DIAS_ASENTAR_ATRAS = 30;
-const TURNOS = { manana: 'Mañana', tarde: 'Tarde' };
-const pad2 = (n) => String(n).padStart(2, '0');
-const isoDia = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-const turnoDe = (d) => (d.getHours() < TURNO_TARDE_DESDE ? 'manana' : 'tarde');
-const diaLegible = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'numeric' });
 const MAX_RESULTADOS = 8;
+/*
+ * PAQUETES ENTEROS, SIN REDONDEAR EN SILENCIO (26/9/2026). La pantalla hacía
+ * `Math.round` de lo tipeado: "2,5" se registraba como 3 paquetes sin que nadie
+ * lo viera. Ahora un número que no es entero se marca y no deja registrar.
+ */
+const esEntero = (v) => /^\d+$/.test(String(v ?? '').trim());
+const noEntero = (v) => String(v ?? '').trim() !== '' && !esEntero(v);
 let secuencia = 0;
 const clave = () => ++secuencia;
 
@@ -40,10 +39,13 @@ const clave = () => ++secuencia;
  * `volverA`: el modal al que se vuelve al terminar (el pedido).
  */
 export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volverA = null, onRegistrado = null }) {
-  const { store, closeModal, openModal, toast } = useProductos();
-  // Todo se fracciona en la DISTRIBUIDORA (ahí llega el granel): no se elige.
-  // Si quien abre trae otra (el origen de un pedido), se respeta.
-  const sucId = Number(sucInit || store.distribuidora()?.id || store.state.ctx.sucursalId);
+  const { store, closeModal, openModal, toast, isAdmin } = useProductos();
+  /* Todo se fracciona en la DISTRIBUIDORA (ahí llega el granel): no se elige.
+   * Si quien abre trae otra (el origen de un pedido), se respeta. Para el que
+   * no es jefe manda LA SUCURSAL CON LA QUE ENTRÓ: es la que usa el servidor,
+   * y mostrar el granel de otra era registrar en una mirando los números de
+   * la otra (25/9/2026). */
+  const sucId = Number(sucInit || (isAdmin ? store.distribuidora()?.id : null) || store.state.ctx.sucursalId);
   const sucursal = store.getSucursal(sucId);
   const cargadoPor = store.getUsuario(store.state.ctx.usuarioId)?.nombre;
 
@@ -55,16 +57,8 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
    * porque muchas veces se carga después ("lo de ayer a la mañana"). La fecha
    * de carga queda igual guardada, así que se sabe que se asentó tarde.
    */
-  const [ahora] = useState(() => new Date());
-  const hoy = isoDia(ahora);
-  const turnoAhora = turnoDe(ahora);
-  const minDia = isoDia(new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - DIAS_ASENTAR_ATRAS));
-  const [dia, setDia] = useState(hoy);
-  const [turno, setTurno] = useState(turnoAhora);
-  const esAhora = dia === hoy && turno === turnoAhora;
-  const aFuturo = dia > hoy || (dia === hoy && turno === 'tarde' && turnoAhora === 'manana');
-  const muyAtras = !!dia && dia < minDia;
-  const fechaMal = !dia || aFuturo || muyAtras;
+  const momento = useMomentoFraccion();
+  const { fechaMal } = momento;
   const [items, setItems] = useState(() => inicial
     .filter((x) => x.productoId && x.presId && Math.round(Number(x.cant)) > 0)
     .map((x) => ({ k: clave(), productoId: x.productoId, presId: x.presId, cant: String(Math.round(Number(x.cant))) })));
@@ -131,9 +125,10 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
   const kgNuevo = sel ? sel.presentaciones.reduce((a, pr) => a + Math.max(0, Math.round(Number(cants[pr.id]) || 0)) * pr.tamKg, 0) : 0;
   const quedaGranel = sel ? (granelDe.get(sel.id) || 0) - (kgCargados.get(sel.id) || 0) : 0;
   const excedeNuevo = kgNuevo > quedaGranel + 1e-9;
+  const decimalesNuevo = !!sel && sel.presentaciones.some((pr) => noEntero(cants[pr.id]));
 
   const agregar = () => {
-    if (!sel || !(kgNuevo > 0) || excedeNuevo) return;
+    if (!sel || !(kgNuevo > 0) || excedeNuevo || decimalesNuevo) return;
     setItems((xs) => {
       const nuevos = [...xs];
       for (const pr of sel.presentaciones) {
@@ -156,7 +151,8 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
   const volver = () => { if (volverA) openModal(volverA.type, volverA.props); else closeModal(); };
 
   const validos = items.filter((it) => Math.round(Number(it.cant) || 0) > 0);
-  const puedeRegistrar = validos.length > 0 && !excedidos.length && !faltaOperador && !fechaMal && !guardando;
+  const conDecimales = items.some((it) => noEntero(it.cant));
+  const puedeRegistrar = validos.length > 0 && !conDecimales && !excedidos.length && !faltaOperador && !fechaMal && !guardando;
 
   const registrar = async () => {
     if (!puedeRegistrar || enVuelo.current) return;
@@ -167,7 +163,7 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
       ...(operadorId ? { operadorId } : {}),
       ...(motivo.trim() ? { motivo: motivo.trim() } : {}),
       // En el momento no se manda nada: la hora la pone el servidor.
-      ...(esAhora ? {} : { dia, turno }),
+      ...momento.payload,
       items: validos.map((it) => ({ productoId: it.productoId, presId: it.presId, cant: Math.round(Number(it.cant)) })),
     });
     enVuelo.current = false;
@@ -207,16 +203,7 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
           <label>Se fracciona en</label>
           <strong style={{ fontSize: 14 }}>{sucursal?.nombre ?? '—'}</strong>
         </div>
-        <div className={s.field} style={{ marginBottom: 0 }}>
-          <label htmlFor="fracc-dia">Día que se fraccionó</label>
-          <input id="fracc-dia" type="date" value={dia} min={minDia} max={hoy} onChange={(e) => setDia(e.target.value)} />
-        </div>
-        <div className={s.field} style={{ marginBottom: 0 }}>
-          <label htmlFor="fracc-turno">Turno</label>
-          <select id="fracc-turno" value={turno} onChange={(e) => setTurno(e.target.value)}>
-            {Object.entries(TURNOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-        </div>
+        <CamposMomento m={momento} />
         <div className={s.field} style={{ marginBottom: 0 }}>
           <label>Cargado por</label>
           <strong style={{ fontSize: 14 }}>{cargadoPor || '—'}</strong>
@@ -232,19 +219,7 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
         </div>
       </div>
 
-      {!esAhora && (
-        <div className={cx(s.callout, fechaMal ? s.warn : s.info)} style={{ marginTop: -4, marginBottom: 14 }}>
-          {!dia && 'Elegí el día en que se fraccionó.'}
-          {dia && aFuturo && 'Ese turno todavía no empezó: no se puede asentar a futuro.'}
-          {dia && muyAtras && `Solo se puede asentar hasta ${DIAS_ASENTAR_ATRAS} días atrás.`}
-          {!fechaMal && (
-            <>
-              Se asienta como hecho el <strong>{diaLegible(dia)}</strong>, turno{' '}
-              <strong>{TURNOS[turno].toLowerCase()}</strong>. El historial muestra también que se cargó hoy.
-            </>
-          )}
-        </div>
-      )}
+      <AvisoMomento m={momento} style={{ marginTop: -4, marginBottom: 14 }} />
 
       {/* --------------------------- Agregar renglón --------------------------- */}
       <div className={s['mini-label']}>Agregar producto</div>
@@ -320,6 +295,7 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
                   type="number" min="0" step="1" placeholder="0"
                   autoFocus={i === 0}
                   value={cants[pr.id] ?? ''}
+                  style={noEntero(cants[pr.id]) ? { borderColor: 'var(--crm-color-danger)' } : undefined}
                   onChange={(e) => setCants((c) => ({ ...c, [pr.id]: e.target.value }))}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } }}
                 />
@@ -327,8 +303,8 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
             ))}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-            <span className={cx(s.hint)} style={{ margin: 0, color: excedeNuevo ? 'var(--crm-color-danger)' : undefined }}>
-              {kgNuevo > 0
+            <span className={cx(s.hint)} style={{ margin: 0, color: excedeNuevo || decimalesNuevo ? 'var(--crm-color-danger)' : undefined }}>
+              {decimalesNuevo ? 'Los paquetes van enteros: no existe medio paquete.' : kgNuevo > 0
                 ? excedeNuevo
                   ? `Son ${num(kgNuevo, 3)} kg y quedan ${num(quedaGranel, 3)} kg a granel.`
                   : `Suman ${num(kgNuevo, 3)} kg · quedarían ${num(quedaGranel - kgNuevo, 3)} kg a granel.`
@@ -336,7 +312,7 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
             </span>
             <span style={{ flex: 1 }} />
             <Btn small onClick={() => { setProdSel(null); setCants({}); }}>Cancelar</Btn>
-            <Btn small variant="btn-primary" onClick={agregar} disabled={!(kgNuevo > 0) || excedeNuevo}>Agregar</Btn>
+            <Btn small variant="btn-primary" onClick={agregar} disabled={!(kgNuevo > 0) || excedeNuevo || decimalesNuevo}>Agregar</Btn>
           </div>
         </div>
       )}
@@ -366,9 +342,12 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
                 <input
                   type="number" min="0" step="1" value={it.cant}
                   aria-label={`Cantidad de ${p?.nombre ?? ''} ${pr ? fmtTam(pr.tamKg) : ''}`}
-                  style={{ width: 90, textAlign: 'right' }}
+                  style={{ width: 90, textAlign: 'right', ...(noEntero(it.cant) ? { borderColor: 'var(--crm-color-danger)' } : {}) }}
                   onChange={(e) => cambiarCant(it.k, e.target.value)}
                 />
+                {noEntero(it.cant) && (
+                  <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-danger)' }}>Entero</div>
+                )}
               </td>
               <td className={cx(s.num, s.mono)}>{num(q * (pr?.tamKg || 0), 3)}</td>
               <td className={s['actions-col']}>

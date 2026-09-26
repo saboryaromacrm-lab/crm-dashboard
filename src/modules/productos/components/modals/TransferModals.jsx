@@ -1481,8 +1481,13 @@ export function PrepararTransferModal({ id }) {
                   {editable ? (
                     <input
                       value={edits[it.id]?.motivo ?? (it.motivo || '')}
-                      placeholder="sin stock, llegó tarde…"
-                      style={{ width: 150 }}
+                      /* Preparar MÁS de lo pedido pide el porqué (la API lo exige). */
+                      placeholder={!it.agregado && (parseFloat(edits[it.id]?.prep ?? it.cantidadPreparada) || 0) > it.cantidad + 1e-9 ? '¿por qué va de más?' : 'sin stock, llegó tarde…'}
+                      style={{
+                        width: 150,
+                        ...(!it.agregado && (parseFloat(edits[it.id]?.prep ?? it.cantidadPreparada) || 0) > it.cantidad + 1e-9
+                          && !(edits[it.id]?.motivo ?? it.motivo ?? '').trim() ? { borderColor: 'var(--crm-color-danger)' } : {}),
+                      }}
                       onChange={(e) => setEdit(it.id, { motivo: e.target.value })}
                       onBlur={() => guardarItem(it)}
                     />

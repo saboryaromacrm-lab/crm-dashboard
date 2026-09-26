@@ -99,6 +99,25 @@ export function LoginPage() {
     () => (usuarios ?? []).find((u) => u.id === Number(usuarioId)),
     [usuarios, usuarioId],
   );
+
+  /*
+   * SOLO LAS SUCURSALES DONDE TRABAJA (0105). Lista vacía = todas. Si tiene una
+   * sola, se elige sola: no hay nada que decidir, y es justo el caso del
+   * fraccionador en el Depósito. Si la elegida no es suya, se limpia — el
+   * servidor la rechazaría igual, pero es mejor no ofrecerla.
+   */
+  const sucursalesDelUsuario = useMemo(() => {
+    const suyas = usuario?.sucursales ?? [];
+    return suyas.length ? sucursales.filter((x) => suyas.includes(x.id)) : sucursales;
+  }, [usuario, sucursales]);
+  useEffect(() => {
+    if (!usuario) return;
+    if (sucursalesDelUsuario.length === 1 && (usuario.sucursales ?? []).length) {
+      setSucursalId(String(sucursalesDelUsuario[0].id));
+    } else if (sucursalId && !sucursalesDelUsuario.some((x) => x.id === Number(sucursalId))) {
+      setSucursalId('');
+    }
+  }, [usuario, sucursalesDelUsuario]); // eslint-disable-line react-hooks/exhaustive-deps
   /* Con el equipo registrado la sucursal sale de la terminal; sin registrar,
    * del desplegable. Un solo lugar la resuelve para que la confirmación, la
    * validación y el envío no puedan discrepar entre sí.
@@ -302,7 +321,7 @@ export function LoginPage() {
                           VACÍO ya es eso — el superadmin entra directo y al
                           resto el servidor le pide elegirla. Una opción que
                           solo sirve a uno era ruido para todos los demás. */}
-                      {sucursales.map((s) => (
+                      {sucursalesDelUsuario.map((s) => (
                         <MenuItem key={s.id} value={String(s.id)}>{s.nombre}</MenuItem>
                       ))}
                     </TextField>

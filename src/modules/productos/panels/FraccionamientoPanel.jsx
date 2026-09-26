@@ -107,7 +107,9 @@ export function FraccionamientoPanel() {
       {pestana === 'catalogo' && <TabPorCategoria puede={puede} />}
       {pestana === 'etiquetas' && <TabEtiquetas puede={puede} />}
       {pestana === 'operadores' && <TabOperadores />}
-      {pestana === 'sinPrecio' && <TabSinPrecio filas={sinPrecio} store={store} openModal={openModal} />}
+      {pestana === 'sinPrecio' && (
+        <TabSinPrecio filas={sinPrecio} store={store} openModal={openModal} puedePrecio={can('precios') || can('compras.productos')} />
+      )}
     </div>
   );
 }
@@ -388,7 +390,10 @@ function TabPorCategoria({ puede }) {
  * La lista de lo que falta cargar. No es un error del sistema: es trabajo
  * pendiente, y por eso lleva el atajo a la ficha donde se resuelve.
  */
-function TabSinPrecio({ filas, store, openModal }) {
+/* `puedePrecio` (26/9/2026): el botón abría la ficha para cargar el precio y al
+ * guardar el servidor decía que no. Sin la llave, la pestaña informa a quién
+ * avisar en vez de ofrecer algo que no se puede hacer. */
+function TabSinPrecio({ filas, store, openModal, puedePrecio }) {
   const pag = usePaginado(filas, 'paquetesSinPrecio', '');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-3)' }}>
@@ -409,9 +414,11 @@ function TabSinPrecio({ filas, store, openModal }) {
             <td className={s.mono}>{pr.codigoBarras || <span className={s.muted}>sin código</span>}</td>
             <td className={s.num}>{num(store.suma({ productoId: p.id, presentacionId: pr.id, estado: 'disponible' }), 0)} paq.</td>
             <td className={s['actions-col']}>
-              <Btn small variant="btn-primary" onClick={() => openModal('fraccionado', { prodId: p.id, presId: pr.id })}>
-                Cargar precio
-              </Btn>
+              {puedePrecio ? (
+                <Btn small variant="btn-primary" onClick={() => openModal('fraccionado', { prodId: p.id, presId: pr.id })}>
+                  Cargar precio
+                </Btn>
+              ) : <span className={s.muted}>Avisá a quien carga precios</span>}
             </td>
           </tr>
         ))}
@@ -431,7 +438,10 @@ function TabSinPrecio({ filas, store, openModal }) {
  * semanas no coincide con el POS y discute con el cliente.
  */
 function TabEtiquetas({ puede }) {
-  const { store, toast } = useProductos();
+  const { store, toast, can } = useProductos();
+  /* Diseñar guarda la configuración de impresión, que es de `sistema.impresion`:
+   * sin esa llave el botón abría el diseñador y el guardado rebotaba. */
+  const puedeDisenar = can('sistema.impresion');
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(null);      // { prodId, presId }
   const [cant, setCant] = useState('1');
@@ -519,9 +529,11 @@ function TabEtiquetas({ puede }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <Btn onClick={() => setDisenando(true)} title="Acomodar dónde va cada elemento en la etiqueta">
-          Diseñar la etiqueta
-        </Btn>
+        {puedeDisenar && (
+          <Btn onClick={() => setDisenando(true)} title="Acomodar dónde va cada elemento en la etiqueta">
+            Diseñar la etiqueta
+          </Btn>
+        )}
       </div>
       <Table
         cols={[{ h: 'Producto' }, { h: 'Tamaño' }, { h: 'Precio', num: true }, { h: 'Código de barras' }, { h: '', cls: 'actions-col' }]}
