@@ -141,6 +141,14 @@ export function MargenesPanel() {
     contexto: `${num(g.cantidad, 0)} artículo(s) al ${etiquetaValor(g)} en ${g.lista}`,
   });
 
+  /* REDONDEAR (28/9/2026): sobre las filas FILTRADAS — lo que se ve es lo que
+     se toca — o sobre una sola lista desde su tarjeta. */
+  const redondear = (listaId = null, lista = '') => openModal('redondearMarkups', {
+    filas,
+    listaId,
+    contexto: `${lista || 'Todas las listas'}${hayFiltro ? ' · con los filtros puestos' : ''}`,
+  });
+
   const exportar = () => descargarCsv(
     'margenes.csv',
     ['Producto', 'Forma', 'Marca', 'Categoría', 'Costo', ...columnas.map((c) => c.lista)],
@@ -161,6 +169,9 @@ export function MargenesPanel() {
         desc="Qué markup tiene cada producto en cada lista, sin entrar uno por uno. Clic en un valor para ver quiénes lo tienen."
         actions={(
           <div style={{ display: 'flex', gap: 8 }}>
+            {isAdmin && (
+              <Btn small onClick={() => redondear()} disabled={!totales.valores}>Redondear markups</Btn>
+            )}
             <Btn small onClick={exportar} disabled={!grilla.length}>Exportar CSV</Btn>
           </div>
         )}
@@ -213,11 +224,16 @@ export function MargenesPanel() {
         const ocultos = l.grupos.length - visibles.length;
         return (
           <div key={l.listaId} className={cx(s.card, s.cardPad)}>
-            <div className={s['card-title']}>
-              {l.lista}
-              <span className={s.muted} style={{ fontWeight: 400 }}>
-                {' · '}{num(l.total, 0)} artículo(s){l.modalidad ? ` · ${l.modalidad}` : ''}
+            <div className={s['card-title']} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ flex: 1 }}>
+                {l.lista}
+                <span className={s.muted} style={{ fontWeight: 400 }}>
+                  {' · '}{num(l.total, 0)} artículo(s){l.modalidad ? ` · ${l.modalidad}` : ''}
+                </span>
               </span>
+              {isAdmin && l.grupos.some((g) => g.modoPrecio === 'markup') && (
+                <Btn small onClick={() => redondear(l.listaId, l.lista)}>Redondear esta lista</Btn>
+              )}
             </div>
             {visibles.map((g) => {
               const activo = g.clave === grupoSel;

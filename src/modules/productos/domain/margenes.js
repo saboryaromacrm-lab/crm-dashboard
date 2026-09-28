@@ -203,3 +203,61 @@ export function grillaDeMargenes(filas = []) {
     || (a.presentacionId ?? 0) - (b.presentacionId ?? 0)
   ));
 }
+
+/* ======================================================================= *
+ * REDONDEAR MARKUPS (28/9/2026, pedido del dueño): "me quedan muchísimos
+ * markups … uno de 134,8 lo ideal es que vaya a 135". Sin decimales y de 5
+ * en 5: cada markup va al múltiplo de `paso` MÁS CERCANO — nunca se mueve más
+ * de medio paso (2,5 puntos con paso 5), y el empate va para arriba
+ * (132,5 → 135), igual que se redondea a mano.
+ * ======================================================================= */
+
+/** El markup redondeado al múltiplo de `paso` más cercano. */
+export function redondearMarkup(valor, paso = 5) {
+  const p = Number(paso) > 0 ? Number(paso) : 5;
+  const v = Number(valor) || 0;
+  // El +1e-9 absorbe el error de coma flotante (132,5 / 5 = 26,4999…).
+  return r2(Math.round(v / p + 1e-9) * p);
+}
+
+/**
+ * Qué cambia al redondear estas filas. Solo las de MARKUP: el precio
+ * definido lo fijó una persona y un redondeo de porcentajes no lo pisa.
+ * `listaId` acota a una lista; sin él, todas.
+ */
+export function planRedondeo(filas = [], { paso = 5, listaId = null } = {}) {
+  const alcance = filas.filter((f) => listaId == null || f.listaId === listaId);
+  const conMarkup = alcance.filter((f) => f.modoPrecio === 'markup');
+  const cambios = [];
+  const transiciones = new Map();
+  for (const f of conMarkup) {
+    const nuevo = redondearMarkup(f.markup, paso);
+    if (Math.abs(nuevo - f.markup) < 0.005) continue;
+    cambios.push({ id: f.filaId, antes: f.markup, despues: nuevo, productoId: f.productoId, listaId: f.listaId });
+    const k = `${f.listaId}|${f.markup}`;
+    const t = transiciones.get(k) || { lista: f.lista, orden: f.orden, antes: f.markup, despues: nuevo, cantidad: 0 };
+    t.cantidad += 1;
+    transiciones.set(k, t);
+  }
+  const distintos = (vals) => new Set(vals).size;
+  const porLista = (fn) => {
+    // "Markups distintos" se cuenta por lista: el 35% de Minorista y el de
+    // Mayorista son dos valores que el dueño tiene que recordar.
+    const m = new Map();
+    for (const f of conMarkup) {
+      if (!m.has(f.listaId)) m.set(f.listaId, []);
+      m.get(f.listaId).push(fn(f));
+    }
+    return [...m.values()].reduce((a, vals) => a + distintos(vals), 0);
+  };
+  return {
+    cambios,
+    transiciones: [...transiciones.values()].sort((a, b) => a.orden - b.orden
+      || String(a.lista).localeCompare(String(b.lista)) || b.antes - a.antes),
+    filasConMarkup: conMarkup.length,
+    precioDefinido: alcance.length - conMarkup.length,
+    productos: new Set(cambios.map((c) => c.productoId)).size,
+    valoresAntes: porLista((f) => f.markup),
+    valoresDespues: porLista((f) => redondearMarkup(f.markup, paso)),
+  };
+}
