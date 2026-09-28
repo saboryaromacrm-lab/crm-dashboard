@@ -15,6 +15,9 @@
 import { httpClient, HttpError } from '@core/services/httpClient.js';
 import { leerClave, escribirClave, leerSesion } from '@core/auth/sesion.js';
 import { num, fmtTam } from '../domain/format.js';
+import { formatoDe } from '../domain/facturas/recetas.js';
+import { leerRenglonesPdf } from '../domain/facturas/leerRenglones.js';
+import { pdfjsDelNavegador } from '../domain/facturas/lineasPdf.js';
 
 const CTX_KEY = 'crm_inv_ctx';
 
@@ -1266,11 +1269,45 @@ const vincularLecturaFactura = (id, comprobanteId) => _mutate(() => httpClient.p
  */
 const papelFactura = (archivoId) => httpClient.urlProtegida(`/facturas/archivos/${archivoId}`);
 /**
- * La propuesta de carga leída del PDF digital: renglones + pie + encabezado.
- * Solo lectura — no toca nada; el alta la usa para precargar y la persona
- * confirma. Para fotos el endpoint contesta 400 (eso es la etapa de visión).
+ * LA PROPUESTA DE CARGA leída del PDF digital: renglones + pie + encabezado.
+ *
+ * SE LEE EN ESTE NAVEGADOR (28/9/2026): el servidor atiende las cajas y leer
+ * un PDF grande las frenaba. Acá se baja el PDF (con la sesión), pdf.js lo
+ * lee en su propio hilo con la receta del formato del proveedor, y al
+ * servidor solo viaja lo leído (unos KB) para reconocer los productos. Solo
+ * lectura — no toca nada; el alta precarga y la persona confirma.
  */
-const leerRenglonesLectura = (id) => httpClient.get(`/facturas/lecturas/${id}/renglones`);
+async function leerRenglonesLectura(id) {
+  const lec = await lecturaFactura(id);
+  const pdf = (lec.archivos || []).find((a) => a.mime === 'application/pdf');
+  if (!pdf) {
+    throw new Error((lec.archivos || []).length
+      ? 'Esta factura es una foto: por ahora los renglones se leen solo de PDFs digitales. Se carga a mano.'
+      : 'Esta factura ya no tiene el archivo (se borra al cargarla). Agregala de nuevo para leerla.');
+  }
+  const [pdfjs, datos] = await Promise.all([
+    pdfjsDelNavegador(),
+    httpClient.urlProtegida(`/facturas/archivos/${pdf.id}`).then((u) => fetch(u)).then((r) => r.arrayBuffer()),
+  ]);
+  const leida = await leerRenglonesPdf({ pdfjs, datos, formato: formatoDe(lec) });
+  if (!leida.formato) {
+    return { receta: null, cierra: false, encabezado: null, renglones: [], pie: null, avisos: leida.avisos, texto: leida.texto };
+  }
+  const propuesta = await httpClient.post(`/facturas/lecturas/${id}/emparejar`, {
+    receta: leida.formato,
+    encabezado: leida.encabezado,
+    renglones: leida.renglones,
+    pie: leida.pie,
+    avisos: leida.avisos,
+  });
+  return { ...propuesta, texto: leida.texto };
+}
+
+/* ---- La guía por proveedor de Procesamiento de facturas (28/9/2026) ---- */
+const facturasPorProveedor = () => httpClient.get('/facturas/proveedores');
+const formatoFacturaProveedor = (proveedorId, formato) => httpClient.put(`/facturas/proveedores/${proveedorId}/formato`, { formato });
+const espacioFacturas = () => httpClient.get('/facturas/espacio');
+const liberarFacturas = () => httpClient.post('/facturas/liberar', {});
 
 /* ---- Costos y márgenes ----
  * La previsualización se calcula en el navegador (el store ya tiene costos y
@@ -1349,7 +1386,7 @@ export const inventoryStore = {
   facturasReferenciables,
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
-  papelFactura, leerRenglonesLectura,
+  papelFactura, leerRenglonesLectura, facturasPorProveedor, formatoFacturaProveedor, espacioFacturas, liberarFacturas,
   pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
   enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria, costosEntradaCafeteria, depositoCafeteria,
   productosCafeteria, crearProductoCafeteria, editarProductoCafeteria, bajaProductoCafeteria,

@@ -49,7 +49,12 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
   const [resultado, setResultado] = useState(null);
 
   const proveedores = store.state.proveedores.filter((p) => p.proveeMercaderia !== false);
-  const catalogo = store.state.listasCatalogo ?? { modalidades: [], listas: [] };
+  /* Memorizado: un objeto nuevo en cada render hacía recalcular la vista
+     previa entera (miles de productos) con cada tecla o clic. */
+  const catalogo = useMemo(
+    () => store.state.listasCatalogo ?? { modalidades: [], listas: [] },
+    [store.state.listasCatalogo],
+  );
   const listasActivas = (catalogo.listas ?? []).filter((l) => l.activa);
 
   const cargar = async (files) => {

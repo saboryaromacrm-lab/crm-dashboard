@@ -1,5 +1,7 @@
 /**
- * FACTURAS POR PROCESAR — la bandeja de papeles subidos (Compras).
+ * PROCESAMIENTO DE FACTURAS — la bandeja de papeles subidos (Compras).
+ * (Se llamaba "Por procesar" hasta el 28/9/2026.) Dos pestañas: la bandeja de
+ * facturas y la guía de PROVEEDORES (cuáles ya tienen estructura de lectura).
  * ============================================================================
  * Separa dos momentos que hasta ahora eran uno solo y no tienen por qué serlo:
  * **recibir el papel** y **cargar la factura**. La cajera saca la foto cuando
@@ -19,12 +21,14 @@
  * bandeja pregunta quince cosas por factura, el admin tipea más rápido a mano.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money, fmtFecha } from '../domain/format.js';
 import { ESTADOS_LECTURA, TIPOS_COMPROBANTE } from '../domain/constants.js';
 import { Table, PanelHead, Stat, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
 import { TIPOS_ACEPTADOS, MAX_ENTRADA_MB, prepararFactura } from '../domain/leerFactura.js';
+import { FacturasProveedoresPanel } from './FacturasProveedoresPanel.jsx';
 
 const VISTAS = [
   { id: 'pendiente', label: 'Esperando' },
@@ -40,7 +44,85 @@ function etiquetaDoc(l) {
   return `${t} ${l.letra || ''} ${nro}`.replace(/\s+/g, ' ').trim();
 }
 
+const TAB_KEY = 'crm.facturas.tab';
+
 export function LecturasPanel() {
+  const [tab, setTab] = useState(() => {
+    try { return sessionStorage.getItem(TAB_KEY) || 'facturas'; } catch { return 'facturas'; }
+  });
+  const elegir = (v) => {
+    setTab(v);
+    try { sessionStorage.setItem(TAB_KEY, v); } catch { /* sin storage: arranca en Facturas */ }
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
+      <Tabs
+        value={tab}
+        onChange={(e, v) => elegir(v)}
+        variant="scrollable"
+        scrollButtons="auto"
+        sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}
+      >
+        <Tab value="facturas" label="Facturas" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />
+        <Tab value="proveedores" label="Proveedores" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />
+      </Tabs>
+      {tab === 'proveedores' ? <FacturasProveedoresPanel /> : <BandejaFacturas />}
+    </div>
+  );
+}
+
+/**
+ * EL ESPACIO DE LAS YA CARGADAS (28/9/2026, pedido del dueño): una vez cargada,
+ * la factura queda como comprobante y el archivo no hace falta. Las nuevas se
+ * borran solas al cargarlas; esto libera las que quedaron guardadas de antes.
+ * Borrar es para siempre: doble confirmación.
+ */
+function LiberarEspacio() {
+  const { store, toast, isAdmin } = useProductos();
+  const [espacio, setEspacio] = useState(null);
+  const [confirmando, setConfirmando] = useState(false);
+  const [borrando, setBorrando] = useState(false);
+  const enVuelo = useRef(false);
+  useEffect(() => {
+    let vivo = true;
+    store.espacioFacturas().then((e) => { if (vivo) setEspacio(e); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [store]);
+  if (!isAdmin || !espacio?.archivos) return null;
+  const mb = (espacio.bytes / (1024 * 1024)).toLocaleString('es-AR', { maximumFractionDigits: 1 });
+  const liberar = async () => {
+    if (!confirmando) { setConfirmando(true); return; }
+    if (enVuelo.current) return;
+    enVuelo.current = true;
+    setBorrando(true);
+    try {
+      const r = await store.liberarFacturas();
+      setEspacio({ archivos: 0, bytes: 0 });
+      toast(`Listo: se borraron ${r.borrados} archivo(s) de facturas ya cargadas.`, 'ok');
+    } catch (e) {
+      toast(e?.data?.message || 'No se pudo liberar el espacio.', 'err');
+    } finally {
+      enVuelo.current = false;
+      setBorrando(false);
+      setConfirmando(false);
+    }
+  };
+  return (
+    <div className={cx(s.callout, confirmando ? s.warn : s.info)} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span style={{ flex: 1, minWidth: 240 }}>
+        {confirmando
+          ? <><strong>Segunda confirmación.</strong> Se borran para siempre {espacio.archivos} archivo(s) ({mb} MB) de facturas que ya están cargadas como comprobante. Los comprobantes no se tocan.</>
+          : <>Las facturas ya cargadas todavía guardan <strong>{espacio.archivos} archivo(s)</strong> ({mb} MB). Una vez cargadas no hacen falta: liberarlas aliviana la base y los respaldos.</>}
+      </span>
+      {confirmando && <Btn small onClick={() => setConfirmando(false)} disabled={borrando}>Cancelar</Btn>}
+      <Btn small variant={confirmando ? 'btn-danger' : 'btn-ghost'} onClick={liberar} disabled={borrando}>
+        {borrando ? 'Borrando…' : confirmando ? 'Sí, borrar los archivos' : 'Liberar espacio'}
+      </Btn>
+    </div>
+  );
+}
+
+function BandejaFacturas() {
   const { store, isAdmin, openModal, toast } = useProductos();
 
   const [vista, setVista] = useState('pendiente');
@@ -157,9 +239,10 @@ export function LecturasPanel() {
         onClick={() => openModal('lecturaFactura', { id: l.id })}
       >
         <td>
-          {l.archivos?.length || l.paginas > 1
-            ? <span className={s.mono}>{l.paginas} pág.</span>
-            : <span className={s.muted}>1 pág.</span>}
+          {/* Cargada = el archivo se borró (no hace falta): 0 páginas es lo normal. */}
+          {!l.paginas
+            ? <span className={s.muted}>{l.estado === 'cargada' ? 'cargada' : 'sin archivo'}</span>
+            : <span className={l.paginas > 1 ? s.mono : s.muted}>{l.paginas} pág.</span>}
         </td>
         <td>
           {l.proveedorNombre || <span className={cx(s.badge)}>sin proveedor</span>}
@@ -217,8 +300,8 @@ export function LecturasPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
-        title="Facturas por procesar"
-        desc="Subí la foto de la factura cuando llega el camión; cargarla puede esperar. El encabezado sale del QR del papel: proveedor, número, fecha, total y CAE, sin tipear nada."
+        title="Procesamiento de facturas"
+        desc="Subí la factura cuando llega el camión; cargarla puede esperar. El encabezado sale del QR del papel y, si el proveedor tiene estructura, los renglones del PDF se leen solos. Una vez cargada, el archivo se borra."
         actions={(
           <Btn variant="btn-primary" onClick={() => inputRef.current?.click()} disabled={!!subiendo}>
             {subiendo ? 'Subiendo…' : '+ Subir facturas'}
@@ -290,6 +373,8 @@ export function LecturasPanel() {
         <Btn small onClick={cargar} disabled={cargando}>{cargando ? 'Cargando…' : 'Actualizar'}</Btn>
       </div>
 
+      {vista === 'cargada' && <LiberarEspacio />}
+
       <Table
         cols={[
           { h: 'Papel' }, { h: 'Proveedor' }, { h: 'Comprobante' }, { h: 'Fecha' },
@@ -309,10 +394,11 @@ export function LecturasPanel() {
       <div className={s.hint}>
         <strong>Lo que se lee del papel y lo que no.</strong> El QR de la factura es un dato exacto
         —o se lee o no se lee— y de ahí salen proveedor, tipo, número, fecha, total y CAE. Los
-        renglones se cargan a mano, y al hacerlo el pie compara con el total del papel: si cierra,
-        la carga está verificada. <strong>Ese control mira la plata, no las cantidades</strong>: una
-        caja de 12 cargada como 1 unidad cierra igual y el stock queda mal, así que el número de
-        bultos hay que mirarlo aparte.
+        renglones se leen solos de los <strong>PDF digitales</strong> de los proveedores con estructura
+        (pestaña Proveedores), <strong>en esta computadora</strong>: no le cuesta nada al sistema. De
+        las fotos, por ahora, se cargan a mano. En los dos casos el pie compara con el total del papel:
+        si cierra, la carga está verificada. <strong>Ese control mira la plata, no las cantidades</strong>:
+        una caja de 12 cargada como 1 unidad cierra igual, así que el número de bultos hay que mirarlo aparte.
       </div>
     </div>
   );

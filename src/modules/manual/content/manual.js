@@ -204,7 +204,7 @@ export const MANUAL = [
       {
         id: 'facturas-por-procesar',
         actualizado: '2026-08-07 19:40',
-        titulo: 'Facturas por procesar (subir el papel y cargarlo después)',
+        titulo: 'Procesamiento de facturas (subir el papel y cargarlo después)',
         bloques: [
           {
             t: 'p',
@@ -242,7 +242,7 @@ export const MANUAL = [
             t: 'lista',
             items: [
               '**"Procesar"** guarda las correcciones del encabezado y abre el alta del comprobante con todo puesto (proveedor bloqueado, tipo, número, fecha, CAE) y con un link **"Ver el papel"** visible en los tres pasos: es lo que se mira mientras se tipean los renglones.',
-              '**Al confirmar, la bandeja se cierra sola** y el papel queda pegado al comprobante: se ve desde su detalle. Es lo que se busca cuando seis meses después el total no cuadra.',
+              '**Al confirmar, la bandeja se cierra sola y el archivo se BORRA** (28/9/2026, pedido del dueño): la factura ya quedó cargada como comprobante y guardar además el papel solo engordaba la base y los respaldos. Lo que quedaba guardado de antes se libera en la vista Cargadas con «Liberar espacio» (doble confirmación). Si se anula el comprobante, la factura vuelve a la bandeja sin archivo: se agrega de nuevo para procesarla.',
               '**Si la factura ya estaba cargada a mano**, la salida útil no es descartar el papel sino **engancharlo al comprobante que ya existe** — la bandeja ofrece el botón con el número del comprobante.',
               '**Descartar no borra el papel**: la factura queda en la pestaña "Descartadas" y se puede recuperar.',
               '**Se borra la página, no la factura**: si una de las hojas salió mal se quita esa; si no sirve ninguna, se descarta la factura entera.',
@@ -253,7 +253,7 @@ export const MANUAL = [
             tono: 'ok',
             texto: 'De paso quedaron tapados dos agujeros que ya existían. **(1)** `comprobantes` no tenía el índice único de número que Ventas y Cobranzas sí tenían: con carga manual no molestaba porque el que cargaba se acordaba, pero con papeles entrando desde el celular el duplicado era cuestión de tiempo — y entraba dos veces al stock y a la deuda. **(2)** El punto de venta ahora se **normaliza a cuatro dígitos** en las dos puertas: el papel imprime "00115", el QR trae "115" y antes eran dos puntos de venta distintos, así que el control de duplicados no los cruzaba.',
           },
-          { t: 'ruta', texto: 'Compras › Por procesar · el permiso es `compras.lecturas` (subir el papel lo puede hacer cualquiera con la sección; confirmar la factura sigue siendo del admin)' },
+          { t: 'ruta', texto: 'Compras › Procesamiento de facturas (pestañas Facturas y Proveedores) · el permiso es `compras.lecturas` (subir el papel lo puede hacer cualquiera con la sección; confirmar la factura sigue siendo del admin)' },
         ],
       },
       {
@@ -312,7 +312,7 @@ export const MANUAL = [
           {
             t: 'nota',
             tono: 'ok',
-            texto: 'Si la factura entró por la bandeja **"Por procesar"**, el pie agrega una línea más: **el total que dice el papel**, con la diferencia en vivo. Cuando cierra dice "✓ Coincide con el papel"; cuando no, dice si faltan o sobran y cuánto. La tolerancia no es cero a propósito — el proveedor redondea cada renglón y en facturas grandes queda un centavo que no es un error; lo que sí es un error se mide en pesos.',
+            texto: 'Si la factura entró por la bandeja de **Procesamiento de facturas**, el pie agrega una línea más: **el total que dice el papel**, con la diferencia en vivo. Cuando cierra dice "✓ Coincide con el papel"; cuando no, dice si faltan o sobran y cuánto. La tolerancia no es cero a propósito — el proveedor redondea cada renglón y en facturas grandes queda un centavo que no es un error; lo que sí es un error se mide en pesos.',
           },
           { t: 'ruta', texto: 'Compras › Facturación › + Nuevo comprobante · las percepciones se configuran en Compras › Costos y percepciones › (abrir uno) › Percepciones' },
         ],
@@ -3183,6 +3183,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**28/9/2026**', '**PROCESAMIENTO DE FACTURAS** (antes «Por procesar», pedido del dueño: «tiene que ser súper ágil, si le quita rendimiento al sistema no lo quiero»). **La lectura del PDF se mudó al navegador**: antes corría en el servidor, el mismo proceso que atiende las cajas, y un PDF grande las frenaba; ahora la computadora de quien procesa lee el PDF (pdf.js en su propio hilo, cargado solo la primera vez que se usa) y al servidor viaja solo lo leído, para reconocer los productos. **Las recetas pasaron a ser FORMATOS** que se le asignan al proveedor (`proveedores.formato_factura`, migración 0117): varios proveedores que facturan con el mismo sistema comparten uno. **Pestaña Proveedores**: cada proveedor con su estructura (o «Sin estructura»), facturas esperando y cargadas, última factura y artículos que ya reconoce solos. **El archivo se borra al cargar la factura** (en la misma transacción del alta) y hay un botón para liberar el espacio de las ya cargadas. El servidor ya no usa pdfjs-dist.'],
               ['**28/9/2026**', '**MOVER ARTÍCULOS DE UNA LISTA A OTRA** (pedido del dueño). En Compras › Márgenes, cada lista tiene «Mover a otra lista»: se tildan los artículos (todos, por valor de markup o de a uno), se elige el destino y se ve antes qué se mueve, cuáles ya estaban en el destino y a cuáles les cambia el precio de góndola, más un aviso si la lista de origen la usan clientes, descuentos u ofertas. **Reglas del dueño**: se MUEVE (sale del origen, con su markup o precio, unidades y código de caja) y, si el artículo ya estaba en el destino, **manda el destino** (solo se lo saca del origen). La lista base no se vacía (es la góndola). Segunda confirmación, una transacción, auditoría de la lista y evolución de precios firmada.'],
               ['**28/9/2026**', '**REDONDEAR MARKUPS** (pedido del dueño: «me quedan muchísimos markups»). En Compras › Márgenes, «Redondear markups» (todo lo filtrado) y «Redondear esta lista» en cada tarjeta. **De 5 en 5** (134,8% → 135%, 132% → 130%) o **solo sin decimales**: cada markup va al valor más cercano, así que ninguno se mueve más de 2,5 puntos; el empate va para arriba (132,5 → 135). El precio definido no se toca. Vista previa con cuántos markups distintos quedan (por ejemplo 240 → 23), segunda confirmación, y la evolución de precios firmada como «Redondeo de markups». Guarda por la misma puerta que la actualización masiva de márgenes.'],
               ['**28/9/2026**', '**LA GUÍA: FORMATOS DE VENTA POR PROVEEDORES** (pedido del dueño: «son muchos proveedores y me voy a perder»). Compras › Productos tiene dos pestañas: Catálogo y **Formatos de venta por proveedores**. La segunda lista cada proveedor con sus productos, cuándo se importaron sus costos y sus formatos (con quién y qué cambió), y el estado: **Faltan los costos**, **Listo para importar**, **Importado** o **Sin productos** — con avance en % y los botones para importar ahí mismo, ya con el proveedor elegido. Cada importación queda anotada en la auditoría del proveedor; lo importado antes se reconoce por la evolución de precios. Un archivo que ya coincidía se puede **marcar como revisado**, para que no figure como pendiente.'],

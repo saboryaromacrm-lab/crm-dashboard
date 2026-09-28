@@ -3269,7 +3269,7 @@ export function AnularComprobanteModal({ id }) {
               </li>
             )}
             {plan.cuotasPendientes > 0 && <li>Se borran {plan.cuotasPendientes} cuota(s) pendiente(s) de pago.</li>}
-            {plan.lectura && <li>El papel vuelve a <strong>Por procesar</strong>, para cargarlo bien.</li>}
+            {plan.lectura && <li>La factura vuelve a <strong>Procesamiento de facturas</strong>, para cargarla bien (el archivo se había borrado al cargarla: hay que agregarlo de nuevo).</li>}
             <li>El comprobante no se borra: queda <strong>anulado</strong>, con el motivo y quién lo anuló.</li>
           </ul>
 

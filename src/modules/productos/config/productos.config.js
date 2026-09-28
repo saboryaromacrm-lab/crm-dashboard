@@ -57,7 +57,7 @@ export const COMPRAS_PANELS = [
    * (con la regla masiva), las percepciones y la cuenta del proveedor.
    */
   { id: 'proveedores',    label: 'Costos y percepciones', icon: LocalShippingIcon, permiso: 'compras.proveedores' },
-  { id: 'lecturas',       label: 'Por procesar',   icon: DocumentScannerIcon, permiso: 'compras.lecturas', badge: 'lecturas' },
+  { id: 'lecturas',       label: 'Procesamiento de facturas', icon: DocumentScannerIcon, permiso: 'compras.lecturas', badge: 'lecturas' },
   { id: 'facturacion',    label: 'Facturación',    icon: ReceiptLongIcon,    permiso: 'compras.facturacion' },
   { id: 'historial',      label: 'Historial',      icon: HistoryIcon,        permiso: 'compras.historial' },
 ];
