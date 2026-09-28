@@ -42,12 +42,28 @@ function Paso({ label, valor, fuerte, tenue }) {
   );
 }
 
-function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores, esAdmin }) {
+/**
+ * EL COSTO FINAL UNITARIO — lo que sale del bolsillo por unidad o kilo, IVA y
+ * flete incluidos (28/9/2026, pedido del dueño: es el número que compara con su
+ * otro sistema, el "Unit. en $"). Con parte sin factura, esa parte no lleva IVA:
+ * lo pagado es el desembolso al proveedor más el flete (que sí viene facturado).
+ * En modo "costo final" es lo cargado, tal cual.
+ */
+function costoFinalUnitarioDe(c, fila, iva) {
+  if (fila.modoCosto === 'final' || !(c.porcSinFactura > 0)) return c.costoFinalUnitario;
+  const q = c.porcSinFactura / 100;
+  const fleteNominal = c.costoBruto * ((Number(fila.flete) || 0) / 100);
+  const fleteBolsillo = fleteNominal * ((1 - q) * (1 + (Number(iva) || 0) / 100) + q);
+  return (c.desembolso + fleteBolsillo) / (c.cantidad || 1);
+}
+
+function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores, esAdmin, abierto, onToggle }) {
   const { store } = useProductos();
   const c = store.costosFormato(fila, prod.iva);
   const porLista = fila.modoCosto !== 'final';
   const unidad = prod.tipo === 'granel' ? '/kg' : '/u';
   const sinFactura = c.porcSinFactura > 0;
+  const finalUnitario = costoFinalUnitarioDe(c, fila, prod.iva);
   const set = (patch) => onChange(i, patch);
 
   /*
@@ -64,7 +80,8 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
   return (
     <div className={cx(s.card, s.cardPad, fila.usarParaPrecio && s.formatoActivo)}>
       {/* Cabecera: quién, con qué código, y si es el que manda. */}
-      <div className={s.formatoHead}>
+      {/* Plegado, la cabecera es toda la tarjeta: sin la línea divisoria de abajo. */}
+      <div className={s.formatoHead} style={abierto ? undefined : { borderBottom: 'none', paddingBottom: 0, marginBottom: 0 }}>
         <label className={s.formatoRadio} title="Este formato define el costo con el que se calcula el precio">
           <input
             type="radio"
@@ -92,21 +109,26 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
         />
 
         <div className={s.formatoNeto}>
-          {/* Con % sin factura los dos costos difieren: el fuerte es la BASE
-              del precio (lo que multiplica el markup) y el real queda al lado
-              — mostrarlos juntos es lo que hace visible el IVA absorbido. */}
-          <div className={s['mini-label']}>{sinFactura ? 'Base del precio' : 'Costo neto unitario'}</div>
-          <strong className={s.mono}>{money(c.costoPrecioUnitario)} {unidad}</strong>
-          {sinFactura && (
-            <div className={s.hint} style={{ margin: 0 }}>real {money(c.costoNetoUnitario)} {unidad}</div>
-          )}
+          {/* El grande es el COSTO FINAL UNITARIO (28/9/2026): el que el dueño
+              compara con su otro sistema. Debajo, chico, el neto — que es el
+              que multiplica el markup (o la base del precio, con sin factura). */}
+          <div className={s['mini-label']}>Costo final unitario</div>
+          <strong className={s.mono}>{money(finalUnitario)} {unidad}</strong>
+          <div className={s.hint} style={{ margin: 0 }}>
+            {sinFactura ? 'base del precio' : 'neto'} {money(c.costoPrecioUnitario)} {unidad}
+          </div>
         </div>
+
+        {/* Desplegable (28/9/2026): con varios formatos, cerrados se ven de un
+            vistazo; se abre el que se quiere revisar o editar. */}
+        <Btn small onClick={onToggle}>{abierto ? '▾ Ocultar' : '▸ Ver detalle'}</Btn>
 
         {esAdmin && (
           <button type="button" className={s['pres-remove']} onClick={() => onQuitar(i)} title="Quitar formato">×</button>
         )}
       </div>
 
+      {abierto && (
       <div className={s.formatoBody}>
         {/* --- Entrada --- */}
         <div>
@@ -272,17 +294,21 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
           )}
 
           <div className={s.cadenaCierre}>
-            <div className={s['mini-label']}>{sinFactura ? 'Base del precio (unitaria)' : 'Costo neto unitario'}</div>
-            <strong className={s.mono}>{money(c.costoPrecioUnitario)} {unidad}</strong>
+            <div className={s['mini-label']}>Costo final unitario</div>
+            <strong className={s.mono}>{money(finalUnitario)} {unidad}</strong>
             <div className={s.hint} style={{ margin: '4px 0 0' }}>
               {sinFactura
-                ? <>La única que alimenta el markup. El costo real es {money(c.costoNetoUnitario)} {unidad}:
-                  la diferencia ({money(c.ivaAbsorbidoUnitario)} {unidad}) es IVA que absorbés al vender.</>
-                : 'El único que alimenta el precio de venta.'}
+                ? <>Lo que pagás por {unidad === '/kg' ? 'kilo' : 'unidad'} (proveedor + flete). El precio se calcula
+                  desde la <strong>base del precio: {money(c.costoPrecioUnitario)} {unidad}</strong> — el costo real es{' '}
+                  {money(c.costoNetoUnitario)} {unidad} y la diferencia ({money(c.ivaAbsorbidoUnitario)} {unidad}) es IVA
+                  que absorbés al vender.</>
+                : <>Con IVA y flete. El precio de venta se calcula desde el <strong>costo neto unitario:{' '}
+                  {money(c.costoPrecioUnitario)} {unidad}</strong> (sin IVA — el IVA se suma después, en la venta).</>}
             </div>
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -293,8 +319,14 @@ export function FormatoCompraTab({ prod: p }) {
 
   // Los números se editan como texto: forzarlos a Number en cada tecla impide
   // borrar el campo o escribir "0," mientras se tipea.
+  /* EL QUE FIJA EL PRECIO VA PRIMERO (28/9/2026). Solo al abrir: si después se
+   * cambia el tilde, las tarjetas no saltan de lugar mientras se edita. `_k` es
+   * la clave estable de cada tarjeta (también de las nuevas, que no tienen id). */
   const [rows, setRows] = useState(() =>
-    (p.formatosCompra || []).map((e) => ({
+    [...(p.formatosCompra || [])]
+      .sort((a, b) => Number(!!b.usarParaPrecio) - Number(!!a.usarParaPrecio))
+      .map((e) => ({
+      _k: `f${e.id}`,
       id: e.id,
       proveedorId: e.proveedorId,
       codigoProveedor: e.codigoProveedor ?? '',
@@ -311,6 +343,13 @@ export function FormatoCompraTab({ prod: p }) {
       usarParaPrecio: !!e.usarParaPrecio,
     })),
   );
+  /* Los formatos arrancan PLEGADOS (28/9/2026); el que se agrega, abierto. */
+  const [abiertos, setAbiertos] = useState(() => new Set());
+  const alternar = (k) => setAbiertos((a) => {
+    const n = new Set(a);
+    if (n.has(k)) n.delete(k); else n.add(k);
+    return n;
+  });
 
   const onChange = (i, patch) => setRows((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)));
 
@@ -328,7 +367,10 @@ export function FormatoCompraTab({ prod: p }) {
     // El % sin factura arranca con el del proveedor: su ficha declara qué emite.
     const pv = proveedores[0];
     const porc = Number(pv?.porcSinFactura) || (pv?.condicionCompra === 'liquidacion' ? 100 : 0);
+    const k = `n${Date.now()}`;
+    setAbiertos((a) => new Set(a).add(k));
     setRows((r) => [...r, {
+      _k: k,
       proveedorId: pv.id, codigoProveedor: '', cantidad: '1',
       costo: '', descuento: '', descuento2: '', descuento3: '', descuento4: '', flete: '',
       modoCosto: 'lista', costoFinal: '', porcSinFactura: porc ? String(porc) : '',
@@ -341,7 +383,12 @@ export function FormatoCompraTab({ prod: p }) {
       toast('La cantidad por bulto tiene que ser mayor a cero.', 'err');
       return;
     }
-    const res = await store.guardarFormatosCompra(p.id, rows);
+    // `_k` es solo de la pantalla: no viaja.
+    const res = await store.guardarFormatosCompra(p.id, rows.map((r) => {
+      const limpio = { ...r };
+      delete limpio._k;
+      return limpio;
+    }));
     toast(res.ok ? 'Formato de compra guardado.' : res.error, res.ok ? 'ok' : 'err');
   };
 
@@ -349,17 +396,19 @@ export function FormatoCompraTab({ prod: p }) {
     <div className={s.form}>
       <div className={cx(s.callout, s.info)}>
         Cómo <strong>entra</strong> el producto. Puede haber varios formatos —incluso del mismo
-        proveedor, como caja x12 y caja x24— y <strong>uno solo fija el precio</strong>: su costo
-        neto unitario es el que multiplica el markup del Formato de Venta.
+        proveedor, como caja x12 y caja x24— y <strong>uno solo fija el precio</strong> (va primero): su costo
+        neto unitario es el que multiplica el markup del Formato de Venta. Tocá <strong>Ver detalle</strong> para
+        ver la cadena de costos o editar un formato.
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-3)' }}>
         {rows.map((fila, i) => (
           <FormatoCard
-            key={fila.id ?? `nuevo-${i}`}
+            key={fila._k}
             prod={p} fila={fila} i={i}
             onChange={onChange} onQuitar={onQuitar} onActivar={onActivar}
             proveedores={proveedores} esAdmin={isAdmin}
+            abierto={abiertos.has(fila._k)} onToggle={() => alternar(fila._k)}
           />
         ))}
         {!rows.length && (

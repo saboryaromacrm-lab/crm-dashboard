@@ -594,7 +594,8 @@
 .formatoActivo { border-color: var(--crm-color-accent); box-shadow: 0 0 0 1px var(--crm-color-accent) inset; }
 
 .formatoHead {
-  display: grid; grid-template-columns: auto 1.2fr 1fr auto auto;
+  /* 6 columnas: radio, proveedor, código, costo final, "Ver detalle" (28/9) y quitar. */
+  display: grid; grid-template-columns: auto 1.2fr 1fr auto auto auto;
   gap: var(--crm-space-3); align-items: center;
   padding-bottom: var(--crm-space-3); margin-bottom: var(--crm-space-3);
   border-bottom: 1px solid var(--crm-color-border);
