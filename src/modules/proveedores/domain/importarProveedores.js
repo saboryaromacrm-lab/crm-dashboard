@@ -42,6 +42,25 @@ export const mismoNombreProveedor = (a, b) => norm(a) === norm(b);
  * por una sola palabra. Compartido entre el plan del padrón y el detector del
  * importador de catálogos (27/8) — una sola definición de "parecido".
  */
+/**
+ * CUÁNTO SE PARECEN dos nombres, de 0 a 1 (28/9/2026): coeficiente de Dice sobre
+ * pares de letras del nombre normalizado. Ordena los parecidos para que el
+ * primero sea el MÁS parecido — el que se sugiere por defecto al importar.
+ */
+export function parecidoProveedor(a, b) {
+  const pares = (t) => {
+    const x = norm(t).replace(/ /g, '');
+    const m = new Map();
+    for (let i = 0; i < x.length - 1; i += 1) { const k = x.slice(i, i + 2); m.set(k, (m.get(k) || 0) + 1); }
+    return m;
+  };
+  const pa = pares(a); const pb = pares(b);
+  let comun = 0; let total = 0;
+  for (const [k, n] of pa) { comun += Math.min(n, pb.get(k) || 0); total += n; }
+  for (const n of pb.values()) total += n;
+  return total ? (2 * comun) / total : 0;
+}
+
 export function proveedoresParecidos(nombre, existentes) {
   const nf = norm(nombre);
   return existentes.filter((p) => {
@@ -53,7 +72,7 @@ export function proveedoresParecidos(nombre, existentes) {
     const palabras = (a) => a.split(' ').filter((w) => w.length >= 3);
     return (palabras(nf).length && palabras(nf).every((w) => pn.includes(w)))
       || (palabras(pn).length && palabras(pn).every((w) => nf.includes(w)));
-  });
+  }).sort((a, b) => parecidoProveedor(nombre, b.nombre) - parecidoProveedor(nombre, a.nombre));
 }
 
 /** Reconoce el archivo por sus columnas (mismo criterio que los tres del catálogo). */

@@ -132,9 +132,26 @@ export function decisionInicialProveedores(grupos, soloCargados) {
   return Object.fromEntries(grupos.map((g) => {
     if (g.sinNombre) return [g.clave, 'afuera'];
     if (g.exacto) return [g.clave, `p:${g.exacto.id}`];
-    if (soloCargados && !g.candidatos.length) return [g.clave, 'afuera'];
+    /* El parecido arranca con el MÁS parecido elegido (28/9/2026, pedido del
+     * dueño): queda marcado "para revisar", no se da por bueno en silencio. */
+    if (g.candidatos.length) return [g.clave, `p:${g.candidatos[0].id}`];
+    if (soloCargados) return [g.clave, 'afuera'];
     return [g.clave, ''];
   }));
+}
+
+/**
+ * EN QUÉ GRUPO DE LA LISTA VA CADA PROVEEDOR del archivo (28/9/2026, para el
+ * filtro): 'coincide' (mismo nombre), 'revisar' (se sugirió el más parecido),
+ * 'decidir' (no está en el padrón y hay que decir si se crea o queda afuera),
+ * 'afuera'. Sale de cómo vino el nombre, no de lo elegido: así una fila no
+ * salta de grupo mientras se la está revisando.
+ */
+export function categoriaProveedor(g, soloCargados) {
+  if (g.sinNombre) return 'afuera';
+  if (g.exacto) return 'coincide';
+  if (g.candidatos.length) return 'revisar';
+  return soloCargados ? 'afuera' : 'decidir';
 }
 
 /**

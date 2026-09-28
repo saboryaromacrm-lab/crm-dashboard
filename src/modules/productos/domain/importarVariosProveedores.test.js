@@ -4,9 +4,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  decisionInicialProveedores, destinosDeProveedores, proveedoresDelArchivo,
+  categoriaProveedor, decisionInicialProveedores, destinosDeProveedores, proveedoresDelArchivo,
 } from './importarCatalogo.js';
-import { mismoNombreProveedor, proveedoresParecidos } from '../../proveedores/domain/importarProveedores.js';
+import { mismoNombreProveedor, parecidoProveedor, proveedoresParecidos } from '../../proveedores/domain/importarProveedores.js';
 
 const fila = (prov, codigo, precio = '100') => ({ Proveedor: prov, Codigo: codigo, PrecioLista: precio, Cantidad: '1', CostoFlete: '0' });
 const ARCHIVO = [
@@ -41,12 +41,16 @@ test('agrupa por proveedor con el nombre normalizado y deja aparte los renglones
   assert.equal(g.length, 5);
 });
 
-test('solo el idéntico arranca decidido; el parecido lo decide la persona', () => {
+test('el idéntico entra solo; el parecido arranca con el MÁS parecido elegido y queda "para revisar"', () => {
   const g = conPadron(proveedoresDelArchivo(ARCHIVO));
   const d = decisionInicialProveedores(g, true);
   assert.equal(d['nuevo cosmos sa'], 'p:10', 'mismo nombre (mayúsculas y puntos aparte) → entra solo');
   assert.equal(d['coca cola femsa'], 'p:20', '"Coca Cola FEMSA" = "COCA-COLA FEMSA"');
-  assert.equal(d['nuevo cosmo sa lucfel'], '', 'parecido → falta decidir, no se adivina');
+  assert.equal(d['nuevo cosmo sa lucfel'], 'p:10', 'parecido → se sugiere el más parecido (Nuevo Cosmos S.A.)');
+  const cat = Object.fromEntries(g.map((x) => [x.clave, categoriaProveedor(x, true)]));
+  assert.equal(cat['nuevo cosmo sa lucfel'], 'revisar', 'pero queda en el grupo "para revisar" (amarillo)');
+  assert.equal(cat['nuevo cosmos sa'], 'coincide');
+  assert.equal(cat['distribuidora zeta'], 'afuera');
   assert.equal(d['distribuidora zeta'], 'afuera', 'no está en el padrón y solo se importan los cargados → afuera');
   assert.equal(d.__sin_nombre__, 'afuera', 'sin proveedor → afuera siempre');
 });
@@ -60,7 +64,7 @@ test('con "solo cargados" destildado, el que no está en el padrón también lo 
 
 test('los destinos juntan nombres que van al mismo proveedor y no crean nada que no se confirmó', () => {
   const g = conPadron(proveedoresDelArchivo(ARCHIVO));
-  const d = { ...decisionInicialProveedores(g, false), 'nuevo cosmo sa lucfel': 'p:10', 'distribuidora zeta': 'nuevo' };
+  const d = { ...decisionInicialProveedores(g, false), 'distribuidora zeta': 'nuevo' };
   const dest = destinosDeProveedores(g, d, PADRON, CATALOGO);
   const cosmos = dest.find((t) => t.id === 10);
   assert.equal(cosmos.filas.length, 4, 'los dos nombres de Cosmos + el parecido confirmado → un solo destino');
@@ -88,4 +92,18 @@ test('las siglas sueltas no separan nombres: S.A. = SA, S.R.L. = SRL', () => {
   assert.ok(mismoNombreProveedor('Nuevo Cosmos S.A.', 'NUEVO COSMOS SA'));
   assert.ok(mismoNombreProveedor('Lácteos del Sur S.R.L.', 'LACTEOS DEL SUR SRL'));
   assert.ok(!mismoNombreProveedor('Juan y Pedro', 'Juan Pedro'), 'una "y" suelta entre palabras no se come');
+});
+
+test('de varios parecidos, el sugerido es el MÁS parecido', () => {
+  const padron = [{ id: 1, nombre: 'Bavosi Hermanos Distribuidora' }, { id: 2, nombre: 'Bavosi' }, { id: 3, nombre: 'Bavos' }];
+  const orden = proveedoresParecidos('BAVOSI S.A.', padron).map((p) => p.id);
+  assert.equal(orden[0], 2, '"BAVOSI S.A." se parece más a "Bavosi" que a "Bavosi Hermanos Distribuidora"');
+  assert.ok(parecidoProveedor('Gomez Noelia Edith', 'GOMEZ NOELIA') > parecidoProveedor('Gomez Noelia Edith', 'Gomez Hnos'));
+});
+
+test('sin "solo cargados", el que no se parece a nadie queda "a decidir" (no se crea solo)', () => {
+  const g = conPadron(proveedoresDelArchivo(ARCHIVO));
+  const zeta = g.find((x) => x.clave === 'distribuidora zeta');
+  assert.equal(categoriaProveedor(zeta, false), 'decidir');
+  assert.equal(decisionInicialProveedores(g, false)['distribuidora zeta'], '');
 });

@@ -30,7 +30,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num as fmtNum } from '../../domain/format.js';
 import {
-  decisionInicialProveedores, destinosDeProveedores, proveedoresDelArchivo,
+  categoriaProveedor, decisionInicialProveedores, destinosDeProveedores, proveedoresDelArchivo,
 } from '../../domain/importarCatalogo.js';
 import { mismoNombreProveedor, proveedoresParecidos } from '@modules/proveedores/domain/importarProveedores.js';
 import { ModalShell } from '../Modal.jsx';
@@ -59,6 +59,18 @@ export function CostosVariosProveedores({ archivo, soloCargados, onVolver }) {
   const [guardando, setGuardando] = useState(false);
   const enVuelo = useRef(false);
   const [resultado, setResultado] = useState(null);
+  /* EL FILTRO DE LA LISTA (28/9/2026, pedido del dueño): con 100+ proveedores, ver
+   * solo los que tienen duda. Y cuáles ya se revisaron: la fila sugerida deja de
+   * estar en amarillo cuando se la confirma ("Está bien") o se elige otra cosa. */
+  const [filtro, setFiltro] = useState('todos');
+  const [revisados, setRevisados] = useState(() => new Set());
+  const categoria = useMemo(
+    () => Object.fromEntries(grupos.map((g) => [g.clave, categoriaProveedor(g, soloCargados)])),
+    [grupos, soloCargados],
+  );
+  const dudosos = grupos.filter((g) => ['revisar', 'decidir'].includes(categoria[g.clave]));
+  const sinRevisar = dudosos.filter((g) => !revisados.has(g.clave));
+  const marcarRevisado = (clave) => setRevisados((r) => new Set(r).add(clave));
 
   const pendientes = grupos.filter((g) => decision[g.clave] === '');
   const afuera = grupos.filter((g) => decision[g.clave] === AFUERA);
@@ -226,6 +238,21 @@ export function CostosVariosProveedores({ archivo, soloCargados, onVolver }) {
 
   /* ------------------------------ el mapeo ------------------------------ */
   const exactos = grupos.filter((g) => g.exacto).length;
+  const cuenta = (c) => grupos.filter((g) => categoria[g.clave] === c).length;
+  const FILTROS = [
+    ['todos', `Todos (${grupos.length})`],
+    ['dudas', `Con duda (${dudosos.length})`],
+    ['sinRevisar', `Sin revisar (${sinRevisar.length})`],
+    ['coincide', `Mismo nombre (${cuenta('coincide')})`],
+    ['afuera', `Afuera (${grupos.filter((g) => decision[g.clave] === AFUERA).length})`],
+  ];
+  const visibles = grupos.filter((g) => {
+    if (filtro === 'dudas') return ['revisar', 'decidir'].includes(categoria[g.clave]);
+    if (filtro === 'sinRevisar') return ['revisar', 'decidir'].includes(categoria[g.clave]) && !revisados.has(g.clave);
+    if (filtro === 'coincide') return categoria[g.clave] === 'coincide';
+    if (filtro === 'afuera') return decision[g.clave] === AFUERA;
+    return true;
+  });
   return (
     <ModalShell
       title="Actualizar costos de todos los proveedores"
@@ -240,30 +267,58 @@ export function CostosVariosProveedores({ archivo, soloCargados, onVolver }) {
       <div className={cx(s.callout, s.info)}>
         El archivo trae <strong>{grupos.filter((g) => !g.sinNombre).length}</strong> proveedor(es).{' '}
         <strong>{exactos}</strong> coinciden con el padrón y ya quedaron elegidos.
-        {pendientes.length > 0 && <> <strong>{pendientes.length}</strong> necesitan que decidas vos (en amarillo).</>}
+        {cuenta('revisar') > 0 && (
+          <> A <strong>{cuenta('revisar')}</strong> se les eligió el <strong>más parecido</strong> del padrón: revisalos (en amarillo).</>
+        )}
+        {pendientes.length > 0 && <> <strong>{pendientes.length}</strong> no están en el padrón y necesitan que decidas.</>}
         {soloCargados
-          ? ' Está tildado "solo proveedores ya cargados": lo que no está en el padrón queda afuera.'
+          ? ' Está tildado "solo proveedores ya cargados": lo que no se parece a ninguno queda afuera.'
           : ' Los que no están en el padrón se pueden crear, confirmándolos uno por uno.'}
       </div>
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+        {FILTROS.map(([k, t]) => (
+          <Btn key={k} small variant={filtro === k ? 'btn-primary' : 'btn-ghost'} onClick={() => setFiltro(k)}>{t}</Btn>
+        ))}
+        {filtro === 'sinRevisar' && sinRevisar.some((g) => categoria[g.clave] === 'revisar') && (
+          <Btn
+            small
+            onClick={() => setRevisados((r) => {
+              const n = new Set(r);
+              sinRevisar.filter((g) => categoria[g.clave] === 'revisar').forEach((g) => n.add(g.clave));
+              return n;
+            })}
+          >
+            Dar por buenas las {sinRevisar.filter((g) => categoria[g.clave] === 'revisar').length} sugerencias
+          </Btn>
+        )}
+      </div>
+
       <Table cols={[{ h: 'En el archivo' }, { h: 'Renglones', num: true }, { h: 'Se importa en' }]}>
-        {grupos.map((g) => (
+        {visibles.map((g) => (
           <FilaMapeo
             key={g.clave}
             g={g}
             valor={decision[g.clave]}
             padron={padron}
             soloCargados={soloCargados}
-            onChange={(v) => setDecision((d) => ({ ...d, [g.clave]: v }))}
+            dudoso={['revisar', 'decidir'].includes(categoria[g.clave])}
+            revisado={revisados.has(g.clave)}
+            onRevisado={() => marcarRevisado(g.clave)}
+            onChange={(v) => { setDecision((d) => ({ ...d, [g.clave]: v })); marcarRevisado(g.clave); }}
           />
         ))}
       </Table>
+      {!visibles.length && <div className={s['empty-state']}>No hay proveedores en este filtro.</div>}
     </ModalShell>
   );
 }
 
-function FilaMapeo({ g, valor, padron, soloCargados, onChange }) {
+function FilaMapeo({ g, valor, padron, soloCargados, dudoso, revisado, onRevisado, onChange }) {
   const pendiente = valor === '';
-  const fondo = pendiente ? 'var(--crm-color-warning-bg, rgba(214,158,46,.12))' : undefined;
+  const amarilla = dudoso && !revisado;
+  const fondo = amarilla ? 'var(--crm-color-warning-bg, rgba(214,158,46,.12))' : undefined;
+  const sugerido = g.candidatos[0];
   let control;
   if (g.sinNombre) {
     control = <span className={s.muted}>Queda afuera: sin proveedor no hay a quién cargarle el costo</span>;
@@ -272,30 +327,39 @@ function FilaMapeo({ g, valor, padron, soloCargados, onChange }) {
   } else {
     const otros = padron.filter((p) => p.id !== g.exacto?.id && !g.candidatos.some((c) => c.id === p.id));
     control = (
-      <select value={valor} onChange={(e) => onChange(e.target.value)} style={{ minWidth: 260 }}>
-        {pendiente && <option value="">— Elegí qué hacer —</option>}
-        {g.exacto && <option value={`p:${g.exacto.id}`}>{g.exacto.nombre} (mismo nombre)</option>}
-        {g.candidatos.length > 0 && (
-          <optgroup label="Parecidos en el padrón">
-            {g.candidatos.map((c) => <option key={c.id} value={`p:${c.id}`}>{c.nombre}</option>)}
-          </optgroup>
-        )}
-        {!soloCargados && !g.exacto && <option value={NUEVO}>Crear «{g.nombre}» como proveedor nuevo</option>}
-        <option value={AFUERA}>No importar (queda afuera)</option>
-        {!g.exacto && (
-          <optgroup label="Es otro proveedor ya cargado">
-            {otros.map((p) => <option key={p.id} value={`p:${p.id}`}>{p.nombre}</option>)}
-          </optgroup>
-        )}
-      </select>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <select value={valor} onChange={(e) => onChange(e.target.value)} style={{ minWidth: 260, flex: 1 }}>
+          {pendiente && <option value="">— Elegí qué hacer —</option>}
+          {g.exacto && <option value={`p:${g.exacto.id}`}>{g.exacto.nombre} (mismo nombre)</option>}
+          {g.candidatos.length > 0 && (
+            <optgroup label="Parecidos en el padrón (el primero es el más parecido)">
+              {g.candidatos.map((c, i) => (
+                <option key={c.id} value={`p:${c.id}`}>{c.nombre}{i === 0 ? ' (el más parecido)' : ''}</option>
+              ))}
+            </optgroup>
+          )}
+          {!soloCargados && !g.exacto && <option value={NUEVO}>Crear «{g.nombre}» como proveedor nuevo</option>}
+          <option value={AFUERA}>No importar (queda afuera)</option>
+          {!g.exacto && (
+            <optgroup label="Es otro proveedor ya cargado">
+              {otros.map((p) => <option key={p.id} value={`p:${p.id}`}>{p.nombre}</option>)}
+            </optgroup>
+          )}
+        </select>
+        {amarilla && !pendiente && <Btn small onClick={onRevisado}>Está bien</Btn>}
+      </div>
     );
   }
   return (
     <tr style={{ background: fondo }}>
       <td>
         {g.nombre}
-        {!g.exacto && !g.sinNombre && g.candidatos.length > 0 && (
-          <div className={s.hint} style={{ margin: 0 }}>No está igual en el padrón; hay {g.candidatos.length === 1 ? 'uno parecido' : 'parecidos'}.</div>
+        {!g.exacto && !g.sinNombre && sugerido && (
+          <div className={s.hint} style={{ margin: 0 }}>
+            {revisado
+              ? 'Revisado.'
+              : `No está igual en el padrón: se sugirió el más parecido${g.candidatos.length > 1 ? ` (hay ${g.candidatos.length})` : ''}. Revisalo.`}
+          </div>
         )}
         {!g.exacto && !g.sinNombre && !g.candidatos.length && (
           <div className={s.hint} style={{ margin: 0 }}>No está en el padrón.</div>
