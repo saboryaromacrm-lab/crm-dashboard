@@ -76,13 +76,20 @@ export async function extraerLineasPdf(pdfjs, datos) {
  * quien nunca procesa facturas no lo descarga. El worker hace el trabajo en
  * otro hilo, así la pantalla sigue respondiendo mientras lee.
  */
+/*
+ * EL WORKER SE CREA CON `new Worker(new URL(...))` (28/9/2026): así Vite lo
+ * empaqueta como un `.js` propio. Con `?url` salía como `.mjs`, y el servidor
+ * de la pantalla sirve `.mjs` como `application/octet-stream`: el navegador
+ * rechaza un módulo con ese tipo y la lectura no arrancaba en producción. Un
+ * solo worker para todas las lecturas de la sesión.
+ */
 let pdfjsNavegador = null;
 export function pdfjsDelNavegador() {
-  pdfjsNavegador ??= Promise.all([
-    import('pdfjs-dist/build/pdf.min.mjs'),
-    import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
-  ]).then(([pdfjs, worker]) => {
-    pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+  pdfjsNavegador ??= import('pdfjs-dist/build/pdf.min.mjs').then((pdfjs) => {
+    pdfjs.GlobalWorkerOptions.workerPort = new Worker(
+      new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url),
+      { type: 'module' },
+    );
     return pdfjs;
   });
   return pdfjsNavegador;
