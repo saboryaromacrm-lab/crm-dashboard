@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { useProductos } from '../context/ProductosContext.jsx';
+import { FormatosPorProveedorPanel } from './FormatosPorProveedorPanel.jsx';
 import { num } from '../domain/format.js';
 import { ESTADOS_PRODUCTO } from '../domain/constants.js';
 import {
@@ -60,7 +62,7 @@ function AvisoParaArchivar() {
   );
 }
 
-export function ProductosPanel() {
+function CatalogoProductos() {
   const { store, isAdmin, openModal } = useProductos();
   const [q, setQ] = useState('');
   const [tipo, setTipo] = useState('');
@@ -301,6 +303,44 @@ export function ProductosPanel() {
       >
         {filas}
       </Table>
+    </div>
+  );
+}
+
+/*
+ * DOS PESTAÑAS (28/9/2026, pedido del dueño): el catálogo de siempre y la guía
+ * de formatos de venta por proveedor — importar de a un proveedor, con muchos
+ * proveedores, necesitaba una lista de control para no perderse.
+ */
+const TAB_KEY = 'crm.productos.tab';
+
+export function ProductosPanel() {
+  const { can } = useProductos();
+  const veGuia = can('compras.productos');
+  const [tab, setTab] = useState(() => {
+    try { return sessionStorage.getItem(TAB_KEY) || 'catalogo'; } catch { return 'catalogo'; }
+  });
+  const elegir = (v) => {
+    setTab(v);
+    try { sessionStorage.setItem(TAB_KEY, v); } catch { /* sin storage: arranca en el catálogo */ }
+  };
+  const activa = veGuia ? tab : 'catalogo';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
+      {veGuia && (
+        <Tabs
+          value={activa}
+          onChange={(e, v) => elegir(v)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}
+        >
+          <Tab value="catalogo" label="Catálogo" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />
+          <Tab value="formatos" label="Formatos de venta por proveedores" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />
+        </Tabs>
+      )}
+      {activa === 'formatos' ? <FormatosPorProveedorPanel /> : <CatalogoProductos />}
     </div>
   );
 }

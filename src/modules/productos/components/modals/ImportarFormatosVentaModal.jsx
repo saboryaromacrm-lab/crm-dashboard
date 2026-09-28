@@ -33,12 +33,13 @@ const COLOR_ESTADO = {
   igual: 'var(--crm-color-text-muted)',
 };
 
-export function ImportarFormatosVentaModal() {
+export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = null }) {
   const { store, closeModal, toast } = useProductos();
   const [paso, setPaso] = useState(1);
   const [archivo, setArchivo] = useState(null); // { nombre, filas }
   const [leyendo, setLeyendo] = useState(false);
-  const [proveedorId, setProveedorId] = useState('');
+  /* Desde la guía por proveedor llega elegido: el archivo no lo pisa. */
+  const [proveedorId, setProveedorId] = useState(proveedorInicial ? String(proveedorInicial) : '');
   /** clave de lista del archivo → valor del selector ('L49', 'nueva', 'afuera'). */
   const [eleccion, setEleccion] = useState({});
   const [filtro, setFiltro] = useState('cambios');
@@ -130,7 +131,8 @@ export function ImportarFormatosVentaModal() {
   /* Segunda confirmación y candado: cambia precios de góndola de muchos
      productos a la vez, y puede crear listas. */
   const importar = async () => {
-    if (!confirmando) { setConfirmando(true); return; }
+    // Sin nada que cambiar no hay precios en juego: se anota directo.
+    if (aImportar > 0 && !confirmando) { setConfirmando(true); return; }
     if (enVuelo.current) return;
     enVuelo.current = true;
     setGuardando(true);
@@ -139,7 +141,7 @@ export function ImportarFormatosVentaModal() {
     enVuelo.current = false;
     if (!res.ok) { setConfirmando(false); toast(res.error || 'No se pudo importar.', 'err'); return; }
     setResultado(res);
-    toast(`${(res.actualizados ?? 0) + (res.agregados ?? 0)} formato(s) de venta importado(s).`, 'ok');
+    toast(aImportar ? `${(res.actualizados ?? 0) + (res.agregados ?? 0)} formato(s) de venta importado(s).` : 'Proveedor marcado como revisado: ya estaba al día.', 'ok');
   };
 
   /* ------------------------------- resultado ------------------------------- */
@@ -175,11 +177,15 @@ export function ImportarFormatosVentaModal() {
   const footer = paso === 2
     ? [
       { texto: 'Volver', clase: 'btn-ghost', onClick: () => { setConfirmando(false); setPaso(1); } },
-      {
-        texto: guardando ? 'Importando…' : confirmando ? 'Sí, importar' : `Importar ${aImportar} formato(s)…`,
-        clase: 'btn-primary',
-        onClick: guardando || !aImportar ? () => {} : importar,
-      },
+      aImportar || !plan?.items.length
+        ? {
+          texto: guardando ? 'Importando…' : confirmando ? 'Sí, importar' : `Importar ${aImportar} formato(s)…`,
+          clase: 'btn-primary',
+          onClick: guardando || !aImportar ? () => {} : importar,
+        }
+        /* Todo coincidía: no hay nada que escribir, pero queda anotado en la
+           guía por proveedor como revisado. */
+        : { texto: guardando ? 'Guardando…' : 'Marcar como revisado (ya está al día)', clase: 'btn-primary', onClick: guardando ? () => {} : importar },
     ]
     : [
       { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },

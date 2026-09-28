@@ -37,12 +37,13 @@ const ETIQUETA_ESTADO = {
   sin_codigo: { texto: 'Sin código', color: 'var(--crm-color-warning)' },
 };
 
-export function ImportarCostosModal() {
+export function ImportarCostosModal({ proveedorId: proveedorInicial = null }) {
   const { store, closeModal, toast } = useProductos();
   const [paso, setPaso] = useState(1);
   const [archivo, setArchivo] = useState(null); // { nombre, filas }
   const [leyendo, setLeyendo] = useState(false);
-  const [proveedorId, setProveedorId] = useState('');
+  // Desde la guía por proveedor llega elegido.
+  const [proveedorId, setProveedorId] = useState(proveedorInicial ? String(proveedorInicial) : '');
   const [modoProveedor, setModoProveedor] = useState('existente');
   const [guardando, setGuardando] = useState(false);
   const [resultado, setResultado] = useState(null);
