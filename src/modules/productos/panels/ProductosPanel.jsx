@@ -230,6 +230,7 @@ export function ProductosPanel() {
             <Btn onClick={() => openModal('margenesMasivos', { productos })}>Actualizar márgenes</Btn>
             <Btn onClick={() => openModal('importarCatalogo', {})}>Importar catálogo</Btn>
             <Btn onClick={() => openModal('importarCostos', {})}>Actualizar costos</Btn>
+            <Btn onClick={() => openModal('importarFormatosVenta', {})}>Actualizar formatos de venta</Btn>
             <Btn onClick={() => openModal('actualizarClasificacion', {})}>Actualizar categoría y etiquetas</Btn>
             <Btn onClick={exportar} disabled={!productos.length}>Exportar CSV</Btn>
             <Btn variant="btn-primary" onClick={() => openModal('producto', {})}>+ Nuevo producto</Btn>

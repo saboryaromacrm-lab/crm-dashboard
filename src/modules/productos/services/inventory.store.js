@@ -1285,6 +1285,8 @@ const guardarPercepcionesProveedor = (id, percepciones) => _mutate(() => httpCli
 const importarCatalogo = (proveedorId, items) => _mutate(() => httpClient.post('/productos/importar', { proveedorId, items }));
 /** Solo costos, sin el maestro (23/9): matchea por código contra el catálogo ya cargado. */
 const importarCostos = (proveedorId, items) => _mutate(() => httpClient.post('/productos/importar-costos', { proveedorId, items }));
+/** Solo el formato de venta de un proveedor (28/9/2026): ver `domain/importarFormatosVenta.js`. */
+const importarFormatosVenta = (cuerpo) => _mutate(() => httpClient.post('/productos/importar-formatos-venta', cuerpo));
 /**
  * LA TANDA DE VARIOS PROVEEDORES (28/9/2026): cada `_mutate` vuelve a bajar el
  * inventario entero (~10 MB); con un archivo de 60 proveedores eran 60
@@ -1330,7 +1332,7 @@ export const inventoryStore = {
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
   sugerenciasArchivado, archivarLote,
-  guardarPresentaciones, importarCatalogo, importarCostos, importarCostosEnTanda, crearProveedorEnTanda, actualizarClasificacion,
+  guardarPresentaciones, importarCatalogo, importarCostos, importarFormatosVenta, importarCostosEnTanda, crearProveedorEnTanda, actualizarClasificacion,
   crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, siguienteCodigo, siguienteEan,
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,

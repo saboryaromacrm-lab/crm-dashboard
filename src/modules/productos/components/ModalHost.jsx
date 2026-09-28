@@ -31,6 +31,7 @@ import {
 } from './modals/VencimientosModals.jsx';
 import { ImportarCatalogoModal } from './modals/ImportarCatalogoModal.jsx';
 import { ImportarCostosModal } from './modals/ImportarCostosModal.jsx';
+import { ImportarFormatosVentaModal } from './modals/ImportarFormatosVentaModal.jsx';
 import { ActualizarClasificacionModal } from './modals/ActualizarClasificacionModal.jsx';
 import { LecturaFacturaModal } from './modals/LecturaFacturaModal.jsx';
 import { HistorialPreciosModal, MargenesMasivosModal } from './modals/PreciosModals.jsx';
@@ -249,6 +250,7 @@ const REGISTRY = {
   fraccionado: FraccionadoModal,
   importarCatalogo: ImportarCatalogoModal,
   importarCostos: ImportarCostosModal,
+  importarFormatosVenta: ImportarFormatosVentaModal,
   actualizarClasificacion: ActualizarClasificacionModal,
   /* `importarProveedores` se mudó al módulo Proveedores (27/8): alimenta el
    * padrón, y el padrón se administra allá. */
