@@ -219,7 +219,7 @@ export function CostosVariosProveedores({ archivo, soloCargados, onVolver }) {
             <FilaDestino key={t.key} t={t} abierto={abierto === t.key} alternar={() => setAbierto(abierto === t.key ? null : t.key)} />
           ))}
         </Table>
-        <ListaAfuera afuera={afuera} />
+        <ListaAfuera afuera={afuera} previa />
       </ModalShell>
     );
   }
@@ -347,13 +347,13 @@ function FilaDestino({ t, abierto, alternar }) {
 }
 
 /** Lo que queda afuera, SIEMPRE a la vista: pedido del dueño. */
-function ListaAfuera({ afuera }) {
+function ListaAfuera({ afuera, previa = false }) {
   if (!afuera.length) return null;
   return (
     <>
       <div className={s['section-title']}>Quedaron afuera ({afuera.length})</div>
       <div className={s.hint} style={{ marginTop: 0 }}>
-        Estos proveedores del archivo NO se importaron. Si alguno tiene que entrar, cargalo en el padrón
+        Estos proveedores del archivo NO {previa ? 'se van a importar' : 'se importaron'}. Si alguno tiene que entrar, cargalo en el padrón
         (o elegilo en el paso 2) y volvé a importar el archivo: lo que ya se importó se pisa igual, no se duplica.
       </div>
       <Table cols={[{ h: 'Proveedor en el archivo' }, { h: 'Renglones', num: true }]}>

@@ -24,7 +24,7 @@ import {
 import { mismoNombreProveedor, proveedoresParecidos } from '@modules/proveedores/domain/importarProveedores.js';
 import { ModalShell } from '../Modal.jsx';
 import { CostosVariosProveedores } from './CostosVariosProveedores.jsx';
-import { Table, s } from '../ui.jsx';
+import { Btn, Table, s } from '../ui.jsx';
 
 const ETIQUETA_ESTADO = {
   actualiza: { texto: 'Actualiza el costo', color: 'var(--crm-color-success)' },
@@ -76,7 +76,7 @@ export function ImportarCostosModal() {
       } else {
         setArchivo({ nombre: file.name, filas });
         const distintos = new Set(filas.map((f) => String(f.Proveedor ?? '').trim().toLowerCase()).filter(Boolean));
-        setVarios(distintos.size > 1);
+        if (distintos.size > 1) setVarios(true);
       }
     } catch {
       toast(`No pude leer ${file.name}.`, 'err');
@@ -199,7 +199,7 @@ export function ImportarCostosModal() {
 
   return (
     <ModalShell
-      title="Actualizar costos de un proveedor"
+      title={varios ? 'Actualizar costos de todos los proveedores' : 'Actualizar costos de un proveedor'}
       subtitle={paso === 1 ? `Paso 1 de ${varios ? 3 : 2} · Archivo` : 'Paso 2 de 2 · Vista previa'}
       size="lg"
       onClose={closeModal}
@@ -207,6 +207,19 @@ export function ImportarCostosModal() {
     >
       {paso === 1 && (
         <>
+          {/* QUÉ SE IMPORTA, lo primero que se ve (28/9/2026). La opción de todos los
+              proveedores aparecía recién después de elegir el archivo y en producción
+              no se encontraba: ahora son dos botones simples, fuera de la lista de
+              proveedores, visibles desde que se abre la ventana. */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+            <Btn variant={!varios ? 'btn-primary' : 'btn-ghost'} onClick={() => setVarios(false)}>
+              Un proveedor
+            </Btn>
+            <Btn variant={varios ? 'btn-primary' : 'btn-ghost'} onClick={() => setVarios(true)}>
+              Todos los proveedores (archivo completo)
+            </Btn>
+          </div>
+
           <div className={cx(s.callout, s.info)}>
             Un solo archivo: el <strong>Formato de compra</strong> que exporta el sistema de gestión
             anterior. No hace falta el listado de productos — se busca cada código contra tu
@@ -236,30 +249,29 @@ export function ImportarCostosModal() {
             </div>
           )}
 
-          {archivo && (
+          {varios && (
             <div className={s.field} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+              <div className={s.hint} style={{ margin: 0 }}>
+                Se agrupa por la columna Proveedor y se cruza cada nombre con tu padrón. Los que coinciden
+                exacto entran solos; los parecidos los confirmás vos en el paso siguiente, y los que quedan
+                afuera se listan.
+              </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
-                <input type="checkbox" checked={varios} onChange={(e) => setVarios(e.target.checked)} style={{ width: 'auto' }} />
-                El archivo trae TODOS los proveedores: importarlos de una vez
+                <input type="checkbox" checked={soloCargados} onChange={(e) => setSoloCargados(e.target.checked)} style={{ width: 'auto' }} />
+                Importar solo proveedores que ya están cargados en el sistema
               </label>
-              {varios && (
-                <>
-                  <div className={s.hint} style={{ margin: '0 0 0 26px' }}>
-                    Se agrupa por la columna Proveedor y se cruza cada nombre con tu padrón. Los que coinciden
-                    exacto entran solos; los parecidos los confirmás vos en el paso siguiente, y los que quedan
-                    afuera se listan.
-                  </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginLeft: 26 }}>
-                    <input type="checkbox" checked={soloCargados} onChange={(e) => setSoloCargados(e.target.checked)} style={{ width: 'auto' }} />
-                    Importar solo proveedores que ya están cargados en el sistema
-                  </label>
-                  <div className={s.hint} style={{ margin: '0 0 0 52px' }}>
-                    {soloCargados
-                      ? 'Los que no están en el padrón quedan afuera (se listan al final).'
-                      : 'Los que no están en el padrón se pueden crear: los confirmás uno por uno.'}
-                  </div>
-                </>
-              )}
+              <div className={s.hint} style={{ margin: '0 0 0 26px' }}>
+                {soloCargados
+                  ? 'Los que no están en el padrón quedan afuera (se listan al final).'
+                  : 'Los que no están en el padrón se pueden crear: los confirmás uno por uno.'}
+              </div>
+            </div>
+          )}
+
+          {!varios && archivo && proveedorDelArchivo(archivo.filas)?.otros?.length > 0 && (
+            <div className={cx(s.callout, s.warn)}>
+              Este archivo trae <strong>{proveedorDelArchivo(archivo.filas).otros.length + 1}</strong> proveedores distintos.
+              Si querés importarlos a todos juntos, tocá <strong>Todos los proveedores</strong> arriba.
             </div>
           )}
 
