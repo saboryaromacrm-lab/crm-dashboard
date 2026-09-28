@@ -136,10 +136,10 @@ export function BuscadorCatalogo({ store, onElegir, autoFocus, filtro }) {
               <span className={s.hint} style={{ margin: 0, display: 'block' }}>
                 {m.prod.codigoPropio ? `#${m.prod.codigoPropio}` : ''}
                 {/* En una ENTRADA el costo no existe todavía —lo declara la
-                    cafetería en el renglón— y mostrar "$0,00 de costo" sería
+                    Coffit en el renglón— y mostrar "$0,00 de costo" sería
                     decir algo falso justo antes de pedir el número. */}
                 {/* `costoNeto: null` = a quien mira no le toca ver el costo de la
-                    distribuidora (el rol Cafetería): no se muestra un $0 falso. */}
+                    distribuidora (el rol Coffit): no se muestra un $0 falso. */}
                 {!filtro && m.prod.costoNeto !== null && <>{' · '}{money(store.costoNeto(m.prod))}/{store.unidadDe(m.prod, null) === 'kg' ? 'kg' : 'u'} de costo</>}
               </span>
             </button>
@@ -439,7 +439,7 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
     /* En una ENTRADA el costo es obligatorio renglón por renglón: sin él, ese
      * producto quedaría con rentabilidad inventada. La API lo revalida. */
     if (entrada && conCantidad.some((it) => it.costo === '' || Number.isNaN(Number(it.costo)))) {
-      toast('Poné el costo de cada renglón: en una entrada lo declara la cafetería.', 'err');
+      toast('Poné el costo de cada renglón: en una entrada lo declara Coffit.', 'err');
       return;
     }
     if (fraccionados) {
@@ -497,7 +497,7 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
           ? `${res.codigo} enviado · cumple el pedido ${pedido.codigo}, que quedó cerrado.`
           : entrada
             ? v.okEntrada(res.codigo, money(res.totalCosto))
-            : `${res.codigo} enviado · ${money(res.totalCosto)} a costo. La mercadería ya egresó del stock; la cafetería la controla al recibirla.`,
+            : `${res.codigo} enviado · ${money(res.totalCosto)} a costo. La mercadería ya egresó del stock; Coffit la controla al recibirla.`,
       'ok',
     );
     if (!impreso) toast('El navegador bloqueó la impresión del remito: reimprimilo desde el detalle (Imprimir remito).', 'err');
@@ -511,7 +511,7 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
         ? `Editar ${envio.codigo}`
         : pedido
           ? `Armar envío — pedido ${pedido.codigo}`
-          : entrada ? v.altaEntradaTitulo : 'Nuevo envío a Cafetería'}
+          : entrada ? v.altaEntradaTitulo : 'Nuevo envío a Coffit'}
       subtitle={esEdicion
         ? `Versión actual: ${envio.version}. El stock se mueve solo por la diferencia: corregir un costo no lo toca, así que se puede aunque ya se haya vendido.`
         : pedido
@@ -546,7 +546,7 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
           <div>
             Hoy ya se cargó <strong>{gemelo}</strong>, idéntico a este y a la misma sucursal.
             Si fue esto mismo cargado dos veces, <strong>cancelá</strong>: el envío que vale ya
-            está. Si de verdad la cafetería mandó dos veces lo mismo, confirmalo.
+            está. Si de verdad Coffit mandó dos veces lo mismo, confirmalo.
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <Btn variant="btn-ghost" small onClick={closeModal}>Cancelar — ya estaba cargado</Btn>
@@ -583,14 +583,14 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
       <div className={s.hint} style={{ marginTop: 0 }}>
         {entrada ? (
           <>
-            Solo se ofrecen los productos marcados como <strong>elaborados por la cafetería</strong>.
+            Solo se ofrecen los productos marcados como <strong>elaborados por Coffit</strong>.
             El <strong>costo lo declarás vos</strong>: se propone el de la ficha del producto, que es
             con el que se registra cada venta. Si una tanda salió distinta, cambialo acá (queda en
             este envío); si el costo cambió de verdad, cambialo en la ficha.
           </>
         ) : (
           <>
-            Qué es cada cosa (góndola o insumo) <strong>lo decide coffit al recibir</strong> en su
+            Qué es cada cosa (góndola o insumo) <strong>lo decide Coffit al recibir</strong> en su
             almacén “Sabor y Aroma” — acá solo viaja el detalle completo.{' '}
             {esEdicion
               ? <>El costo congelado de cada renglón <strong>se conserva</strong>; un renglón nuevo entra al costo de hoy.</>
@@ -618,7 +618,7 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
                 {/* La marca del 0089: en ESTA pantalla es el protagonista —
                     el envío es el único camino de salida del exclusivo. */}
                 {prod.soloCafeteria && (
-                  <span className={cx(s.badge, s['badge-granel'])} style={{ marginLeft: 6 }}>Cafetería</span>
+                  <span className={cx(s.badge, s['badge-granel'])} style={{ marginLeft: 6 }}>Coffit</span>
                 )}
               </div>
               {/* El disponible es el candado de una SALIDA (no se puede mandar
@@ -661,7 +661,7 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
                 <input
                   type="number" min="0" step="any" value={it.costo}
                   placeholder="costo"
-                  title="Costo unitario que declara la cafetería"
+                  title="Costo unitario que declara Coffit"
                   style={Number(it.cantidad) > 0 && it.costo === ''
                     ? {
                       borderColor: 'var(--crm-color-warning)',
@@ -780,7 +780,7 @@ function imprimirRemito(envio, ventana = null) {
     : '______'}</td>
     </tr>`;
   }).join('');
-  const quienRecibe = entrada ? `la sucursal ${esc(envio.sucursalNombre || '')}` : 'la cafetería';
+  const quienRecibe = entrada ? `la sucursal ${esc(envio.sucursalNombre || '')}` : 'Coffit';
   const control = recibido
     ? `<div class="nota"><strong>${envio.recepcion === 'recibido' ? 'RECIBIDO OK' : 'RECIBIDO CON DIFERENCIAS'}</strong>`
       + `${envio.recibidoPorNombre ? ` · controló ${esc(envio.recibidoPorNombre)}` : ''}`
@@ -794,9 +794,9 @@ function imprimirRemito(envio, ventana = null) {
        </div>`;
   return imprimirDocumento('remitoCafeteria', {
     ventana,
-    titulo: `${envio.codigo} — ${entrada ? 'Remito de la Cafetería' : 'Remito a Cafetería'}`,
+    titulo: `${envio.codigo} — ${entrada ? 'Remito de Coffit' : 'Remito a Coffit'}`,
     cuerpo: `
-      <h1>${esc(envio.codigo)} · ${entrada ? `Remito de la Cafetería a ${esc(envio.sucursalNombre || '')}` : 'Remito a Cafetería'}${envio.version > 1 ? ` (versión ${Number(envio.version)})` : ''}</h1>
+      <h1>${esc(envio.codigo)} · ${entrada ? `Remito de Coffit a ${esc(envio.sucursalNombre || '')}` : 'Remito a Coffit'}${envio.version > 1 ? ` (versión ${Number(envio.version)})` : ''}</h1>
       <div class="sub">${esc(new Date(envio.fecha).toLocaleString('es-AR'))} · ${entrada ? `llega a ${esc(envio.sucursalNombre || '')}` : `sale de ${esc(envio.sucursalNombre || '')}`}${envio.usuarioNombre ? ` · cargó ${esc(envio.usuarioNombre)}` : ''}</div>
       <table>
         <thead><tr><th>Producto</th><th>Código</th><th>Cantidad</th><th>Equiv. kg</th><th>Costo unit.</th><th>Subtotal</th><th>Llegó</th></tr></thead>
@@ -870,7 +870,7 @@ export function EnvioCafeteriaDetalleModal({ id }) {
 
   const footerBase = [{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }];
   if (!envio) {
-    return <ModalShell title="Envío a Cafetería" onClose={closeModal} footer={footerBase}>
+    return <ModalShell title="Envío a Coffit" onClose={closeModal} footer={footerBase}>
       <div className={s['empty-state']}>Cargando…</div>
     </ModalShell>;
   }
@@ -926,7 +926,7 @@ export function EnvioCafeteriaDetalleModal({ id }) {
         <div className={cx(s.callout, meToca ? s.warn : undefined)}>
           {meToca
             ? <>Este envío <strong>te toca recibirlo</strong>: contá la mercadería contra el remito y marcalo con <strong>Controlar y recibir</strong>.{esEntrada && ' Recién ahí entra al stock de la sucursal.'}</>
-            : <>Esperando que {esEntrada ? `${envio.sucursalNombre || 'la sucursal'} lo controle y lo reciba — recién ahí entra a su stock` : 'la cafetería lo controle y lo reciba'}.</>}
+            : <>Esperando que {esEntrada ? `${envio.sucursalNombre || 'la sucursal'} lo controle y lo reciba — recién ahí entra a su stock` : 'Coffit lo controle y lo reciba'}.</>}
         </div>
       )}
       {recibido && envio.recepcionObs && (
@@ -965,14 +965,14 @@ export function EnvioCafeteriaDetalleModal({ id }) {
       <div className={s.hint}>
         {esEntrada ? (
           <>
-            Los costos son los que <strong>declaró la cafetería</strong> para este envío y quedan en el
+            Los costos son los que <strong>declaró Coffit</strong> para este envío y quedan en el
             documento. La venta en el mostrador toma el costo de la <strong>ficha</strong> del producto.
             Coffit no ve este documento — es mercadería que ella misma despachó.
           </>
         ) : (
           <>
             Los costos quedaron <strong>congelados al enviar</strong>: este remito dice lo mismo aunque
-            después cambien los proveedores. Qué es cada cosa lo decide coffit al recibirlo en su
+            después cambien los proveedores. Qué es cada cosa lo decide Coffit al recibirlo en su
             almacén “Sabor y Aroma” — la clave del mapeo es el código.
           </>
         )}
@@ -996,7 +996,7 @@ export function EnvioCafeteriaDetalleModal({ id }) {
           <div className={s.hint} style={{ margin: '8px 0 0' }}>
             {esEntrada
               ? <>Todavía no lo recibieron, así que anular no toca el stock de la sucursal. Para corregir cantidades o costos, usá <strong>Editar</strong>.</>
-              : <>Anular revierte TODO: la mercadería reingresa al stock y coffit tiene que deshacer su ingreso (le llega por sincronización). Para corregir cantidades, usá <strong>Editar</strong>.</>}
+              : <>Anular revierte TODO: la mercadería reingresa al stock y Coffit tiene que deshacer su ingreso (le llega por sincronización). Para corregir cantidades, usá <strong>Editar</strong>.</>}
           </div>
         </div>
       )}
@@ -1091,8 +1091,8 @@ export function RecibirEnvioCafeteriaModal({ id }) {
     <ModalShell
       title={`Controlar y recibir ${envio.codigo}`}
       subtitle={entrada
-        ? `De la cafetería a ${envio.sucursalNombre || 'la sucursal'}: entra al stock con lo que cuentes`
-        : `De ${envio.sucursalNombre || 'Sabor y Aroma'} a la cafetería`}
+        ? `De Coffit a ${envio.sucursalNombre || 'la sucursal'}: entra al stock con lo que cuentes`
+        : `De ${envio.sucursalNombre || 'Sabor y Aroma'} a Coffit`}
       wide
       onClose={closeModal}
       footer={[
@@ -1245,10 +1245,10 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
 
   return (
     <ModalShell
-      title={esEdicion ? `Editar ${producto.nombre}` : 'Nuevo producto de la cafetería'}
+      title={esEdicion ? `Editar ${producto.nombre}` : 'Nuevo producto de Coffit'}
       subtitle={esEdicion
         ? 'Se corrige el nombre, el costo y el precio del mostrador (los precios de otras listas no se tocan). Cómo se vende (por unidad o por kilo) no se cambia: eso sería otro producto.'
-        : 'Lo que elabora la cafetería y se vende en el mostrador. El costo lo declarás vos: no se compra, así que no sale de ningún proveedor.'}
+        : 'Lo que elabora Coffit y se vende en el mostrador. El costo lo declarás vos: no se compra, así que no sale de ningún proveedor.'}
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal, disabled: guardando },
@@ -1362,7 +1362,7 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
 
       {!esEdicion && (
         <div className={cx(s.callout, s.ok)}>
-          Al crearlo queda marcado como <strong>elaborado por la cafetería</strong>, que es lo que
+          Al crearlo queda marcado como <strong>elaborado por Coffit</strong>, que es lo que
           lo habilita en el envío. Aparece enseguida en el buscador.
         </div>
       )}
@@ -1572,7 +1572,7 @@ export function PedidoCafeteriaDetalleModal({ id }) {
 
   const footerBase = [{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }];
   if (!pedido) {
-    return <ModalShell title="Pedido de Cafetería" onClose={closeModal} footer={footerBase}>
+    return <ModalShell title="Pedido de Coffit" onClose={closeModal} footer={footerBase}>
       <div className={s['empty-state']}>Cargando…</div>
     </ModalShell>;
   }
@@ -1589,7 +1589,7 @@ export function PedidoCafeteriaDetalleModal({ id }) {
 
   return (
     <ModalShell
-      title={`${pedido.codigo} · ${soyElCafe ? 'Tu pedido' : 'Pedido de la cafetería'}`}
+      title={`${pedido.codigo} · ${soyElCafe ? 'Tu pedido' : 'Pedido de Coffit'}`}
       subtitle={pedido.observaciones || undefined}
       wide
       onClose={closeModal}
@@ -1628,7 +1628,7 @@ export function PedidoCafeteriaDetalleModal({ id }) {
       <div className={s.hint}>
         El pedido es la <strong>demanda</strong>: no movió stock ni tiene precios. El detalle que
         vale es el del <strong>envío</strong> que lo cumple — puede diferir de lo pedido (faltantes,
-        reemplazos){soyElCafe ? ', y te llega a coffit por la sincronización' : ', y el café lo recibe por su sincronización'}.{' '}
+        reemplazos){soyElCafe ? ', y te llega a Coffit por la sincronización' : ', y el café lo recibe por su sincronización'}.{' '}
         {!soyElCafe && <><strong>El envío sale de esta sucursal</strong>: es a la que le pidieron, y
         es la disponibilidad que el café vio al pedir.</>}
       </div>

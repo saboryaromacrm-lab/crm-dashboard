@@ -22,7 +22,7 @@ export const TIPOS_MOV = {
   vencido:           { label: 'Producto vencido',    tag: 'tag-baja',    dir: -1 },
   defectuoso:        { label: 'Producto defectuoso', tag: 'tag-baja',    dir: -1 },
   transferencia:     { label: 'Transferencia',       tag: 'tag-transf',  dir: 0 },
-  envio_cafeteria:   { label: 'Envío a Cafetería',   tag: 'tag-venta',   dir: -1 },
+  envio_cafeteria:   { label: 'Envío a Coffit',   tag: 'tag-venta',   dir: -1 },
 };
 
 /**
@@ -187,7 +187,7 @@ export const TIPO_VENTA_SIN_STOCK = 'venta_sin_stock';
 export const ETIQUETA_TIPO_INCIDENCIA = {
   [TIPO_VENTA_SIN_STOCK]: 'Venta sin stock',
   faltante: 'Faltante en recepción',
-  recepcion_cafe: 'Faltante en envío de Cafetería',
+  recepcion_cafe: 'Faltante en envío de Coffit',
 };
 
 /**

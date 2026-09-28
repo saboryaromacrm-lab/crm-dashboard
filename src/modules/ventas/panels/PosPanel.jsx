@@ -240,7 +240,7 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
                     </span>
                     {/* La marca del 0089 a la vista: el cajero ve el porqué ANTES
                         de intentar agregarlo y comerse el rechazo. */}
-                    {item.soloCafeteria && <span className={p.sinStock}>{' · '}solo Cafetería</span>}
+                    {item.soloCafeteria && <span className={p.sinStock}>{' · '}solo Coffit</span>}
                   </span>
                 </span>
                 <span className={p.resultadoPrecio}>

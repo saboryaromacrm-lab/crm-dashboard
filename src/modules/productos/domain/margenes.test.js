@@ -50,7 +50,7 @@ const CATALOGO = [
     id: 3,
     nombre: 'Café en cápsulas',
     marca: 'Illy',
-    categoria: 'Cafetería',
+    categoria: 'Coffit',
     tipo: 'entero',
     estado: 'activo',
     costoNeto: 5000,

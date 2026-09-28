@@ -50,6 +50,8 @@ export function CafeteriaPanel() {
    * puede los dos. El candado de verdad está en la API — esto solo evita
    * ofrecer un botón que iba a rebotar. */
   const puedeCargarEntradas = puedeOperar || can('almacen.cafeteria-entradas');
+  /* Armar un pedido a una sucursal: la llave del café (la del rol Coffit). */
+  const puedePedir = can('almacen.cafeteria-pedidos');
   /* Toda la pantalla habla en la voz del que la abre. Un solo lugar donde se
    * decide quién está mirando; de ahí en más se piden textos, no roles. */
   const v = useMemo(() => vozCafeteria(esVozDelCafe(can)), [can]);
@@ -232,19 +234,32 @@ export function CafeteriaPanel() {
         actions={(() => {
           /* En Productos el botón es el del producto: vive en la pestaña. */
           if (pestana === 'productos') return null;
+          /* PEDIR VIVE ACÁ (28/9/2026, pedido del dueño): antes era una
+             entrada aparte del menú, «Pedido a la distribuidora». Para el café
+             es el botón principal de su pestaña de pedidos; el que además
+             opera la sección lo ve al lado, sin robarle el lugar al envío. */
+          const botonPedido = (variant) => (
+            <Btn variant={variant} onClick={() => openModal('pedidoCafeteria', {})}>+ Nuevo pedido</Btn>
+          );
+          if (pestana === 'pedidos' && puedePedir && !puedeOperar) return botonPedido('btn-primary');
           const entrada = pestana === 'recibidos' || (soloCafe && pestana !== 'envios');
+          let principal = null;
           if (entrada && puedeCargarEntradas) {
-            return (
+            principal = (
               <Btn variant="btn-primary" onClick={() => openModal('envioCafeteria', { sentido: 'entrada' })}>
                 {v.btnEntrada}
               </Btn>
             );
+          } else if (puedeOperar && v.btnSalida) {
+            principal = (
+              <Btn variant="btn-primary" onClick={() => openModal('envioCafeteria', {})}>
+                {v.btnSalida}
+              </Btn>
+            );
           }
-          return puedeOperar && v.btnSalida ? (
-            <Btn variant="btn-primary" onClick={() => openModal('envioCafeteria', {})}>
-              {v.btnSalida}
-            </Btn>
-          ) : null;
+          return pestana === 'pedidos' && puedePedir
+            ? <>{botonPedido('btn-ghost')}{principal}</>
+            : principal;
         })()}
       />
 
@@ -293,8 +308,8 @@ export function CafeteriaPanel() {
             empty={cargando
               ? 'Cargando…'
               : (soloCafe
-                ? 'Todavía no pediste nada.'
-                : 'Sin pedidos para esta sucursal. Cuando la cafetería le pida algo, aparece acá (y suena el aviso).')}
+                ? 'Todavía no pediste nada. "+ Nuevo pedido" arma el primero.'
+                : 'Sin pedidos para esta sucursal. Cuando Coffit le pida algo, aparece acá (y suena el aviso).')}
           >
             {pedidos.map((p) => {
               const est = ESTADOS_PEDIDO_CAFE[p.estado] || {};
@@ -322,13 +337,15 @@ export function CafeteriaPanel() {
               <>
                 Tus pedidos a Sabor y Aroma. <strong>Pendiente</strong> = todavía no lo tomaron (lo
                 podés anular). <strong>Armando</strong> = lo están preparando.{' '}
-                <strong>Enviado</strong> = ya salió, y el detalle real es el del envío.
+                <strong>Enviado</strong> = ya salió, y el detalle real es el del envío.{' '}
+                <strong>Cada pedido lo ve solo la sucursal a la que se lo pediste</strong>, y de ahí
+                sale la mercadería — por eso conviene pedirle a la que tiene lo que necesitás.
               </>
             ) : (
               <>
                 La demanda del café <strong>para esta sucursal</strong>: cada local ve los que le
                 pidieron a él, y el envío que lo cumple sale de acá.{' '}
-                <strong>Tomar</strong> le avisa a la cafetería que se está armando;{' '}
+                <strong>Tomar</strong> le avisa a Coffit que se está armando;{' '}
                 <strong>Convertir en envío</strong> abre el alta con lo pedido precargado — corregís
                 a lo que de verdad va y el pedido queda cerrado. Lo pedido es propuesta; el envío es
                 la verdad.
@@ -404,16 +421,16 @@ export function CafeteriaPanel() {
               <>
                 Lo que Sabor y Aroma te mandó en el período, al costo con el que salió de sus
                 depósitos. <strong>Esto no lo cargás vos</strong>: lo registran ellos al despachar,
-                y te llega a coffit por la sincronización de siempre. <strong>Cuando llega, controlalo
+                y te llega a Coffit por la sincronización de siempre. <strong>Cuando llega, controlalo
                 contra el remito</strong>: entrá al envío y usá <strong>Controlar y recibir</strong>. Si
                 falta algo, lo anotás ahí y la administración se entera sola.
               </>
             ) : (
               <>
                 <strong>El envío egresa el stock en el acto</strong>, con el costo congelado, y se
-                imprime el remito que va con la mercadería. La cafetería lo <strong>controla y lo
+                imprime el remito que va con la mercadería. Coffit lo <strong>controla y lo
                 marca recibido</strong>; si falta algo, se abre una incidencia. Para corregir uno, entrá
-                al detalle y usá <strong>Editar</strong> (la versión sube y coffit se entera por
+                al detalle y usá <strong>Editar</strong> (la versión sube y Coffit se entera por
                 sincronización).
               </>
             )}
@@ -494,7 +511,7 @@ export function CafeteriaPanel() {
               </>
             ) : (
               <>
-                Es el stock de los artículos marcados <strong>«uso exclusivo de Cafetería»</strong> en
+                Es el stock de los artículos marcados <strong>«uso exclusivo de Coffit»</strong> en
                 su ficha. Su costo <strong>ya se le imputó al café en la factura de compra</strong>, así
                 que el envío que lo lleve no vuelve a moverle plata: solo cruza la calle. Lo que la
                 distribuidora también vende (el azúcar, la harina) no entra acá — se le imputa al café
@@ -531,7 +548,7 @@ export function CafeteriaPanel() {
               ? 'Cargando…'
               : (soloCafe
                 ? 'Todavía no mandaste nada en el período.'
-                : 'La cafetería todavía no mandó nada en el período.')}
+                : 'Coffit todavía no mandó nada en el período.')}
             pag={pagRec}
           >
             {filasRecibidos}
@@ -553,9 +570,9 @@ export function CafeteriaPanel() {
               <>
                 <strong>La mercadería entra al stock de la sucursal cuando la sucursal la controla y
                 la recibe</strong> (entrá al envío → <strong>Controlar y recibir</strong>), con lo que se
-                contó. El <strong>costo lo declara la cafetería</strong> — el sistema
+                contó. El <strong>costo lo declara Coffit</strong> — el sistema
                 no puede saberlo —: el de su ficha (Productos Coffit) es con el que se registra cada
-                venta. Solo se pueden cargar productos marcados <strong>“Lo elabora la cafetería”</strong>.
+                venta. Solo se pueden cargar productos marcados <strong>“Lo elabora Coffit”</strong>.
                 Un costo mal tipeado se corrige con Editar aunque ya se haya vendido; anular no se puede
                 si ya se vendió.
               </>

@@ -164,7 +164,7 @@ export function ResolverIncidenciaModal({ id }) {
 
   return (
     <ModalShell
-      title={sinStock ? 'Resolver venta sin stock' : recepCafe ? 'Resolver faltante de envío de Cafetería' : 'Resolver incidencia'}
+      title={sinStock ? 'Resolver venta sin stock' : recepCafe ? 'Resolver faltante de envío de Coffit' : 'Resolver incidencia'}
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
@@ -222,7 +222,7 @@ export function ResolverIncidenciaModal({ id }) {
       {recepCafe && (
         <div className={s.hint}>
           Cierra la incidencia <strong>sin tocar el stock</strong>: no hay nada retenido. Si la mercadería
-          en realidad <strong>no había salido</strong>, primero corregí el envío (Almacén › Cafetería →
+          en realidad <strong>no había salido</strong>, primero corregí el envío (Almacén › Coffit →
           el envío → <strong>Editar</strong>, bajando hasta lo que llegó) y después cerrá acá.
         </div>
       )}

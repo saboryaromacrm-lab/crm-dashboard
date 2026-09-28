@@ -95,7 +95,7 @@ export function CargaRapidaModal({ catalogo, config, onAgregar }) {
                 <span className={p.resultadoMeta}>
                   {' · '}{item.detalle}
                   {' · '}<span className={item.stock <= 0 ? p.sinStock : undefined}>{num(item.stock)} {item.unidad}</span>
-                  {item.soloCafeteria && <span className={p.sinStock}>{' · '}solo Cafetería</span>}
+                  {item.soloCafeteria && <span className={p.sinStock}>{' · '}solo Coffit</span>}
                 </span>
               </span>
               <span className={p.resultadoPrecio}>{money(item.precioFinal)}</span>
@@ -281,7 +281,7 @@ export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
                   <td>
                     <div className={p.nombreCol}>
                       {i.nombre}
-                      {i.soloCafeteria && <span className={p.sinStock}>{' · '}solo Cafetería</span>}
+                      {i.soloCafeteria && <span className={p.sinStock}>{' · '}solo Coffit</span>}
                     </div>
                   </td>
                   <td>{i.detalle}</td>

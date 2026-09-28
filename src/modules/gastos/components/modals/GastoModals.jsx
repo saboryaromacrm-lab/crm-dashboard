@@ -520,11 +520,11 @@ export function GastoFormModal({ gastoId, onChange }) {
         <div className={s.field}>
           <label>De qué negocio es</label>
           {/* Mismo CUIT, dos negocios: separar acá es lo que permite responder
-              "¿cuánto me cuesta la cafetería por mes?" sin inventar una
+              "¿cuánto me cuesta Coffit por mes?" sin inventar una
               sucursal con stock. El resumen del café lo suma solo. */}
           <select value={f.negocio} onChange={set('negocio')}>
             <option value="distribuidora">Distribuidora (Sabor y Aroma)</option>
-            <option value="cafeteria">Cafetería (Coffit)</option>
+            <option value="cafeteria">Coffit</option>
           </select>
         </div>
         <div className={s.field}>

@@ -25,25 +25,25 @@ export const esVozDelCafe = (can) => can('almacen.cafeteria-entradas') && !can('
 
 /* La distribuidora: "yo le mando al café, el café me manda a mí". */
 const CASA = {
-  seccion: 'Cafetería',
-  titulo: 'Cafetería',
-  desc: 'El puente con coffit, en los dos sentidos: le mandamos mercadería a costo, y ella nos manda lo que elabora para vender en el mostrador. Acá no hay existencias del café: su stock lo maneja coffit.',
+  seccion: 'Coffit',
+  titulo: 'Coffit',
+  desc: 'El puente con Coffit, en los dos sentidos: le mandamos mercadería a costo, y ella nos manda lo que elabora para vender en el mostrador. Acá no hay existencias del café: su stock lo maneja Coffit.',
 
   tabPedidos: 'Pedidos',
   tabSalida: 'Le mandamos',
   tabEntrada: 'Nos mandó',
   tabDeposito: 'Depósito del café',
-  depositoSub: 'Mercadería de uso exclusivo de la cafetería guardada en las sucursales. Ya es del café —se le imputó al comprarla— y sale cuando él la pide. Valuada al costo de hoy.',
-  depositoVacio: 'No hay mercadería exclusiva del café en stock. Lo que se compre de un artículo marcado «uso exclusivo de Cafetería» aparece acá.',
+  depositoSub: 'Mercadería de uso exclusivo de Coffit guardada en las sucursales. Ya es del café —se le imputó al comprarla— y sale cuando él la pide. Valuada al costo de hoy.',
+  depositoVacio: 'No hay mercadería exclusiva del café en stock. Lo que se compre de un artículo marcado «uso exclusivo de Coffit» aparece acá.',
   depositoBtn: null,
 
   btnSalida: '+ Nuevo envío',
-  btnEntrada: '+ Envío de la cafetería',
+  btnEntrada: '+ Envío de Coffit',
 
   statSalida: 'Le mandamos (a costo)',
   statEntrada: 'Nos mandó',
   saldoCasa: 'Saldo a favor de la distribuidora',
-  saldoCafe: 'Saldo a favor de la cafetería',
+  saldoCafe: 'Saldo a favor de Coffit',
   costoTotal: 'Costo del café en el período',
 
   colSucEntrada: 'Llegó a',
@@ -51,11 +51,11 @@ const CASA = {
   metricaSalida: 'Lo que le mandamos',
   metricaEntrada: 'Lo que nos mandó',
 
-  altaEntradaTitulo: 'Envío DE la cafetería a una sucursal',
+  altaEntradaTitulo: 'Envío DE Coffit a una sucursal',
   altaEntradaSub: 'La mercadería entra al stock de la sucursal que elijas cuando esa sucursal la controla y la recibe, al costo que declares. Al enviar se imprime el remito',
   altaEntradaSuc: 'Llega a la sucursal',
-  detalleEntrada: 'Envío DE la cafetería',
-  detalleSalida: 'Envío a Cafetería',
+  detalleEntrada: 'Envío DE Coffit',
+  detalleSalida: 'Envío a Coffit',
   okEntrada: (cod, monto) => `${cod} registrado · ${monto}. Entra al stock cuando la sucursal lo controle y lo reciba.`,
 
   pedidoSeccion: 'Pedido a la distribuidora',
@@ -67,16 +67,16 @@ const CASA = {
 
   prodSeccion: 'Productos Coffit',
   prodTitulo: 'Productos Coffit',
-  prodSub: 'Lo que la cafetería elabora y manda a las sucursales para vender en el mostrador. Los da de alta ella misma: no se compran, así que no llevan proveedor ni formato de compra.',
-  prodBtn: '+ Nuevo producto de la cafetería',
-  prodVacio: 'La cafetería todavía no cargó ningún producto.',
+  prodSub: 'Lo que Coffit elabora y manda a las sucursales para vender en el mostrador. Los da de alta ella misma: no se compran, así que no llevan proveedor ni formato de compra.',
+  prodBtn: '+ Nuevo producto de Coffit',
+  prodVacio: 'Coffit todavía no cargó ningún producto.',
 };
 
 /* El café: "yo le mando a Sabor y Aroma, Sabor y Aroma me manda a mí". */
 const CAFE = {
   seccion: 'Sabor y Aroma',
   titulo: 'Sabor y Aroma',
-  desc: 'Tu puente con Sabor y Aroma, en los dos sentidos: vos les mandás lo que elaborás para que lo vendan en el mostrador, y ellos te mandan la mercadería que les pedís. Tu propio stock lo seguís manejando en coffit.',
+  desc: 'Tu puente con Sabor y Aroma, en los dos sentidos: vos les mandás lo que elaborás para que lo vendan en el mostrador, y ellos te mandan la mercadería que les pedís. Tu propio stock lo seguís manejando en Coffit.',
 
   tabPedidos: 'Mis pedidos',
   tabSalida: 'Recibidos de Sabor y Aroma',

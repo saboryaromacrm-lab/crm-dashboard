@@ -76,7 +76,7 @@ export function ResumenPanel() {
         <select className={s['select-inline']} value={negocio} onChange={(e) => setNegocio(e.target.value)}>
           <option value="">Los dos negocios</option>
           <option value="distribuidora">Distribuidora</option>
-          <option value="cafeteria">Cafetería</option>
+          <option value="cafeteria">Coffit</option>
         </select>
         <Btn small onClick={reload} disabled={loading}>{loading ? 'Cargando…' : 'Actualizar'}</Btn>
       </div>

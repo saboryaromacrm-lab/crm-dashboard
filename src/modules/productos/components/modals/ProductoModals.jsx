@@ -268,18 +268,18 @@ export function ProductoFormModal({ prodId }) {
         <label className={s['granel-toggle']}>
           <input type="checkbox" checked={soloCafeteria} onChange={(e) => marcarSoloCafeteria(e.target.checked)} />
           <span>
-            <span className={s['t-title']}>Uso exclusivo de Cafetería — no se vende en el mostrador</span><br />
+            <span className={s['t-title']}>Uso exclusivo de Coffit — no se vende en el mostrador</span><br />
             <span className={s['t-sub']}>
-              Mercadería que se compra y guarda para la cafetería (Coffit). Es stock normal en
+              Mercadería que se compra y guarda para Coffit. Es stock normal en
               todo — compra, existencias, conteos, vencimientos — pero el POS la bloquea con el
-              motivo y la venta la rechaza. Sale solo por el envío de Almacén › Cafetería.
+              motivo y la venta la rechaza. Sale solo por el envío de Almacén › Coffit.
             </span>
           </span>
         </label>
         {/*
           EL ESPEJO DEL DE ARRIBA (0097), y no se pisan: aquel dice "esto no se
           vende acá", este dice "esto no se compra acá". Marcarlo habilita que
-          el producto llegue por un envío de la cafetería, y es la lista blanca
+          el producto llegue por un envío de Coffit, y es la lista blanca
           de ese circuito.
         */}
         <label className={s['granel-toggle']}>
@@ -288,10 +288,10 @@ export function ProductoFormModal({ prodId }) {
             onChange={(e) => marcarOrigenCafeteria(e.target.checked)}
           />
           <span>
-            <span className={s['t-title']}>Lo elabora la cafetería — llega por un envío de ella</span><br />
+            <span className={s['t-title']}>Lo elabora Coffit — llega por un envío de ella</span><br />
             <span className={s['t-sub']}>
-              La medialuna, el sándwich, el café molido: entran al stock por Almacén › Cafetería ›
-              «Nos mandó», con el costo que declara la cafetería, y se venden en el mostrador como
+              La medialuna, el sándwich, el café molido: entran al stock por Almacén › Coffit ›
+              «Nos mandó», con el costo que declara Coffit, y se venden en el mostrador como
               cualquier otro producto. No lleva formato de compra ni proveedor.
             </span>
           </span>
@@ -302,14 +302,14 @@ export function ProductoFormModal({ prodId }) {
         {ed && prod?.soloCafeteria && origenCafeteria && (
           <div className={cx(s.callout, s.warn)}>
             Al marcar <strong>«lo elabora»</strong> se destildó <strong>«uso exclusivo»</strong>:
-            son excluyentes. Este producto pasa de ser algo que la cafetería consume a algo que
-            la cafetería produce.
+            son excluyentes. Este producto pasa de ser algo que Coffit consume a algo que
+            Coffit produce.
           </div>
         )}
         {ed && prod?.origenCafeteria && soloCafeteria && (
           <div className={cx(s.callout, s.warn)}>
             Al marcar <strong>«uso exclusivo»</strong> se destildó <strong>«lo elabora»</strong>:
-            son excluyentes. Ojo: este producto deja de poder llegar por un envío de la cafetería.
+            son excluyentes. Ojo: este producto deja de poder llegar por un envío de Coffit.
           </div>
         )}
 
@@ -331,7 +331,7 @@ export function ProductoFormModal({ prodId }) {
             Hay <strong>{store.fmtCant(prod, null, stockExclusivo)}</strong> en stock que ya se
             le imputaron a Coffit en la factura de compra. Destildar la marca <strong>no mueve
             esa plata</strong>: si esa mercadería la va a vender la distribuidora, cargá un envío
-            de la cafetería («Nos mandó») por esa cantidad para que vuelva a ser tuya.
+            de Coffit («Nos mandó») por esa cantidad para que vuelva a ser tuya.
           </div>
         )}
 
@@ -675,7 +675,7 @@ function ResumenTab({ prod: p }) {
             <span className={cx(s.badge, s['badge-granel'])} style={{ marginLeft: 6 }}>no se vende suelto</span>
           )}
           {p.soloCafeteria && (
-            <div className={s.hint} style={{ margin: 0 }}>Uso exclusivo de Cafetería: no se vende en el mostrador.</div>
+            <div className={s.hint} style={{ margin: 0 }}>Uso exclusivo de Coffit: no se vende en el mostrador.</div>
           )}
         </Di>
         <Di label="Marca">{p.marca || '—'}</Di>

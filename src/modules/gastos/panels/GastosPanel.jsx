@@ -253,7 +253,7 @@ export function GastosPanel() {
             <select className={s['select-inline']} value={negocio} onChange={(e) => setNegocio(e.target.value)}>
               <option value="">Los dos negocios</option>
               <option value="distribuidora">Distribuidora</option>
-              <option value="cafeteria">Cafetería</option>
+              <option value="cafeteria">Coffit</option>
             </select>
             <input
               type="search"

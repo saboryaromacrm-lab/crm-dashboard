@@ -217,10 +217,10 @@ export function TipoBadge({ prod }) {
       ) : (
         <span className={cx(styles.badge, styles['badge-entero'])}>Entero</span>
       )}
-      {/* Uso exclusivo de Cafetería (0089): se canta en TODOS los listados que
+      {/* Uso exclusivo de Coffit (0089): se canta en TODOS los listados que
           ya muestran el tipo — es la marca de "esto no va al mostrador". */}
       {prod.soloCafeteria && (
-        <span className={cx(styles.badge, styles['badge-granel'])} style={{ marginLeft: 4 }}>Cafetería</span>
+        <span className={cx(styles.badge, styles['badge-granel'])} style={{ marginLeft: 4 }}>Coffit</span>
       )}
     </>
   );

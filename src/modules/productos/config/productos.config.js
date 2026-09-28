@@ -90,12 +90,12 @@ export const ALMACEN_PANELS = [
   // Punto de SALIDA hacia coffit: el CRM no lleva el stock del café. El globito
   // avisa la demanda del café que espera (pedidos pendientes o armándose).
   /* Dos permisos: la distribuidora entra por `almacen.cafeteria` y el rol
-     Cafetería por el suyo — es la misma pantalla, y cada uno ve y opera lo
-     que la API le deja. Sin esto, el rol Cafetería no tenía cómo llegar. */
+     Coffit por el suyo — es la misma pantalla, y cada uno ve y opera lo
+     que la API le deja. Sin esto, el rol Coffit no tenía cómo llegar. */
   /* `labelCafe`: cómo se llama la sección para el rol Cafetería. Para ella,
-     "Cafetería" es su propio nombre — el otro lado del puente se llama
+     "Coffit" es su propio nombre — el otro lado del puente se llama
      "Sabor y Aroma". Ver `domain/cafeteria.voz.js`. */
-  { id: 'cafeteria',      label: 'Cafetería',      labelCafe: 'Sabor y Aroma',      icon: LocalCafeIcon,      permiso: ['almacen.cafeteria', 'almacen.cafeteria-entradas'], badge: 'pedidosCafe' },
+  { id: 'cafeteria',      label: 'Coffit',      labelCafe: 'Sabor y Aroma',      icon: LocalCafeIcon,      permiso: ['almacen.cafeteria', 'almacen.cafeteria-entradas', 'almacen.cafeteria-pedidos'], badge: 'pedidosCafe' },
   /*
    * La pantalla DE la cafetería: armar el pedido a la distribuidora. Es la
    * única sección del rol Cafetería — ese usuario entra al CRM y ve SOLO esto.
@@ -107,7 +107,8 @@ export const ALMACEN_PANELS = [
    * (café y admin); mirar, de toda la sección.
    */
   /* "Productos Coffit" / "Mis productos" ya no es una entrada del menú
-     (27/9/2026, pedido del dueño): vive como pestaña ADENTRO de Cafetería,
+     (27/9/2026, pedido del dueño): vive como pestaña ADENTRO de Coffit,
      junto a los envíos que usan esos productos. Ver CafeteriaPanel. */
-  { id: 'cafeteria-pedidos', label: 'Pedido a la distribuidora', labelCafe: 'Pedido a Sabor y Aroma', icon: LocalCafeIcon, permiso: 'almacen.cafeteria-pedidos' },
+  /* «Pedido a la distribuidora» tampoco (28/9/2026, pedido del dueño): se
+     arma desde la pestaña Pedidos de Coffit, con «+ Nuevo pedido». */
 ];

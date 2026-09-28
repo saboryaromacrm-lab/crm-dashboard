@@ -78,7 +78,7 @@ export function PedidosCafeAlert() {
         )}
         sx={{ alignItems: 'center' }}
       >
-        {count === 1 ? 'La cafetería armó un pedido' : `${count} pedidos de la cafetería sin tratar`}
+        {count === 1 ? 'Coffit armó un pedido' : `${count} pedidos de Coffit sin tratar`}
       </Alert>
     </Snackbar>
   );

@@ -2119,7 +2119,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
               display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6,
               borderTop: '1px dashed var(--crm-color-border)', color: 'var(--crm-color-text-secondary)',
             }}
-            title="Artículos marcados «uso exclusivo de Cafetería» en su ficha. La factura sigue siendo de la distribuidora frente al proveedor y frente a ARCA; esto es a quién le pesa el costo."
+            title="Artículos marcados «uso exclusivo de Coffit» en su ficha. La factura sigue siendo de la distribuidora frente al proveedor y frente a ARCA; esto es a quién le pesa el costo."
           >
             <span>De eso, para Coffit ({delCafe.renglones} renglón{delCafe.renglones === 1 ? '' : 'es'} de uso exclusivo)</span>
             <strong>{money(delCafe.neto)}</strong>

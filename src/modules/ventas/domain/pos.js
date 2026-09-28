@@ -57,7 +57,7 @@ export function parseEtiquetaBalanza(codigo, config) {
  */
 export function motivoBloqueo(item) {
   if (item?.soloCafeteria) {
-    return `${item.nombre} es de uso exclusivo de la Cafetería: no se vende en el mostrador. Sale por el envío de Almacén › Cafetería.`;
+    return `${item.nombre} es de uso exclusivo de Coffit: no se vende en el mostrador. Sale por el envío de Almacén › Coffit.`;
   }
   return null;
 }
