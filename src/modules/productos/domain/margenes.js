@@ -261,3 +261,63 @@ export function planRedondeo(filas = [], { paso = 5, listaId = null } = {}) {
     valoresDespues: porLista((f) => redondearMarkup(f.markup, paso)),
   };
 }
+
+/* ======================================================================= *
+ * PASAR ARTÍCULOS DE UNA LISTA A OTRA (28/9/2026, pedido del dueño).
+ * Reglas fijadas con él: se MUEVEN (salen del origen) y, si el artículo ya
+ * estaba en el destino, MANDA EL DESTINO — su fila no se toca y la del origen
+ * se borra. El servidor aplica exactamente esto; acá se muestra antes.
+ * ======================================================================= */
+
+const claveArticulo = (f) => `${f.productoId}:${f.presentacionId ?? ''}`;
+
+/**
+ * La fila que da el precio de góndola de un artículo — espejo del servidor
+ * (`ctxPrecio`): la de la lista base si la tiene; si no, la de PEOR orden
+ * entre las suyas, que es lo que se cobra sin habilitar nada.
+ */
+export function filaDePiso(filasArticulo, baseId) {
+  if (!filasArticulo?.length) return null;
+  return filasArticulo.find((f) => f.listaId === baseId)
+    ?? [...filasArticulo].sort((a, b) => (Number(b.orden) || 0) - (Number(a.orden) || 0))[0];
+}
+
+/**
+ * Qué pasa si se mueven `seleccion` (ids de fila) de `origenId` a `destino`.
+ * `filasTodas` tiene que ser el catálogo ENTERO (no lo filtrado): para saber si
+ * el artículo ya está en el destino hay que mirar todas sus filas.
+ */
+export function planMoverLista(filasTodas = [], { origenId, destino, seleccion, baseId }) {
+  const porArticulo = new Map();
+  for (const f of filasTodas) {
+    const k = claveArticulo(f);
+    if (!porArticulo.has(k)) porArticulo.set(k, []);
+    porArticulo.get(k).push(f);
+  }
+  const mueven = [];
+  const yaEstaban = [];
+  const gondola = [];
+  for (const f of filasTodas) {
+    if (f.listaId !== origenId || !seleccion.has(f.filaId)) continue;
+    const suyas = porArticulo.get(claveArticulo(f)) || [];
+    const enDestino = suyas.find((x) => x.listaId === destino.id) || null;
+    if (enDestino) yaEstaban.push({ ...f, destinoFila: enDestino }); else mueven.push(f);
+
+    const antes = filaDePiso(suyas, baseId);
+    const despuesFilas = suyas.filter((x) => x.filaId !== f.filaId);
+    if (!enDestino) despuesFilas.push({ ...f, listaId: destino.id, orden: destino.orden, lista: destino.etiqueta });
+    const despues = filaDePiso(despuesFilas, baseId);
+    const pa = antes ? Number(antes.precioFinal) || 0 : null;
+    const pd = despues ? Number(despues.precioFinal) || 0 : null;
+    if (pa !== pd || antes?.listaId !== despues?.listaId) {
+      if (pa == null || pd == null || Math.abs(pa - pd) >= 0.005) {
+        gondola.push({
+          productoId: f.productoId, producto: f.producto, forma: f.forma,
+          precioAntes: pa, precioDespues: pd, listaAntes: antes?.lista ?? '', listaDespues: despues?.lista ?? '',
+        });
+      }
+    }
+  }
+  return { mueven, yaEstaban, gondola, destinoEsBase: destino.id === baseId };
+}
+

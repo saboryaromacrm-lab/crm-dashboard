@@ -1289,6 +1289,9 @@ const importarCostos = (proveedorId, items) => _mutate(() => httpClient.post('/p
 const importarFormatosVenta = (cuerpo) => _mutate(() => httpClient.post('/productos/importar-formatos-venta', cuerpo));
 /** La guía por proveedor: la última importación de costos y de formatos de venta de cada uno. */
 const importacionesPorProveedor = () => httpClient.get('/productos/importaciones-por-proveedor');
+/** Pasar artículos de una lista a otra (28/9/2026) y quién más usa una lista. */
+const moverLista = (o) => _mutate(() => httpClient.post('/productos/mover-lista', o));
+const usoLista = (id) => httpClient.get(`/listas/${id}/uso`);
 /**
  * LA TANDA DE VARIOS PROVEEDORES (28/9/2026): cada `_mutate` vuelve a bajar el
  * inventario entero (~10 MB); con un archivo de 60 proveedores eran 60
@@ -1334,7 +1337,7 @@ export const inventoryStore = {
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
   sugerenciasArchivado, archivarLote,
-  guardarPresentaciones, importarCatalogo, importarCostos, importarFormatosVenta, importacionesPorProveedor, importarCostosEnTanda, crearProveedorEnTanda, actualizarClasificacion,
+  guardarPresentaciones, importarCatalogo, importarCostos, importarFormatosVenta, importacionesPorProveedor, moverLista, usoLista, importarCostosEnTanda, crearProveedorEnTanda, actualizarClasificacion,
   crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, siguienteCodigo, siguienteEan,
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,

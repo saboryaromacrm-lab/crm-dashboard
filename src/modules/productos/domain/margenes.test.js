@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   filasDeMargenes, agruparMargenes, resumenPorLista, columnasDeMargenes, grillaDeMargenes,
-  redondearMarkup, planRedondeo,
+  redondearMarkup, planRedondeo, planMoverLista, filaDePiso,
 } from './margenes.js';
 
 /** Un formato de venta como lo manda el snapshot del inventario. */
@@ -171,3 +171,36 @@ test('plan de redondeo: solo markups, por lista, y cuenta cuántos valores queda
   assert.equal(solo1.cambios.length, 3);
   assert.ok(solo1.cambios.every((c) => c.listaId === 1));
 });
+
+/* ---------------- Mover artículos de lista (28/9/2026) ---------------- */
+test('mover de lista: se mueve, el destino manda si ya estaba, y avisa la góndola', () => {
+  const f = (filaId, productoId, listaId, orden, markup, precioFinal) => ({
+    filaId, productoId, presentacionId: null, producto: `P${productoId}`, forma: 'Unidad',
+    listaId, orden, lista: `L${listaId}`, markup, modoPrecio: 'markup', precioFinal,
+  });
+  // Base = 1 (orden 10). Origen = 10 (orden 60). Destino = 2 (orden 50).
+  const filas = [
+    f(1, 100, 1, 10, 40, 140), f(2, 100, 10, 60, 55, 155),   // P100: base + origen → la góndola no cambia
+    f(3, 200, 10, 60, 55, 155),                                // P200: solo origen → pasa al destino, misma góndola
+    f(4, 300, 10, 60, 55, 155), f(5, 300, 2, 50, 30, 130),    // P300: ya estaba en destino → manda el destino (30%)
+  ];
+  const destino = { id: 2, orden: 50, etiqueta: 'L2' };
+  const plan = planMoverLista(filas, { origenId: 10, destino, seleccion: new Set([2, 3, 4]), baseId: 1 });
+  assert.deepEqual(plan.mueven.map((x) => x.filaId), [2, 3]);
+  assert.deepEqual(plan.yaEstaban.map((x) => [x.filaId, x.destinoFila.markup]), [[4, 30]]);
+  // P300: antes la góndola era la de peor orden (lista 10, $155); después queda la del destino ($130).
+  assert.deepEqual(plan.gondola.map((g) => [g.productoId, g.precioAntes, g.precioDespues]), [[300, 155, 130]]);
+  assert.equal(plan.destinoEsBase, false);
+});
+
+test('mover a la lista base: la góndola pasa a ser la del artículo movido', () => {
+  const filas = [
+    { filaId: 1, productoId: 1, listaId: 10, orden: 60, precioFinal: 155, producto: 'A', lista: 'L10' },
+    { filaId: 2, productoId: 1, listaId: 2, orden: 50, precioFinal: 130, producto: 'A', lista: 'L2' },
+  ];
+  const plan = planMoverLista(filas, { origenId: 2, destino: { id: 1, orden: 10, etiqueta: 'Base' }, seleccion: new Set([2]), baseId: 1 });
+  assert.equal(plan.destinoEsBase, true);
+  assert.deepEqual(plan.gondola.map((g) => [g.precioAntes, g.precioDespues]), [[155, 130]]);
+  assert.equal(filaDePiso([], 1), null);
+});
+

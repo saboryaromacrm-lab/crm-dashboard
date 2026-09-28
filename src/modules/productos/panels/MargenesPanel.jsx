@@ -143,6 +143,11 @@ export function MargenesPanel() {
 
   /* REDONDEAR (28/9/2026): sobre las filas FILTRADAS — lo que se ve es lo que
      se toca — o sobre una sola lista desde su tarjeta. */
+  /* La base no se vacía (es la góndola): su tarjeta no ofrece mover. Misma
+     regla que el servidor — sin lista base configurada, la de mejor orden. */
+  const listaBaseId = Number(store.state.configVentas?.listaBaseId)
+    || [...(store.state.listasCatalogo?.listas ?? [])].filter((x) => x.activa).sort((a, b) => a.orden - b.orden)[0]?.id;
+
   const redondear = (listaId = null, lista = '') => openModal('redondearMarkups', {
     filas,
     listaId,
@@ -233,6 +238,11 @@ export function MargenesPanel() {
               </span>
               {isAdmin && l.grupos.some((g) => g.modoPrecio === 'markup') && (
                 <Btn small onClick={() => redondear(l.listaId, l.lista)}>Redondear esta lista</Btn>
+              )}
+              {isAdmin && l.listaId !== listaBaseId && (
+                <Btn small onClick={() => openModal('moverLista', { origenId: l.listaId, origen: l.lista, filas })}>
+                  Mover a otra lista
+                </Btn>
               )}
             </div>
             {visibles.map((g) => {
