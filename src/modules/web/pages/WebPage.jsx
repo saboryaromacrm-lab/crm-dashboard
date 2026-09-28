@@ -189,7 +189,7 @@ function ProductosWebPanel({ catalogo, recargar, avisar }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Productos del sitio"
-        desc={`Lo que ve el cliente en la tienda online: ${catalogo?.items?.length ?? 0} productos con precio en la lista ${catalogo?.listaNombre || 'Mayorista'}. Publicar o despublicar = cargar o quitar ese precio (Ventas › Formato de venta); acá se manejan el destacado y la foto.`}
+        desc={`Lo que ve el cliente en la tienda online: ${catalogo?.items?.length ?? 0} productos con precio en la lista ${catalogo?.listaNombre || 'Mayorista'}. Publicar o despublicar = cargar o quitar ese precio (Ventas › Configuración › Formato de venta); acá se manejan el destacado y la foto.`}
       />
 
       <div className={s.toolbar}>

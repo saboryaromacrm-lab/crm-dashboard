@@ -20,7 +20,7 @@ export const comprasModule = defineModule({
   icon: ShoppingCartIcon,
   enabled: true,
   basePath: '/compras',
-  permissions: COMPRAS_PANELS.map((p) => p.permiso),
+  permissions: COMPRAS_PANELS.flatMap((p) => p.permiso),
   navigation: { showInSidebar: true, group: 'catalog', order: 20 },
   routes: [
     { path: '', Component: ComprasPage, handle: { crumb: 'Compras' } },

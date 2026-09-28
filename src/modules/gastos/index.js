@@ -24,7 +24,7 @@ export const gastosModule = defineModule({
   icon: RequestQuoteIcon,
   enabled: true,
   basePath: '/gastos',
-  permissions: GASTOS_PANELS.map((p) => p.permiso),
+  permissions: GASTOS_PANELS.flatMap((p) => p.permiso),
   navigation: {
     showInSidebar: true,
     // Con el resto de los módulos: tenía un encabezado propio

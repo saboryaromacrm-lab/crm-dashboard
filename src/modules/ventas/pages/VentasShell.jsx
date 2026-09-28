@@ -18,7 +18,6 @@ import { PresupuestosPanel } from '../panels/PresupuestosPanel.jsx';
 import { ClientesPanel } from '../panels/ClientesPanel.jsx';
 import { CobranzasPanel } from '../panels/CobranzasPanel.jsx';
 import { CajaPanel } from '../panels/CajaPanel.jsx';
-import { ListasPanel } from '../panels/ListasPanel.jsx';
 import { OfertasPanel } from '../panels/OfertasPanel.jsx';
 import { CambiosPrecioPanel } from '../panels/CambiosPrecioPanel.jsx';
 import { CartelesPanel } from '../panels/CartelesPanel.jsx';
@@ -34,7 +33,6 @@ const PANEL_COMPONENTS = {
   clientes: ClientesPanel,
   cobranzas: CobranzasPanel,
   caja: CajaPanel,
-  listas: ListasPanel,
   ofertas: OfertasPanel,
   cambiosPrecio: CambiosPrecioPanel,
   carteles: CartelesPanel,

@@ -1,10 +1,39 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Tabs, Tab } from '@mui/material';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { ventasApi } from '../services/ventas.api.js';
 import { CONDICIONES_IVA, MEDIOS_PAGO, OPCIONES_REDONDEO_PRECIO } from '../domain/constants.js';
 import { PanelHead, Btn, s } from '../components/ui.jsx';
 import { PanelArca } from '../components/PanelArca.jsx';
+import { ListasPanel } from './ListasPanel.jsx';
+
+/*
+ * CONFIGURACIÓN EN PESTAÑAS (28/9/2026, pedido del dueño): "quedaron todas las
+ * configuraciones sueltas y uno entra ahí y se pierde". Se agrupan por tema, y
+ * el Formato de venta —que antes era una entrada aparte del menú— vive acá
+ * como primera pestaña, porque es configurar cómo se vende.
+ *
+ * Cada pestaña pide su llave: el Formato de venta la suya (`ventas.listas`,
+ * la misma que exige la API), el resto `ventas.configuracion`.
+ */
+const PESTANAS = [
+  { id: 'formato', label: 'Formato de venta', permiso: 'ventas.listas' },
+  { id: 'precios', label: 'Precios y descuentos', permiso: 'ventas.configuracion' },
+  { id: 'caja', label: 'Caja y cobro', permiso: 'ventas.configuracion' },
+  { id: 'facturacion', label: 'Facturación', permiso: 'ventas.configuracion' },
+  { id: 'clientes', label: 'Cuenta corriente y presupuestos', permiso: 'ventas.configuracion' },
+];
+const TAB_KEY = 'crm.ventas.configuracion.tab';
+
+/** En qué pestaña vive cada campo de la config: para marcar dónde hay cambios. */
+const tabDeCampo = (k) => {
+  if (['puntoVenta', 'condicionIvaEmpresa', 'arcaHabilitado'].includes(k)) return 'facturacion';
+  if (/^(ctaCte|presupuesto)/.test(k)) return 'clientes';
+  if (/^(caja|permitirStock|mediosPago$|mediosFacturar|recargoCuotas|lector|balanza)/.test(k)) return 'caja';
+  return 'precios';
+};
 
 /* ------------------------------------------------------------------ *
  * Piezas de formulario. Locales a propósito: solo esta pantalla las usa.
@@ -313,6 +342,14 @@ function MediosPagoEditor({ habilitados, exigenFactura, onChange }) {
 
 export function ConfiguracionPanel() {
   const { config, recargar, toast, listasCatalogo, sucursales } = useVentas();
+  const { can } = usePermissions();
+  const [tab, setTab] = useState(() => {
+    try { return sessionStorage.getItem(TAB_KEY) || 'formato'; } catch { return 'formato'; }
+  });
+  const elegirTab = (v) => {
+    setTab(v);
+    try { sessionStorage.setItem(TAB_KEY, v); } catch { /* sin storage: arranca en la primera */ }
+  };
   const [draft, setDraft] = useState(config);
   const [guardando, setGuardando] = useState(false);
 
@@ -348,54 +385,61 @@ export function ConfiguracionPanel() {
 
 
 
+  const tabsVisibles = PESTANAS.filter((t) => can(t.permiso));
+  const tabActiva = tabsVisibles.some((t) => t.id === tab) ? tab : tabsVisibles[0]?.id;
+  const esConfig = tabActiva !== 'formato';
+  /* Qué pestañas tienen algo sin guardar: el borrador es uno solo para todas,
+     así que se avisa DÓNDE quedó el cambio y no solo cuántos hay. */
+  const tabsSucias = new Set(Object.keys(cambios).map(tabDeCampo));
+  const nombresSucias = PESTANAS.filter((t) => tabsSucias.has(t.id)).map((t) => t.label);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Configuración de Ventas"
-        desc="Reglas del circuito comercial. Rigen para la caja, los presupuestos y la cuenta corriente."
-        actions={
+        desc="Reglas del circuito comercial, agrupadas por tema. Rigen para la caja, los presupuestos y la cuenta corriente."
+        actions={esConfig && can('ventas.configuracion') ? (
           <div style={{ display: 'flex', gap: 8 }}>
             <Btn onClick={() => setDraft(config)} disabled={!sucio || guardando}>Descartar</Btn>
             <Btn variant="btn-primary" onClick={guardar} disabled={!sucio || guardando}>
               {guardando ? 'Guardando…' : 'Guardar cambios'}
             </Btn>
           </div>
-        }
+        ) : null}
       />
+
+      <Tabs
+        value={tabActiva}
+        onChange={(e, v) => elegirTab(v)}
+        variant="scrollable"
+        scrollButtons="auto"
+        sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}
+      >
+        {tabsVisibles.map((t) => (
+          <Tab
+            key={t.id}
+            value={t.id}
+            label={tabsSucias.has(t.id) ? `${t.label} •` : t.label}
+            sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }}
+          />
+        ))}
+      </Tabs>
 
       {sucio && (
         <div className={cx(s.callout, s.warn)}>
-          Hay {Object.keys(cambios).length} cambio(s) sin guardar.
+          Hay {Object.keys(cambios).length} cambio(s) sin guardar en <strong>{nombresSucias.join(', ')}</strong>
+          {esConfig ? '.' : ': volvé a esa pestaña para guardarlos.'}
         </div>
       )}
 
-      <div className={s['dash-grid']}>
-        <Seccion
-          titulo="Comprobantes"
-          desc="Mientras ARCA esté apagado se emite ticket interno y la venta se confirma sin pedir CAE."
-        >
-          <Campo label="Punto de venta" hint="Numera tickets, facturas y recibos de cobranza.">
-            <input value={draft.puntoVenta ?? ''} onChange={setTxt('puntoVenta')} maxLength={4} />
-          </Campo>
-          <Campo label="Condición de IVA de la empresa" hint="Junto con la del cliente define la letra (A / B / C).">
-            <select value={draft.condicionIvaEmpresa ?? ''} onChange={setTxt('condicionIvaEmpresa')}>
-              {Object.entries(CONDICIONES_IVA)
-                .filter(([k]) => k !== 'consumidor_final' && k !== 'no_categorizado')
-                .map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
-          </Campo>
-          <Interruptor
-            label="Facturación electrónica (ARCA)"
-            hint="Prendida, cada factura pide CAE — y si ARCA no contesta, la venta sale igual como ticket provisorio y queda en Ventas › Sin facturar para reintentar. Este interruptor es la INTENCIÓN; si además se puede o no, lo dice el panel de diagnóstico de abajo."
-            checked={draft.arcaHabilitado}
-            onChange={set('arcaHabilitado')}
-          />
-        </Seccion>
+      {tabActiva === 'formato' && <ListasPanel />}
 
+      {tabActiva === 'precios' && (
+        <div className={s['dash-grid']}>
         <Seccion titulo="Precios y descuentos">
           <div className={cx(s.callout, s.info)}>
             Las <strong>modalidades, listas y reglas de marca</strong> se administran en su propia
-            pantalla (menú <strong>Formato de venta</strong>). El <strong>markup</strong> no está
+            pestaña (<strong>Formato de venta</strong>, acá al lado). El <strong>markup</strong> no está
             ahí ni acá: se carga por producto, en <strong>Compras › Productos › Formato de
             Venta</strong>, porque la misma lista tiene distinto margen en cada artículo.
           </div>
@@ -428,22 +472,6 @@ export function ConfiguracionPanel() {
             </select>
           </Campo>
         </Seccion>
-
-        {/*
-          Los descuentos con nombre van JUSTO DESPUÉS del tope del vendedor, y
-          no es casual: se leen de corrido. Arriba, cuánto puede regalar alguien
-          por su cuenta; acá, lo que el dueño autoriza de antemano y por eso no
-          pasa por ese tope.
-
-          Guarda cada fila por separado —son registros, no un formulario— así
-          que queda afuera del borrador global del panel y del botón de guardar
-          de arriba.
-        */}
-        <SeccionDescuentos
-          listas={listasCatalogo.listas}
-          sucursales={sucursales}
-          toast={toast}
-        />
 
         {/*
           Acceso mayorista por monto. Es la única puerta que se mide en pesos, y
@@ -515,40 +543,18 @@ export function ConfiguracionPanel() {
           </Campo>
         </Seccion>
 
-        <Seccion titulo="Cuenta corriente">
-          <Interruptor
-            label="Permitir venta en cuenta corriente"
-            hint="Si se apaga, toda venta se cobra al contado sin importar el cliente."
-            checked={draft.ctaCteHabilitada}
-            onChange={set('ctaCteHabilitada')}
+        <div style={{ gridColumn: '1 / -1' }}>
+          <SeccionDescuentos
+            listas={listasCatalogo.listas}
+            sucursales={sucursales}
+            toast={toast}
           />
-          <Interruptor
-            label="Bloquear al superar el límite de crédito"
-            hint="Rechaza la venta si el saldo del cliente supera su límite. Apagado, solo avisa."
-            checked={draft.ctaCteBloquearSuperado}
-            onChange={set('ctaCteBloquearSuperado')}
-            disabled={!draft.ctaCteHabilitada}
-          />
-          <Campo label="Límite de crédito por defecto" hint="0 = sin tope. Se propone al dar de alta un cliente.">
-            <input type="number" min="0" step="1000" value={draft.ctaCteLimiteDefault ?? 0} onChange={setNum('ctaCteLimiteDefault')} disabled={!draft.ctaCteHabilitada} />
-          </Campo>
-          <Campo label="Plazo de pago por defecto (días)">
-            <input type="number" min="0" step="1" value={draft.ctaCteDiasPlazo ?? 0} onChange={setNum('ctaCteDiasPlazo')} disabled={!draft.ctaCteHabilitada} />
-          </Campo>
-        </Seccion>
+        </div>
+        </div>
+      )}
 
-        <Seccion titulo="Presupuestos">
-          <Campo label="Validez por defecto (días)" hint="Corre desde que se ENVÍA. Un presupuesto vencido no se confirma: se reabre y se re-cotiza.">
-            <input type="number" min="1" step="1" value={draft.presupuestoValidezDias ?? 7} onChange={setNum('presupuestoValidezDias')} />
-          </Campo>
-          <Interruptor
-            label="Reservar stock al confirmar un presupuesto"
-            hint="Pasa la mercadería de Disponible a Comprometido mientras el vendedor arma el pedido: la caja no la puede vender dos veces. Cerrar la venta o cancelar el presupuesto la libera."
-            checked={draft.presupuestoReservaStock}
-            onChange={set('presupuestoReservaStock')}
-          />
-        </Seccion>
-
+      {tabActiva === 'caja' && (
+        <div className={s['dash-grid']}>
         <Seccion titulo="Caja / punto de venta">
           <Interruptor
             label="Exigir turno de caja abierto"
@@ -621,11 +627,37 @@ export function ConfiguracionPanel() {
             </select>
           </Campo>
         </Seccion>
+        </div>
+      )}
 
-        {/* A LO ANCHO DE LAS DOS COLUMNAS: lleva tablas (los pasos de la prueba
-            y las ventas trabadas con su motivo), y media pantalla las parte.
-            Va último porque es diagnóstico, no configuración: acá no se toca
-            nada, se mira si lo de arriba puede funcionar. */}
+      {tabActiva === 'facturacion' && (
+        <div className={s['dash-grid']}>
+        <Seccion
+          titulo="Comprobantes"
+          desc="Mientras ARCA esté apagado se emite ticket interno y la venta se confirma sin pedir CAE."
+        >
+          <Campo label="Punto de venta" hint="Numera tickets, facturas y recibos de cobranza.">
+            <input value={draft.puntoVenta ?? ''} onChange={setTxt('puntoVenta')} maxLength={4} />
+          </Campo>
+          <Campo label="Condición de IVA de la empresa" hint="Junto con la del cliente define la letra (A / B / C).">
+            <select value={draft.condicionIvaEmpresa ?? ''} onChange={setTxt('condicionIvaEmpresa')}>
+              {Object.entries(CONDICIONES_IVA)
+                .filter(([k]) => k !== 'consumidor_final' && k !== 'no_categorizado')
+                .map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </Campo>
+          <Interruptor
+            label="Facturación electrónica (ARCA)"
+            hint="Prendida, cada factura pide CAE — y si ARCA no contesta, la venta sale igual como ticket provisorio y queda en Ventas › Sin facturar para reintentar. Este interruptor es la INTENCIÓN; si además se puede o no, lo dice el diagnóstico de abajo."
+            checked={draft.arcaHabilitado}
+            onChange={set('arcaHabilitado')}
+          />
+        </Seccion>
+
+        {/* A LO ANCHO: lleva tablas (los pasos de la prueba y las ventas
+            trabadas con su motivo), y media pantalla las parte. Es
+            diagnóstico, no configuración: acá no se toca nada, se mira si lo
+            de arriba puede funcionar. */}
         <div style={{ gridColumn: '1 / -1' }}>
           <Seccion
             titulo="Facturación electrónica — diagnóstico"
@@ -634,7 +666,46 @@ export function ConfiguracionPanel() {
             <PanelArca habilitado={!!draft.arcaHabilitado} />
           </Seccion>
         </div>
-      </div>
+        </div>
+      )}
+
+      {tabActiva === 'clientes' && (
+        <div className={s['dash-grid']}>
+        <Seccion titulo="Cuenta corriente">
+          <Interruptor
+            label="Permitir venta en cuenta corriente"
+            hint="Si se apaga, toda venta se cobra al contado sin importar el cliente."
+            checked={draft.ctaCteHabilitada}
+            onChange={set('ctaCteHabilitada')}
+          />
+          <Interruptor
+            label="Bloquear al superar el límite de crédito"
+            hint="Rechaza la venta si el saldo del cliente supera su límite. Apagado, solo avisa."
+            checked={draft.ctaCteBloquearSuperado}
+            onChange={set('ctaCteBloquearSuperado')}
+            disabled={!draft.ctaCteHabilitada}
+          />
+          <Campo label="Límite de crédito por defecto" hint="0 = sin tope. Se propone al dar de alta un cliente.">
+            <input type="number" min="0" step="1000" value={draft.ctaCteLimiteDefault ?? 0} onChange={setNum('ctaCteLimiteDefault')} disabled={!draft.ctaCteHabilitada} />
+          </Campo>
+          <Campo label="Plazo de pago por defecto (días)">
+            <input type="number" min="0" step="1" value={draft.ctaCteDiasPlazo ?? 0} onChange={setNum('ctaCteDiasPlazo')} disabled={!draft.ctaCteHabilitada} />
+          </Campo>
+        </Seccion>
+
+        <Seccion titulo="Presupuestos">
+          <Campo label="Validez por defecto (días)" hint="Corre desde que se ENVÍA. Un presupuesto vencido no se confirma: se reabre y se re-cotiza.">
+            <input type="number" min="1" step="1" value={draft.presupuestoValidezDias ?? 7} onChange={setNum('presupuestoValidezDias')} />
+          </Campo>
+          <Interruptor
+            label="Reservar stock al confirmar un presupuesto"
+            hint="Pasa la mercadería de Disponible a Comprometido mientras el vendedor arma el pedido: la caja no la puede vender dos veces. Cerrar la venta o cancelar el presupuesto la libera."
+            checked={draft.presupuestoReservaStock}
+            onChange={set('presupuestoReservaStock')}
+          />
+        </Seccion>
+        </div>
+      )}
     </div>
   );
 }

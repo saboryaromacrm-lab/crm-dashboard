@@ -13,11 +13,18 @@ import { VENTAS_PANELS } from '../config/ventas.config.js';
  * lo usa la alerta de pedidos web para aterrizar directo en Órdenes.
  */
 export function VentasPage() {
-  const { can } = usePermissions();
+  const { can, canAny } = usePermissions();
   const [searchParams] = useSearchParams();
-  const panels = useMemo(() => VENTAS_PANELS.filter((p) => can(p.permiso)), [can]);
+  // `permiso` puede ser una lista: alcanza con tener cualquiera de las llaves.
+  const panels = useMemo(
+    () => VENTAS_PANELS.filter((p) => (Array.isArray(p.permiso) ? canAny(p.permiso) : can(p.permiso))),
+    [can, canAny],
+  );
 
-  const pedido = searchParams.get('panel');
+  // «Formato de venta» dejó de ser sección propia: un link viejo aterriza en
+  // Configuración, donde vive como pestaña.
+  const pedidoCrudo = searchParams.get('panel');
+  const pedido = pedidoCrudo === 'listas' ? 'configuracion' : pedidoCrudo;
   const defaultPanel = panels.some((p) => p.id === pedido) ? pedido : panels[0]?.id;
 
   return (

@@ -18,7 +18,6 @@ import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
-import SellIcon from '@mui/icons-material/Sell';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -43,7 +42,6 @@ export const VENTAS_PANELS = [
   { id: 'presupuestos', label: 'Presupuestos', icon: RequestQuoteIcon, permiso: 'ventas.presupuestos' },
   { id: 'clientes', label: 'Clientes', icon: PeopleAltIcon, permiso: 'ventas.clientes' },
   { id: 'cobranzas', label: 'Cobranzas', icon: PaymentsIcon, permiso: 'ventas.cobranzas' },
-  { id: 'listas', label: 'Formato de venta', icon: SellIcon, permiso: 'ventas.listas' },
   { id: 'ofertas', label: 'Ofertas', icon: LocalOfferIcon, permiso: 'ventas.ofertas' },
   { id: 'cambiosPrecio', label: 'Cambios de precio', icon: TrendingUpIcon, permiso: 'ventas.cambios' },
   /* `ventas.carteles` es de fábrica para todos los roles (ver `permisos-base.ts`
@@ -51,5 +49,7 @@ export const VENTAS_PANELS = [
      `ventas.cambios`, que es la llave de los CAMBIOS DE PRECIO — usarla para
      esto obligaba a abrir de más por la puerta de al lado. */
   { id: 'carteles', label: 'Carteles de góndola', icon: LocalOfferIcon, permiso: 'ventas.carteles' },
-  { id: 'configuracion', label: 'Configuración', icon: SettingsIcon, permiso: 'ventas.configuracion' },
+  /* El Formato de venta vive adentro, como primera pestaña (28/9/2026, pedido
+     del dueño): por eso la sección abre con cualquiera de las dos llaves. */
+  { id: 'configuracion', label: 'Configuración', icon: SettingsIcon, permiso: ['ventas.configuracion', 'ventas.listas'] },
 ];

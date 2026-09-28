@@ -22,7 +22,7 @@ export const ventasModule = defineModule({
   enabled: true,
   basePath: '/ventas',
   // Cualquier sección del menú interno hace visible el módulo; sin ninguna, no existe.
-  permissions: VENTAS_PANELS.map((p) => p.permiso),
+  permissions: VENTAS_PANELS.flatMap((p) => p.permiso),
   navigation: {
     showInSidebar: true,
     group: 'catalog',

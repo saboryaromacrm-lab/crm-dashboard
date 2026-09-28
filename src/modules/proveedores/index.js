@@ -22,7 +22,7 @@ export const proveedoresModule = defineModule({
   icon: LocalShippingIcon,
   enabled: true,
   basePath: '/proveedores',
-  permissions: PROVEEDORES_PANELS.map((p) => p.permiso),
+  permissions: PROVEEDORES_PANELS.flatMap((p) => p.permiso),
   navigation: {
     showInSidebar: true,
     group: 'catalog',

@@ -998,7 +998,7 @@ function EvolucionPreciosTab({ prod: p }) {
  * ==================================================================== *
  * Acá vive el markup, y por eso esta pestaña es el corazón del precio.
  *
- * La lista existe en el catálogo (Ventas › Formato de venta) pero NO lleva
+ * La lista existe en el catálogo (Ventas › Configuración › Formato de venta) pero NO lleva
  * precio: cada producto define el suyo. La misma "Mayorista" puede ir al 30% en
  * un producto y al 50% en otro, y un producto que no tiene fila mayorista
  * simplemente no se vende así — no hay nada que excluir ni que destildar.

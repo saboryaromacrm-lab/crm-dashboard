@@ -20,7 +20,7 @@ export const almacenModule = defineModule({
   icon: WarehouseIcon,
   enabled: true,
   basePath: '/almacen',
-  permissions: ALMACEN_PANELS.map((p) => p.permiso),
+  permissions: ALMACEN_PANELS.flatMap((p) => p.permiso),
   navigation: {
     showInSidebar: true,
     group: 'catalog',
