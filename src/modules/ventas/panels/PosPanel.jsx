@@ -367,7 +367,11 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
         <tbody>
           {renglones.map((r) => {
             const calc = calcularRenglon(r);
-            const sinStock = !permitirStockNegativo && r.cantidad > r.stock + 1e-9;
+            const faltaStock = r.cantidad > r.stock + 1e-9;
+            const sinStock = !permitirStockNegativo && faltaStock;
+            /* Con "vender sin stock" prendido la caja no frena, pero el cajero
+             * tiene que saber que ese renglón deja una incidencia (26/9/2026). */
+            const sinStockPermitido = permitirStockNegativo && faltaStock;
             /*
              * El tope se mide contra la BASE, no contra el descuento visible.
              * Un renglón bajo "Atención por tardanza 25%" muestra 25 y no está
@@ -399,6 +403,11 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                   <div className={p.detalleCol}>
                     {r.detalle}
                     {sinStock && <span className={p.sinStock}> · solo hay {num(r.stock)} {r.unidad}</span>}
+                    {sinStockPermitido && (
+                      <span style={{ color: 'var(--crm-color-warning)' }} title="Se vende igual y queda una incidencia en Almacén › Incidencias › Ventas sin stock, para ir a contar la góndola">
+                        {' · '}sin stock (hay {num(Math.max(r.stock, 0))} {r.unidad}): se vende y queda registrado
+                      </span>
+                    )}
                   </div>
                   {/* La oferta se muestra donde está el producto, con nombre e
                       importe: el cajero contesta "por qué dio ese número" sin

@@ -24,7 +24,6 @@ import { OperacionesPanel } from '../panels/OperacionesPanel.jsx';
 import { IncidenciasPanel } from '../panels/IncidenciasPanel.jsx';
 import { CafeteriaPanel } from '../panels/CafeteriaPanel.jsx';
 import { CafeteriaPedidosPanel } from '../panels/CafeteriaPedidosPanel.jsx';
-import { CafeteriaProductosPanel } from '../panels/CafeteriaProductosPanel.jsx';
 import { VencimientosPanel } from '../panels/VencimientosPanel.jsx';
 import { ConteosPanel } from '../panels/ConteosPanel.jsx';
 
@@ -55,7 +54,6 @@ const PANEL_COMPONENTS = {
   cafeteria: CafeteriaPanel,
   // La pantalla del rol Cafetería: armar el pedido a la distribuidora.
   'cafeteria-pedidos': CafeteriaPedidosPanel,
-  'cafeteria-productos': CafeteriaProductosPanel,
   // El vigía de fechas: lógica de la app externa, datos 100% del sistema.
   vencimientos: VencimientosPanel,
   // El físico contra el virtual (0066): sesiones de conteo por diferencia.

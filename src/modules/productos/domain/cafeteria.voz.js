@@ -44,7 +44,7 @@ const CASA = {
   statEntrada: 'Nos mandó',
   saldoCasa: 'Saldo a favor de la distribuidora',
   saldoCafe: 'Saldo a favor de la cafetería',
-  costoTotal: 'Le mandamos + gastos',
+  costoTotal: 'Costo del café en el período',
 
   colSucEntrada: 'Llegó a',
   colSucSalida: 'Salió de',
@@ -52,11 +52,11 @@ const CASA = {
   metricaEntrada: 'Lo que nos mandó',
 
   altaEntradaTitulo: 'Envío DE la cafetería a una sucursal',
-  altaEntradaSub: 'La mercadería INGRESA al stock de la sucursal que elijas y queda lista para vender en el mostrador, al costo que declares',
+  altaEntradaSub: 'La mercadería entra al stock de la sucursal que elijas cuando esa sucursal la controla y la recibe, al costo que declares. Al enviar se imprime el remito',
   altaEntradaSuc: 'Llega a la sucursal',
   detalleEntrada: 'Envío DE la cafetería',
   detalleSalida: 'Envío a Cafetería',
-  okEntrada: (cod, monto) => `${cod} recibido · ${monto}. Ya está en el stock de la sucursal y se puede vender.`,
+  okEntrada: (cod, monto) => `${cod} registrado · ${monto}. Entra al stock cuando la sucursal lo controle y lo reciba.`,
 
   pedidoSeccion: 'Pedido a la distribuidora',
   pedidoTitulo: 'Pedido a la distribuidora',
@@ -93,7 +93,7 @@ const CAFE = {
   statEntrada: 'Les mandaste',
   saldoCasa: 'Saldo a favor de Sabor y Aroma',
   saldoCafe: 'Saldo a tu favor',
-  costoTotal: 'Recibido + gastos',
+  costoTotal: 'Tu costo en el período',
 
   colSucEntrada: 'Se lo mandaste a',
   colSucSalida: 'Te lo mandó',
@@ -101,11 +101,11 @@ const CAFE = {
   metricaEntrada: 'Lo que mandaste',
 
   altaEntradaTitulo: 'Nuevo envío a Sabor y Aroma',
-  altaEntradaSub: 'Lo que mandás INGRESA al stock de la sucursal que elijas y queda listo para que lo vendan en el mostrador, al costo que declares',
+  altaEntradaSub: 'Lo que mandás entra al stock de la sucursal que elijas cuando ellos lo controlan y lo reciben, al costo que declares. Al enviar se imprime el remito: va con la mercadería',
   altaEntradaSuc: 'A qué sucursal se lo mandás',
   detalleEntrada: 'Envío a Sabor y Aroma',
   detalleSalida: 'Recibido de Sabor y Aroma',
-  okEntrada: (cod, monto) => `${cod} enviado · ${monto}. Ya está en el stock de la sucursal y lo pueden vender.`,
+  okEntrada: (cod, monto) => `${cod} enviado · ${monto}. Entra a su stock cuando la sucursal lo controle y lo reciba.`,
 
   pedidoSeccion: 'Pedido a Sabor y Aroma',
   pedidoTitulo: 'Pedido a Sabor y Aroma',
@@ -116,7 +116,7 @@ const CAFE = {
 
   prodSeccion: 'Mis productos',
   prodTitulo: 'Mis productos',
-  prodSub: 'Lo que elaborás y mandás a las sucursales. Cargalo acá una vez —nombre y precio— y ya lo podés mandar. No lleva proveedor ni costo de compra: el costo lo declarás en cada envío.',
+  prodSub: 'Lo que elaborás y mandás a las sucursales. Cargalo acá una vez —nombre, costo y precio— y ya lo podés mandar. No lleva proveedor: el costo lo declarás vos, y con ese costo se registra cada venta.',
   prodBtn: '+ Nuevo producto',
   prodVacio: 'Todavía no cargaste ninguno. "+ Nuevo producto" carga el primero.',
 };

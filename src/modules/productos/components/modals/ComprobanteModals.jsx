@@ -8,6 +8,22 @@ import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
 
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+
+/*
+ * EL IVA LO DECIDE LA LETRA (26/9/2026) — espejo de la API (comprobantes.module).
+ * Sabor y Aroma es RI: una factura A discrimina el IVA (crédito fiscal); B y C
+ * no lo discriminan, el precio del papel ya lo trae y ese IVA es costo.
+ */
+const LETRAS_POR_CONDICION = {
+  responsable_inscripto: ['A', 'B'], monotributo: ['C'], exento: ['B', 'C'],
+  consumidor_final: ['C'], no_categorizado: ['C'],
+};
+const CONDICION_TEXTO = {
+  responsable_inscripto: 'responsable inscripto', monotributo: 'monotributista', exento: 'exento',
+  consumidor_final: 'consumidor final', no_categorizado: 'no categorizado',
+};
+const letraPorDefecto = (cond) => (!cond || cond === 'responsable_inscripto' ? 'A' : 'C');
+const ALICUOTAS = [0, 2.5, 5, 10.5, 21, 27];
 /** Tres decimales: los kg de una bolsa vienen con coma (22,68 kg). */
 const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
 /** Dos decimales: los importes de dinero. */
@@ -27,6 +43,9 @@ const MEDIOS_PAGO_COMPRA = {
 };
 /** En qué habla el bulto de este producto: kilos (granel) o unidades (entero). */
 const unidadDe = (prod) => (prod?.tipo === 'granel' ? 'kg' : 'u.');
+
+/** Más de este factor en el costo por unidad pide confirmación (igual que la API, SALTO_COSTO). */
+const SALTO_COSTO = 3;
 
 export function ComprobanteTag({ tipo }) {
   const m = TIPOS_COMPROBANTE[tipo] || { label: tipo, tag: 'tag-ajuste' };
@@ -415,8 +434,25 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * `''` = todavía no eligió · `'0'` = eligió explícitamente "no corresponde".
    */
   const esNota = tipo === 'nota_credito' || tipo === 'nota_debito';
+  /* El número del papel es obligatorio donde hay papel del proveedor (la API
+   * también lo exige): sin él no hay control de duplicado. */
+  const pideNumero = ['factura', 'remito', 'nota_credito', 'nota_debito'].includes(tipo) || esConversion;
   /** Liquidación: sin IVA, sin percepciones, letra X fija (lo fuerza la API). */
   const esNoFiscal = !!TIPOS_COMPROBANTE[tipo]?.noFiscal;
+  /* La letra según el proveedor, y con ella el IVA (ver LETRAS_POR_CONDICION). */
+  const provSel = store.getProveedor(parseInt(provId, 10));
+  const esPapelFiscal = ['factura', 'nota_credito', 'nota_debito'].includes(tipo) || esConversion;
+  const letrasPermitidas = esPapelFiscal
+    ? (LETRAS_POR_CONDICION[provSel?.condicionIva] ?? ['A', 'B', 'C'])
+    : LETRAS_COMPROBANTE.filter((l) => l !== 'X');
+  const discriminaIva = !esNoFiscal && letra === 'A';
+  /* Al elegir el proveedor (o el tipo) la letra se acomoda sola a lo que ese
+   * proveedor emite. Si vino del papel (la bandeja), se respeta: si no cuadra,
+   * el aviso lo dice y se corrige el papel o la ficha, no se pisa en silencio. */
+  useEffect(() => {
+    if (!provSel || lectura?.letra || esNoFiscal) return;
+    if (!letrasPermitidas.includes(letra)) setLetra(letraPorDefecto(provSel.condicionIva));
+  }, [provId, tipo]); // eslint-disable-line react-hooks/exhaustive-deps
   const [refId, setRefId] = useState('');
   const [facturasRef, setFacturasRef] = useState([]);
   useEffect(() => {
@@ -502,6 +538,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     setPagarAhora('');
     setCostosOmitidos(new Set());
     setActivarIds(new Set());
+    setTrasladarIds(new Set());
   };
 
   /** Cuánto se demoró en cargarse el comprobante. Null si alguna fecha falta. */
@@ -584,7 +621,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     const cantidadTotal = r3(bultos * porBulto);
     const costoUnitario = porBulto > 0 ? costoBulto / porBulto : 0;
     const neto = bultos * costoBulto * (1 - desc / 100);
-    return { cantidadTotal, costoUnitario, neto, iva: neto * (Number(it.iva) || 0) / 100 };
+    return { cantidadTotal, costoUnitario, neto, iva: neto * (discriminaIva ? Number(it.iva) || 0 : 0) / 100 };
   };
   /* ------------------------- EL PIE DE LA FACTURA -------------------------
    * Se replica el papel, en su orden: los renglones dan el bruto, la
@@ -627,13 +664,25 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   /* En una liquidación el IVA es 0 acá TAMBIÉN, no solo en la API: si la pantalla
    * sumara el 21% del renglón, el total del formulario no coincidiría con el que
    * devuelve el backend y el usuario vería cambiar el número al guardar. */
-  const tot = items.reduce((acc, it) => {
-    const r = calcRow(it);
-    const neto = r.neto * factorBonif;
-    acc.neto += neto;
-    acc.iva += esNoFiscal ? 0 : neto * (Number(it.iva) || 0) / 100;
-    return acc;
-  }, { neto: 0, iva: 0 });
+  /* POR ALÍCUOTA Y AL CENTAVO, la misma cuenta que la API (26/9/2026): el neto
+   * gravado de cada alícuota se redondea y su IVA sale de ese número, como en
+   * el papel. En B, C o una liquidación no hay IVA que discriminar. */
+  const tot = (() => {
+    const porAlicuota = new Map();
+    for (const it of items) {
+      const neto = calcRow(it).neto * factorBonif;
+      const al = discriminaIva ? (Number(it.iva) || 0) : 0;
+      porAlicuota.set(al, (porAlicuota.get(al) || 0) + neto);
+    }
+    let neto = 0;
+    let iva = 0;
+    for (const [al, base] of porAlicuota) {
+      const gravado = r2(base);
+      neto += gravado;
+      iva += r2(gravado * al / 100);
+    }
+    return { neto: r2(neto), iva: r2(iva) };
+  })();
 
   /** Percepciones del proveedor: se tildan las que trajo la factura. */
   const [percepciones, setPercepciones] = useState([]);
@@ -909,8 +958,20 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       vistos.add(prodId);
 
       const entry = (prod.formatosCompra || []).find((e) => e.proveedorId === pid) || null;
-      const costoCargado = entry ? entry.costo / Math.max(entry.cantidad || 1, 1e-9) : null;
-      const dif = costoCargado != null && costo > 0 ? costo - costoCargado : 0;
+      /*
+       * EL FORMATO EN MODO "PRECIO FINAL" (26/9/2026): no tiene costo de lista
+       * (vale 0) ni descuentos propios — manda "lo que se paga por bulto". Se
+       * compara NETO contra NETO: el que deriva el formato contra el del papel
+       * (lista × descuento del renglón y la bonificación). Antes comparaba contra
+       * 0, marcaba siempre "cambió" y la factura no movía nada.
+       */
+      const esFinal = entry?.modoCosto === 'final';
+      const descFacturaRow = (1 - (1 - (Number(it.descuento) || 0) / 100) * factorBonif) * 100;
+      const costoCargado = !entry ? null
+        : esFinal ? store.costosFormato(entry, prod.iva).costoNetoUnitario
+          : entry.costo / Math.max(entry.cantidad || 1, 1e-9);
+      const costoComparable = esFinal ? costo * (1 - descFacturaRow / 100) : costo;
+      const dif = costoCargado != null && costo > 0 ? costoComparable - costoCargado : 0;
       // Medio punto de tolerancia: no vale molestar por un redondeo.
       const difRelevante = costoCargado != null && costo > 0
         && Math.abs(dif) >= 0.005
@@ -924,12 +985,34 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       // trasladado al bulto que el proveedor ya tiene declarado.
       const bultoFacturado = esUnidad ? (entry?.cantidad || 1) : porBulto;
       const costoBultoFacturado = esUnidad ? +(costo * (entry?.cantidad || 1)).toFixed(4) : costoBulto;
-      const variacion = difRelevante && costoCargado > 0 ? (costo / costoCargado - 1) * 100 : null;
+      const variacion = difRelevante && costoCargado > 0 ? (costoComparable / costoCargado - 1) * 100 : null;
+
+      /*
+       * EL DESCUENTO DE LA FACTURA (26/9/2026, pedido del dueño): "me vino una
+       * leche con 30% y lo quiero trasladar al cliente". El efectivo del papel
+       * es el del renglón más la bonificación general. Si el formato tiene otro,
+       * la fila ofrece TRASLADARLO: el formato queda con ese descuento, el costo
+       * baja y la góndola con él. También sirve al revés: si el formato quedó
+       * con un descuento viejo y esta factura no trae, trasladarlo lo vuelve a 0.
+       * Los descuentos 2 a 4 del formato se conservan: se calcula el primero
+       * para que la cascada dé exactamente el de la factura.
+       */
+      const descFactura = descFacturaRow;
+      const descFormato = entry && !esFinal ? store.descuentoEfectivo(entry) : 0;
+      const otros = entry && !esFinal ? store.descuentoEfectivo({ ...entry, descuento: 0 }) : 0;
+      const d1Trasladado = Math.max(0, (1 - (1 - descFactura / 100) / (1 - otros / 100)) * 100);
+      // En modo final no hay descuento que trasladar: el papel ya entra neto.
+      const descDistinto = !!entry && !esFinal && Math.abs(descFactura - descFormato) >= 0.05;
 
       // Heurística: si la diferencia es casi exactamente una alícuota de IVA, lo
       // más probable es que el costo cargado tenga el IVA adentro.
       const pareceIva = variacion != null
         && [21, 10.5].some((a) => Math.abs(Math.abs(variacion) - a) < 0.6);
+      /* UN SALTO DE MÁS DE ×3 por unidad (26/9/2026): casi siempre es un cero
+       * de más o de menos en el bulto o en el costo. La API lo frena si no se
+       * confirma — misma regla (SALTO_COSTO) y misma cuenta que acá. */
+      const factorSalto = costoCargado > 0 && costo > 0 ? costoComparable / costoCargado : 1;
+      const salto = factorSalto > SALTO_COSTO || factorSalto < 1 / SALTO_COSTO;
 
       out.push({
         productoId: prodId,
@@ -939,19 +1022,26 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         iva: prod.iva,
         unidad: unidadDe(prod),
         costoCargado,
-        costoFacturado: costo,
+        costoFacturado: costoComparable,
+        esFinal,
         bultoFacturado,
         costoBultoFacturado,
         bultoCambio,
         difRelevante: difRelevante || bultoCambio,
+        descFactura,
+        descFormato,
+        d1Trasladado: Math.round(d1Trasladado * 100) / 100,
+        descDistinto,
         variacion,
         pareceIva,
+        salto,
+        factorSalto,
         esActivo: store.formatoActivo(prod)?.proveedorId === pid,
         activoNombre: store.getProveedor(store.formatoActivo(prod)?.proveedorId)?.nombre || '—',
       });
     }
     return out;
-  }, [items, provId, store]);
+  }, [items, provId, store, factorBonif]);
 
   const diferencias = impacto.filter((d) => d.difRelevante);
   const cambiablesActivo = impacto.filter((d) => !d.esActivo && (d.entry || d.costoFacturado > 0));
@@ -969,33 +1059,106 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   const toggleCosto = toggleEnSet(setCostosOmitidos);
   const toggleActivar = toggleEnSet(setActivarIds);
 
-  const costosAActualizar = diferencias.filter((d) => !costosOmitidos.has(d.productoId));
+  /* El traslado del descuento: destildado por defecto — bajar la góndola por
+   * una promo es una decisión, no un efecto de cargar la factura. */
+  const [trasladarIds, setTrasladarIds] = useState(() => new Set());
+  const toggleTrasladar = toggleEnSet(setTrasladarIds);
+  const conDescuentoDistinto = impacto.filter((d) => d.descDistinto);
+  /* Lo que viaja: el costo (si cambió y está tildado) y/o el descuento
+   * (si se tildó trasladarlo). Trasladar sin tocar el costo manda el costo
+   * que el formato ya tiene. */
+  const costosAActualizar = impacto
+    .filter((d) => (d.difRelevante && !costosOmitidos.has(d.productoId)) || (d.descDistinto && trasladarIds.has(d.productoId)))
+    .map((d) => {
+      const usaCosto = d.difRelevante && !costosOmitidos.has(d.productoId);
+      return {
+        ...d,
+        costoBultoFacturado: usaCosto || !d.entry ? d.costoBultoFacturado : d.entry.costo,
+        bultoFacturado: usaCosto || !d.entry ? d.bultoFacturado : d.entry.cantidad,
+        descuentoNuevo: d.descDistinto && trasladarIds.has(d.productoId) ? d.d1Trasladado : undefined,
+      };
+    });
   const aActivar = cambiablesActivo.filter((d) => activarIds.has(d.productoId));
-  const hayAvisoIva = diferencias.some((d) => d.pareceIva && !costosOmitidos.has(d.productoId));
+  /* Los saltos confirmados: destildados por defecto — el punto es que alguien lo mire. */
+  const [saltosOk, setSaltosOk] = useState(() => new Set());
+  const toggleSalto = toggleEnSet(setSaltosOk);
+  const saltosSinConfirmar = costosAActualizar.filter((d) => d.salto && d.difRelevante && !costosOmitidos.has(d.productoId) && !saltosOk.has(d.productoId));
+  const confirmarSaltos = costosAActualizar.filter((d) => d.salto && saltosOk.has(d.productoId)).map((d) => d.productoId);
+  // En B o C el costo SUBE lo que era el IVA, y es lo correcto: ese IVA no se recupera.
+  const hayAvisoIva = discriminaIva && diferencias.some((d) => d.pareceIva && !costosOmitidos.has(d.productoId));
 
-  /**
-   * Precio de góndola que quedaría. Solo cambia si ese proveedor manda el
-   * precio (ya es el activo, o el usuario tildó que pase a serlo).
+  /*
+   * LO QUE VIAJA COMO "ACTUALIZAR COSTOS", armado UNA vez: lo usan el registro
+   * y la proyección de la góndola. Si fueran dos armados, la pantalla podría
+   * proyectar una cosa y grabar otra.
    */
-  const precioProyectado = (d) => {
-    const seraActivo = d.esActivo || activarIds.has(d.productoId);
-    if (!seraActivo) return null;
-    const usaCosto = d.difRelevante && !costosOmitidos.has(d.productoId);
-    const base = d.entry || { costo: 0, descuento: 0, flete: 0, cantidad: 1 };
-    // Costo y tamaño del bulto van JUNTOS: proyectar el precio de la bolsa
-    // nueva con los kilos de la vieja daría un $/kg — y una góndola — falsos.
-    // La BASE del precio (0072): el formato conserva su % sin factura, así que
-    // la proyección parte el costo facturado igual que lo hará el catálogo.
-    const cn = store.costoPrecioEntry(usaCosto || !d.entry
-      ? { ...base, costo: d.costoBultoFacturado, cantidad: d.bultoFacturado || 1 }
-      : base);
-    // Markup equivalente del piso: proyecta la góndola con el costo facturado.
-    const cnHoy = store.costoPrecio(d.prod);
-    const ganancia = cnHoy > 0 ? (store.precioBaseVenta(d.prod) / cnHoy - 1) * 100 : 0;
-    return store.precioFinal(cn * (1 + ganancia / 100), d.iva);
-  };
+  const payloadCostos = costosAActualizar.map((d) => ({
+    productoId: d.productoId, costo: d.costoBultoFacturado, cantidad: d.bultoFacturado,
+    descuentoPapel: Math.round(d.descFactura * 100) / 100,
+    ...(d.descuentoNuevo != null ? { descuento: d.descuentoNuevo } : {}),
+  }));
 
+  /*
+   * EL PRECIO DE GÓNDOLA PROYECTADO LO CALCULA EL SERVIDOR (26/9/2026).
+   *
+   * Acá había una copia de la cuenta y erraba justo donde se mueve la plata:
+   * sin el IVA (con "% sin factura" o en precio final daba hasta un 21% de
+   * más), mostraba moverse a precios FIJOS que en la caja no se mueven,
+   * deducía el margen del precio ya redondeado y usaba el redondeo general en
+   * vez del del producto. Ahora la API reproduce lo que el registro va a hacer
+   * y deriva el precio con la misma función que la caja: lo que se ve acá es,
+   * al centavo, lo que la caja va a cobrar. Mientras se recalcula dice
+   * "calculando…" — nunca un número viejo.
+   */
+  const cuerpoProyeccion = impacto.length && provId ? {
+    proveedorId: parseInt(provId, 10),
+    // Solo lo que INGRESA mercadería crea el formato que falte.
+    recepcion: !esConversion && !esNotaCredito && permiteRecepcion,
+    items: esConversion ? [] : items
+      .filter((it) => it.productoId)
+      .map((it) => ({ productoId: parseInt(it.productoId, 10), costoUnitario: calcRow(it).costoUnitario })),
+    actualizarCostos: payloadCostos,
+    activarProveedor: aActivar.map((d) => d.productoId),
+  } : null;
+  const firmaProyeccion = cuerpoProyeccion ? JSON.stringify(cuerpoProyeccion) : '';
+  const [proyeccion, setProyeccion] = useState({ firma: '', porId: new Map(), error: '' });
+  useEffect(() => {
+    if (!firmaProyeccion) return undefined;
+    let vigente = true;
+    const t = setTimeout(async () => {
+      try {
+        const r = await store.proyectarPrecios(JSON.parse(firmaProyeccion));
+        if (vigente) setProyeccion({ firma: firmaProyeccion, porId: new Map((r || []).map((x) => [x.productoId, x])), error: '' });
+      } catch (e) {
+        if (vigente) setProyeccion({ firma: firmaProyeccion, porId: new Map(), error: e?.data?.message || 'No se pudo calcular.' });
+      }
+    }, 350);
+    return () => { vigente = false; clearTimeout(t); };
+  }, [firmaProyeccion, store]);
+  const proyeccionAlDia = proyeccion.firma === firmaProyeccion;
+
+  /* "REGISTRAR" SE TOMA UNA VEZ (26/9/2026): el botón no se bloqueaba mientras
+   * esperaba, y un doble clic mandaba el comprobante dos veces. */
+  const [registrando, setRegistrando] = useState(false);
+  const registrandoRef = useRef(false);
   const guardar = async () => {
+    if (registrandoRef.current) return;
+    registrandoRef.current = true;
+    setRegistrando(true);
+    try {
+      await guardarUnaVez();
+    } finally {
+      registrandoRef.current = false;
+      setRegistrando(false);
+    }
+  };
+  const guardarUnaVez = async () => {
+    if (venc && fecha && venc < fecha) { toast('El vencimiento del pago no puede ser anterior a la fecha del comprobante.', 'err'); return; }
+    if (saltosSinConfirmar.length) {
+      toast(`Revisá el bulto y el costo de ${saltosSinConfirmar.map((d) => d.nombre).join(', ')}: el costo por unidad cambia más de ${SALTO_COSTO} veces. Si es correcto, tildá "Es correcto" en Impacto en precios; si no, corregí el renglón o destildá ese costo.`, 'err');
+      setPaso(2);
+      return;
+    }
     const parsed = items
       .filter((it) => it.productoId && Number(it.bultos) > 0
         && (it.modo === 'unidad' || Number(it.porBulto) > 0))
@@ -1068,10 +1231,9 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         percepciones: percCalculadas
           .filter((p) => p.aplicar && p.importe > 0.009)
           .map((p) => ({ nombre: p.nombre, alicuota: Number(p.alicuota) || 0, base: p.base, importe: r2(p.importe) })),
-        actualizarCostos: costosAActualizar.map((d) => ({
-          productoId: d.productoId, costo: d.costoBultoFacturado, cantidad: d.bultoFacturado,
-        })),
+        actualizarCostos: payloadCostos,
         activarProveedor: aActivar.map((d) => d.productoId),
+        confirmarSaltos,
         tomarPagos,
         pagoContado: ahora > 0
           ? {
@@ -1120,10 +1282,9 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         .map((p) => ({ nombre: p.nombre, alicuota: Number(p.alicuota) || 0, base: p.base, importe: r2(p.importe) })),
       // Costo del bulto y tamaño del bulto viajan JUNTOS: son un solo hecho
       // ("la bolsa de 20 kg sale $40.000") y por separado el $/kg mentiría.
-      actualizarCostos: costosAActualizar.map((d) => ({
-        productoId: d.productoId, costo: d.costoBultoFacturado, cantidad: d.bultoFacturado,
-      })),
+      actualizarCostos: payloadCostos,
       activarProveedor: aActivar.map((d) => d.productoId),
+      confirmarSaltos,
       /*
        * El pago viaja CON el comprobante: aplicar un pago de sucursal es parte
        * de cargar la factura, no una acción suelta en otra pantalla.
@@ -1163,6 +1324,12 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     if (paso === 1) {
       if (!tipo) { toast('Elegí el tipo de comprobante.', 'err'); return; }
       if (!parseInt(provId, 10)) { toast('Elegí el proveedor del comprobante.', 'err'); return; }
+      if (pideNumero && !(parseInt(numero, 10) > 0)) { toast('Poné el número del comprobante, el que figura en el papel.', 'err'); return; }
+      if (esPapelFiscal && provSel && !letrasPermitidas.includes(letra)) {
+        toast(`${provSel.nombre} figura como ${CONDICION_TEXTO[provSel.condicionIva] ?? 'otra condición'}: emite factura ${letrasPermitidas.join(' o ')}, no ${letra}. Si el papel dice ${letra}, corregí su condición frente al IVA en la ficha del proveedor.`, 'err');
+        return;
+      }
+      if (fecha && fecha > isoDate(new Date(Date.now() + 36 * 3600 * 1000))) { toast('La fecha del comprobante es futura: revisá el día y el año del papel.', 'err'); return; }
       /*
        * La sucursal pasó a ser OBLIGATORIA en estos tipos desde que la
        * mercadería entra siempre: antes se podía registrar sin ella dejando el
@@ -1192,7 +1359,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     ]
     : [
       { texto: 'Volver', clase: 'btn-ghost', onClick: () => setPaso(2) },
-      { texto: 'Registrar', clase: 'btn-primary', onClick: guardar },
+      { texto: registrando ? 'Registrando…' : 'Registrar', clase: 'btn-primary', onClick: guardar, disabled: registrando },
     ];
 
   return (
@@ -1300,7 +1467,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
             <input value="X" readOnly tabIndex={-1} />
           ) : (
             <select value={letra} onChange={(e) => setLetra(e.target.value)}>
-              {LETRAS_COMPROBANTE.map((l) => <option key={l} value={l}>{l}</option>)}
+              {[...new Set([...letrasPermitidas, letra])].map((l) => <option key={l} value={l}>{l}</option>)}
             </select>
           )}
         </div>
@@ -1309,8 +1476,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           <input value={puntoVenta} onChange={(e) => setPuntoVenta(e.target.value)} placeholder="0001" />
         </div>
         <div className={s.field}>
-          <label>Número</label>
-          <input type="number" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="auto" />
+          <label>Número {pideNumero && <span className={s.req}>*</span>}</label>
+          <input type="number" min="1" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder={pideNumero ? 'El del papel' : 'Opcional'} />
         </div>
         <div className={s.field}>
           <label>Fecha del comprobante</label>
@@ -1682,7 +1849,13 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
               )}
             </div>
             <input type="number" min="0" step="any" value={it.descuento} onChange={(e) => setItem(i, { descuento: e.target.value })} />
-            <input type="number" min="0" step="any" value={it.iva} onChange={(e) => setItem(i, { iva: e.target.value })} />
+            {discriminaIva ? (
+              <select value={String(Number(it.iva) || 0)} onChange={(e) => setItem(i, { iva: e.target.value })}>
+                {ALICUOTAS.map((a) => <option key={a} value={String(a)}>{String(a).replace('.', ',')}%</option>)}
+              </select>
+            ) : (
+              <span className={s.muted} style={{ alignSelf: 'center', textAlign: 'center' }} title="Esta letra no discrimina IVA: el precio del papel ya lo incluye">incl.</span>
+            )}
             <div className={cx(s.mono, s.num)} style={{ fontWeight: 700, alignSelf: 'center' }}>{money(r.neto)}</div>
             {/* Quitar o agregar renglones cambiaría QUÉ entró — y eso ya pasó. */}
             {esConversion
@@ -1704,7 +1877,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         IMPACTO EN PRECIOS. Las dos decisiones que mueven la góndola, juntas y
         mostrando el número que importa: el precio final que va a quedar.
       */}
-      {(diferencias.length > 0 || cambiablesActivo.length > 0) && (
+      {(diferencias.length > 0 || cambiablesActivo.length > 0 || conDescuentoDistinto.length > 0) && (
         <>
           <div className={s['section-title']}>Impacto en precios</div>
           <div className={cx(s.callout, s.warn)}>
@@ -1726,6 +1899,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
             cols={[
               { h: 'Actualizar costo' }, { h: 'Producto' },
               { h: 'Cargado (unit.)', num: true }, { h: 'Facturado (unit.)', num: true }, { h: 'Var.', num: true },
+              { h: 'Descuento' },
               { h: 'Proveedor activo' }, { h: 'Precio góndola', num: true },
             ]}
           >
@@ -1733,9 +1907,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
               const incluirCosto = d.difRelevante && !costosOmitidos.has(d.productoId);
               const activar = activarIds.has(d.productoId);
               const subio = d.variacion != null && d.variacion > 0;
-              const proy = precioProyectado(d);
-              const actual = store.precioFinal(store.precioBaseVenta(d.prod), d.iva);
-              const cambia = proy != null && Math.abs(proy - actual) > 0.005;
+              const pr = proyeccionAlDia ? proyeccion.porId.get(d.productoId) : null;
               return (
                 <tr key={d.productoId}>
                   <td style={{ width: 120 }}>
@@ -1756,6 +1928,24 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                         bulto: {num(d.entry?.cantidad || 1, 3)} → {num(d.bultoFacturado, 3)} {d.unidad}
                       </div>
                     )}
+                    {d.esFinal && (
+                      <div className={s.hint} style={{ margin: 0 }} title="El formato se carga con lo que se paga por bulto: se compara el costo neto de los dos lados">
+                        formato en precio final · se compara neto
+                      </div>
+                    )}
+                    {d.salto && incluirCosto && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', color: 'var(--crm-color-danger)', fontWeight: 600 }}>
+                        <input
+                          type="checkbox"
+                          checked={saltosOk.has(d.productoId)}
+                          aria-label={`Confirmar el salto de costo de ${d.nombre}`}
+                          onChange={() => toggleSalto(d.productoId)}
+                        />
+                        <span>
+                          El costo por {d.unidad.replace('.', '')} {d.factorSalto >= 1 ? `se multiplica ×${num(d.factorSalto, 1)}` : `se divide ÷${num(1 / d.factorSalto, 1)}`}: ¿el bulto está bien? Es correcto
+                        </span>
+                      </label>
+                    )}
                   </td>
                   <td className={s.num}>
                     {d.costoCargado == null
@@ -1773,6 +1963,23 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                     )}
                   </td>
                   <td>
+                    {d.descDistinto ? (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title="El formato de compra toma el descuento de esta factura: el costo cambia y la góndola con él">
+                        <input
+                          type="checkbox"
+                          checked={trasladarIds.has(d.productoId)}
+                          aria-label={`Trasladar el descuento de ${d.nombre}`}
+                          onChange={() => toggleTrasladar(d.productoId)}
+                        />
+                        <span className={s.hint} style={{ margin: 0 }}>
+                          trasladar: {num(d.descFormato, 1)}% → <strong>{num(d.descFactura, 1)}%</strong>
+                        </span>
+                      </label>
+                    ) : (
+                      <span className={s.muted}>{d.descFactura > 0.05 ? `${num(d.descFactura, 1)}% (igual)` : '—'}</span>
+                    )}
+                  </td>
+                  <td>
                     {d.esActivo ? (
                       <span className={cx(s.badge, s['badge-entero'])}>Ya es el activo</span>
                     ) : (
@@ -1783,16 +1990,30 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                     )}
                   </td>
                   <td className={s.num}>
-                    {proy == null ? (
-                      <span className={s.muted} title="Este proveedor no define el precio">sin efecto</span>
-                    ) : cambia ? (
+                    {!proyeccionAlDia ? (
+                      <span className={s.muted}>calculando…</span>
+                    ) : proyeccion.error ? (
+                      <span className={s.muted} title={proyeccion.error}>no se pudo calcular</span>
+                    ) : !pr || pr.sinFormatoDeVenta ? (
+                      <span className={s.muted} title="El producto no tiene formato de venta cargado">sin precio de venta</span>
+                    ) : !pr.defineEsteProveedor ? (
                       <>
-                        <span className={s.muted}>{money(actual)}</span>{' → '}
-                        <strong style={{ color: proy > actual ? 'var(--crm-color-danger)' : 'var(--crm-color-success)' }}>
-                          {money(proy)}
+                        {money(pr.actual)}
+                        <div className={s.hint} style={{ margin: 0 }}>sin efecto: el precio lo fija otro proveedor</div>
+                      </>
+                    ) : pr.precioFijo ? (
+                      <>
+                        {money(pr.actual)}
+                        <div className={s.hint} style={{ margin: 0 }}>precio fijo: no cambia con el costo</div>
+                      </>
+                    ) : Math.abs(pr.proyectado - pr.actual) > 0.005 ? (
+                      <>
+                        <span className={s.muted}>{money(pr.actual)}</span>{' → '}
+                        <strong style={{ color: pr.proyectado > pr.actual ? 'var(--crm-color-danger)' : 'var(--crm-color-success)' }}>
+                          {money(pr.proyectado)}
                         </strong>
                       </>
-                    ) : money(actual)}
+                    ) : money(pr.actual)}
                   </td>
                 </tr>
               );
@@ -1845,7 +2066,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         )}
         {/* "Neto gravado" e "IVA" no van en una liquidación: no hay nada gravado
             que mostrar, y una fila "IVA $0" invita a preguntarse si falta cargarlo. */}
-        {!esNoFiscal && (
+        {!esNoFiscal && discriminaIva && (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Neto gravado</span><strong>{money(tot.neto)}</strong>
@@ -1854,6 +2075,12 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
               <span>IVA</span><strong>{money(tot.iva)}</strong>
             </div>
           </>
+        )}
+        {!esNoFiscal && !discriminaIva && (
+          <div className={s.hint} style={{ margin: '4px 0' }}>
+            Factura <strong>{letra}</strong>: no discrimina IVA. Los precios cargados son los <strong>finales</strong> del
+            papel; ese IVA no se recupera como crédito fiscal y queda dentro del costo.
+          </div>
         )}
         {/* Se recorre TODO el array (no el filtrado) para que el índice de la
             × sea el real: con el filtrado, quitar una borraba a la de al lado. */}
@@ -2692,7 +2919,7 @@ function productoProveedorOptions(store) {
 
 /* ============================== DETALLE DE COMPROBANTE ============================== */
 export function ComprobanteDetalleModal({ id }) {
-  const { store, closeModal, openModal, isAdmin } = useProductos();
+  const { store, closeModal, openModal, can } = useProductos();
   const c = store.getComprobante(id);
   if (!c) return null;
   const prov = store.getProveedor(c.proveedorId);
@@ -2704,7 +2931,9 @@ export function ComprobanteDetalleModal({ id }) {
   const puedePagar = c.estado === 'confirmado'
     && (c.tipo === 'factura' || c.tipo === 'liquidacion' || c.tipo === 'nota_debito');
   /** Un remito confirmado espera SU factura (26/8): el botón vive acá. */
-  const puedeFacturar = isAdmin && c.tipo === 'remito' && c.estado === 'confirmado';
+  const puedeFacturar = can('compras.facturacion') && c.tipo === 'remito' && c.estado === 'confirmado';
+  /** Anular (0106): lo que no esté anulado, con la llave de Facturación. */
+  const puedeAnular = c.estado !== 'anulado' && can('compras.facturacion');
 
   const Di = ({ label, children }) => <div className={s.di}><div className={s.l}>{label}</div><div className={s.v}>{children}</div></div>;
 
@@ -2733,6 +2962,7 @@ export function ComprobanteDetalleModal({ id }) {
       wide
       onClose={closeModal}
       footer={[
+        ...(puedeAnular ? [{ texto: 'Anular', clase: 'btn-delete', onClick: () => openModal('anularComprobante', { id: c.id }) }] : []),
         { texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal },
         // El circuito del remito (26/8): cuando el papel llega, se convierte acá.
         ...(puedeFacturar
@@ -2740,6 +2970,14 @@ export function ComprobanteDetalleModal({ id }) {
           : []),
       ]}
     >
+      {c.estado === 'anulado' && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>Anulado</strong>
+          {c.anuladoEn ? ` el ${fmtFecha(c.anuladoEn)}` : ''}
+          {c.anuladoPor ? ` por ${store.getUsuario(c.anuladoPor)?.nombre ?? 'un usuario'}` : ''}
+          {c.motivoAnulacion ? <>: {c.motivoAnulacion}</> : '.'} No suma stock ni deuda.
+        </div>
+      )}
       {/* El estado del circuito, dicho arriba de todo: este documento ingresó
           mercadería pero todavía no es deuda ni factura — está esperando. */}
       {c.tipo === 'remito' && c.estado === 'confirmado' && (
@@ -2908,6 +3146,144 @@ export function ComprobanteDetalleModal({ id }) {
           <div className={s.hint}>
             El total del papel no cambia nunca — la factura sigue diciendo {money(c.total)}. Lo que
             cambia es cuánto queda debiéndose por ella, y es lo que la bandeja de pago ofrece.
+          </div>
+        </>
+      )}
+    </ModalShell>
+  );
+}
+
+/* ==================================================================== *
+ * ANULAR UN COMPROBANTE (0106)
+ * ==================================================================== */
+
+/**
+ * La anulación, con la VISTA PREVIA antes de confirmar: qué la frena (con el
+ * botón para destrabarlo cuando se puede) y qué se va a deshacer — el stock
+ * que sale o vuelve, los costos que vuelven (y los que no, porque alguien los
+ * tocó después), las cuotas pendientes y el papel de la bandeja. El motivo es
+ * obligatorio: queda escrito en el comprobante.
+ */
+export function AnularComprobanteModal({ id }) {
+  const { store, act, closeModal, openModal, toast } = useProductos();
+  const [plan, setPlan] = useState(null);
+  const [error, setError] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const candado = useRef(false);
+
+  const cargar = async () => {
+    setError('');
+    try { setPlan(await store.anulacionComprobante(id)); } catch (e) { setError(e?.data?.message || 'No se pudo calcular la anulación.'); }
+  };
+  useEffect(() => { cargar(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const desaplicar = async (imputacionId) => {
+    const r = await store.quitarImputacionPago(imputacionId);
+    if (!r.ok) { toast(r.error || 'No se pudo desaplicar.', 'err'); return; }
+    toast('Pago desaplicado: queda a cuenta del proveedor.', 'ok');
+    cargar();
+  };
+
+  const anular = async () => {
+    if (candado.current || !plan?.puedeAnular || motivo.trim().length < 3) return;
+    candado.current = true;
+    setEnviando(true);
+    try {
+      await act(store.anularComprobante(id, motivo.trim()), `${plan.comprobante.etiqueta} anulado.`);
+    } finally {
+      candado.current = false;
+      setEnviando(false);
+    }
+  };
+
+  const suc = plan?.stock?.sucursalId ? store.getSucursal(plan.stock.sucursalId)?.nombre : '';
+  const vuelven = (plan?.costos || []).filter((x) => x.vuelve);
+  const quedan = (plan?.costos || []).filter((x) => !x.vuelve);
+  const listo = plan?.puedeAnular && motivo.trim().length >= 3;
+
+  return (
+    <ModalShell
+      title={plan ? `Anular ${plan.comprobante.etiqueta}` : 'Anular comprobante'}
+      onClose={closeModal}
+      footer={[
+        { texto: 'Volver', clase: 'btn-ghost', onClick: () => openModal('comprobanteDetalle', { id }) },
+        { texto: enviando ? 'Anulando…' : 'Sí, anular', clase: listo ? 'btn-delete' : 'btn-ghost', onClick: anular, disabled: !listo || enviando },
+      ]}
+    >
+      {error && <div className={cx(s.callout, s.warn)}>{error}</div>}
+      {!plan && !error && <div className={s['empty-state']}>Revisando qué deshace la anulación…</div>}
+      {plan && (
+        <>
+          {plan.bloqueos.length > 0 && (
+            <div className={cx(s.callout, s.warn)}>
+              <strong>Todavía no se puede anular:</strong>
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                {plan.bloqueos.map((b, i) => <li key={i}>{b}</li>)}
+              </ul>
+              {plan.pagos.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                  {plan.pagos.map((pg) => (
+                    <div key={pg.imputacionId} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ flex: 1 }}>Pago de {money(pg.importe)} · {pg.medio || '—'} · {fmtFecha(pg.fecha)}</span>
+                      <Btn small onClick={() => desaplicar(pg.imputacionId)}>Desaplicar</Btn>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {plan.notas.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                  {plan.notas.map((n) => (
+                    <Btn key={n.id} small onClick={() => openModal('comprobanteDetalle', { id: n.id })}>Ver {n.etiqueta}</Btn>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className={s['section-title']}>Qué se deshace</div>
+          <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              {plan.stock.sentido === 0 && 'No mueve stock (no tuvo recepción de mercadería).'}
+              {plan.stock.sentido !== 0 && (
+                <>
+                  {plan.stock.sentido < 0 ? `Salen de ${suc}` : `Vuelven a ${suc}`}:{' '}
+                  {plan.stock.renglones.map((x, i) => (
+                    <span key={i} style={x.alcanza ? undefined : { color: 'var(--crm-color-danger)' }}>
+                      {i > 0 ? ' · ' : ''}{x.nombre} {num(x.cantidad, 3)} {x.unidad === 'kg' ? 'kg' : 'u.'}
+                      {plan.stock.sentido < 0 && <span className={s.muted}> (hay {num(x.hay, 3)})</span>}
+                    </span>
+                  ))}
+                </>
+              )}
+            </li>
+            {vuelven.length > 0 && (
+              <li>
+                Vuelve el costo anterior: {vuelven.map((x, i) => <span key={i}>{i > 0 ? ' · ' : ''}{x.producto} {money(x.de)} → <strong>{money(x.a)}</strong>{x.bultoDe != null && <> (bulto {num(x.bultoDe, 3)} → <strong>{num(x.bultoA, 3)}</strong>)</>}</span>)}
+                <span className={s.muted}> (y con él, el precio de góndola).</span>
+              </li>
+            )}
+            {quedan.length > 0 && (
+              <li style={{ color: 'var(--crm-color-accent-2)' }}>
+                No vuelve: {quedan.map((x, i) => <span key={i}>{i > 0 ? ' · ' : ''}{x.producto} ({x.motivo})</span>)}
+              </li>
+            )}
+            {plan.cuotasPendientes > 0 && <li>Se borran {plan.cuotasPendientes} cuota(s) pendiente(s) de pago.</li>}
+            {plan.lectura && <li>El papel vuelve a <strong>Por procesar</strong>, para cargarlo bien.</li>}
+            <li>El comprobante no se borra: queda <strong>anulado</strong>, con el motivo y quién lo anuló.</li>
+          </ul>
+
+          <div className={s.field} style={{ marginTop: 12 }}>
+            <label htmlFor="anular-motivo">Motivo <span className={s.req}>*</span></label>
+            <input
+              id="anular-motivo"
+              value={motivo}
+              maxLength={300}
+              placeholder="Ej.: se cargó con la cantidad equivocada"
+              disabled={!plan.puedeAnular}
+              onChange={(e) => setMotivo(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); anular(); } }}
+            />
           </div>
         </>
       )}

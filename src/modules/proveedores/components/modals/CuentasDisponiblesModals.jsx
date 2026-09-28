@@ -5,7 +5,7 @@ import { useProveedores } from '../../context/ProveedoresContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { errorMsg, provApi } from '../../services/proveedores.api.js';
 import { fmt, textoResumenCuenta } from '@modules/ventas/domain/cuentasProveedor.js';
-import { Btn, Di, ModalShell, Pill, Table, fmtFecha, fmtFechaHora, money, s } from '../ui.jsx';
+import { Di, ModalShell, Pill, Table, fmtFecha, fmtFechaHora, money, s } from '../ui.jsx';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');

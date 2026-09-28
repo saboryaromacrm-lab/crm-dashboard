@@ -545,7 +545,7 @@ export function GerenciaPage() {
           <Table
             cols={[
               { h: 'Sucursal' }, { h: 'Tipo' }, { h: 'Punto de venta' },
-              { h: 'Domicilio del comprobante' }, { h: 'Acciones', cls: 'actions-col' },
+              { h: 'Domicilio del comprobante' }, { h: 'Fondo de caja', num: true }, { h: 'Acciones', cls: 'actions-col' },
             ]}
             empty="Sin sucursales."
           >
@@ -553,7 +553,11 @@ export function GerenciaPage() {
               const ed = edits[su.id] ?? {};
               const pv = ed.puntoVenta ?? su.puntoVenta ?? '';
               const dir = ed.direccion ?? su.direccion ?? '';
-              const sucio = pv !== (su.puntoVenta ?? '') || dir !== (su.direccion ?? '');
+              /* El FONDO FIJO de caja (0111): con cuánto abre la caja y cuánto
+               * queda apartado al cerrar. Vacío = se fija en la primera apertura. */
+              const fondo = ed.fondoCaja ?? (su.fondoCaja != null ? String(su.fondoCaja) : '');
+              const fondoCambio = fondo !== (su.fondoCaja != null ? String(su.fondoCaja) : '');
+              const sucio = pv !== (su.puntoVenta ?? '') || dir !== (su.direccion ?? '') || fondoCambio;
               const set = (campo) => (e) => setEdits((p) => ({
                 ...p, [su.id]: { ...(p[su.id] ?? {}), [campo]: e.target.value },
               }));
@@ -579,18 +583,29 @@ export function GerenciaPage() {
                       style={{ width: '100%', minWidth: 220 }}
                     />
                   </td>
+                  <td className={s.num}>
+                    <input
+                      type="number" min="0" step="1000"
+                      value={fondo}
+                      onChange={set('fondoCaja')}
+                      placeholder="50000"
+                      title="Con cuánto abre la caja y cuánto queda apartado al cerrar"
+                      style={{ width: 110, textAlign: 'right' }}
+                    />
+                  </td>
                   <td className={s['actions-col']}>
                     <Btn
                       variant="btn-primary"
                       small
-                      disabled={!sucio}
+                      disabled={!sucio || (fondoCambio && fondo !== '' && !(Number(fondo) >= 0))}
                       onClick={() => mutar(
                         /* Se manda el nombre y el tipo porque el DTO los exige:
                          * esta pantalla edita dos campos, no la sucursal entera. */
                         () => httpClient.patch(`/sucursales/${su.id}`, {
                           nombre: su.nombre, tipo: su.tipo, puntoVenta: pv, direccion: dir,
+                          ...(fondoCambio && fondo !== '' ? { fondoCaja: Number(fondo) } : {}),
                         }),
-                        `${su.nombre}: punto de venta guardado.`,
+                        `${su.nombre}: datos guardados.`,
                       )}
                     >
                       Guardar
@@ -601,7 +616,9 @@ export function GerenciaPage() {
             })}
           </Table>
           <div className={s.hint}>
-            Dejarlo vacío es válido con <strong>un solo local</strong>: ahí se usa el punto de venta
+            El <strong>fondo de caja</strong> es con cuánto abre la caja de cada local y cuánto queda
+            apartado al cerrar para el turno siguiente; si está vacío, lo fija la primera apertura.
+            Del punto de venta: dejarlo vacío es válido con <strong>un solo local</strong>: ahí se usa el punto de venta
             de la configuración del servidor. Con varios, cada uno necesita el suyo — dos locales
             no pueden compartirlo. El estado de la conexión y el último número autorizado de cada
             punto de venta están en <strong>Ventas › Configuración</strong>.

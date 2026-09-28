@@ -33,6 +33,10 @@ export function EcheqsPanel() {
       // eslint-disable-next-line no-alert
       if (!window.confirm(`¿El banco debitó el echeq ${e.numero}? Esto registra el pago real al proveedor.`)) return;
     }
+    if (estado === 'anulado') {
+      // eslint-disable-next-line no-alert
+      if (!window.confirm(`¿Anular el echeq ${e.numero} por ${money(e.importe)}? Un echeq anulado no vuelve a la cartera.`)) return;
+    }
     try {
       await provApi.estadoEcheq(e.id, estado);
       toast(aviso, 'ok');
@@ -89,7 +93,11 @@ export function EcheqsPanel() {
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                   {activo && (
                     <>
-                      <Btn small variant="btn-primary" onClick={() => cambiarEstado(e, 'cobrado', 'Echeq cobrado: pago registrado.')}>Cobrar</Btn>
+                      {/* El banco no lo debita antes de su fecha (27/9/2026): antes de
+                          eso no se ofrece "Cobrar" — la API también lo rechaza. */}
+                      {e.diasRest <= 0
+                        ? <Btn small variant="btn-primary" onClick={() => cambiarEstado(e, 'cobrado', 'Echeq cobrado: pago registrado.')}>Cobrar</Btn>
+                        : <span className={s.hint} style={{ margin: 0 }}>se cobra desde el {fmtFecha(e.fechaVenc)}</span>}
                       {e.estado === 'emitido' && (
                         <Btn small onClick={() => cambiarEstado(e, 'entregado', 'Marcado como entregado.')}>Entregado</Btn>
                       )}

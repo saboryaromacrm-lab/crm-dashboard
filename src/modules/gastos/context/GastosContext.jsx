@@ -103,7 +103,7 @@ export function GastosProvider({ children, panels = [], defaultPanel }) {
    * que el llamador pueda encadenar.
    */
   const act = useCallback(
-    async (promesa, okMsg, { recargar = false } = {}) => {
+    async (promesa, okMsg, { recargar = false, alConflicto = null } = {}) => {
       try {
         const res = await promesa;
         if (recargar) await cargar();
@@ -112,6 +112,9 @@ export function GastosProvider({ children, panels = [], defaultPanel }) {
         closeModal();
         return res ?? true;
       } catch (e) {
+        /* 409 = "ya hay uno igual" (el pago gemelo del día): no es un error
+         * que se avisa y se va, es una pregunta — la contesta el modal. */
+        if (alConflicto && e?.status === 409) { alConflicto(e.data ?? {}); return null; }
         toast(errorMsg(e), 'err');
         return null;
       }

@@ -3,6 +3,7 @@ import { useProveedores } from '../../context/ProveedoresContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { provApi, MEDIOS_PAGO_REAL } from '../../services/proveedores.api.js';
 import { Btn, Di, ModalShell, money, fmtFecha, s } from '../ui.jsx';
+import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '@modules/gastos/components/segundaConfirmacion.jsx';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -99,23 +100,29 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
   const setForma = (i, k) => (e) => setFormas((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)));
   const sumaFormas = r2(formas.reduce((a, x) => a + (Number(x.importe) || 0), 0));
 
-  const pagar = async () => {
+  /* Sale plata: segunda confirmación + candado del doble clic (27/9/2026). */
+  const conf = useSegundaConfirmacion(JSON.stringify([modo, medio, formas, fecha, referencia, desdeCaja]));
+  const validar = () => {
+    if (modo === 'simple') return true;
+    if (!formas.some((x) => Number(x.importe) > 0)) { toast('Cargá al menos una parte del pago.', 'err'); return false; }
+    if (Math.abs(sumaFormas - compromiso.importe) > 0.009) {
+      toast(`Las partes suman ${money(sumaFormas)} y el compromiso dice ${money(compromiso.importe)}.`, 'err');
+      return false;
+    }
+    return true;
+  };
+  const pagar = () => conf.clic(validar, async () => {
     const body = { fecha, referencia: referencia.trim() || undefined };
     if (modo === 'simple') {
       body.medio = medio;
     } else {
-      const filas = formas.filter((x) => Number(x.importe) > 0);
-      if (!filas.length) { toast('Cargá al menos una parte del pago.', 'err'); return; }
-      if (Math.abs(sumaFormas - compromiso.importe) > 0.009) {
-        toast(`Las partes suman ${money(sumaFormas)} y el compromiso dice ${money(compromiso.importe)}.`, 'err');
-        return;
-      }
-      body.formas = filas.map((x) => ({ medio: x.medio, importe: r2(x.importe), fecha: x.fecha || undefined }));
+      body.formas = formas.filter((x) => Number(x.importe) > 0)
+        .map((x) => ({ medio: x.medio, importe: r2(x.importe), fecha: x.fecha || undefined }));
     }
     if (usaEfectivo && hayTurno && desdeCaja) body.cajaSesionId = caja.id;
     const res = await act(provApi.pagarCompromiso(compromiso.id, body), 'Compromiso pagado.');
     if (res) onChange?.();
-  };
+  });
 
   return (
     <ModalShell
@@ -124,9 +131,15 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: `Pagar ${money(compromiso.importe)}`, clase: 'btn-primary', onClick: pagar },
+        { texto: textoBoton(conf, `Pagar ${money(compromiso.importe)}…`, `Sí, pagar ${money(compromiso.importe)}`), clase: 'btn-primary', onClick: pagar },
       ]}
     >
+      <AvisoSegundaConfirmacion confirmando={conf.confirmando} gemelo={null}>
+        Sale un pago de <strong>{money(compromiso.importe)}</strong> a <strong>{compromiso.proveedorNombre}</strong>
+        {modo === 'simple' ? <> por {medio}</> : <> en partes</>}
+        {usaEfectivo && hayTurno && desdeCaja ? <> (el efectivo <strong>sale del cajón</strong>, turno #{caja.id})</> : null}.
+        {usaEfectivo && !(hayTurno && desdeCaja) ? <> <strong>Ojo: es efectivo pero NO sale de ningún turno de caja</strong>, así que no va a figurar en ningún arqueo.</> : null}
+      </AvisoSegundaConfirmacion>
       <div className={s['form-grid']}>
         <Di label="Importe">{money(compromiso.importe)}</Di>
         {compromiso.comprobanteEtiqueta && <Di label="Factura">{compromiso.comprobanteEtiqueta}</Di>}
@@ -151,7 +164,7 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
           </div>
           <div className={s.field}>
             <label>Fecha del pago</label>
-            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+            <input type="date" max={hoyISO()} value={fecha} onChange={(e) => setFecha(e.target.value)} />
           </div>
         </div>
       ) : (
@@ -166,7 +179,7 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
                 value={x.importe} onChange={setForma(i, 'importe')} style={{ width: 130, textAlign: 'right' }}
               />
               {/* Fecha propia de la parte: "transferí una parte hace 10 días". */}
-              <input type="date" value={x.fecha} onChange={setForma(i, 'fecha')} />
+              <input type="date" max={hoyISO()} value={x.fecha} onChange={setForma(i, 'fecha')} />
               {formas.length > 1 && (
                 <Btn small onClick={() => setFormas((xs) => xs.filter((_, j) => j !== i))}>×</Btn>
               )}

@@ -1046,21 +1046,85 @@ export function imprimirArqueoCaja(arqueo, opts) {
 }
 
 /**
+ * EL COMPROBANTE DEL CIERRE POR ENVÍO (0111): lo que se lleva el cajero y lo
+ * que acompaña la plata. Billete por billete, lo contado, lo que queda de
+ * fondo y lo que se envía — y NADA del sistema: ni esperado ni diferencia,
+ * que el cajero no ve en ningún momento.
+ */
+export function imprimirEnvioCaja(d, { moneda, fechaHora, sucursal, cajero, usuario, reimpresion = false }) {
+  const n = (x) => Number(x) || 0;
+  const filas = Object.entries(d.billetes ?? {})
+    .map(([den, cant]) => [Number(den), n(cant)])
+    .filter(([, c]) => c > 0)
+    .sort((a, b) => b[0] - a[0])
+    .map(([den, c]) => `<tr><td>$ ${esc(den.toLocaleString('es-AR'))}</td><td class="n">${esc(String(c))}</td><td class="n">${esc(moneda(den * c))}</td></tr>`)
+    .join('') || '<tr><td>No se contaron billetes.</td><td></td><td class="n">-</td></tr>';
+  const incompleto = n(d.faltaFondo) > 0.009;
+  const cuerpo = `
+    <div class="arqueo">
+    <h1>Envío de caja - Turno #${esc(String(d.sesionId ?? ''))}</h1>
+    <div class="sub">
+      ${esc(sucursal || '')}${cajero ? ` &middot; Cajero: ${esc(cajero)}` : ''}<br />
+      Cierre: ${esc(fechaHora(d.cierre || new Date()))}
+    </div>
+    <div class="secArqueo">Billetes contados</div>
+    <table>
+      <thead><tr><th>Billete</th><th class="n">Cantidad</th><th class="n">Importe</th></tr></thead>
+      <tbody>${filas}
+        <tr class="fuerte"><td>TOTAL CONTADO</td><td></td><td class="n">${esc(moneda(n(d.contado)))}</td></tr>
+      </tbody>
+    </table>
+    <div class="secArqueo">Rendición</div>
+    <table><tbody>
+      <tr><td>Queda de fondo en la caja</td><td class="n">${esc(moneda(n(d.fondoQueda)))}</td></tr>
+      <tr class="remarcada"><td>ENVIADO</td><td class="n">${esc(moneda(n(d.envio)))}</td></tr>
+    </tbody></table>
+    <div class="nota">Quedan ${esc(moneda(n(d.fondoQueda)))} de fondo en la caja para el próximo turno${n(d.fondo) ? ` (fondo fijo ${esc(moneda(n(d.fondo)))})` : ''}.</div>
+    ${incompleto ? `<div class="nota"><strong>FONDO INCOMPLETO:</strong> faltan ${esc(moneda(n(d.faltaFondo)))} para el fondo fijo. No se envía nada; queda avisado al administrador.</div>` : ''}
+    <div class="firmasArqueo">
+      <div>Envía (cajero)<br />${esc(cajero || '')}</div>
+      <div>Recibe conforme</div>
+    </div>
+    ${reimpresion ? selloReimpresion(usuario, new Date()) : ''}
+    </div>`;
+  return imprimirDocumento('cierreCaja', { titulo: `Envío de caja - Turno ${d.sesionId ?? ''}`, cuerpo });
+}
+
+/**
+ * LA VENTANA DE IMPRESIÓN SE ABRE EN EL CLIC (27/9/2026).
+ *
+ * Un documento que se imprime SOLO al terminar una operación (el remito de un
+ * envío) se arma después de esperar a la API, y para entonces el navegador ya
+ * no lo considera "respuesta a un clic": bloquea la ventana emergente y el
+ * papel no sale. Abrirla en el mismo clic —con un "Preparando…"— y escribirla
+ * cuando llega la respuesta lo evita. Si la operación falla, quien llama la
+ * cierra.
+ */
+export function abrirVentanaImpresion() {
+  const w = window.open('', '_blank', 'width=760,height=900');
+  if (w) w.document.write('<p style="font-family:sans-serif;padding:24px;color:#555">Preparando el remito…</p>');
+  return w;
+}
+
+/**
  * Abre la ventana e imprime. `tipoDoc` = clave de la config de impresión.
+ * `ventana`: una ya abierta con `abrirVentanaImpresion` (ver arriba).
  *
  * Devuelve `false` si el navegador BLOQUEÓ la ventana emergente: sin eso la
  * impresión fallaba en silencio y quedaba la duda de si el ticket salió. Quien
  * llama avisa (es lo único que se puede hacer: el permiso lo da el usuario).
  */
-export async function imprimirDocumento(tipoDoc, { titulo, cuerpo, pie, esTicket = false }) {
+export async function imprimirDocumento(tipoDoc, { titulo, cuerpo, pie, esTicket = false, ventana = null }) {
   const { empresa, impresion } = await configImpresion();
   const formato = impresion[tipoDoc] || formatoPorDefecto(tipoDoc);
   const html = htmlDocumento({
     empresa, formato, titulo, cuerpo, esTicket,
     pie: pie ?? (esTicket ? impresion.pieTicket : ''),
   });
-  const w = window.open('', '_blank', 'width=760,height=900');
+  const w = ventana && !ventana.closed ? ventana : window.open('', '_blank', 'width=760,height=900');
   if (!w) return false;
+  // `open` explícito: una ventana abierta de antemano ya tiene el "Preparando…".
+  w.document.open();
   w.document.write(html);
   w.document.close();
   w.focus();
@@ -1382,9 +1446,16 @@ export function cuerpoTicket(venta, {
    * lleva de por qué no recibió su factura. Cuando la venta se facture desde
    * la pestaña Sin facturar, la reimpresión sale sin esto.
    */
+  /* Va AL FINAL del ticket y dice la causa real (0109): "servicio caído"
+   * solo si ARCA no respondió. Si ARCA rechazó un dato, decirle al cliente que
+   * el servicio estaba caído sería mentirle. */
   const provisorio = venta.facturarPendiente
-    ? '<div class="fiscal"><strong>SERVICIO DE ARCA NO DISPONIBLE</strong></div>'
-      + '<div class="fiscal">COMPROBANTE PROVISORIO — PENDIENTE DE FACTURACIÓN</div>'
+    ? (venta.facturarPorCaida === false
+      ? '<div class="fiscal"><strong>NO SE PUDO FACTURAR</strong></div>'
+        + '<div class="fiscal">ARCA NO ACEPTÓ LA FACTURA — SE EMITE CUANDO SE CORRIJA</div>'
+      : '<div class="fiscal"><strong>SERVICIO CAÍDO DE ARCA, NO SE PUDO FACTURAR</strong></div>'
+        + '<div class="fiscal">LA FACTURA SE EMITE CUANDO ARCA VUELVA</div>')
+      + '<div class="fiscal">COMPROBANTE PROVISORIO</div>'
     : '';
   return `
     <h1>${esc(titulo)} ${nro}</h1>

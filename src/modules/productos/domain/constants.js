@@ -76,11 +76,24 @@ export const ESTADOS_ENVIO_CAFE = {
  * nuevo — agregar un valor al enum solo por cómo suena habría obligado a
  * tocar la base, la API y los dos caminos de anulación.
  */
+// eslint-disable-next-line no-unused-vars
 export function estadoEnvioCafe(estado, sentido) {
-  const base = ESTADOS_ENVIO_CAFE[estado] || { label: estado, pill: null };
-  if (sentido === 'entrada' && estado === 'enviado') return { ...base, label: 'Recibido' };
-  return base;
+  /* Hasta el 0113 la entrada "enviada" se leía "Recibido": era cierto porque
+   * entraba al stock en el acto. Ahora se recibe aparte (ver
+   * `RECEPCION_ENVIO_CAFE`), así que el envío dice lo que es: enviado. */
+  return ESTADOS_ENVIO_CAFE[estado] || { label: estado, pill: null };
 }
+
+/**
+ * EL CONTROL DEL QUE RECIBE (0113), aparte del estado del envío: un envío
+ * enviado puede estar todavía sin controlar. Lo cierra el otro lado contando
+ * contra el remito.
+ */
+export const RECEPCION_ENVIO_CAFE = {
+  pendiente:       { label: 'Por recibir',     pill: 'est-pendiente' },
+  recibido:        { label: 'Recibido OK',     pill: 'est-recibida' },
+  con_diferencias: { label: 'Con diferencias', pill: 'est-revision' },
+};
 
 /* El pedido del café: demanda, no envío. pendiente → armando → enviado · anulado. */
 export const ESTADOS_PEDIDO_CAFE = {
@@ -174,6 +187,18 @@ export const TIPO_VENTA_SIN_STOCK = 'venta_sin_stock';
 export const ETIQUETA_TIPO_INCIDENCIA = {
   [TIPO_VENTA_SIN_STOCK]: 'Venta sin stock',
   faltante: 'Faltante en recepción',
+  recepcion_cafe: 'Faltante en envío de Cafetería',
+};
+
+/**
+ * FALTANTE AL RECIBIR UN ENVÍO DE LA CAFETERÍA (0113). Tampoco retiene stock:
+ * en una entrada entró solo lo contado, y en una salida la mercadería ya había
+ * salido. Se cierra diciendo qué pasó.
+ */
+export const TIPO_RECEPCION_CAFE = 'recepcion_cafe';
+export const RESOLUCIONES_RECEPCION_CAFE = {
+  corregido: 'No había salido: ya corregí el envío',
+  perdida: 'Se perdió o se rompió en el camino',
 };
 
 /**
@@ -188,6 +213,7 @@ export const RESOLUCIONES_SIN_STOCK = {
 /** Cómo se lee una resolución ya cerrada. */
 export const ETIQUETA_RESOLUCION = {
   ...RESOLUCIONES_SIN_STOCK,
+  ...RESOLUCIONES_RECEPCION_CAFE,
   venta_anulada: 'Se anuló la venta',
   liberar: 'Liberado a disponible',
   merma: 'Baja por merma',

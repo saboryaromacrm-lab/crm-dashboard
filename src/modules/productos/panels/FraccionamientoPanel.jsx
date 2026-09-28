@@ -380,7 +380,7 @@ function TabPorCategoria({ puede }) {
         se cuenta la góndola. El gramaje agrupa por <strong>tamaño real</strong>, así que “500 g”
         y “0,5 kg” caen juntos aunque cada producto lo escriba a su manera. Clic en un grupo para
         plegarlo; clic en un producto para abrir su ficha.
-        {puede && <> Si una tanda se cargó mal ("puse 20 y son 19"), <strong>Corregir</strong> ajusta los paquetes y devuelve los kilos al granel.</>}
+        {puede && <> Si una tanda se cargó mal («puse 20 y son 19»), <strong>Corregir</strong> ajusta los paquetes y devuelve los kilos al granel.</>}
       </div>
     </>
   );

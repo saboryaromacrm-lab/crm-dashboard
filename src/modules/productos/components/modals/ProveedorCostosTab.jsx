@@ -30,6 +30,16 @@ const MODOS = [
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
+/**
+ * EN MODO "PRECIO FINAL" EL COSTO ES OTRO CAMPO (26/9/2026): lo que manda es
+ * `costoFinal` (lo que se paga por bulto) y `costo` vale 0. La columna Costo y
+ * la masiva "+10%" escribían `costo`, así que no se movía nada — o peor, 0 × 1,10
+ * seguía en 0 y el historial decía que se actualizó. Descuento y flete no
+ * entran en esa fórmula: en esas filas no se editan.
+ */
+const campoReal = (entry, campo) => (entry?.modoCosto === 'final' && campo === 'costo' ? 'costoFinal' : campo);
+const noAplica = (entry, campo) => entry?.modoCosto === 'final' && (campo === 'descuento' || campo === 'flete');
+
 /** Valor resultante de aplicar la regla masiva sobre el valor actual. */
 function aplicarRegla(actual, modo, valor) {
   const a = Number(actual) || 0;
@@ -83,13 +93,13 @@ export function ProveedorCostosTab({ prov }) {
     .map((p) => {
       const entry = (p.formatosCompra || []).find((e) => e.proveedorId === prov.id);
       if (!entry) return null;
-      // Markup EQUIVALENTE del piso (vale también con precio definido): la
-      // referencia de cuánto se movería la góndola si cambia este costo.
-      // Sobre la BASE del precio (0072): el markup multiplica esa, no el real.
-      const cnHoy = store.costoPrecio(p);
-      const ganancia = cnHoy > 0 ? (store.precioBaseVenta(p) / cnHoy - 1) * 100 : 0;
+      /* La fila de PISO del formato de venta: el precio proyectado sale de
+       * ELLA con el costo nuevo (26/9/2026), no de un "margen equivalente"
+       * deducido del precio redondeado — que además movía los precios fijos,
+       * que en la caja no se mueven. */
+      const piso = store.filaPiso(p);
       // "Activo" = el formato que manda el precio hoy es de ESTE proveedor.
-      return { p, entry, ganancia, activo: store.formatoActivo(p)?.proveedorId === prov.id };
+      return { p, entry, piso, activo: store.formatoActivo(p)?.proveedorId === prov.id };
     })
     .filter(Boolean), [store.state.productos, prov.id]);
 
@@ -172,9 +182,11 @@ export function ProveedorCostosTab({ prov }) {
     setEdits((prev) => {
       const next = { ...prev };
       for (const f of seleccionadas) {
+        if (noAplica(f.entry, masiva.campo)) continue;
+        const campo = campoReal(f.entry, masiva.campo);
         const actual = { ...f.entry, ...(prev[f.entry.id] || {}) };
-        const nuevo = Math.max(0, aplicarRegla(actual[masiva.campo], masiva.modo, masiva.valor));
-        next[f.entry.id] = { ...(next[f.entry.id] || {}), [masiva.campo]: nuevo };
+        const nuevo = Math.max(0, aplicarRegla(actual[campo], masiva.modo, masiva.valor));
+        next[f.entry.id] = { ...(next[f.entry.id] || {}), [campo]: nuevo };
       }
       return next;
     });
@@ -186,8 +198,12 @@ export function ProveedorCostosTab({ prov }) {
       const e = efectivo(f);
       const igual = Math.abs(e.costo - f.entry.costo) < 0.005
         && Math.abs(e.descuento - f.entry.descuento) < 0.005
-        && Math.abs(e.flete - f.entry.flete) < 0.005;
-      return igual ? null : { id: f.entry.id, costo: e.costo, descuento: e.descuento, flete: e.flete };
+        && Math.abs(e.flete - f.entry.flete) < 0.005
+        && Math.abs((e.costoFinal || 0) - (f.entry.costoFinal || 0)) < 0.005;
+      if (igual) return null;
+      return f.entry.modoCosto === 'final'
+        ? { id: f.entry.id, costoFinal: e.costoFinal }
+        : { id: f.entry.id, costo: e.costo, descuento: e.descuento, flete: e.flete };
     })
     .filter(Boolean), [filas, efectivo]);
 
@@ -233,10 +249,11 @@ export function ProveedorCostosTab({ prov }) {
     const sel = estaSeleccionada(f);
     // El IVA del PRODUCTO: `modoCosto: 'final'` lo necesita para sacarle el IVA
     // al costo cargado con impuesto incluido.
-    const netoAntes = costoNetoDe(store, f.entry, f.p.iva);
     const netoAhora = costoNetoDe(store, e, f.p.iva);
-    const precioAntes = netoAntes * (1 + f.ganancia / 100);
-    const precioAhora = netoAhora * (1 + f.ganancia / 100);
+    /* Con IVA, como la góndola: el de hoy es el que calculó el servidor; el
+     * de después, el espejo de la caja (`ventaFormato`) con el costo nuevo. */
+    const precioAntes = store.precioGondola(f.p);
+    const precioAhora = f.piso ? store.ventaFormato(f.p, f.piso, netoAhora).finalUnitario : precioAntes;
     const subio = precioAhora > precioAntes;
 
     return (
@@ -260,13 +277,16 @@ export function ProveedorCostosTab({ prov }) {
             {!f.activo && <span className={s.muted}> · no mueve el precio hasta ser el activo</span>}
           </div>
         </td>
-        {CAMPOS.map((c) => (
+        {CAMPOS.map((c) => (noAplica(f.entry, c.id) ? (
+          <td key={c.id} className={s.num}><span className={s.muted} title="En precio final no hay descuento ni flete: el valor ya es lo que se paga por bulto">—</span></td>
+        ) : (
           <td key={c.id} className={s.num}>
             <input
               type="number" min="0" step={c.id === 'costo' ? '0.01' : '0.5'}
-              value={e[c.id]}
+              value={e[campoReal(f.entry, c.id)] ?? 0}
               disabled={!isAdmin}
-              onChange={(ev) => setCampo(f.entry.id, c.id, ev.target.value)}
+              title={campoReal(f.entry, c.id) === 'costoFinal' ? 'Precio final: lo que se paga por bulto' : undefined}
+              onChange={(ev) => setCampo(f.entry.id, campoReal(f.entry, c.id), ev.target.value)}
               style={{
                 width: c.id === 'costo' ? 104 : 74, textAlign: 'right', padding: '5px 7px',
                 border: `1px solid ${tocada ? 'var(--crm-color-primary)' : 'var(--crm-color-border)'}`,
@@ -275,7 +295,7 @@ export function ProveedorCostosTab({ prov }) {
               }}
             />
           </td>
-        ))}
+        )))}
         <td className={cx(s.num, s.mono)}>{money(netoAhora)}</td>
         <td className={s.num}>
           {!f.activo ? <span className={s.muted}>—</span> : tocada ? (
@@ -376,7 +396,7 @@ export function ProveedorCostosTab({ prov }) {
             ),
           }] : []),
           { h: 'Producto' }, { h: 'Costo', num: true }, { h: 'Desc. %', num: true }, { h: 'Flete %', num: true },
-          { h: 'Costo neto', num: true }, { h: 'Precio de venta', num: true },
+          { h: 'Costo neto', num: true }, { h: 'Precio góndola', num: true },
         ]}
         pag={pag}
       >

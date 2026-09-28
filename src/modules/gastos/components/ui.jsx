@@ -19,7 +19,9 @@ export { ModalShell } from '@modules/productos/components/Modal.jsx';
  * hoy el módulo usa `hoyISO` de `domain/constants.js`. */
 export { money, num, fmtFecha, fmtFechaHora } from '@modules/productos/domain/format.js';
 
-export function GastoEstadoPill({ estado }) {
+export function GastoEstadoPill({ estado, tipoDoc }) {
+  // La NC de un gasto nace "pagada" (no hay nada que pagarle): se nombra por lo que es.
+  if (tipoDoc === 'nota_credito' && estado !== 'anulado') return <Pill pill={null} label="Crédito a favor" />;
   const m = ESTADOS_GASTO[estado] || {};
   return <Pill pill={m.pill} label={m.label || estado} />;
 }

@@ -82,7 +82,8 @@ export function GastosPanel() {
       cantidad: vivos.length,
       total: vivos.reduce((a, g) => a + g.total, 0),
       iva: vivos.reduce((a, g) => a + g.iva, 0),
-      saldo: vivos.reduce((a, g) => a + (g.total - g.pagado), 0),
+      // Lo que falta pagar son los gastos con saldo: la NC (en negativo) no se "paga".
+      saldo: vivos.reduce((a, g) => a + Math.max(0, g.total - g.pagado), 0),
     };
   }, [gastos]);
 
@@ -148,11 +149,11 @@ export function GastosPanel() {
         <td>{g.sucursalId ? nombreSucursal(g.sucursalId) : <span className={s.muted}>Todas</span>}</td>
         <td className={s.num}>{money(g.total)}</td>
         <td className={s.num}>
-          {g.estado === 'anulado'
+          {g.estado === 'anulado' || g.tipoDoc === 'nota_credito'
             ? <span className={s.muted}>—</span>
             : <Saldo valor={saldo}>{money(saldo)}</Saldo>}
         </td>
-        <td><GastoEstadoPill estado={g.estado} /></td>
+        <td><GastoEstadoPill estado={g.estado} tipoDoc={g.tipoDoc} /></td>
         <td className={s['actions-col']}>
           <div className={s['row-actions']} onClick={stop}>
             {g.estado !== 'anulado' && saldo > 0.009 && (

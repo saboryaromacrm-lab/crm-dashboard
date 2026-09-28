@@ -10,6 +10,7 @@
  * mayoristas (Presupuestos). Después viene lo que se consulta de vez en cuando
  * —clientes, cobranzas— y al final lo que se configura y casi no se toca.
  */
+import CloudOffIcon from '@mui/icons-material/CloudOff';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import PublicIcon from '@mui/icons-material/Public';
@@ -34,6 +35,9 @@ export const VENTAS_PANELS = [
   /* Se vende, se mira lo vendido, se cierra el turno: el listado va entre el
      mostrador y la caja porque es la pregunta del medio ("¿qué se vendió?"). */
   { id: 'listado', label: 'Ventas', icon: ReceiptLongIcon, permiso: 'ventas.listado' },
+  /* Las cobradas que ARCA no pudo facturar (26/9/2026): misma llave que el
+     listado, porque el que vende es el que tiene que dejarlas en regla. */
+  { id: 'arca', label: 'Caídas por ARCA', icon: CloudOffIcon, permiso: 'ventas.listado', badge: 'arca' },
   { id: 'caja', label: 'Caja', icon: AccountBalanceWalletIcon, permiso: 'ventas.caja' },
   { id: 'ordenes', label: 'Órdenes web', icon: PublicIcon, permiso: 'ventas.ordenes', badge: 'ordenes' },
   { id: 'presupuestos', label: 'Presupuestos', icon: RequestQuoteIcon, permiso: 'ventas.presupuestos' },

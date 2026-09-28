@@ -23,6 +23,7 @@ import {
 } from '../../domain/importarCatalogo.js';
 import { mismoNombreProveedor, proveedoresParecidos } from '@modules/proveedores/domain/importarProveedores.js';
 import { ModalShell } from '../Modal.jsx';
+import { CostosVariosProveedores } from './CostosVariosProveedores.jsx';
 import { Table, s } from '../ui.jsx';
 
 const ETIQUETA_ESTADO = {
@@ -43,6 +44,11 @@ export function ImportarCostosModal() {
   const [modoProveedor, setModoProveedor] = useState('existente');
   const [guardando, setGuardando] = useState(false);
   const [resultado, setResultado] = useState(null);
+  /* TODOS LOS PROVEEDORES DE UNA VEZ (28/9/2026): ver CostosVariosProveedores.
+   * El tilde se prende solo si el archivo trae más de un proveedor. */
+  const [varios, setVarios] = useState(false);
+  const [soloCargados, setSoloCargados] = useState(true);
+  const [enVarios, setEnVarios] = useState(false);
 
   const proveedores = store.state.proveedores.filter((p) => p.proveeMercaderia !== false);
 
@@ -69,6 +75,8 @@ export function ImportarCostosModal() {
         toast(`${file.name} no tiene las columnas del listado de formatos de compra.`, 'err');
       } else {
         setArchivo({ nombre: file.name, filas });
+        const distintos = new Set(filas.map((f) => String(f.Proveedor ?? '').trim().toLowerCase()).filter(Boolean));
+        setVarios(distintos.size > 1);
       }
     } catch {
       toast(`No pude leer ${file.name}.`, 'err');
@@ -83,6 +91,7 @@ export function ImportarCostosModal() {
 
   const continuar = () => {
     if (!archivo) { toast('Elegí el archivo de formatos de compra.', 'err'); return; }
+    if (varios) { setEnVarios(true); return; }
     const creaNuevo = deteccion && !deteccion.exacto && modoProveedor === 'nuevo';
     if (!creaNuevo && !proveedorId) { toast('Elegí de qué proveedor son estos costos.', 'err'); return; }
     setPaso(2);
@@ -109,6 +118,10 @@ export function ImportarCostosModal() {
     const n = (r.actualizados?.length ?? 0) + (r.agregados?.length ?? 0);
     toast(`${n} costo(s) importado(s).`, 'ok');
   };
+
+  if (enVarios && archivo) {
+    return <CostosVariosProveedores archivo={archivo} soloCargados={soloCargados} onVolver={() => setEnVarios(false)} />;
+  }
 
   /* ------------------------------- resultado ------------------------------- */
   if (resultado) {
@@ -187,7 +200,7 @@ export function ImportarCostosModal() {
   return (
     <ModalShell
       title="Actualizar costos de un proveedor"
-      subtitle={paso === 1 ? 'Paso 1 de 2 · Archivo' : 'Paso 2 de 2 · Vista previa'}
+      subtitle={paso === 1 ? `Paso 1 de ${varios ? 3 : 2} · Archivo` : 'Paso 2 de 2 · Vista previa'}
       size="lg"
       onClose={closeModal}
       footer={footer}
@@ -223,7 +236,34 @@ export function ImportarCostosModal() {
             </div>
           )}
 
-          {deteccion && !deteccion.exacto && (
+          {archivo && (
+            <div className={s.field} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                <input type="checkbox" checked={varios} onChange={(e) => setVarios(e.target.checked)} style={{ width: 'auto' }} />
+                El archivo trae TODOS los proveedores: importarlos de una vez
+              </label>
+              {varios && (
+                <>
+                  <div className={s.hint} style={{ margin: '0 0 0 26px' }}>
+                    Se agrupa por la columna Proveedor y se cruza cada nombre con tu padrón. Los que coinciden
+                    exacto entran solos; los parecidos los confirmás vos en el paso siguiente, y los que quedan
+                    afuera se listan.
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginLeft: 26 }}>
+                    <input type="checkbox" checked={soloCargados} onChange={(e) => setSoloCargados(e.target.checked)} style={{ width: 'auto' }} />
+                    Importar solo proveedores que ya están cargados en el sistema
+                  </label>
+                  <div className={s.hint} style={{ margin: '0 0 0 52px' }}>
+                    {soloCargados
+                      ? 'Los que no están en el padrón quedan afuera (se listan al final).'
+                      : 'Los que no están en el padrón se pueden crear: los confirmás uno por uno.'}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {!varios && deteccion && !deteccion.exacto && (
             <div className={cx(s.callout, s.warn)}>
               El archivo dice que estos costos son de <strong>«{deteccion.nombre}»</strong>, y en el
               padrón no hay ningún proveedor con ese nombre exacto.
@@ -244,7 +284,7 @@ export function ImportarCostosModal() {
             </div>
           )}
 
-          <div className={s.field}>
+          {!varios && <div className={s.field}>
             <label>Proveedor de estos costos <span className={s.req}>*</span></label>
             <select
               value={proveedorId}
@@ -257,7 +297,7 @@ export function ImportarCostosModal() {
             {deteccion?.exacto && (
               <div className={s.hint} style={{ margin: '6px 0 0' }}>Detectado del archivo: <strong>«{deteccion.nombre}»</strong>.</div>
             )}
-          </div>
+          </div>}
         </>
       )}
 

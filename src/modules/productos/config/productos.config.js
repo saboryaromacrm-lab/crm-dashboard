@@ -21,7 +21,6 @@ import HistoryIcon from '@mui/icons-material/History';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import LocalCafeIcon from '@mui/icons-material/LocalCafe';
-import BakeryDiningIcon from '@mui/icons-material/BakeryDining';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 
@@ -107,6 +106,8 @@ export const ALMACEN_PANELS = [
    * precios, costos y proveedores. Escribir es de `almacen.cafeteria-entradas`
    * (café y admin); mirar, de toda la sección.
    */
-  { id: 'cafeteria-productos', label: 'Productos Coffit', labelCafe: 'Mis productos', icon: BakeryDiningIcon, permiso: ['almacen.cafeteria', 'almacen.cafeteria-entradas'] },
+  /* "Productos Coffit" / "Mis productos" ya no es una entrada del menú
+     (27/9/2026, pedido del dueño): vive como pestaña ADENTRO de Cafetería,
+     junto a los envíos que usan esos productos. Ver CafeteriaPanel. */
   { id: 'cafeteria-pedidos', label: 'Pedido a la distribuidora', labelCafe: 'Pedido a Sabor y Aroma', icon: LocalCafeIcon, permiso: 'almacen.cafeteria-pedidos' },
 ];

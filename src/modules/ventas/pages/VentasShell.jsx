@@ -1,16 +1,18 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
 import { Button, Snackbar, Alert } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
 import { FullScreenLoader } from '@shared/components/FullScreenLoader/FullScreenLoader.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import { ordenesWeb } from '@core/services/ordenesWeb.js';
+import { arcaPendientes } from '../services/arcaPendientes.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { ModalHost } from '../components/ModalHost.jsx';
 import { Btn, s } from '../components/ui.jsx';
 
 import { PosPanel } from '../panels/PosPanel.jsx';
 import { ListadoVentasPanel } from '../panels/ListadoVentasPanel.jsx';
+import { ArcaCaidasPanel } from '../panels/ArcaCaidasPanel.jsx';
 import { OrdenesPanel } from '../panels/OrdenesPanel.jsx';
 import { PresupuestosPanel } from '../panels/PresupuestosPanel.jsx';
 import { ClientesPanel } from '../panels/ClientesPanel.jsx';
@@ -26,6 +28,7 @@ import { ConfiguracionPanel } from '../panels/ConfiguracionPanel.jsx';
 const PANEL_COMPONENTS = {
   pos: PosPanel,
   listado: ListadoVentasPanel,
+  arca: ArcaCaidasPanel,
   ordenes: OrdenesPanel,
   presupuestos: PresupuestosPanel,
   clientes: ClientesPanel,
@@ -51,7 +54,12 @@ export function VentasShell({ title, subtitle }) {
 
   // Contador vivo de pedidos web sin revisar (mismo poller que el sidebar).
   const pendientesWeb = useSyncExternalStore(ordenesWeb.subscribe, ordenesWeb.count, ordenesWeb.count);
-  const counts = { ordenes: pendientesWeb };
+  /* Las caídas por ARCA: solo se consulta si el rol ve la sección (sin eso,
+   * un rol sin el listado se comería un 403 por minuto). */
+  const veArca = panels.some((x) => x.id === 'arca');
+  const suscribirArca = useCallback((l) => (veArca ? arcaPendientes.subscribe(l) : () => {}), [veArca]);
+  const caidasArca = useSyncExternalStore(suscribirArca, arcaPendientes.count, arcaPendientes.count);
+  const counts = { ordenes: pendientesWeb, arca: caidasArca };
 
   // Solo se renderiza lo PERMITIDO: si el panel pedido no está en el menú del
   // rol (link viejo, atajo, URL), cae al primero visible — nunca a uno oculto.

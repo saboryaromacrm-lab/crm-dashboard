@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { fmtFechaHora } from '../../domain/format.js';
 import {
-  ETIQUETA_RESOLUCION, ETIQUETA_TIPO_INCIDENCIA, RESOLUCIONES_SIN_STOCK,
-  TIPOS_INCIDENCIA, TIPO_VENTA_SIN_STOCK,
+  ETIQUETA_RESOLUCION, ETIQUETA_TIPO_INCIDENCIA, RESOLUCIONES_RECEPCION_CAFE, RESOLUCIONES_SIN_STOCK,
+  TIPOS_INCIDENCIA, TIPO_RECEPCION_CAFE, TIPO_VENTA_SIN_STOCK,
 } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions, productoOptions, presentacionOptions, usuarioOptions } from '../selectOptions.jsx';
@@ -118,8 +118,15 @@ export function ResolverIncidenciaModal({ id }) {
   const { store, act, closeModal, toast } = useProductos();
   const inc = store.state.incidencias.find((x) => x.id === id);
   const sinStock = inc?.tipo === TIPO_VENTA_SIN_STOCK;
-  const [res, setRes] = useState(sinStock ? 'ajustado' : 'liberar');
+  /* El faltante de un envío de la cafetería (0113) tampoco retuvo nada: se
+   * cierra diciendo qué pasó, sin tocar stock. */
+  const recepCafe = inc?.tipo === TIPO_RECEPCION_CAFE;
+  const [res, setRes] = useState(sinStock ? 'ajustado' : recepCafe ? 'corregido' : 'liberar');
   const [contado, setContado] = useState('');
+  /* SEGUNDA CONFIRMACIÓN (27/9/2026): resolver mueve stock (libera o da de
+   * baja) y no se deshace. Y el candado del doble clic, con `useRef`. */
+  const [confirmando, setConfirmando] = useState(false);
+  const enVuelo = useRef(false);
   if (!inc) return null;
   const p = store.getProducto(inc.productoId);
 
@@ -138,34 +145,53 @@ export function ResolverIncidenciaModal({ id }) {
       toast('Pon\u00e9 cu\u00e1ntas unidades contaste en la g\u00f3ndola (0 o m\u00e1s).', 'err');
       return;
     }
+    if (!confirmando) { setConfirmando(true); return; }
+    if (enVuelo.current) return;
+    enVuelo.current = true;
     act(
       store.resolverIncidencia(id, res, necesitaConteo ? Number(contado) : undefined),
       necesitaConteo ? 'Stock ajustado y incidencia resuelta.' : 'Incidencia resuelta.',
-    );
+    ).finally(() => { enVuelo.current = false; setConfirmando(false); });
   };
+  /** Lo que va a pasar con el stock, en palabras, para la segunda confirmación. */
+  const efecto = sinStock
+    ? (res === 'ajustado' ? `el stock de ${p.nombre} queda en ${contado === '' ? '—' : store.fmtCant(p, inc.presId, Number(contado))}` : 'no se toca el stock')
+    : recepCafe
+      ? 'no se toca el stock'
+      : res === 'liberar'
+        ? `vuelven ${store.fmtCant(p, inc.presId, inc.cantidad)} de ${p.nombre} a disponible`
+        : `se dan de baja ${store.fmtCant(p, inc.presId, inc.cantidad)} de ${p.nombre} como pérdida`;
 
   return (
     <ModalShell
-      title={sinStock ? 'Resolver venta sin stock' : 'Resolver incidencia'}
+      title={sinStock ? 'Resolver venta sin stock' : recepCafe ? 'Resolver faltante de envío de Cafetería' : 'Resolver incidencia'}
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Resolver', clase: 'btn-primary', onClick: resolver },
+        { texto: confirmando ? 'Sí, resolver' : 'Resolver…', clase: 'btn-primary', onClick: resolver },
       ]}
     >
+      {confirmando && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>Segunda confirmación.</strong> {inc.codigo}: {efecto}, en {store.getSucursal(inc.sucursalId)?.nombre}.
+          No se deshace. ¿Confirmás?
+        </div>
+      )}
       <div className={s.callout}>
         Incidencia <strong>{inc.codigo}</strong> · {ETIQUETA_TIPO_INCIDENCIA[inc.tipo] || inc.tipo}<br />
         {p.nombre} · {store.getSucursal(inc.sucursalId).nombre} ·{' '}
         {sinStock
           ? <>el sistema tenía {store.fmtCant(p, inc.presId, inc.disponibleAntes)} y se vendieron{' '}
             {store.fmtCant(p, inc.presId, inc.vendido)}: faltan <strong>{store.fmtCant(p, inc.presId, inc.cantidad)}</strong>.</>
-          : <>{store.fmtCant(p, inc.presId, inc.cantidad)} comprometido.</>}
+          : recepCafe
+            ? <>faltaron <strong>{store.fmtCant(p, inc.presId, inc.cantidad)}</strong> al recibir. {inc.motivo}</>
+            : <>{store.fmtCant(p, inc.presId, inc.cantidad)} comprometido.</>}
       </div>
       <div className={s.field}>
         <label>Resolución <span className={s.req}>*</span></label>
-        <select value={res} onChange={(e) => setRes(e.target.value)}>
-          {sinStock
-            ? Object.entries(RESOLUCIONES_SIN_STOCK).map(([k, v]) => <option key={k} value={k}>{v}</option>)
+        <select value={res} onChange={(e) => { setConfirmando(false); setRes(e.target.value); }}>
+          {sinStock || recepCafe
+            ? Object.entries(sinStock ? RESOLUCIONES_SIN_STOCK : RESOLUCIONES_RECEPCION_CAFE).map(([k, v]) => <option key={k} value={k}>{v}</option>)
             : (
               <>
                 <option value="liberar">Liberar (vuelve a disponible)</option>
@@ -181,8 +207,8 @@ export function ResolverIncidenciaModal({ id }) {
           <div className={s.field}>
             <label>¿Cuántas hay en la góndola? <span className={s.req}>*</span></label>
             <input
-              type="number" min="0" step="any" autoFocus
-              value={contado} onChange={(e) => setContado(e.target.value)}
+              type="number" min="0" step={store.unidadDe(p, inc.presId) === 'kg' ? 'any' : '1'} autoFocus
+              value={contado} onChange={(e) => { setConfirmando(false); setContado(e.target.value); }}
               placeholder="Lo que contaste recién"
             />
           </div>
@@ -192,6 +218,13 @@ export function ResolverIncidenciaModal({ id }) {
             que antes. Queda un movimiento de ajuste con tu nombre.
           </div>
         </>
+      )}
+      {recepCafe && (
+        <div className={s.hint}>
+          Cierra la incidencia <strong>sin tocar el stock</strong>: no hay nada retenido. Si la mercadería
+          en realidad <strong>no había salido</strong>, primero corregí el envío (Almacén › Cafetería →
+          el envío → <strong>Editar</strong>, bajando hasta lo que llegó) y después cerrá acá.
+        </div>
       )}
       {sinStock && res === 'error_carga' && (
         <div className={s.hint}>
@@ -235,6 +268,11 @@ export function DetalleIncidenciaModal({ id }) {
             <Di label="Comprobante"><span className={s.mono}>{inc.comprobante || '—'}</span></Di>
             <Di label="Cliente">{inc.clienteNombre || '—'}</Di>
             <Di label="Cajero">{(store.getUsuario(inc.responsableId) || {}).nombre || '—'}</Di>
+          </>
+        ) : inc.tipo === TIPO_RECEPCION_CAFE ? (
+          <>
+            <Di label="Faltó al recibir"><strong>{store.fmtCant(p, inc.presId, inc.cantidad)}</strong></Di>
+            <Di label="Controló">{(store.getUsuario(inc.responsableId) || {}).nombre || '—'}</Di>
           </>
         ) : (
           <>

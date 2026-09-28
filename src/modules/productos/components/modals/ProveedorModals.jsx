@@ -262,7 +262,7 @@ const ACCIONES_COMP = [
   { tipo: 'orden_compra', label: '+ Orden compra' },
 ];
 function OperacionesTab({ prov }) {
-  const { store, isAdmin, openModal } = useProductos();
+  const { store, can, openModal } = useProductos();
   const comps = store.comprobantesDe(prov.id);
 
   const filas = comps.map((c) => (
@@ -281,7 +281,7 @@ function OperacionesTab({ prov }) {
         Gestión de compras del proveedor. Cargá comprobantes (factura, remito, notas, orden de compra);
         los que ingresan stock lo hacen por la <strong>recepción</strong>.
       </div>
-      {isAdmin && (
+      {can('compras.facturacion') && (
         <div className={s['detalle-actions']}>
           {ACCIONES_COMP.map((a) => (
             <Btn key={a.tipo} variant="btn-ingreso" small onClick={() => openModal('comprobanteForm', { proveedorId: prov.id, tipo: a.tipo })}>{a.label}</Btn>

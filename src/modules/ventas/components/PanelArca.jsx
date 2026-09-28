@@ -203,7 +203,7 @@ export function PanelArca({ habilitado }) {
         <div className={cx(s.callout, s.info)}>
           El interruptor está <strong>prendido</strong> pero falta la configuración, así que cada
           venta que pida factura va a salir como <strong>ticket provisorio</strong> y a quedar en
-          Ventas › ⚠ Sin facturar. Sirve para ensayar el circuito de caída; para operar normal,
+          Ventas › Caídas por ARCA. Sirve para ensayar el circuito de caída; para operar normal,
           apagalo hasta tener el certificado.
         </div>
       )}
@@ -343,7 +343,7 @@ export function PanelArca({ habilitado }) {
           {trab.ocultas > 0 && (
             <div className={s.hint} style={{ marginTop: 6 }}>
               Hay {trab.ocultas} más que no entran acá. Están todas en{' '}
-              <strong>Ventas › Ventas › ⚠ Sin facturar</strong>.
+              <strong>Ventas › Caídas por ARCA</strong>, donde se facturan todas de una.
             </div>
           )}
         </div>

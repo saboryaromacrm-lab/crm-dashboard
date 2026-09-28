@@ -82,7 +82,11 @@ function presLabel(prod, presId) {
 }
 function fmtCant(prod, presId, cantidad) {
   if (unidadDe(prod, presId) === 'kg') return num(cantidad, 3) + ' kg';
-  return Math.round(cantidad) + (presId ? ' paq.' : ' u.');
+  /* Sin redondear (27/9/2026): "16 u." cuando había 15,5 escondía justo el
+   * decimal que no tenía que existir. Entero se ve entero; si quedó media
+   * unidad de antes, se ve — es la pista para corregirla. */
+  const n = Math.round((Number(cantidad) || 0) * 1000) / 1000;
+  return (Number.isInteger(n) ? String(n) : num(n, 3)) + (presId ? ' paq.' : ' u.');
 }
 
 /* ---------------- Lecturas de stock (sobre el estado cargado) ---------------- */
@@ -202,6 +206,15 @@ function costosFormato(e, iva) {
   };
 }
 
+/**
+ * CUÁNTOS KILOS DE GRANEL CONSUME UN PAQUETE (0110) — espejo de `escalaPaquete`
+ * en pricing.ts: sus kilos más la merma del fraccionado, ÷ (1 − merma).
+ */
+function escalaPaquete(tamKg, mermaPct) {
+  const m = Math.min(Math.max(Number(mermaPct) || 0, 0), 50) / 100;
+  return (Number(tamKg) || 0) / (1 - m);
+}
+
 /** El costo REAL unitario: valuación de stock y pérdidas. NO cotiza. */
 function costoNetoEntry(e, iva) { return costosFormato(e, iva).costoNetoUnitario; }
 /** La BASE del precio de venta: lo único que puede multiplicar el markup. */
@@ -215,20 +228,36 @@ function costoPrecioEntry(e, iva) { return costosFormato(e, iva).costoPrecioUnit
 function formatoActivo(prod) {
   const arr = prod?.formatosCompra || prod?.proveedores || [];
   if (!arr.length) return null;
-  return arr.find((e) => e.usarParaPrecio) || arr[0];
+  // Sin ninguno marcado, el de id más bajo: el mismo que elige el servidor.
+  return arr.find((e) => e.usarParaPrecio) || [...arr].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))[0];
 }
 /*
  * Sin la llave del detalle de compra (25/9/2026) los formatos llegan sin
  * precios —solo quién provee— y el servidor manda el costo ya resuelto
  * (`costosOcultos`). Recalcularlo acá daría 0.
  */
+/*
+ * LO QUE ELABORA LA CAFETERÍA cuesta lo que ella declaró en su ficha (espejo
+ * de `formatoDeCosto` del backend, 26/9/2026): no se compra, así que no tiene
+ * formato de compra y sin esto valía $0 en el stock y en el envío. La ficha
+ * nunca declarada no es un cero: cae al formato de compra como siempre.
+ */
+function costoDelCafe(prod) {
+  return prod?.origenCafeteria && prod?.costoCafeteriaActualizado != null
+    ? Number(prod.costoCafeteria) || 0
+    : null;
+}
 function costoNeto(prod) {
   if (prod?.costosOcultos) return Number(prod.costoNeto) || 0;
+  const cafe = costoDelCafe(prod);
+  if (cafe != null) return cafe;
   return costoNetoEntry(formatoActivo(prod), prod?.iva);
 }
 /** La base del precio del producto (0072): con todo facturado, = costoNeto. */
 function costoPrecio(prod) {
   if (prod?.costosOcultos) return Number(prod.costoPrecioNeto) || 0;
+  const cafe = costoDelCafe(prod);
+  if (cafe != null) return cafe;
   return costoPrecioEntry(formatoActivo(prod), prod?.iva);
 }
 
@@ -249,10 +278,14 @@ function redondearPrecio(valor, redondeo) {
   const v = Number(valor) || 0;
   const r = Number(redondeo) || 0;
   if (r <= 0) return money(v);
-  return Math.round(v / r) * r;
+  // Nunca a cero (26/9/2026): mismo criterio que `pricing.ts`.
+  const red = Math.round(v / r) * r;
+  return red > 0 || v <= 0 ? red : money(v);
 }
-function ajustarNeto(neto, iva) {
-  const r = Number(state.configVentas?.redondeoPrecio) || 0;
+/* `redondeoProd`: el de la ficha, que pisa al general (26/9/2026) — igual que
+ * el servidor. Sin él, el CSV y los proyectados mostraban otro precio que la caja. */
+function ajustarNeto(neto, iva, redondeoProd) {
+  const r = Number(redondeoProd ?? state.configVentas?.redondeoPrecio) || 0;
   if (r <= 0) return money(neto);
   const i = Number(iva) || 0;
   return money(redondearPrecio(neto * (1 + i / 100), r) / (1 + i / 100));
@@ -301,7 +334,7 @@ function preciosVenta(prod) {
     ...l,
     // El servidor ya resolvió el modo (markup o precio definido); recalcular
     // acá con markup rompería las filas de precio fijo.
-    precio: l.precio != null ? l.precio : ajustarNeto(cn * (1 + (Number(l.markup) || 0) / 100), prod.iva),
+    precio: l.precio != null ? l.precio : ajustarNeto(cn * (1 + (Number(l.markup) || 0) / 100), prod.iva, prod.redondeo),
   }));
 }
 
@@ -323,7 +356,18 @@ function precioBaseVenta(prod) {
   // el costo que cotiza es la base, no el real.
   if (!piso) return costoPrecio(prod);
   if (piso.precio != null) return piso.precio;
-  return ajustarNeto(costoPrecio(prod) * (1 + (Number(piso.markup) || 0) / 100), prod.iva);
+  return ajustarNeto(costoPrecio(prod) * (1 + (Number(piso.markup) || 0) / 100), prod.iva, prod.redondeo);
+}
+
+/**
+ * EL PRECIO DE GÓNDOLA DEL PRODUCTO, con IVA (26/9/2026): el que calculó el
+ * SERVIDOR para su fila de piso, que es exactamente el que cobra la caja. Solo
+ * si no vino (producto sin formato de venta) se cae al espejo local.
+ */
+function precioGondola(prod) {
+  const piso = filaPiso(prod);
+  if (piso?.precioFinalUnitario != null) return Number(piso.precioFinalUnitario);
+  return redondearPrecio(precioBaseVenta(prod) * (1 + (Number(prod?.iva) || 0) / 100), prod?.redondeo ?? state.configVentas?.redondeoPrecio);
 }
 /**
  * PRECIO FINAL DE UN PAQUETE, con IVA. Lo trae la API en cada presentación
@@ -342,7 +386,7 @@ function precioPaquete(prod, presOrId) {
 function valorEntry(s) {
   const prod = getProducto(s.productoId); if (!prod) return 0;
   const cn = costoNeto(prod);
-  if (s.presentacionId) { const pr = presDe(prod, s.presentacionId); return s.cantidad * cn * (pr ? Number(pr.tamKg) || 0 : 0); }
+  if (s.presentacionId) { const pr = presDe(prod, s.presentacionId); return s.cantidad * cn * (pr ? escalaPaquete(pr.tamKg, prod.merma) : 0); }
   return s.cantidad * cn;
 }
 
@@ -419,10 +463,12 @@ function can(perm) {
 }
 /** Tipos de movimiento manual que el usuario puede registrar, según sus permisos. */
 function tiposMovPermitidos() {
+  /* La MISMA llave por tipo que la API (`LLAVE_DE_TIPO`): la devolución y el
+   * ajuste suman o corrigen stock y piden `inventario`; lo vencido es una baja
+   * y pide `merma`, como la merma. */
   const tipos = [];
-  if (can('devoluciones')) tipos.push('devolucion');
-  if (can('inventario')) tipos.push('ajuste', 'vencido');
-  if (can('merma')) tipos.push('merma');
+  if (can('inventario')) tipos.push('devolucion', 'ajuste');
+  if (can('merma')) tipos.push('merma', 'vencido');
   if (can('defectuoso')) tipos.push('defectuoso');
   return tipos;
 }
@@ -525,11 +571,17 @@ const _LOADERS = {
    * carga a propósito — el techo y el saldo son dos mitades de lo mismo.
    */
   comprobantes: async () => {
-    const [lista, saldos] = await Promise.all([
+    /* LOS REMITOS PENDIENTES VAN TODOS (26/9/2026): con solo los últimos 300,
+     * un remito viejo sin facturar desaparecía de "Remitos sin facturar" y
+     * nadie reclamaba su factura. Son pocos (se convierten al llegar el
+     * papel), así que traerlos aparte cuesta nada. */
+    const [lista, remitos, saldos] = await Promise.all([
       httpClient.get('/comprobantes?limit=300'),
+      httpClient.get('/comprobantes?tipo=remito&estado=confirmado&limit=1000'),
       httpClient.get('/comprobantes/saldos'),
     ]);
-    state.comprobantes = lista;
+    const ya = new Set(lista.map((c) => c.id));
+    state.comprobantes = [...lista, ...remitos.filter((c) => !ya.has(c.id))];
     state.saldosProveedor = saldos;
   },
 };
@@ -786,7 +838,6 @@ const editarProveedor = (id, o) => _mutate(() => httpClient.patch('/proveedores/
 const eliminarProveedor = (id) => _mutate(() => httpClient.delete('/proveedores/' + id));
 
 /* Sin `opCompra`: el ingreso de mercadería es la factura de Compras (18/8/2026). */
-const opVenta = (o) => _mutateStock(() => httpClient.post('/operaciones/venta', o));
 /**
  * Registrar fraccionado (0102): cabecera + renglones de uno o varios productos,
  * todo o nada. La respuesta trae la foto de CADA producto tocado: se aplican
@@ -817,6 +868,8 @@ const opCorregirFraccionado = (o) => _mutateStock(() => httpClient.post('/operac
   ...o,
 }));
 const opSimple = (o) => _mutateStock(() => httpClient.post('/operaciones/movimiento', o));
+/** Tirar lo que ya está como vencido o defectuoso (27/9/2026): la salida de esos estados. */
+const descartarEstado = (o) => _mutateStock(() => httpClient.post('/operaciones/descartar', o));
 
 const avanzarTransferencia = (id, desde) => _mutate(() => httpClient.post('/transferencias/' + id + '/avanzar', { usuarioId: state.ctx.usuarioId, desde }));
 const cancelarTransferencia = (id) => _mutate(() => httpClient.post('/transferencias/' + id + '/cancelar'));
@@ -1024,11 +1077,19 @@ function _cleanComprobante(o) {
   };
 }
 const crearComprobante = (o) => _mutate(() => httpClient.post('/comprobantes', _cleanComprobante(o)));
+/** La góndola que dejaría la factura, calculada por el servidor (26/9/2026). No graba nada. */
+const proyectarPrecios = (body) => httpClient.post('/comprobantes/proyectar-precios', body);
 /**
  * LLEGÓ LA FACTURA DE UN REMITO (26/8): el remito PASA A SER la factura, sin
  * volver a mover stock. Los renglones viajan por `itemId` (los del remito) y
  * solo llevan lo que el papel puede traer distinto: precio, descuento e IVA.
  */
+/**
+ * ANULAR UN COMPROBANTE (0106). La vista previa es una lectura: qué frena y qué
+ * se deshace. La anulación vuelve a calcular todo en el servidor.
+ */
+const anulacionComprobante = (id) => httpClient.get(`/comprobantes/${id}/anulacion`);
+const anularComprobante = (id, motivo) => _mutate(() => httpClient.post(`/comprobantes/${id}/anular`, { motivo }));
 const facturarRemito = (remitoId, o) => _mutate(() => httpClient.post(`/comprobantes/${remitoId}/facturar`, {
   letra: o.letra, puntoVenta: o.puntoVenta,
   numero: o.numero != null && o.numero !== '' ? Number(o.numero) : undefined,
@@ -1141,6 +1202,13 @@ const crearPedidoCafeteria = (o) => _mutate(() => httpClient.post('/cafeteria/pe
 const tomarPedidoCafeteria = (id) => _mutate(() => httpClient.post(`/cafeteria/pedidos/${id}/tomar`, {}));
 const anularPedidoCafeteria = (id, motivo) => _mutate(() => httpClient.post(`/cafeteria/pedidos/${id}/anular`, { motivo, usuarioId: state.ctx.usuarioId ?? undefined }));
 /** Anular = reversión completa del egreso; sube la versión y coffit lo deshace. */
+/** La pérdida del mes, contada en el servidor (no sobre los últimos 300 movimientos). */
+const perdidasMesVencimientos = (f = {}) => {
+  const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v != null && v !== '')).toString();
+  return httpClient.get('/vencimientos/perdidas-mes' + (qs ? `?${qs}` : ''));
+};
+/** Controlar y recibir (0113): un número por renglón, contado contra el remito. */
+const recibirEnvioCafeteria = (id, o) => _mutate(() => httpClient.post(`/cafeteria/envios/${id}/recibir`, o));
 const anularEnvioCafeteria = (id, motivo) => _mutate(() => httpClient.post(`/cafeteria/envios/${id}/anular`, { motivo, usuarioId: state.ctx.usuarioId ?? undefined }));
 
 /* ---- Vencimientos (el vigía de fechas, sin lote) ----
@@ -1217,6 +1285,22 @@ const guardarPercepcionesProveedor = (id, percepciones) => _mutate(() => httpCli
 const importarCatalogo = (proveedorId, items) => _mutate(() => httpClient.post('/productos/importar', { proveedorId, items }));
 /** Solo costos, sin el maestro (23/9): matchea por código contra el catálogo ya cargado. */
 const importarCostos = (proveedorId, items) => _mutate(() => httpClient.post('/productos/importar-costos', { proveedorId, items }));
+/**
+ * LA TANDA DE VARIOS PROVEEDORES (28/9/2026): cada `_mutate` vuelve a bajar el
+ * inventario entero (~10 MB); con un archivo de 60 proveedores eran 60
+ * descargas seguidas. En la tanda se llama sin recargar y la pantalla hace UN
+ * `refetch()` al final.
+ */
+async function _sinRecargar(fn) {
+  try {
+    const data = await fn();
+    return Object.assign({ ok: true }, (data && typeof data === 'object') ? data : {});
+  } catch (e) {
+    return _fallo(e);
+  }
+}
+const importarCostosEnTanda = (proveedorId, items) => _sinRecargar(() => httpClient.post('/productos/importar-costos', { proveedorId, items }));
+const crearProveedorEnTanda = (o) => _sinRecargar(() => httpClient.post('/proveedores', o));
 /** Solo categoría, subcategoría y etiquetas, sin el maestro (23/9): mismo espíritu que `importarCostos`. */
 const actualizarClasificacion = (items) => _mutate(() => httpClient.post('/productos/actualizar-clasificacion', { items }));
 
@@ -1235,7 +1319,7 @@ export const inventoryStore = {
   getProducto, getSucursal, getProveedor, getUsuario, presDe, distribuidora,
   unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry,
   rolActual, can, tiposMovPermitidos, setCtx,
-  opFraccionarRegistro, opCorregirFraccionado, opVenta, opSimple,
+  opFraccionarRegistro, opCorregirFraccionado, opSimple, descartarEstado,
   avanzarTransferencia, cancelarTransferencia,
   abrirBorradorPedido, guardarBorradorPedido, enviarBorradorPedido, descartarBorradorPedido,
   listarConteos, crearConteo, getConteo, contarItemConteo, cerrarConteo, reabrirConteo,
@@ -1246,14 +1330,15 @@ export const inventoryStore = {
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
   sugerenciasArchivado, archivarLote,
-  guardarPresentaciones, importarCatalogo, importarCostos, actualizarClasificacion,
+  guardarPresentaciones, importarCatalogo, importarCostos, importarCostosEnTanda, crearProveedorEnTanda, actualizarClasificacion,
   crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, siguienteCodigo, siguienteEan,
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,
   guardarFormatosCompra, guardarListasProducto, guardarListasPresentacion,
+  proyectarPrecios, filaPiso, precioGondola, escalaPaquete,
   costoNeto, costoNetoEntry, costoPrecio, costoPrecioEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPaquete,
   precioFinal, redondearPrecio,
-  crearComprobante, facturarRemito, getComprobante, comprobantesDe, cuentaProveedor, saldoTotalProveedores,
+  crearComprobante, facturarRemito, anulacionComprobante, anularComprobante, getComprobante, comprobantesDe, cuentaProveedor, saldoTotalProveedores,
   facturasReferenciables,
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
@@ -1261,7 +1346,8 @@ export const inventoryStore = {
   pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
   enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria, costosEntradaCafeteria, depositoCafeteria,
   productosCafeteria, crearProductoCafeteria, editarProductoCafeteria, bajaProductoCafeteria,
-  crearEnvioCafeteria, editarEnvioCafeteria, anularEnvioCafeteria,
+  crearEnvioCafeteria, editarEnvioCafeteria, anularEnvioCafeteria, recibirEnvioCafeteria,
+  perdidasMesVencimientos,
   pedidosCafeteria, pedidoCafeteria, crearPedidoCafeteria, tomarPedidoCafeteria, anularPedidoCafeteria,
   vencimientos, resumenVencimientos, reportesVencimientos, crearSesionVencimientos,
   editarVencimiento, eliminarVencimiento, procesarVencimiento, ofertasVencimientos,

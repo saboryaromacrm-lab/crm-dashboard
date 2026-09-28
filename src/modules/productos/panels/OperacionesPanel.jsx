@@ -20,6 +20,7 @@ const TIPOS_OP = {
   transferencia_recibida: { label: 'Recepción', pill: 'tag-ingreso' },
   compra_recibida: { label: 'Compra', pill: 'tag-ingreso' },
   ajuste: { label: 'Ajuste', pill: 'tag-ajuste' },
+  devolucion: { label: 'Devolución', pill: 'tag-ingreso' },
   merma: { label: 'Merma', pill: 'tag-baja' },
   vencido: { label: 'Vencido', pill: 'tag-baja' },
   defectuoso: { label: 'Defectuoso', pill: 'tag-baja' },
@@ -60,10 +61,21 @@ export function OperacionesPanel() {
     && (!soloObs || (f.observaciones ?? '').trim() !== '')
   )), [filas, tipo, soloObs]);
 
-  const totalMes = useMemo(
-    () => visibles.reduce((a, f) => a + (f.monto ?? 0), 0),
-    [visibles],
-  );
+  /*
+   * TOTALES POR SENTIDO (27/9/2026). Se sumaba todo junto, sin signo: un envío
+   * que SALIÓ y una compra que ENTRÓ daban un "total valuado" que no era
+   * ninguna cosa. Ahora: lo que entró, lo que salió y el neto. Lo que solo
+   * cambia de estado (apartar para una incidencia) no entra en ninguno.
+   */
+  const totales = useMemo(() => {
+    let entra = 0; let sale = 0;
+    for (const f of visibles) {
+      if (f.monto == null) continue;
+      if (f.sentido === 'entra') entra += f.monto;
+      else if (f.sentido === 'sale') sale += f.monto;
+    }
+    return { entra, sale, neto: entra - sale };
+  }, [visibles]);
 
   const pag = usePaginado(visibles, 'operaciones', `${desde}|${hasta}|${tipo}|${soloObs}`);
 
@@ -133,7 +145,13 @@ export function OperacionesPanel() {
                 {f.concepto}
                 {f.cantidad != null && <span className={s.muted}> · {num(f.cantidad)} {f.unidad}</span>}
               </td>
-              <td className={cx(s.num, s.mono)}>{f.monto != null ? money(f.monto) : '—'}</td>
+              <td
+                className={cx(s.num, s.mono)}
+                style={f.sentido === 'sale' ? { color: 'var(--crm-color-danger)' } : f.sentido === 'entra' ? { color: 'var(--crm-color-success)' } : undefined}
+                title={f.sentido === 'mueve' ? 'Cambio de estado: no entra ni sale del local' : undefined}
+              >
+                {f.monto != null ? `${f.sentido === 'sale' ? '−' : f.sentido === 'entra' ? '+' : ''}${money(f.monto)}` : '—'}
+              </td>
               <td>{f.usuario || '—'}</td>
               <td style={{ maxWidth: 220, fontSize: 12.5 }}>{f.observaciones || <span className={s.muted}>—</span>}</td>
               <td className={s['actions-col']}>
@@ -150,8 +168,14 @@ export function OperacionesPanel() {
       </Table>
 
       <div className={s.muted} style={{ fontSize: 12.5, display: 'flex', justifyContent: 'space-between' }}>
-        <span>{visibles.length} registro/s</span>
-        {totalMes > 0 && <span>Total valuado: <strong className={s.mono}>{money(totalMes)}</strong></span>}
+        <span>{visibles.length} registro/s{filas && filas.length >= 5000 ? ' · ⚠ se muestran las primeras 5.000: acotá las fechas' : ''}</span>
+        {(totales.entra > 0 || totales.sale > 0) && (
+          <span>
+            Entró <strong className={s.mono}>{money(totales.entra)}</strong> · Salió{' '}
+            <strong className={s.mono}>{money(totales.sale)}</strong> · Neto{' '}
+            <strong className={s.mono}>{totales.neto < 0 ? '−' : ''}{money(Math.abs(totales.neto))}</strong>
+          </span>
+        )}
       </div>
     </div>
   );

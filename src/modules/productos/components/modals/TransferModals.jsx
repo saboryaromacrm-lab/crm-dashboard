@@ -11,7 +11,7 @@ import { useProductos } from '../../context/ProductosContext.jsx';
 import { fmtFechaHora, money, num } from '../../domain/format.js';
 import { cx } from '@shared/utils/classNames.js';
 import { httpClient } from '@core/services/httpClient.js';
-import { esc, imprimirDocumento, cuerpoRemitoTransferencia } from '@core/services/imprimir.js';
+import { esc, imprimirDocumento, abrirVentanaImpresion, cuerpoRemitoTransferencia } from '@core/services/imprimir.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions, sucursalOptionsOtras, presentacionOptions, usuarioOptions } from '../selectOptions.jsx';
@@ -496,18 +496,49 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
    * fila propia: desde ahí se pide "Ajo en Polvo · 500 g" derecho, sin agregar
    * la madre y después cambiar el selector.
    */
-  const agregar = (p, presId = '') => {
+  /* `cant` (26/9/2026): la cantidad de la casilla de la fila; sin ella suma uno
+   * (el Enter del buscador, el lector de códigos). `limpiar`: el buscador se
+   * vacía después del Enter —el lector escanea el siguiente—, pero no después
+   * del botón de la fila, que casi siempre sigue con el otro tamaño del mismo
+   * producto. */
+  const agregar = (p, presId = '', cant = 1, { limpiar = true } = {}) => {
     if (!p) return;
     const pres = presId ? String(presId) : '';
     setItems((rows) => {
       const i = rows.findIndex((r) => parseInt(r.prodId, 10) === p.id && (r.presId || '') === pres);
-      if (i >= 0) return rows.map((r, j) => (j === i ? { ...r, cant: String((parseFloat(r.cant) || 0) + 1) } : r));
-      return [{ prodId: String(p.id), presId: pres, cant: '1' }, ...rows];
+      if (i >= 0) return rows.map((r, j) => (j === i ? { ...r, cant: String(Math.round(((parseFloat(r.cant) || 0) + cant) * 1000) / 1000) } : r));
+      return [{ prodId: String(p.id), presId: pres, cant: String(cant) }, ...rows];
     });
-    setQ('');
+    if (limpiar) setQ('');
     marcarSucio();
     // No hace falta saltar de pestaña: el buscador de cada una solo ofrece lo
     // suyo, así que el renglón cae siempre en la que está a la vista.
+  };
+
+  /*
+   * LA CANTIDAD SE ESCRIBE EN LA FILA DEL BUSCADOR (26/9/2026, pedido del
+   * dueño): casilla y al lado "Agregar", que suma directo al pedido. Antes el
+   * clic sumaba de a uno, y pedir 10 era diez clics o ir al renglón. Paquetes
+   * y unidades enteros; el granel suelto (un granel sin tamaños) en kilos.
+   */
+  const [cantFila, setCantFila] = useState({});
+  const cantidadDeFila = (clave, enKg) => {
+    const v = String(cantFila[clave] ?? '').trim().replace(',', '.');
+    if (!v) return 1;
+    const n = Number(v);
+    if (!(n > 0)) return null;
+    if (!enKg && !Number.isInteger(n)) return null;
+    return n;
+  };
+  const agregarDeFila = (clave, p, pres) => {
+    const enKg = !pres && p.tipo === 'granel';
+    const n = cantidadDeFila(clave, enKg);
+    if (n == null) {
+      toast(enKg ? 'Poné los kilos (más de 0).' : 'La cantidad va entera y mayor a 0.', 'err');
+      return;
+    }
+    agregar(p, pres ? pres.id : '', n, { limpiar: false });
+    setCantFila((c) => { const x = { ...c }; delete x[clave]; return x; });
   };
 
   const setItem = (i, patch) => {
@@ -561,6 +592,8 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
     let enteros = 0; let granel = 0; let kgAFraccionar = 0;
     const sinCantidad = [];
     const cortos = [];
+    /* Los renglones de cada parte, para leerlos antes de mandar (26/9/2026). */
+    const lineas = { granel: [], enteros: [] };
     for (const it of items) {
       const prod = store.getProducto(parseInt(it.prodId, 10));
       if (!prod) continue;
@@ -573,6 +606,15 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
       const pide = esGranel ? cant * (pres ? pres.tamKg : 1) : cant;
       if (esGranel) kgAFraccionar += pres ? pide : 0;
       const hay = dispParaEnviar(prod, origenNum);
+      lineas[listaDeProducto(prod)].push({
+        clave: `${prod.id}-${presNum ?? 0}`,
+        nombre: prod.nombre,
+        marca: prod.marca || '',
+        presentacion: pres ? store.presLabel(prod, pres.id) : (esGranel ? 'Suelto' : ''),
+        cantidad: store.fmtCant(prod, presNum, cant),
+        kg: esGranel ? pide : null,
+        corto: pide > hay + 1e-9,
+      });
       if (pide > hay + 1e-9) {
         cortos.push({
           nombre: prod.nombre,
@@ -582,7 +624,10 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
         });
       }
     }
-    return { enteros, granel, kgAFraccionar, sinCantidad, cortos, conCantidad: enteros + granel };
+    const porNombre = (a, b) => a.nombre.localeCompare(b.nombre, 'es');
+    lineas.granel.sort(porNombre);
+    lineas.enteros.sort(porNombre);
+    return { enteros, granel, kgAFraccionar, sinCantidad, cortos, lineas, conCantidad: enteros + granel };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, store.state.productos, store.state.stock, origenNum]);
 
@@ -816,9 +861,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
               return (
                 <div
                   key={clave}
-                  className={s.clickable}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderBottom: '1px solid var(--crm-color-border)', cursor: 'pointer' }}
-                  onClick={() => agregar(p, pres ? pres.id : '')}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderBottom: '1px solid var(--crm-color-border)' }}
                 >
                   <span style={{ flex: 1 }}>
                     {/*
@@ -862,7 +905,22 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                       <span className={s.muted}> (+{store.fmtCant(p, null, suelto)} a granel)</span>
                     )}
                   </span>
-                  <span style={{ color: 'var(--crm-color-primary)', fontWeight: 700 }}>+ Agregar</span>
+                  <input
+                    type="number" min="0"
+                    step={!pres && p.tipo === 'granel' ? '0.001' : '1'}
+                    inputMode={!pres && p.tipo === 'granel' ? 'decimal' : 'numeric'}
+                    placeholder="1"
+                    aria-label={`Cantidad de ${p.nombre}${pres ? ` ${store.presLabel(p, pres.id)}` : ''}`}
+                    value={cantFila[clave] ?? ''}
+                    style={{
+                      width: 70, textAlign: 'right',
+                      ...(String(cantFila[clave] ?? '').trim() && cantidadDeFila(clave, !pres && p.tipo === 'granel') == null
+                        ? { borderColor: 'var(--crm-color-danger)' } : {}),
+                    }}
+                    onChange={(e) => setCantFila((c) => ({ ...c, [clave]: e.target.value }))}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregarDeFila(clave, p, pres); } }}
+                  />
+                  <Btn small variant="btn-primary" onClick={() => agregarDeFila(clave, p, pres)}>Agregar</Btn>
                 </div>
               );
             })}
@@ -1112,6 +1170,37 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
         </div>
       </div>
 
+      {/* LO QUE SE PIDE, EN SUS DOS PARTES (26/9/2026, pedido del dueño): son las
+          dos listas en que el origen lo va a preparar, así que se revisa como
+          lo van a leer allá. En naranja, lo que el origen hoy no cubre. */}
+      {[
+        { id: 'granel', titulo: 'A granel' },
+        { id: 'enteros', titulo: 'Enteros' },
+      ].filter((g) => resumen.lineas[g.id].length > 0).map((g) => (
+        <div key={g.id} style={{ marginBottom: 'var(--crm-space-3)' }}>
+          <div className={s['section-title']}>
+            {g.titulo} <span className={s.muted} style={{ fontWeight: 400 }}>({resumen.lineas[g.id].length})</span>
+          </div>
+          <Table
+            cols={g.id === 'granel'
+              ? [{ h: 'Producto' }, { h: 'Presentación' }, { h: 'Cantidad', num: true }, { h: 'Kg', num: true }]
+              : [{ h: 'Producto' }, { h: 'Cantidad', num: true }]}
+          >
+            {resumen.lineas[g.id].map((l) => (
+              <tr key={l.clave} style={l.corto ? { color: 'var(--crm-color-accent-2)' } : undefined}>
+                <td>
+                  {l.nombre}
+                  {l.marca && <span className={s.muted}> · {l.marca}</span>}
+                </td>
+                {g.id === 'granel' && <td>{l.presentacion}</td>}
+                <td className={cx(s.num, s.mono)}>{l.cantidad}</td>
+                {g.id === 'granel' && <td className={cx(s.num, s.mono)}>{num(l.kg, 3)}</td>}
+              </tr>
+            ))}
+          </Table>
+        </div>
+      ))}
+
       {/* Los renglones que el origen no puede cubrir HOY. No frena el pedido —es
           demanda, y mañana puede haber— pero pedir 20 kg de algo que allá tienen
           3 conviene saberlo acá y no cuando llega el envío cortado. */}
@@ -1220,6 +1309,62 @@ function imprimirLista(t, store, tipo, filas) {
  * CONFIRMA. Confirmar reserva el stock; con todas las listas confirmadas se
  * habilita el despacho, que viaja con lo PREPARADO.
  */
+/**
+ * EL REMITO DE UNA TRANSFERENCIA (27/9/2026: se imprime SOLO al despachar, y
+ * se reimprime desde el detalle). Se arma con lo que la pantalla ya tiene —las
+ * tres cantidades y el historial—: un impreso que diga otra cosa que la
+ * pantalla es una segunda fuente de verdad.
+ */
+async function imprimirRemitoTransferencia(store, t, ventana = null) {
+  let enviadoPlata = 0;
+  const filas = t.items.map((it) => {
+    const p = store.getProducto(it.productoId);
+    const enviado = it.cantidadPreparada ?? it.cantidad;
+    enviadoPlata += enviado * (it.costoUnitario || 0);
+    return {
+      nombre: p.nombre,
+      presLabel: store.presLabel(p, it.presentacionId),
+      pedido: it.agregado ? null : store.fmtCant(p, it.presentacionId, it.cantidad),
+      enviado: store.fmtCant(p, it.presentacionId, enviado),
+      recibido: it.cantidadRecibida != null ? store.fmtCant(p, it.presentacionId, it.cantidadRecibida) : null,
+    };
+  });
+  return imprimirDocumento('remitoTransferencia', {
+    titulo: `Remito ${t.codigo}`,
+    ventana,
+    cuerpo: cuerpoRemitoTransferencia({
+      transferencia: t,
+      origen: store.getSucursal(t.origenId)?.nombre ?? '—',
+      destino: store.getSucursal(t.destinoId)?.nombre ?? '—',
+      filas,
+      hist: (t.hist ?? []).map((h) => ({
+        estado: h.estado,
+        fecha: fmtFechaHora(h.fecha),
+        usuario: (store.getUsuario(h.usuarioId) || {}).nombre,
+      })),
+      monto: enviadoPlata > 0 ? enviadoPlata : null,
+      moneda: money,
+      ahora: fmtFechaHora(new Date()),
+      usuario: (store.getUsuario(store.state.ctx.usuarioId) || {}).nombre,
+    }),
+  });
+}
+
+/**
+ * DESPACHAR = IMPRIMIR EL REMITO (27/9/2026, pedido del dueño: todo envío de
+ * mercadería se imprime siempre). La ventana se abre en el clic —si no, el
+ * navegador la bloquea después de esperar a la API— y se escribe con la
+ * transferencia ya despachada, con sus costos congelados.
+ */
+async function despacharEImprimir({ store, act, toast, t }) {
+  const ventana = abrirVentanaImpresion();
+  const ok = await act(store.avanzarTransferencia(t.id, 'preparada'), 'Despachada: en tránsito. Sale el remito para acompañar la mercadería.');
+  if (!ok) { ventana?.close(); return; }
+  const fresca = store.state.transferencias.find((x) => x.id === t.id) || t;
+  const impreso = await imprimirRemitoTransferencia(store, fresca, ventana);
+  if (!impreso) toast('El navegador bloqueó la impresión del remito: reimprimilo desde el detalle (Imprimir remito).', 'err');
+}
+
 export function PrepararTransferModal({ id }) {
   const { store, isAdmin, can, act, toast, closeModal, openModal } = useProductos();
   const t = store.state.transferencias.find((x) => x.id === id);
@@ -1361,7 +1506,7 @@ export function PrepararTransferModal({ id }) {
       clase: completas ? 'btn-primary' : 'btn-ghost',
       onClick: () => {
         if (!completas) { toast('Cada encargado tiene que confirmar su lista antes de despachar.', 'err'); return; }
-        act(store.avanzarTransferencia(t.id, 'preparada'), 'Despachada: en tránsito.');
+        despacharEImprimir({ store, act, toast, t });
       },
     });
   }
@@ -1605,7 +1750,11 @@ export function PrepararTransferModal({ id }) {
 /* ============================== RECEPCIÓN CONTADA ============================== */
 
 export function RecibirTransferModal({ id }) {
-  const { store, act, closeModal } = useProductos();
+  const { store, act, closeModal, toast } = useProductos();
+  /* Recibir mueve stock de dos sucursales: segunda confirmación y candado del
+   * doble clic con `useRef` (27/9/2026). */
+  const [confirmando, setConfirmando] = useState(false);
+  const enVuelo = useRef(false);
   const t = store.state.transferencias.find((x) => x.id === id);
   const [obs, setObs] = useState('');
   // Se recibe LO QUE VIAJÓ: renglones con cantidad preparada > 0.
@@ -1623,7 +1772,7 @@ export function RecibirTransferModal({ id }) {
   ));
   if (!t) return null;
 
-  const setCant = (itemId, v) => setConteo((c) => ({ ...c, [itemId]: v }));
+  const setCant = (itemId, v) => { setConfirmando(false); setConteo((c) => ({ ...c, [itemId]: v })); };
   const activarCiegas = () => {
     setACiegas(true);
     setConteo(Object.fromEntries(viajaron.map((it) => [it.id, ''])));
@@ -1636,16 +1785,37 @@ export function RecibirTransferModal({ id }) {
     const rec = parseFloat(conteo[it.id]);
     return Number.isFinite(rec) && rec < enviadoDe(it) - 1e-9;
   }).length;
+  /*
+   * UN RENGLÓN VACÍO NO ES UN CERO (27/9/2026). Se mandaba `'' → 0` mientras
+   * el botón decía "Recibir todo": en la recepción a ciegas, un renglón que se
+   * olvidó de contar se registraba como faltante total, con incidencia y la
+   * mercadería devuelta al origen. Ahora no se puede confirmar sin contar todo.
+   */
+  const sinContar = viajaron.filter((it) => !Number.isFinite(parseFloat(conteo[it.id])));
+  /* Llegó más de lo enviado: antes se recortaba en silencio y el sobrante se
+   * perdía. No se recibe de más: se anota y lo corrige el origen. */
+  const deMas = viajaron.filter((it) => parseFloat(conteo[it.id]) > enviadoDe(it) + 1e-9);
 
   const recibir = () => {
+    if (enVuelo.current) return;
+    if (sinContar.length) {
+      toast(`Falta contar ${sinContar.length === 1 ? 'un renglón' : `${sinContar.length} renglones`}: si no llegó nada, poné 0.`, 'err');
+      return;
+    }
+    if (deMas.length) {
+      toast('Hay renglones con MÁS de lo enviado. Recibí lo enviado y anotá el sobrante en observaciones: lo corrige el origen.', 'err');
+      return;
+    }
+    if (!confirmando) { setConfirmando(true); return; }
     const items = viajaron.map((it) => ({
       itemId: it.id,
-      cantidadRecibida: Math.min(Math.max(parseFloat(conteo[it.id]) || 0, 0), enviadoDe(it)),
+      cantidadRecibida: Math.max(parseFloat(conteo[it.id]), 0),
     }));
+    enVuelo.current = true;
     act(
       store.recibirTransferencia(t.id, { items, usuarioId: store.state.ctx.usuarioId, observaciones: obs }),
       faltantes ? 'Recibida. La diferencia quedó en una incidencia para resolver.' : 'Recibida completa.',
-    );
+    ).finally(() => { enVuelo.current = false; setConfirmando(false); });
   };
 
   return (
@@ -1655,9 +1825,24 @@ export function RecibirTransferModal({ id }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: faltantes ? `Recibir con ${faltantes} faltante(s)` : 'Recibir todo', clase: 'btn-primary', onClick: recibir },
+        {
+          texto: sinContar.length ? `Falta contar ${sinContar.length}`
+            : confirmando ? 'Sí, recibir'
+              : faltantes ? `Recibir con ${faltantes} faltante(s)…` : 'Recibir todo…',
+          clase: 'btn-primary', onClick: recibir,
+        },
       ]}
     >
+      {confirmando && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>Segunda confirmación.</strong> Entra al stock de{' '}
+          <strong>{store.getSucursal(t.destinoId)?.nombre}</strong> lo que contaste en {viajaron.length} renglón(es)
+          {faltantes > 0
+            ? <>; en <strong>{faltantes}</strong> llegó menos de lo enviado: esa diferencia queda retenida en el origen con una incidencia.</>
+            : '. Llegó todo lo enviado.'}
+          {' '}No se deshace. ¿Confirmás?
+        </div>
+      )}
       {!aCiegas && (
         <div className={cx(s.callout, s.info)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span>Contá lo que llegó. Lo que falte <strong>no se pierde</strong>: queda retenido en el origen con una incidencia.</span>
@@ -1705,7 +1890,12 @@ export function RecibirTransferModal({ id }) {
                 <input
                   type="number" min="0" step={p.tipo === 'granel' && !it.presentacionId ? '0.001' : '1'}
                   value={conteo[it.id]}
-                  style={{ width: 90, ...(falta ? { borderColor: 'var(--crm-color-accent-2)' } : {}) }}
+                  placeholder="contá"
+                  style={{
+                    width: 90,
+                    ...(falta ? { borderColor: 'var(--crm-color-accent-2)' } : {}),
+                    ...(conteo[it.id] === '' || rec > enviado + 1e-9 ? { borderColor: 'var(--crm-color-danger)' } : {}),
+                  }}
                   onChange={(e) => setCant(it.id, e.target.value)}
                 />
               </td>
@@ -1773,40 +1963,8 @@ export function DetalleTransferModal({ id }) {
     </tr>
   ));
 
-  /* EL REMITO, PARA REIMPRIMIR. Se arma con lo que esta misma pantalla ya
-   * muestra —las tres cantidades y el historial— y no con una consulta aparte:
-   * un impreso que diga algo distinto de la pantalla es una segunda fuente de
-   * verdad, y a la larga divergen. */
   const imprimirRemito = async () => {
-    const filas = t.items.map((it) => {
-      const p = store.getProducto(it.productoId);
-      const enviado = it.cantidadPreparada ?? it.cantidad;
-      return {
-        nombre: p.nombre,
-        presLabel: store.presLabel(p, it.presentacionId),
-        pedido: it.agregado ? null : store.fmtCant(p, it.presentacionId, it.cantidad),
-        enviado: store.fmtCant(p, it.presentacionId, enviado),
-        recibido: it.cantidadRecibida != null ? store.fmtCant(p, it.presentacionId, it.cantidadRecibida) : null,
-      };
-    });
-    const ok = await imprimirDocumento('remitoTransferencia', {
-      titulo: `Remito ${t.codigo}`,
-      cuerpo: cuerpoRemitoTransferencia({
-        transferencia: t,
-        origen: store.getSucursal(t.origenId)?.nombre ?? '—',
-        destino: store.getSucursal(t.destinoId)?.nombre ?? '—',
-        filas,
-        hist: (t.hist ?? []).map((h) => ({
-          estado: h.estado,
-          fecha: fmtFechaHora(h.fecha),
-          usuario: (store.getUsuario(h.usuarioId) || {}).nombre,
-        })),
-        monto: montos.enviado > 0 ? montos.enviado : null,
-        moneda: money,
-        ahora: fmtFechaHora(new Date()),
-        usuario: (store.getUsuario(store.state.ctx.usuarioId) || {}).nombre,
-      }),
-    });
+    const ok = await imprimirRemitoTransferencia(store, t);
     if (!ok) toast('El navegador bloqueó la ventana de impresión. Permitile las ventanas emergentes y probá de nuevo.', 'err');
   };
 
@@ -1827,7 +1985,7 @@ export function DetalleTransferModal({ id }) {
   if (t.origenId === miId && t.estado === 'preparada') {
     footer.push({ texto: 'Preparación…', clase: 'btn-primary', onClick: () => openModal('prepararTransfer', { id: t.id }) });
     if (isAdmin && listasCompletas(t, store)) {
-      footer.push({ texto: 'Despachar', clase: 'btn-primary', onClick: () => act(store.avanzarTransferencia(t.id, 'preparada'), 'Despachada: en tránsito.') });
+      footer.push({ texto: 'Despachar', clase: 'btn-primary', onClick: () => despacharEImprimir({ store, act, toast, t }) });
     }
   }
   if ((isAdmin || store.can('pedidos')) && t.destinoId === miId && t.estado === 'transito') {

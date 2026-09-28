@@ -7,14 +7,14 @@ import { ModalShell } from './Modal.jsx';
 import { s } from './ui.jsx';
 import { ProductoFormModal, DetalleProductoModal, FraccionadoModal } from './modals/ProductoModals.jsx';
 import {
-  VenderModal, CorregirFraccionadoModal, MovimientoModal,
+  CorregirFraccionadoModal, MovimientoModal, DescartarEstadoModal,
 } from './modals/StockModals.jsx';
 import { RegistrarFraccionadoModal } from './modals/RegistrarFraccionadoModal.jsx';
 import { TransferenciaModal, DetalleTransferModal, RecibirTransferModal, PrepararTransferModal } from './modals/TransferModals.jsx';
 import { IncidenciaModal, ResolverIncidenciaModal, DetalleIncidenciaModal } from './modals/IncidenciaModals.jsx';
 import { ConteoNuevoModal, ConteoModal } from './modals/ConteosModals.jsx';
 import { ProveedorFormModal, DetalleProveedorModal } from './modals/ProveedorModals.jsx';
-import { ComprobanteFormModal, ComprobanteDetalleModal } from './modals/ComprobanteModals.jsx';
+import { ComprobanteFormModal, ComprobanteDetalleModal, AnularComprobanteModal } from './modals/ComprobanteModals.jsx';
 import {
   TomarPagosComprobanteModal, PagoSucursalDetalleModal,
 } from './modals/PagosSucursalModals.jsx';
@@ -24,6 +24,7 @@ import {
   PedidoCafeteriaDetalleModal,
   PedidoCafeteriaFormModal,
   ProductoCafeteriaFormModal,
+  RecibirEnvioCafeteriaModal,
 } from './modals/CafeteriaModals.jsx';
 import {
   VencimientoEditarModal, VencimientoProcesarModal,
@@ -227,10 +228,12 @@ const REGISTRY = {
   comprobanteForm: ComprobanteFormModal,
   lecturaFactura: LecturaFacturaModal,
   comprobanteDetalle: ComprobanteDetalleModal,
+  anularComprobante: AnularComprobanteModal,
   tomarPagosComprobante: TomarPagosComprobanteModal,
   pagoSucursalDetalle: PagoSucursalDetalleModal,
   envioCafeteria: EnvioCafeteriaFormModal,
   envioCafeteriaDetalle: EnvioCafeteriaDetalleModal,
+  recibirEnvioCafeteria: RecibirEnvioCafeteriaModal,
   // El pedido del café: lo arma el rol Cafetería, lo trata el admin.
   pedidoCafeteria: PedidoCafeteriaFormModal,
   productoCafeteria: ProductoCafeteriaFormModal,
@@ -250,11 +253,11 @@ const REGISTRY = {
   /* `importarProveedores` se mudó al módulo Proveedores (27/8): alimenta el
    * padrón, y el padrón se administra allá. */
   /* Sin `compra`: la mercadería entra por la factura en Compras (18/8/2026). */
-  vender: VenderModal,
   registrarFraccionado: RegistrarFraccionadoModal,
   /** "Puse 20 paquetes y son 19": ajusta los paquetes Y el granel de una vez. */
   corregirFraccionado: CorregirFraccionadoModal,
   movimiento: MovimientoModal,
+  descartarEstado: DescartarEstadoModal,
   transferencia: TransferenciaModal,
   detalleTransfer: DetalleTransferModal,
   recibirTransfer: RecibirTransferModal,

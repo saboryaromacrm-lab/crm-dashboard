@@ -96,11 +96,15 @@ export function DetalleVentaModal({ ventaId, onCambio }) {
          * ticket ya emitido, Devolución (el cliente devuelve parte o todo, y
          * queda un comprobante que lo dice). Un ticket pendiente de facturar no
          * lleva devolución: primero se factura, o se anula. */
-        pie.unshift({
-          texto: 'Anular',
-          clase: 'btn-delete',
-          onClick: () => openModal('anularVenta', { venta: v, onCambio }),
-        });
+        /* Con devoluciones no se anula (la API tampoco): lo que queda se
+         * devuelve por el resto, con el botón de al lado. */
+        if (!(v.notas?.length)) {
+          pie.unshift({
+            texto: 'Anular',
+            clase: 'btn-delete',
+            onClick: () => openModal('anularVenta', { venta: v, onCambio }),
+          });
+        }
         if (v.tipo === 'ticket' && !v.facturarPendiente && v.acreditable > 0.009) {
           pie.unshift({
             texto: 'Devolución',

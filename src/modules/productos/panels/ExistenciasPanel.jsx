@@ -29,6 +29,9 @@ import { HistorialPanel } from './HistorialPanel.jsx';
 export function ExistenciasPanel() {
   const { store, openModal } = useProductos();
   const puedeAjustar = store.can('inventario');
+  /* Tirar lo vencido pide `merma`; lo defectuoso, `defectuoso` — las mismas
+   * llaves que marcarlo así. */
+  const puedeDescartar = (estado) => (estado === 'vencido' ? store.can('merma') : estado === 'defectuoso' ? store.can('defectuoso') : false);
   const [sucF, setSucF] = useState('');
   const [prodF, setProdF] = useState('');
   const [estadoF, setEstadoF] = useState('');
@@ -83,6 +86,11 @@ export function ExistenciasPanel() {
                   })}
                 >
                   Ajustar
+                </Btn>
+              )}
+              {puedeDescartar(st.estado) && (
+                <Btn small variant="btn-delete" onClick={() => openModal('descartarEstado', { stockId: st.id })}>
+                  Descartar
                 </Btn>
               )}
             </div>

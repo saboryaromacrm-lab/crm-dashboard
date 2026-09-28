@@ -52,6 +52,11 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   const [entregado, setEntregado] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [enviando, setEnviando] = useState(false);
+  /* EL CANDADO DEL DOBLE F8 VA CON useRef (26/9/2026): el `enviando` del
+   * estado recién cambia en el próximo render, así que dos teclas seguidas
+   * pasaban las dos. La API ya no duplica (una emisión por venta), pero el
+   * segundo cobro llegaba a mostrar un error con el cliente enfrente. */
+  const enviandoRef = useRef(false);
 
   /*
    * SIN REDONDEO DEL COBRO (se sacó el 8/9, por pedido del dueño).
@@ -209,6 +214,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
 
   /** `tipo`: 'ticket' liquida, 'factura' emite comprobante fiscal. */
   const confirmar = async (tipo) => {
+    if (enviandoRef.current) return;
     if (tipo === 'ticket' && condicionPago !== 'contado') {
       toast('Liquidar es al contado. Para cuenta corriente, facturá (F8).', 'err');
       return;
@@ -228,6 +234,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
       toast('Supera el límite de crédito del cliente.', 'err');
       return;
     }
+    enviandoRef.current = true;
     setEnviando(true);
     try {
       let venta;
@@ -320,7 +327,10 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
        * — el ticket que imprime ya lleva la leyenda.
        */
       if (tipo === 'factura' && venta.facturarPendiente) {
-        toast('ARCA no respondió: salió un ticket provisorio y la venta quedó en Ventas › Sin facturar para reintentarla.', 'err');
+        toast(venta.facturarPorCaida
+          ? 'ARCA no respondió: la venta se cobró igual y sale el ticket con la leyenda "servicio caído de ARCA". Quedó en Ventas › Caídas por ARCA para facturarla cuando vuelva.'
+          : `ARCA no aceptó la factura: ${venta.facturarMotivo || 'sin detalle'}. La venta se cobró igual con un ticket provisorio; corregí el dato y facturala desde Ventas › Caídas por ARCA.`,
+        'err');
       }
       // Ticket automático (se apaga en Sistema › Impresión). El último queda
       // guardado para "Reimprimir" desde la registradora.
@@ -350,6 +360,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
     } catch (e) {
       toast(e?.data?.message || 'No se pudo registrar la venta.', 'err');
     } finally {
+      enviandoRef.current = false;
       setEnviando(false);
     }
   };

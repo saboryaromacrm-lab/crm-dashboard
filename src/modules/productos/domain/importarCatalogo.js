@@ -94,6 +94,80 @@ export function proveedorDelArchivo(filasCompras) {
   return { nombre: orden[0][0], otros: orden.slice(1) };
 }
 
+/**
+ * EL ARCHIVO CON TODOS LOS PROVEEDORES (28/9/2026, pedido del dueño: importar
+ * la lista de costos de todos de una vez y no de a uno). Agrupa los renglones
+ * por su columna `Proveedor`, con el nombre NORMALIZADO como clave —
+ * "NUEVO COSMOS S.A." y "Nuevo Cosmos SA" son el mismo grupo— y muestra la
+ * grafía más repetida. Los renglones sin proveedor quedan en su propio grupo
+ * (`sinNombre`), que nunca se importa: no hay a quién cargarle el costo.
+ */
+const normProv = (v) => String(v ?? '').toLowerCase().normalize('NFD')
+  .replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9]+/g, ' ').trim().replace(/\b([a-z0-9]) (?=[a-z0-9]\b)/g, '$1'); // "S.A." = "SA"
+export function proveedoresDelArchivo(filasCompras) {
+  const grupos = new Map();
+  for (const f of filasCompras ?? []) {
+    const nombre = String(f.Proveedor ?? '').trim();
+    const clave = normProv(nombre) || '__sin_nombre__';
+    if (!grupos.has(clave)) grupos.set(clave, { clave, filas: [], grafias: new Map(), sinNombre: clave === '__sin_nombre__' });
+    const g = grupos.get(clave);
+    g.filas.push(f);
+    g.grafias.set(nombre, (g.grafias.get(nombre) || 0) + 1);
+  }
+  return [...grupos.values()].map((g) => ({
+    clave: g.clave,
+    sinNombre: g.sinNombre,
+    nombre: g.sinNombre ? '(sin proveedor en el archivo)' : [...g.grafias.entries()].sort((a, b) => b[1] - a[1])[0][0],
+    filas: g.filas,
+  })).sort((a, b) => Number(a.sinNombre) - Number(b.sinNombre) || b.filas.length - a.filas.length);
+}
+
+/**
+ * La decisión con la que ARRANCA cada grupo (28/9/2026): 'p:<id>' importar en
+ * ese proveedor, 'nuevo' crearlo, 'afuera', o '' = falta que la persona decida.
+ * Solo el nombre idéntico arranca decidido; el parecido y el que no está en el
+ * padrón (si se permite crear) los decide la persona. Nada se adivina.
+ */
+export function decisionInicialProveedores(grupos, soloCargados) {
+  return Object.fromEntries(grupos.map((g) => {
+    if (g.sinNombre) return [g.clave, 'afuera'];
+    if (g.exacto) return [g.clave, `p:${g.exacto.id}`];
+    if (soloCargados && !g.candidatos.length) return [g.clave, 'afuera'];
+    return [g.clave, ''];
+  }));
+}
+
+/**
+ * De las decisiones a los DESTINOS: un proveedor del sistema (o uno a crear)
+ * con todos los renglones que van a él. Varios nombres del archivo pueden caer
+ * en el MISMO proveedor (el sistema viejo lo escribía de dos maneras): se
+ * juntan y se importan como uno. Orden: el de más renglones primero — es el
+ * que fija el precio del producto que no tenía ningún costo.
+ */
+export function destinosDeProveedores(grupos, decision, padron, catalogo, costoNetoEntry = () => null) {
+  const m = new Map();
+  for (const g of grupos) {
+    const d = decision[g.clave];
+    if (!d || d === 'afuera') continue;
+    const esNuevo = d === 'nuevo';
+    const key = esNuevo ? `nuevo:${g.clave}` : d;
+    if (!m.has(key)) {
+      const id = esNuevo ? null : Number(d.slice(2));
+      m.set(key, {
+        key, nuevo: esNuevo, id,
+        nombre: esNuevo ? g.nombre : ((padron || []).find((p) => p.id === id)?.nombre ?? `#${id}`),
+        delArchivo: [], filas: [],
+      });
+    }
+    const t = m.get(key);
+    t.delArchivo.push(g.nombre);
+    t.filas.push(...g.filas);
+  }
+  return [...m.values()]
+    .map((t) => ({ ...t, plan: armarPlanCostos(t.filas, catalogo, t.nuevo ? -1 : t.id, costoNetoEntry) }))
+    .sort((a, b) => b.filas.length - a.filas.length);
+}
+
 /** Reconoce cuál de los tres archivos es cada uno por sus columnas. */
 export function tipoDeArchivo(cols) {
   const set = new Set(cols);

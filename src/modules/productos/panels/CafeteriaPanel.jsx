@@ -18,9 +18,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money, num, fmtFecha, isoDate } from '../domain/format.js';
-import { ESTADOS_PEDIDO_CAFE, MODOS_ENVIO_CAFE, estadoEnvioCafe } from '../domain/constants.js';
+import { ESTADOS_PEDIDO_CAFE, MODOS_ENVIO_CAFE, RECEPCION_ENVIO_CAFE, estadoEnvioCafe } from '../domain/constants.js';
 import { esVozDelCafe, vozCafeteria } from '../domain/cafeteria.voz.js';
 import { Table, PanelHead, Stat, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
+import { pedidosCafe } from '@core/services/pedidosCafe.js';
+import { CafeteriaProductosPanel } from './CafeteriaProductosPanel.jsx';
 
 const inicioDeMes = () => {
   const d = new Date();
@@ -34,6 +36,9 @@ const pestanasDe = (v) => [
   { id: 'deposito', label: v.tabDeposito },
   { id: 'envios', label: v.tabSalida },
   { id: 'recibidos', label: v.tabEntrada },
+  /* Los productos del café, adentro de la sección (27/9/2026): antes eran una
+   * entrada aparte del menú, lejos de los envíos que los usan. */
+  { id: 'productos', label: v.prodSeccion },
   { id: 'metrica', label: 'Métrica' },
 ];
 
@@ -48,7 +53,17 @@ export function CafeteriaPanel() {
   /* Toda la pantalla habla en la voz del que la abre. Un solo lugar donde se
    * decide quién está mirando; de ahí en más se piden textos, no roles. */
   const v = useMemo(() => vozCafeteria(esVozDelCafe(can)), [can]);
-  const PESTANAS = useMemo(() => pestanasDe(v), [v]);
+  /*
+   * LAS MÉTRICAS SON SOLO DEL SUPERADMIN (27/9/2026, pedido del dueño): las
+   * tarjetas de plata, la pestaña Métrica y el total del depósito. La llave no
+   * la tiene ningún rol — solo pasa el comodín `*`. La API frena lo mismo; acá
+   * además NO se piden, porque un 403 en la carga tumbaría la pantalla entera.
+   */
+  const verMetricas = can('almacen.cafeteria-metricas');
+  const PESTANAS = useMemo(
+    () => pestanasDe(v).filter((t) => verMetricas || t.id !== 'metrica'),
+    [v, verMetricas],
+  );
 
   /*
    * DÓNDE ARRANCA LA PANTALLA, según para qué la abre cada uno.
@@ -80,6 +95,16 @@ export function CafeteriaPanel() {
   /* ---- Pedidos (la demanda del café) ---- */
   const [pedidos, setPedidos] = useState([]);
 
+  /*
+   * LO QUE ME TOCA RECIBIR (0113), en la pestaña donde se recibe. Sale del
+   * mismo aviso que el globito del menú, no de la lista de la pantalla: la
+   * lista está filtrada por período, y un envío de antes del período quedaba
+   * sin avisar. A la cafetería le toca lo que le mandan; a la sucursal, lo que
+   * le manda la cafetería.
+   */
+  const [porRecibir, setPorRecibir] = useState(pedidosCafe.porRecibir());
+  useEffect(() => pedidosCafe.subscribe(() => setPorRecibir(pedidosCafe.porRecibir())), []);
+
   /* ---- El depósito del café (0101): se pide SOLO al abrir su pestaña ----
    * No va en la carga general: es una foto de stock, no del período, y las
    * otras cuatro consultas ya son bastante para abrir la pantalla. Se
@@ -102,8 +127,10 @@ export function CafeteriaPanel() {
       const [lista, entr, res, met, peds] = await Promise.all([
         store.enviosCafeteria({ ...filtros, estado: estadoF || undefined, sentido: 'salida' }),
         store.enviosCafeteria({ ...filtros, estado: estadoF || undefined, sentido: 'entrada' }),
-        store.resumenCafeteria(filtros),
-        store.metricaCafeteria({ ...filtros, buscar: buscar.trim() || undefined, sentido: sentidoMet }),
+        verMetricas ? store.resumenCafeteria(filtros) : null,
+        verMetricas
+          ? store.metricaCafeteria({ ...filtros, buscar: buscar.trim() || undefined, sentido: sentidoMet })
+          : null,
         store.pedidosCafeteria({ limit: 100 }),
       ]);
       setEnvios(lista);
@@ -116,7 +143,7 @@ export function CafeteriaPanel() {
     } finally {
       setCargando(false);
     }
-  }, [store, desde, hasta, estadoF, buscar, sentidoMet, toast]);
+  }, [store, desde, hasta, estadoF, buscar, sentidoMet, toast, verMetricas]);
   useEffect(() => { cargar(); }, [cargar]);
 
   /*
@@ -156,6 +183,11 @@ export function CafeteriaPanel() {
           {e.usuarioNombre && <div className={s.hint} style={{ margin: 0 }}>{e.usuarioNombre}</div>}
         </td>
         <td><Pill pill={est.pill} label={est.label || e.estado} /></td>
+        <td>
+          {e.estado === 'anulado'
+            ? <span className={s.muted}>—</span>
+            : <Pill pill={RECEPCION_ENVIO_CAFE[e.recepcion]?.pill} label={RECEPCION_ENVIO_CAFE[e.recepcion]?.label || e.recepcion} />}
+        </td>
         <td className={s.num}>
           v{e.version}
           {e.version > 1 && e.estado !== 'anulado' && (
@@ -198,6 +230,8 @@ export function CafeteriaPanel() {
           usa, compitiendo con el que sí.
         */
         actions={(() => {
+          /* En Productos el botón es el del producto: vive en la pestaña. */
+          if (pestana === 'productos') return null;
           const entrada = pestana === 'recibidos' || (soloCafe && pestana !== 'envios');
           if (entrada && puedeCargarEntradas) {
             return (
@@ -217,9 +251,10 @@ export function CafeteriaPanel() {
       {/* Pestañas. El contador de Pedidos es la demanda que espera respuesta. */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {PESTANAS.map((v) => {
+          const pestanaRecibir = soloCafe ? 'envios' : 'recibidos';
           const abiertos = v.id === 'pedidos'
             ? pedidos.filter((p) => p.estado === 'pendiente' || p.estado === 'armando').length
-            : 0;
+            : (v.id === pestanaRecibir ? porRecibir : 0);
           return (
             <button
               key={v.id}
@@ -305,6 +340,7 @@ export function CafeteriaPanel() {
 
       {pestana === 'envios' && (
         <>
+          {verMetricas && (<>
           <div className={s.stats}>
             <Stat label={v.statSalida} value={money(resumen?.enviado ?? 0)} />
             <Stat label={v.statEntrada} value={money(resumen?.recibido ?? 0)} />
@@ -324,6 +360,15 @@ export function CafeteriaPanel() {
             />
           </div>
 
+          {/* Cómo se arman el saldo y el costo: lo mismo que Gerencia. */}
+          <div className={s.hint} style={{ marginTop: 0 }}>
+            El <strong>saldo</strong> y el <strong>costo</strong> cuentan lo comprado para el café, lo
+            mandado desde el stock propio y los gastos. Lo de <strong>uso exclusivo</strong> se cuenta una
+            sola vez, al comprarlo: mandarlo después no lo suma de nuevo — por eso pueden ser menos que
+            {' '}“{v.statSalida}”. Son los mismos números que Gerencia.
+          </div>
+          </>)}
+
           <div className={s.toolbar}>
             <label className={s.hint} style={{ margin: 0 }}>
               Desde <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
@@ -341,7 +386,7 @@ export function CafeteriaPanel() {
 
           <Table
             cols={[
-              { h: 'Código' }, { h: 'Fecha' }, { h: v.colSucSalida }, { h: 'Estado' },
+              { h: 'Código' }, { h: 'Fecha' }, { h: v.colSucSalida }, { h: 'Estado' }, { h: 'Recepción' },
               { h: 'Versión', num: true }, { h: 'Renglones', num: true }, { h: 'Total a costo', num: true },
             ]}
             empty={cargando
@@ -359,14 +404,15 @@ export function CafeteriaPanel() {
               <>
                 Lo que Sabor y Aroma te mandó en el período, al costo con el que salió de sus
                 depósitos. <strong>Esto no lo cargás vos</strong>: lo registran ellos al despachar,
-                y te llega a coffit por la sincronización de siempre. Si algo no coincide con lo
-                que recibiste, avisales para que lo corrijan — la versión del envío sube y vos ves
-                la corrección acá.
+                y te llega a coffit por la sincronización de siempre. <strong>Cuando llega, controlalo
+                contra el remito</strong>: entrá al envío y usá <strong>Controlar y recibir</strong>. Si
+                falta algo, lo anotás ahí y la administración se entera sola.
               </>
             ) : (
               <>
-                <strong>El envío egresa el stock en el acto</strong>, con el costo congelado — no hay
-                etapas: con esto ya se da por hecho que el café lo recibió. Para corregir uno, entrá
+                <strong>El envío egresa el stock en el acto</strong>, con el costo congelado, y se
+                imprime el remito que va con la mercadería. La cafetería lo <strong>controla y lo
+                marca recibido</strong>; si falta algo, se abre una incidencia. Para corregir uno, entrá
                 al detalle y usá <strong>Editar</strong> (la versión sube y coffit se entera por
                 sincronización).
               </>
@@ -377,6 +423,7 @@ export function CafeteriaPanel() {
 
       {pestana === 'deposito' && (
         <>
+          {verMetricas && (
           <div className={s.stats}>
             <Stat label="En depósito hoy (a costo)" value={money(deposito?.valor ?? 0)} accent="accent-amber" />
             <Stat label="Artículos con stock" value={deposito?.articulos?.length ?? 0} />
@@ -385,6 +432,7 @@ export function CafeteriaPanel() {
             <Stat label="Comprado para el café en el período" value={money(resumen?.compradoDirecto ?? 0)} />
             <Stat label="Facturas con mercadería del café" value={resumen?.comprasCantidad ?? 0} />
           </div>
+          )}
 
           <div className={s.hint} style={{ marginTop: 0 }}>{v.depositoSub}</div>
 
@@ -476,7 +524,7 @@ export function CafeteriaPanel() {
 
           <Table
             cols={[
-              { h: 'Código' }, { h: 'Fecha' }, { h: v.colSucEntrada }, { h: 'Estado' },
+              { h: 'Código' }, { h: 'Fecha' }, { h: v.colSucEntrada }, { h: 'Estado' }, { h: 'Recepción' },
               { h: 'Versión', num: true }, { h: 'Renglones', num: true }, { h: 'Total declarado', num: true },
             ]}
             empty={cargando
@@ -492,27 +540,33 @@ export function CafeteriaPanel() {
           <div className={s.hint}>
             {soloCafe ? (
               <>
-                <strong>Lo que mandás entra al stock de la sucursal en el acto</strong> y lo pueden
-                vender enseguida. El <strong>costo lo declarás vos</strong> —ellos no pueden
-                saberlo— y de ese número sale la rentabilidad cuando lo vendan: si está mal, la
-                ganancia de ese producto queda mal y nadie lo nota. Solo podés mandar los productos
-                que están marcados como <strong>elaborados por vos</strong>. Anular saca del stock
-                lo que habías mandado: si ya lo vendieron, no se puede.
+                <strong>Lo que mandás entra al stock de la sucursal cuando ellos lo controlan y lo
+                reciben</strong>, con lo que cuenten: el remito se imprime al enviar y va con la
+                mercadería. El <strong>costo lo declarás vos</strong> —ellos no pueden
+                saberlo—: cada envío propone el de tu ficha en <strong>Mis productos</strong>, y con
+                ese costo de la ficha se registra cada venta. Si te cambió el costo, cambialo ahí: si
+                queda mal, la ganancia de ese producto queda mal y nadie lo nota. Solo podés mandar
+                los productos <strong>elaborados por vos</strong>. Un costo mal tipeado en un envío se
+                corrige con Editar aunque ya lo hayan vendido; anular no se puede si ya se vendió.
               </>
             ) : (
               <>
-                <strong>La mercadería ingresa al stock de la sucursal en el acto</strong> y ya se puede
-                vender en el mostrador. El <strong>costo lo declara la cafetería</strong> — el sistema
-                no puede saberlo — y de ese número sale la rentabilidad cuando se venda. Solo se pueden
-                cargar productos marcados <strong>“Lo elabora la cafetería”</strong> en su ficha.
-                Anular saca del stock lo que había ingresado: si ya se vendió, no se puede.
+                <strong>La mercadería entra al stock de la sucursal cuando la sucursal la controla y
+                la recibe</strong> (entrá al envío → <strong>Controlar y recibir</strong>), con lo que se
+                contó. El <strong>costo lo declara la cafetería</strong> — el sistema
+                no puede saberlo —: el de su ficha (Productos Coffit) es con el que se registra cada
+                venta. Solo se pueden cargar productos marcados <strong>“Lo elabora la cafetería”</strong>.
+                Un costo mal tipeado se corrige con Editar aunque ya se haya vendido; anular no se puede
+                si ya se vendió.
               </>
             )}
           </div>
         </>
       )}
 
-      {pestana === 'metrica' && (
+      {pestana === 'productos' && <CafeteriaProductosPanel embebido />}
+
+      {pestana === 'metrica' && verMetricas && (
         <>
           <div className={s.stats}>
             <Stat label={sentidoMet === 'entrada' ? 'Envíos del café' : 'Envíos en el período'} value={metrica?.envios ?? 0} />

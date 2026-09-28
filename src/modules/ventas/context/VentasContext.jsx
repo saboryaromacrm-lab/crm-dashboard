@@ -118,7 +118,7 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
    * falló), para que el llamador pueda encadenar.
    */
   const act = useCallback(
-    async (promesa, okMsg, { recargar = true } = {}) => {
+    async (promesa, okMsg, { recargar = true, alConflicto = null } = {}) => {
       try {
         const res = await promesa;
         if (recargar) await cargar();
@@ -126,6 +126,8 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
         closeModal();
         return res ?? true;
       } catch (e) {
+        /* 409 = "ya hay uno igual" (el pago gemelo del día): lo pregunta el modal. */
+        if (alConflicto && e?.status === 409) { alConflicto(e.data ?? {}); return null; }
         toast(errorMsg(e), 'err');
         return null;
       }

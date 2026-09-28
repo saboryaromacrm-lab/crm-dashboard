@@ -4,7 +4,7 @@ import { ImportarProveedoresModal } from './modals/ImportarProveedoresModal.jsx'
 import { SolicitarPedidosModal, PedidoNotasModal } from './modals/PedidosModals.jsx';
 import { CompromisoModal, PagarCompromisoModal } from './modals/CompromisosModals.jsx';
 import { EcheqModal } from './modals/EcheqsModals.jsx';
-import { AjusteModal } from './modals/EdocModals.jsx';
+import { AjusteModal, BorrarAjusteModal } from './modals/EdocModals.jsx';
 import { PagoProveedorModal, AnularPagoModal } from './modals/PagosModals.jsx';
 import { CuentaDisponibleModal, ResumenCuentaModal } from './modals/CuentasDisponiblesModals.jsx';
 
@@ -20,6 +20,7 @@ const MODALS = {
   pagarCompromiso: PagarCompromisoModal,
   echeq: EcheqModal,
   ajuste: AjusteModal,
+  borrarAjuste: BorrarAjusteModal,
   pagoProveedor: PagoProveedorModal,
   anularPago: AnularPagoModal,
   // Cuentas disponibles (0095): el balde y su resumen para el proveedor.

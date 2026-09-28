@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
-import { money, num } from '../../domain/format.js';
+import { num } from '../../domain/format.js';
 import { TIPOS_MOV } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions, presentacionOptions } from '../selectOptions.jsx';
@@ -15,69 +15,11 @@ import { AvisoMomento, CamposMomento, useMomentoFraccion } from '../MomentoFracc
  * ingreso a mano sumaba stock sin papel detrás y el costo quedaba viejo.
  */
 
-/* ============================== VENDER ============================== */
-export function VenderModal({ prodId, sucId: sucInit, pre = {} }) {
-  const { store, closeModal, toast, sucOperativa } = useProductos();
-  const prod = store.getProducto(prodId);
-  const granel = prod.tipo === 'granel';
-  const [sucId, setSucId] = useState(sucInit || sucOperativa());
-  const [presId, setPresId] = useState(pre.presId != null ? String(pre.presId) : '');
-  const [cant, setCant] = useState('');
-
-  const presNum = granel && presId ? parseInt(presId, 10) : null;
-  const disp = store.cant(prod.id, parseInt(sucId, 10), presNum, 'disponible');
-  const unidad = store.unidadDe(prod, presNum);
-  const unitLabel = unidad === 'kg' ? 'kg' : presNum ? 'paquetes' : 'unidades';
-  /* El precio de un paquete es SUYO y lo trae la API; `null` = sin formato de
-   * venta cargado, y entonces no se puede vender (la API también lo rechaza). */
-  const precio = presNum ? store.precioPaquete(prod, presNum) : store.precioBaseVenta(prod);
-  const sinPrecio = presNum != null && precio == null;
-  const importe = (parseFloat(cant) || 0) * (precio || 0);
-
-  const registrar = async () => {
-    /* Misma trampa que en Fraccionar: `cant` es el texto del input y el DTO
-     * pide `@IsNumber()`. Acá NO se redondea —un granel se vende por peso y
-     * 0,5 kg es una venta válida— y el vacío queda en 0, que el servidor
-     * rechaza por el mínimo con un mensaje que sí se entiende. */
-    const cantidad = Number(cant) || 0;
-    const res = await store.opVenta({ productoId: prod.id, sucursalId: parseInt(sucId, 10), presId: presNum, cantidad });
-    if (res.ok) { toast('Venta registrada · ' + money(res.importe), 'ok'); closeModal(); }
-    else toast(res.error, 'err');
-  };
-
-  return (
-    <ModalShell
-      title={'Registrar venta — ' + prod.nombre}
-      onClose={closeModal}
-      footer={[
-        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Registrar venta', clase: 'btn-primary', onClick: registrar },
-      ]}
-    >
-      <div className={s.field}>
-        <label>Sucursal</label>
-        <select value={sucId} onChange={(e) => setSucId(e.target.value)}>{sucursalOptions(store, false)}</select>
-      </div>
-      {granel && (
-        <div className={s.field}>
-          <label>Presentación</label>
-          <select value={presId} onChange={(e) => setPresId(e.target.value)}>{presentacionOptions(prod, true)}</select>
-          <div className={s.hint}>“Granel (kg)” = venta suelta por peso.</div>
-        </div>
-      )}
-      <div className={s.field}>
-        <label>Cantidad ({unitLabel}) <span className={s.req}>*</span></label>
-        <input type="number" min="0" step={unidad === 'kg' ? '0.001' : '1'} value={cant} placeholder="0" onChange={(e) => setCant(e.target.value)} />
-      </div>
-      <div className={cx(s.callout, sinPrecio ? s.warn : s.ok)}>
-        Disponible: <strong>{store.fmtCant(prod, presNum, disp)}</strong>
-        {sinPrecio
-          ? <> · ⚠ Este paquete <strong>no tiene precio cargado</strong>: cargale el formato de venta en su ficha antes de venderlo.</>
-          : <> · Importe: <strong>{money(importe)}</strong></>}
-      </div>
-    </ModalShell>
-  );
-}
+/*
+ * SIN modal de "Vender" (27/9/2026): descontaba stock como venta sin crear la
+ * venta — sin ticket ni caja. Ninguna pantalla lo abría y la API se cerró. Las
+ * ventas entran por el POS.
+ */
 
 /* ========================= CORREGIR UN FRACCIONADO ========================= *
  *
@@ -259,6 +201,77 @@ export function CorregirFraccionadoModal({ prodId, presId, sucId: sucInit }) {
 }
 
 /* ============================== MOVIMIENTO SIMPLE ============================== */
+/* ============================== DESCARTAR VENCIDO / DEFECTUOSO ============================== */
+/**
+ * TIRAR LO QUE YA ESTÁ COMO VENCIDO O DEFECTUOSO (27/9/2026). Esos estados no
+ * tenían salida y se acumulaban en Existencias, valuados. No es una pérdida
+ * nueva: la plata ya se contó al marcarlo. Como mueve stock, se confirma dos
+ * veces, con el candado del doble clic.
+ */
+export function DescartarEstadoModal({ stockId }) {
+  const { store, act, closeModal, toast } = useProductos();
+  const st = store.state.stock.find((x) => x.id === stockId);
+  const prod = st ? store.getProducto(st.productoId) : null;
+  const [cant, setCant] = useState(st ? String(st.cantidad) : '');
+  const [motivo, setMotivo] = useState('');
+  const [confirmando, setConfirmando] = useState(false);
+  const enVuelo = useRef(false);
+  if (!st || !prod) return null;
+
+  const unidad = store.unidadDe(prod, st.presentacionId);
+  const c = Number(cant) || 0;
+  const etiqueta = st.estado === 'vencido' ? 'vencido' : 'defectuoso';
+
+  const descartar = () => {
+    if (!(c > 0)) { toast('Poné la cantidad que se tiró.', 'err'); return; }
+    if (unidad !== 'kg' && !Number.isInteger(c)) { toast(`${prod.nombre} se cuenta entero: ${c} no es posible.`, 'err'); return; }
+    if (c > st.cantidad + 1e-9) { toast(`Como ${etiqueta} hay ${store.fmtCant(prod, st.presentacionId, st.cantidad)}.`, 'err'); return; }
+    if (!confirmando) { setConfirmando(true); return; }
+    if (enVuelo.current) return;
+    enVuelo.current = true;
+    act(
+      store.descartarEstado({
+        productoId: prod.id, sucursalId: st.sucursalId, presId: st.presentacionId || null,
+        estado: st.estado, cantidad: c, motivo: motivo.trim(),
+      }),
+      `Descartado: salieron ${store.fmtCant(prod, st.presentacionId, c)} de lo ${etiqueta}.`,
+    ).finally(() => { enVuelo.current = false; setConfirmando(false); });
+  };
+
+  return (
+    <ModalShell
+      title={`Descartar lo ${etiqueta} — ${prod.nombre}`}
+      onClose={closeModal}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+        { texto: confirmando ? 'Sí, descartar' : 'Descartar…', clase: 'btn-delete', onClick: descartar },
+      ]}
+    >
+      {confirmando && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>Segunda confirmación.</strong> Salen <strong>{store.fmtCant(prod, st.presentacionId, c)}</strong> de lo{' '}
+          {etiqueta} de {prod.nombre} en {store.getSucursal(st.sucursalId)?.nombre}. No se deshace. ¿Confirmás?
+        </div>
+      )}
+      <div className={s.hint} style={{ marginTop: 0 }}>
+        Es la salida de lo que <strong>ya se tiró</strong>. La pérdida en plata <strong>ya se contó</strong> cuando se
+        marcó {etiqueta}: esto no la vuelve a sumar, solo lo saca de Existencias.
+      </div>
+      <div className={s.field}>
+        <label>Cantidad ({unidad === 'kg' ? 'kg' : st.presentacionId ? 'paquetes' : 'unidades'}) — hay {store.fmtCant(prod, st.presentacionId, st.cantidad)}</label>
+        <input
+          type="number" min="0" step={unidad === 'kg' ? '0.001' : '1'} value={cant}
+          onChange={(e) => { setConfirmando(false); setCant(e.target.value); }}
+        />
+      </div>
+      <div className={s.field}>
+        <label>Motivo</label>
+        <input value={motivo} placeholder="Opcional: se tiró el lote del 20/9, se devolvió al proveedor…" onChange={(e) => { setConfirmando(false); setMotivo(e.target.value); }} />
+      </div>
+    </ModalShell>
+  );
+}
+
 export function MovimientoModal({ prodId, sucId: sucInit, pre = {} }) {
   const { store, act, closeModal, toast, sucOperativa } = useProductos();
   const prod = store.getProducto(prodId);
@@ -272,6 +285,12 @@ export function MovimientoModal({ prodId, sucId: sucInit, pre = {} }) {
   const [presId, setPresId] = useState(pre.presId != null ? String(pre.presId) : '');
   const [cant, setCant] = useState('');
   const [motivo, setMotivo] = useState('');
+  /* SEGUNDA CONFIRMACIÓN (27/9/2026): un movimiento a mano cambia el stock y
+   * no tiene documento detrás. El primer clic muestra el resumen —qué, cuánto,
+   * dónde y cómo queda—; recién el segundo lo registra. Y el candado del doble
+   * clic va con `useRef` (el estado de React llega tarde a dos clics seguidos). */
+  const [confirmando, setConfirmando] = useState(false);
+  const enVuelo = useRef(false);
 
   if (!tipos.length) return null;
 
@@ -294,6 +313,15 @@ export function MovimientoModal({ prodId, sucId: sucInit, pre = {} }) {
       toast('Contá en una línea por qué se ajusta: es lo que queda en el historial.', 'err');
       return;
     }
+    if (!(c > 0)) { toast('Poné la cantidad.', 'err'); return; }
+    if (unidad !== 'kg' && !Number.isInteger(c)) {
+      toast(`${prod.nombre} se cuenta por ${presNum ? 'paquete' : 'unidad'} entera: ${c} no es una cantidad posible.`, 'err');
+      return;
+    }
+    if (bad) { toast(`No hay tanto disponible: hay ${store.fmtCant(prod, presNum, disp)}.`, 'err'); return; }
+    if (!confirmando) { setConfirmando(true); return; }
+    if (enVuelo.current) return;
+    enVuelo.current = true;
     /* NÚMEROS, no el texto del input: el DTO del servidor valida estricto
      * (@IsNumber/@IsInt) y un "2" en string rebota con un error que habla de
      * constraints. Este modal quedó sin puerta de entrada un tiempo y el
@@ -304,8 +332,10 @@ export function MovimientoModal({ prodId, sucId: sucInit, pre = {} }) {
         cantidad: Number(cant), signo: Number(dir), motivo: motivo.trim(),
       }),
       'Movimiento registrado.',
-    );
+    ).finally(() => { enVuelo.current = false; setConfirmando(false); });
   };
+  /* Cambiar cualquier dato vuelve a pedir la confirmación: se confirma lo que se ve. */
+  const cambio = (fn) => (e) => { setConfirmando(false); fn(e.target.value); };
 
   return (
     <ModalShell
@@ -313,20 +343,29 @@ export function MovimientoModal({ prodId, sucId: sucInit, pre = {} }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Registrar', clase: 'btn-primary', onClick: registrar },
+        { texto: confirmando ? `Sí, ${signo < 0 ? 'descontar' : 'sumar'} ${store.fmtCant(prod, presNum, c)}` : 'Registrar…', clase: 'btn-primary', onClick: registrar },
       ]}
     >
+      {confirmando && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>Segunda confirmación.</strong> {TIPOS_MOV[tipo].label}: vas a{' '}
+          <strong>{signo < 0 ? 'descontar' : 'sumar'} {store.fmtCant(prod, presNum, c)}</strong> de {prod.nombre}
+          {' '}en <strong>{store.getSucursal(parseInt(sucId, 10))?.nombre ?? 'la sucursal'}</strong>. El disponible pasa de{' '}
+          {store.fmtCant(prod, presNum, disp)} a <strong>{store.fmtCant(prod, presNum, Math.max(0, resultante))}</strong>.
+          {motivo.trim() && <> Motivo: “{motivo.trim()}”.</>} ¿Confirmás?
+        </div>
+      )}
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Tipo <span className={s.req}>*</span></label>
-          <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+          <select value={tipo} onChange={cambio(setTipo)}>
             {tipos.map((t) => <option key={t} value={t}>{TIPOS_MOV[t].label}</option>)}
           </select>
         </div>
         {dirLibre && (
           <div className={s.field}>
             <label>Dirección</label>
-            <select value={dir} onChange={(e) => setDir(e.target.value)}>
+            <select value={dir} onChange={cambio(setDir)}>
               <option value="-1">Salida (−)</option>
               <option value="1">Entrada (+)</option>
             </select>
@@ -336,25 +375,25 @@ export function MovimientoModal({ prodId, sucId: sucInit, pre = {} }) {
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Sucursal</label>
-          <select value={sucId} onChange={(e) => setSucId(e.target.value)}>{sucursalOptions(store, false)}</select>
+          <select value={sucId} onChange={cambio(setSucId)}>{sucursalOptions(store, false)}</select>
         </div>
         {granel && (
           <div className={s.field}>
             <label>Presentación</label>
-            <select value={presId} onChange={(e) => setPresId(e.target.value)}>{presentacionOptions(prod, true)}</select>
+            <select value={presId} onChange={cambio(setPresId)}>{presentacionOptions(prod, true)}</select>
           </div>
         )}
       </div>
       <div className={s.field}>
         <label>Cantidad ({unitLabel}) <span className={s.req}>*</span></label>
-        <input type="number" min="0" step={unidad === 'kg' ? '0.001' : '1'} value={cant} placeholder="0" onChange={(e) => setCant(e.target.value)} />
+        <input type="number" min="0" step={unidad === 'kg' ? '0.001' : '1'} value={cant} placeholder="0" onChange={cambio(setCant)} />
       </div>
       <div className={s.field}>
         <label>Motivo / referencia {tipo === 'ajuste' && <span className={s.req}>*</span>}</label>
         <input
           value={motivo}
           placeholder={tipo === 'ajuste' ? 'Obligatorio: por qué se corrige este número' : 'Ej: cliente, N° remito, observación…'}
-          onChange={(e) => setMotivo(e.target.value)}
+          onChange={cambio(setMotivo)}
         />
       </div>
       <div className={cx(s.callout, bad ? s.warn : c > 0 ? s.ok : undefined)}>

@@ -157,7 +157,7 @@ export function ProductosPanel() {
         p.codigoPropio || '', p.codigoBarras || '', p.nombre, p.marca || '', p.categoria || '',
         p.subcategoria || '', (p.etiquetasNombres || []).join(', '), esGranel ? 'A granel' : 'Entero',
         ESTADOS_PRODUCTO[p.estado]?.label || 'Activo', csvNum(p.iva ?? 21, 1),
-        csvNum(p.costoNeto, 2), csvNum(store.precioFinal(store.precioBaseVenta(p), p.iva), 2),
+        csvNum(p.costoNeto, 2), csvNum(store.precioGondola(p), 2),
         csvNum(disponible, 2), esGranel ? 'kg' : 'u.', p.publicado ? 'Sí' : 'No',
       ];
     }),

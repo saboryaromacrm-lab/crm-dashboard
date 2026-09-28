@@ -4,6 +4,7 @@ import { useProveedores } from '../../context/ProveedoresContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { provApi, MEDIOS_PAGO_REAL } from '../../services/proveedores.api.js';
 import { Btn, ModalShell, money, fmtFecha, s } from '../ui.jsx';
+import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '@modules/gastos/components/segundaConfirmacion.jsx';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -123,15 +124,40 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
     return { ...m, [k]: !m[k] };
   });
 
-  const pagar = async () => {
+  const soloFletes = elegidos.length > 0 && importe <= EPS && repartoFletes.lineas.length > 0;
+  /* Sale plata: segunda confirmación + candado del doble clic (27/9/2026). */
+  const conf = useSegundaConfirmacion(JSON.stringify([
+    Object.keys(tildados).filter((k) => tildados[k]), Object.keys(fletesTildados).filter((k) => fletesTildados[k]),
+    importeLibre, modo, medio, formas, fecha, concepto, referencia, desdeCaja,
+  ]));
+  const validar = () => {
+    if (mezcla || fleteExcedido) return pagarDirecto(false, true);
+    if (soloFletes) return true;
+    if (!(importe > 0)) {
+      toast(elegidos.length ? 'Los documentos tildados no suman nada.' : 'Poné el importe del pago.', 'err');
+      return false;
+    }
+    if (modo !== 'simple') {
+      if (!formas.some((x) => Number(x.importe) > 0)) { toast('Cargá al menos una parte del pago.', 'err'); return false; }
+      if (Math.abs(sumaFormas - importe) > EPS) {
+        toast(`Las partes suman ${money(sumaFormas)} y el pago es de ${money(importe)}: tienen que coincidir.`, 'err');
+        return false;
+      }
+    }
+    return true;
+  };
+  const pagar = () => conf.clic(validar, (confirmarDuplicado) => pagarDirecto(confirmarDuplicado));
+
+  const pagarDirecto = async (confirmarDuplicado, soloValidar = false) => {
     if (mezcla) {
       toast('Un pago va a facturas de mercadería O a gastos, no a los dos: son bandejas distintas. Hacé un pago para cada uno.', 'err');
-      return;
+      return false;
     }
     if (fleteExcedido) {
       toast('Los fletes tildados superan lo que se está pagando: destildá alguno o sumá otra factura.', 'err');
-      return;
+      return false;
     }
+    if (soloValidar) return true;
     /*
      * LOS FLETES SOLOS, sin plata nueva. Pasa cuando lo adelantado alcanza para
      * cubrir todo lo tildado (la factura es de $20.000 y el flete fue de
@@ -188,12 +214,14 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
       body.formas = filas.map((x) => ({ medio: x.medio, importe: r2(x.importe), fecha: x.fecha || undefined }));
     }
     if (usaEfectivo && hayTurno && desdeCaja) body.cajaSesionId = caja.id;
+    if (confirmarDuplicado) body.confirmarDuplicado = true;
 
     const res = await act(
       provApi.crearPago(body),
       elegidos.length
         ? `Pago registrado y aplicado a ${elegidos.length} documento(s).`
         : 'Pago registrado. Queda a cuenta: se aplica desde la factura.',
+      { alConflicto: conf.alConflicto },
     );
     if (res) onChange?.();
   };
@@ -209,15 +237,30 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
         {
-          texto: elegidos.length && importe <= EPS && sumaFletes > EPS
-            ? `Descontar ${money(sumaFletes)} de flete`
-            : importe > 0 ? `Pagar ${money(importe)}` : 'Pagar',
+          texto: textoBoton(
+            conf,
+            soloFletes ? `Descontar ${money(sumaFletes)} de flete…` : importe > 0 ? `Pagar ${money(importe)}…` : 'Pagar…',
+            soloFletes ? `Sí, descontar ${money(sumaFletes)}` : `Sí, pagar ${money(importe)}`,
+          ),
           clase: 'btn-primary',
           onClick: pagar,
           disabled: mezcla || fleteExcedido,
         },
       ]}
     >
+      <AvisoSegundaConfirmacion confirmando={conf.confirmando} gemelo={conf.gemelo}>
+        {soloFletes
+          ? <>Se descuentan <strong>{money(sumaFletes)}</strong> de flete ya pagado: no sale plata nueva.</>
+          : <>
+            Sale un pago de <strong>{money(importe)}</strong> a <strong>{proveedor.nombre}</strong>
+            {modo === 'simple' ? <> por {medio}</> : <> en {formas.filter((x) => Number(x.importe) > 0).length} partes</>}
+            {usaEfectivo && hayTurno && desdeCaja ? <> (el efectivo <strong>sale del cajón</strong>, turno #{caja.id})</> : null}
+            {elegidos.length
+              ? <>, aplicado a {elegidos.length} documento(s){sumaFletes > EPS ? <> y descontando {money(sumaFletes)} de flete</> : null}.</>
+              : <>, a cuenta.</>}
+            {usaEfectivo && !(hayTurno && desdeCaja) ? <> <strong>Ojo: es efectivo pero NO sale de ningún turno de caja</strong>, así que no va a figurar en ningún arqueo.</> : null}
+          </>}
+      </AvisoSegundaConfirmacion>
       <div className={s['section-title']}>¿Qué se le paga?</div>
       {docs.length ? (
         <>
@@ -400,7 +443,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
             </div>
             <div className={s.field}>
               <label>Fecha del pago</label>
-              <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+              <input type="date" max={hoyISO()} value={fecha} onChange={(e) => setFecha(e.target.value)} />
             </div>
           </>
         )}
@@ -418,7 +461,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
                 value={x.importe} onChange={setForma(i, 'importe')} style={{ width: 130, textAlign: 'right' }}
               />
               {/* Fecha propia de la parte: "una parte la transferí hace 10 días". */}
-              <input type="date" value={x.fecha} onChange={setForma(i, 'fecha')} />
+              <input type="date" max={hoyISO()} value={x.fecha} onChange={setForma(i, 'fecha')} />
               {formas.length > 1 && (
                 <Btn small onClick={() => setFormas((xs) => xs.filter((_, j) => j !== i))}>×</Btn>
               )}

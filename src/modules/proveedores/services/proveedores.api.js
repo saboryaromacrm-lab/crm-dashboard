@@ -75,7 +75,8 @@ export const provApi = {
   edoc: () => httpClient.get('/proveedores-edoc'),
   edocProveedor: (id) => httpClient.get(`/proveedores-edoc/${id}`),
   crearAjuste: (data) => httpClient.post('/proveedores-edoc/ajustes', data),
-  borrarAjuste: (id) => httpClient.delete(`/proveedores-edoc/ajustes/${id}`),
+  // Borrar un ajuste pide el porqué: queda en Auditoría (27/9/2026).
+  borrarAjuste: (id, motivo) => httpClient.delete(`/proveedores-edoc/ajustes/${id}`, { body: { motivo } }),
   conciliar: (proveedorId) => httpClient.post(`/proveedores-edoc/${proveedorId}/conciliar`),
   desconciliar: (proveedorId) => httpClient.delete(`/proveedores-edoc/${proveedorId}/conciliar`),
 

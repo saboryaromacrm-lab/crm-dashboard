@@ -10,10 +10,11 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
-import { esc, imprimirDocumento } from '@core/services/imprimir.js';
+import { esc, imprimirDocumento, abrirVentanaImpresion } from '@core/services/imprimir.js';
+import { pedidosCafe } from '@core/services/pedidosCafe.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFechaHora, isoDate } from '../../domain/format.js';
-import { ESTADOS_PEDIDO_CAFE, estadoEnvioCafe } from '../../domain/constants.js';
+import { ESTADOS_PEDIDO_CAFE, RECEPCION_ENVIO_CAFE, estadoEnvioCafe } from '../../domain/constants.js';
 import { antiguedad, esVozDelCafe, vozCafeteria } from '../../domain/cafeteria.voz.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
@@ -35,6 +36,21 @@ const ULTIMA_SUC = 'crm.cafeteria.entrada.sucursal';
 /** A quién se le pidió la última vez: el café suele pedirle siempre al mismo. */
 const ULTIMA_SUC_PEDIDO = 'crm.cafeteria.pedido.sucursal';
 const leerUltimaSuc = () => { try { return localStorage.getItem(ULTIMA_SUC) || ''; } catch { return ''; } };
+/*
+ * LA SUCURSAL QUE SE PROPONE, solo si es una de verdad (26/9/2026).
+ *
+ * El recuerdo puede ser de una sucursal que ya no existe (queda pegado en el
+ * navegador). Y la "sucursal del usuario" NO vale para el café: su puesto no
+ * tiene sucursal, y la sesión queda anotada en la primera solo porque la base
+ * lo exige — proponerla mandaba las medialunas al depósito sin que nadie la
+ * hubiera elegido. Para el café, sin recuerdo válido, el campo arranca vacío.
+ */
+const sucursalPropuesta = (store, recordada, ctx, soyElCafe) => {
+  const existe = (id) => !!id && !!store.getSucursal?.(parseInt(id, 10));
+  if (existe(recordada)) return String(recordada);
+  if (!soyElCafe && existe(ctx?.sucursalId)) return String(ctx.sucursalId);
+  return '';
+};
 const guardarUltimaSuc = (v) => { try { localStorage.setItem(ULTIMA_SUC, String(v)); } catch { /* modo privado */ } };
 
 /**
@@ -122,7 +138,9 @@ export function BuscadorCatalogo({ store, onElegir, autoFocus, filtro }) {
                 {/* En una ENTRADA el costo no existe todavía —lo declara la
                     cafetería en el renglón— y mostrar "$0,00 de costo" sería
                     decir algo falso justo antes de pedir el número. */}
-                {!filtro && <>{' · '}{money(store.costoNeto(m.prod))}/{store.unidadDe(m.prod, null) === 'kg' ? 'kg' : 'u'} de costo</>}
+                {/* `costoNeto: null` = a quien mira no le toca ver el costo de la
+                    distribuidora (el rol Cafetería): no se muestra un $0 falso. */}
+                {!filtro && m.prod.costoNeto !== null && <>{' · '}{money(store.costoNeto(m.prod))}/{store.unidadDe(m.prod, null) === 'kg' ? 'kg' : 'u'} de costo</>}
               </span>
             </button>
           ))}
@@ -140,13 +158,19 @@ export function BuscadorCatalogo({ store, onElegir, autoFocus, filtro }) {
  * juntos al envío. Para el pedido semanal del café — buscar de a uno sería
  * un renglón por minuto.
  */
-function BusquedaGlobalModal({ store, yaCargados, onAgregar, onClose }) {
+function BusquedaGlobalModal({ store, yaCargados, onAgregar, onClose, filtro }) {
   const [texto, setTexto] = useState('');
   const [marca, setMarca] = useState('');
   const [categoria, setCategoria] = useState('');
   const [checks, setChecks] = useState(() => new Set());
 
-  const productos = store.state.productos;
+  /* `filtro` es el mismo del buscador de a uno: en una ENTRADA solo lo que
+   * elabora el café. Sin él, el lote mostraba el catálogo entero y lo agregado
+   * rebotaba recién al enviar. Tampoco se ofrecen los archivados. */
+  const productos = useMemo(
+    () => store.state.productos.filter((p) => (p.estado || 'activo') !== 'archivado' && (!filtro || filtro(p))),
+    [store.state.productos, filtro],
+  );
   const marcas = useMemo(
     () => [...new Set(productos.map((p) => p.marca).filter(Boolean))].sort(),
     [productos],
@@ -181,8 +205,8 @@ function BusquedaGlobalModal({ store, yaCargados, onAgregar, onClose }) {
 
   return (
     <ModalShell
-      title="Buscar en todo el catálogo"
-      subtitle="Tildá lo que viaja al café y entra todo junto al envío"
+      title={filtro ? 'Buscar entre tus productos' : 'Buscar en todo el catálogo'}
+      subtitle={filtro ? 'Tildá lo que mandás y entra todo junto al envío' : 'Tildá lo que viaja al café y entra todo junto al envío'}
       size="lg"
       onClose={onClose}
       footer={[
@@ -239,8 +263,12 @@ function BusquedaGlobalModal({ store, yaCargados, onAgregar, onClose }) {
               </td>
               <td>{p.marca || '—'}</td>
               <td className={s.num}>
-                {money(store.costoNeto(p))}
-                <span className={s.muted}>/{store.unidadDe(p, null) === 'kg' ? 'kg' : 'u'}</span>
+                {p.costoNeto === null
+                  ? <span className={s.muted}>—</span>
+                  : <>
+                    {money(store.costoNeto(p))}
+                    <span className={s.muted}>/{store.unidadDe(p, null) === 'kg' ? 'kg' : 'u'}</span>
+                  </>}
               </td>
             </tr>
           );
@@ -282,7 +310,7 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
       /* `||` y no `??`: "sin guardar" es cadena vacía, no null — con `??` el
          destino recordado vacío se quedaba pegado y nunca se llegaba a la
          sucursal del usuario. */
-      ? envio?.sucursalId ?? (leerUltimaSuc() || ctx.sucursalId || '')
+      ? envio?.sucursalId ?? sucursalPropuesta(store, leerUltimaSuc(), ctx, esVozDelCafe(can))
       : envio?.sucursalId ?? sucOperativa() ?? store.distribuidora()?.id ?? '',
   ));
   const [fecha, setFecha] = useState(() => isoDate(envio ? new Date(envio.fecha) : new Date()));
@@ -382,7 +410,7 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
     if (!prod) return { costo: 0, congelado: false };
     const cn = store.costoNeto(prod);
     const pres = it.presId ? store.presDe(prod, it.presId) : null;
-    return { costo: pres ? cn * (pres.tamKg || 1) : cn, congelado: false };
+    return { costo: pres ? cn * store.escalaPaquete(pres.tamKg || 1, prod.merma) : cn, congelado: false };
   };
   const total = items.reduce((a, it) => a + costoDe(it).costo * (Number(it.cantidad) || 0), 0);
   /** Un renglón "sin costo" es el que se va a cargar y no tiene número puesto.
@@ -425,6 +453,10 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
       ...(entrada ? { costoUnitario: Number(it.costo) } : {}),
     }));
 
+    /* EL REMITO SALE SIEMPRE (27/9/2026): la ventana se abre en este mismo
+     * clic —si se abriera al volver la respuesta, el navegador la bloquea— y
+     * se escribe con el envío que devuelve la API. Si falla, se cierra. */
+    const ventana = abrirVentanaImpresion();
     enVuelo.current = true;
     setGuardando(true);
     let res;
@@ -448,12 +480,15 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
       setGuardando(false);
     }
     if (!res.ok) {
+      ventana?.close();
       /* 409 = "ya hay uno igual de hoy". No se avisa con un toast que se va
        * solo: queda el cartel con el código y el botón para confirmarlo. */
       if (res.status === 409) { setGemelo(res.datos?.duplicado || '—'); return; }
       toast(res.error || 'No se pudo registrar.', 'err');
       return;
     }
+    const impreso = await imprimirRemito(res, ventana);
+    pedidosCafe.refrescar();
     if (entrada && !esEdicion && sucId) guardarUltimaSuc(sucId);
     toast(
       esEdicion
@@ -462,9 +497,10 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
           ? `${res.codigo} enviado · cumple el pedido ${pedido.codigo}, que quedó cerrado.`
           : entrada
             ? v.okEntrada(res.codigo, money(res.totalCosto))
-            : `${res.codigo} enviado · ${money(res.totalCosto)} a costo. La mercadería ya egresó del stock.`,
+            : `${res.codigo} enviado · ${money(res.totalCosto)} a costo. La mercadería ya egresó del stock; la cafetería la controla al recibirla.`,
       'ok',
     );
+    if (!impreso) toast('El navegador bloqueó la impresión del remito: reimprimilo desde el detalle (Imprimir remito).', 'err');
     closeModal();
   };
 
@@ -477,7 +513,7 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
           ? `Armar envío — pedido ${pedido.codigo}`
           : entrada ? v.altaEntradaTitulo : 'Nuevo envío a Cafetería'}
       subtitle={esEdicion
-        ? `Versión actual: ${envio.version}. La corrección revierte el envío anterior y aplica este detalle — el stock acompaña.`
+        ? `Versión actual: ${envio.version}. El stock se mueve solo por la diferencia: corregir un costo no lo toca, así que se puede aunque ya se haya vendido.`
         : pedido
           ? 'Lo pedido es la propuesta: corregí a lo que de verdad va. Al enviar, el pedido queda cerrado.'
           : entrada
@@ -532,7 +568,14 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
         </div>
         <div className={s.field}>
           <label>Fecha</label>
-          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+          {/* Nunca futura y hasta una semana atrás: la API frena lo mismo
+              (`DIAS_ATRAS_ENVIO`). En la edición el día original sigue valiendo. */}
+          <input
+            type="date" value={fecha}
+            max={isoDate(new Date())}
+            min={esEdicion ? undefined : isoDate(new Date(Date.now() - 7 * 86_400_000))}
+            onChange={(e) => setFecha(e.target.value)}
+          />
         </div>
       </div>
 
@@ -541,8 +584,9 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
         {entrada ? (
           <>
             Solo se ofrecen los productos marcados como <strong>elaborados por la cafetería</strong>.
-            El <strong>costo lo declarás vos</strong>: el sistema no puede saberlo, y de ese número
-            sale la rentabilidad cuando se venda en el mostrador.
+            El <strong>costo lo declarás vos</strong>: se propone el de la ficha del producto, que es
+            con el que se registra cada venta. Si una tanda salió distinta, cambialo acá (queda en
+            este envío); si el costo cambió de verdad, cambialo en la ficha.
           </>
         ) : (
           <>
@@ -700,56 +744,95 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
         yaCargados={new Set(items.map((it) => it.prodId))}
         onAgregar={agregarLote}
         onClose={() => setBusquedaLote(false)}
+        filtro={soloDelCafe}
       />
     )}
     </>
   );
 }
 
-/* ============================== DETALLE ============================== */
+/* ============================== REMITO ============================== */
 
-function imprimirRemito(envio) {
-  const filas = (envio.items || []).map((it) => `
+/**
+ * EL REMITO DEL ENVÍO, en los dos sentidos (27/9/2026). Sale SOLO al enviar o
+ * corregir, y se reimprime desde el detalle. Va con la mercadería: el que la
+ * recibe cuenta contra este papel, anota lo que llegó en la última columna y
+ * después lo marca en el sistema. Ya recibido, esa columna trae lo contado.
+ *
+ * `ventana`: la abierta en el clic (ver `abrirVentanaImpresion`). Devuelve
+ * false si el navegador bloqueó la impresión.
+ */
+function imprimirRemito(envio, ventana = null) {
+  const entrada = envio.sentido === 'entrada';
+  const recibido = envio.recepcion && envio.recepcion !== 'pendiente';
+  const filas = (envio.items || []).map((it) => {
+    const falta = recibido && it.cantidadRecibida != null && it.cantidadRecibida + 1e-9 < it.cantidad;
+    return `
     <tr>
       <td>${esc(it.nombre)}</td>
       <td class="chica">${esc(it.codigoBarras || it.codigoPropio || '—')}</td>
-      <td class="n">${num(it.cantidad, 3)} ${it.unidad}</td>
+      <td class="n">${num(it.cantidad, 3)} ${esc(it.unidad)}</td>
       <td class="chica">${it.totalKg != null ? `${num(it.totalKg, 3)} kg` : '—'}</td>
       <td class="n">${money(it.costoUnitario)}</td>
       <td class="n">${money(it.costoUnitario * it.cantidad)}</td>
-    </tr>`).join('');
-  imprimirDocumento('remitoCafeteria', {
-    titulo: `${envio.codigo} — Remito a Cafetería`,
+      <td class="n">${recibido
+    ? `${num(it.cantidadRecibida ?? it.cantidad, 3)}${falta ? ' ⚠' : ''}`
+    : '______'}</td>
+    </tr>`;
+  }).join('');
+  const quienRecibe = entrada ? `la sucursal ${esc(envio.sucursalNombre || '')}` : 'la cafetería';
+  const control = recibido
+    ? `<div class="nota"><strong>${envio.recepcion === 'recibido' ? 'RECIBIDO OK' : 'RECIBIDO CON DIFERENCIAS'}</strong>`
+      + `${envio.recibidoPorNombre ? ` · controló ${esc(envio.recibidoPorNombre)}` : ''}`
+      + `${envio.recibidoEn ? ` · ${esc(new Date(envio.recibidoEn).toLocaleString('es-AR'))}` : ''}`
+      + `${envio.recepcionObs ? ` · ${esc(envio.recepcionObs)}` : ''}</div>`
+    : `<div class="nota"><strong>CONTROL AL RECIBIR:</strong> ${quienRecibe} cuenta cada renglón contra este remito,
+       anota lo que llegó en la columna «Llegó» y lo marca en el sistema (Controlar y recibir).</div>
+       <div style="display:flex;gap:48px;margin-top:36px">
+         <div>Entregó: ______________________</div>
+         <div>Recibió y controló: ______________________</div>
+       </div>`;
+  return imprimirDocumento('remitoCafeteria', {
+    ventana,
+    titulo: `${envio.codigo} — ${entrada ? 'Remito de la Cafetería' : 'Remito a Cafetería'}`,
     cuerpo: `
-      <h1>${esc(envio.codigo)} · Remito a Cafetería${envio.version > 1 ? ` (versión ${Number(envio.version)})` : ''}</h1>
-      <div class="sub">${esc(new Date(envio.fecha).toLocaleString('es-AR'))} · sale de ${esc(envio.sucursalNombre || '')}${envio.usuarioNombre ? ` · ${esc(envio.usuarioNombre)}` : ''}</div>
+      <h1>${esc(envio.codigo)} · ${entrada ? `Remito de la Cafetería a ${esc(envio.sucursalNombre || '')}` : 'Remito a Cafetería'}${envio.version > 1 ? ` (versión ${Number(envio.version)})` : ''}</h1>
+      <div class="sub">${esc(new Date(envio.fecha).toLocaleString('es-AR'))} · ${entrada ? `llega a ${esc(envio.sucursalNombre || '')}` : `sale de ${esc(envio.sucursalNombre || '')}`}${envio.usuarioNombre ? ` · cargó ${esc(envio.usuarioNombre)}` : ''}</div>
       <table>
-        <thead><tr><th>Producto</th><th>Código</th><th>Cantidad</th><th>Equiv. kg</th><th>Costo unit.</th><th>Subtotal</th></tr></thead>
+        <thead><tr><th>Producto</th><th>Código</th><th>Cantidad</th><th>Equiv. kg</th><th>Costo unit.</th><th>Subtotal</th><th>Llegó</th></tr></thead>
         <tbody>${filas}</tbody>
       </table>
-      <div class="tot"><strong>Total a costo: ${money(envio.totalCosto)}</strong></div>
+      <div class="tot"><strong>Total ${entrada ? 'declarado' : 'a costo'}: ${money(envio.totalCosto)}</strong></div>
       ${envio.observaciones ? `<div class="nota">${esc(envio.observaciones)}</div>` : ''}
+      ${control}
       <div class="fiscal">TRASPASO INTERNO VALORIZADO A COSTO — DOCUMENTO NO FISCAL</div>`,
   });
 }
 
+/* ============================== DETALLE ============================== */
+
+/**
+ * ¿Le toca a quien mira controlar y recibir este envío? (0113) El OTRO lado:
+ * la salida la recibe la cafetería; la entrada, la sucursal a la que llega (su
+ * gente o la administración). Quien lo cargó no. El superadmin, siempre. La
+ * API decide lo mismo — esto solo evita ofrecer un botón que iba a rebotar.
+ */
+function meTocaRecibir(envio, { can, ctx, isAdmin }) {
+  if (!envio || envio.estado === 'anulado' || envio.recepcion !== 'pendiente') return false;
+  if (can('*')) return true;
+  if (envio.usuarioId && envio.usuarioId === ctx?.usuarioId) return false;
+  if (envio.sentido === 'salida') return esVozDelCafe(can);
+  if (!can('almacen.cafeteria')) return false;
+  return isAdmin || !ctx?.sucursalId || ctx.sucursalId === envio.sucursalId;
+}
+
 export function EnvioCafeteriaDetalleModal({ id }) {
-  const { store, act, closeModal, openModal, toast, can } = useProductos();
+  const { store, act, closeModal, openModal, toast, can, ctx, isAdmin } = useProductos();
   const v = useMemo(() => vozCafeteria(esVozDelCafe(can)), [can]);
   /*
-   * QUIEN TIENE LA SECCION DE CAFETERIA PUEDE OPERARLA, sea jefe o no.
-   *
-   * Antes estos botones pedian ROL de admin y la pantalla quedaba mas
-   * cerrada que el servidor: la API exige `almacen.cafeteria` y nada mas en
-   * TODOS estos endpoints. El resultado era que una cajera con la seccion
-   * abierta veia el pedido del cafe y no podia despacharlo — tenia que
-   * esperar a que pasara un administrador.
-   *
-   * El rol Cafeteria NO puede tocar una SALIDA: eso egresa stock real de la
-   * distribuidora y sigue sin poder despacharse a si mismo. Lo que si puede
-   * es corregir y anular SUS PROPIAS entradas (0097): si tipeo mal un costo o
-   * una cantidad, obligarla a esperar a un administrador para arreglar un
-   * papel suyo seria trabarle el dia. La API valida lo mismo.
+   * QUIEN TIENE LA SECCION DE CAFETERIA PUEDE OPERARLA, sea jefe o no. El rol
+   * Cafetería NO toca una SALIDA (egresa stock real de la distribuidora); sí
+   * corrige SUS entradas (0097). La API valida lo mismo.
    */
   const puedeOperar = can('almacen.cafeteria');
   const [envio, setEnvio] = useState(null);
@@ -774,10 +857,15 @@ export function EnvioCafeteriaDetalleModal({ id }) {
       await act(
         store.anularEnvioCafeteria(id, motivoAnular.trim()),
         esEntrada
-          ? 'Anulado — la mercadería salió del stock de la sucursal.'
+          ? 'Anulado — nunca llegó a entrar al stock de la sucursal.'
           : 'Anulado — todo el stock volvió a su lugar. Coffit lo ve en su próxima sincronización.',
       );
     } finally { anulandoRef.current = false; setAnulando(false); }
+  };
+
+  const reimprimir = async () => {
+    const ok = await imprimirRemito(envio);
+    if (!ok) toast('El navegador bloqueó la ventana de impresión. Permitile las ventanas emergentes y probá de nuevo.', 'err');
   };
 
   const footerBase = [{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }];
@@ -789,6 +877,10 @@ export function EnvioCafeteriaDetalleModal({ id }) {
 
   const est = estadoEnvioCafe(envio.estado, envio.sentido);
   const vivo = envio.estado !== 'anulado';
+  const pendiente = envio.recepcion === 'pendiente';
+  const recep = RECEPCION_ENVIO_CAFE[envio.recepcion] || {};
+  const meToca = meTocaRecibir(envio, { can, ctx, isAdmin });
+  const recibido = vivo && !pendiente;
   return (
     <ModalShell
       title={`${envio.codigo} · ${esEntrada ? v.detalleEntrada : v.detalleSalida}`}
@@ -796,18 +888,31 @@ export function EnvioCafeteriaDetalleModal({ id }) {
       wide
       onClose={closeModal}
       footer={[
-        ...(puedeCorregir && vivo
-          ? [{ texto: 'Editar', clase: 'btn-primary', onClick: () => { closeModal(); openModal('envioCafeteria', { envio }); } }]
+        ...(meToca
+          ? [{ texto: 'Controlar y recibir', clase: 'btn-primary', onClick: () => { closeModal(); openModal('recibirEnvioCafeteria', { id: envio.id }); } }]
           : []),
-        { texto: 'Imprimir remito', clase: 'btn-ghost', onClick: () => imprimirRemito(envio) },
+        ...(puedeCorregir && vivo
+          ? [{ texto: 'Editar', clase: meToca ? 'btn-ghost' : 'btn-primary', onClick: () => { closeModal(); openModal('envioCafeteria', { envio }); } }]
+          : []),
+        { texto: 'Imprimir remito', clase: 'btn-ghost', onClick: reimprimir },
         ...footerBase,
       ]}
     >
       <div className={s['detalle-grid']}>
         <Di label="Estado"><Pill pill={est.pill} label={est.label || envio.estado} /></Di>
+        {vivo && (
+          <Di label="Recepción">
+            <Pill pill={recep.pill} label={recep.label || envio.recepcion} />
+            {recibido && (envio.recibidoPorNombre || envio.recibidoEn) && (
+              <div className={s.hint} style={{ margin: 0 }}>
+                {envio.recibidoPorNombre || '—'}{envio.recibidoEn ? ` · ${fmtFechaHora(envio.recibidoEn)}` : ' · antes del control'}
+              </div>
+            )}
+          </Di>
+        )}
         <Di label="Fecha">{fmtFechaHora(envio.fecha)}</Di>
         <Di label={esEntrada ? v.colSucEntrada : v.colSucSalida}>{envio.sucursalNombre || '—'}</Di>
-        <Di label="Quién">{envio.usuarioNombre || '—'}</Di>
+        <Di label="Quién lo cargó">{envio.usuarioNombre || '—'}</Di>
         <Di label="Versión">
           v{envio.version}
           {envio.version > 1 && <div className={s.hint} style={{ margin: 0 }}>corregido {fmtFechaHora(envio.actualizadoEn)}</div>}
@@ -817,31 +922,51 @@ export function EnvioCafeteriaDetalleModal({ id }) {
       {!vivo && envio.motivoAnulacion && (
         <div className={cx(s.callout, s.warn)}>Anulado: {envio.motivoAnulacion}</div>
       )}
+      {vivo && pendiente && (
+        <div className={cx(s.callout, meToca ? s.warn : undefined)}>
+          {meToca
+            ? <>Este envío <strong>te toca recibirlo</strong>: contá la mercadería contra el remito y marcalo con <strong>Controlar y recibir</strong>.{esEntrada && ' Recién ahí entra al stock de la sucursal.'}</>
+            : <>Esperando que {esEntrada ? `${envio.sucursalNombre || 'la sucursal'} lo controle y lo reciba — recién ahí entra a su stock` : 'la cafetería lo controle y lo reciba'}.</>}
+        </div>
+      )}
+      {recibido && envio.recepcionObs && (
+        <div className={s.callout}>Al recibir anotaron: {envio.recepcionObs}</div>
+      )}
 
       <Table
         cols={[
           { h: 'Producto' }, { h: 'Código' },
           { h: 'Cantidad', num: true }, { h: 'Equiv. kg', num: true },
           { h: 'Costo unit.', num: true }, { h: 'Subtotal', num: true },
+          ...(recibido ? [{ h: 'Llegó', num: true }] : []),
         ]}
       >
-        {(envio.items || []).map((it) => (
-          <tr key={it.id}>
-            <td>{it.nombre}</td>
-            <td className={s.mono}>{it.codigoBarras || it.codigoPropio || '—'}</td>
-            <td className={s.num}>{num(it.cantidad, 3)} {it.unidad}</td>
-            <td className={s.num}>{it.totalKg != null ? `${num(it.totalKg, 3)} kg` : '—'}</td>
-            <td className={s.num}>{money(it.costoUnitario)}</td>
-            <td className={cx(s.num, s.mono)}>{money(it.costoUnitario * it.cantidad)}</td>
-          </tr>
-        ))}
+        {(envio.items || []).map((it) => {
+          const falta = recibido && it.cantidadRecibida != null && it.cantidadRecibida + 1e-9 < it.cantidad;
+          return (
+            <tr key={it.id}>
+              <td>{it.nombre}</td>
+              <td className={s.mono}>{it.codigoBarras || it.codigoPropio || '—'}</td>
+              <td className={s.num}>{num(it.cantidad, 3)} {it.unidad}</td>
+              <td className={s.num}>{it.totalKg != null ? `${num(it.totalKg, 3)} kg` : '—'}</td>
+              <td className={s.num}>{money(it.costoUnitario)}</td>
+              <td className={cx(s.num, s.mono)}>{money(it.costoUnitario * it.cantidad)}</td>
+              {recibido && (
+                <td className={s.num} style={falta ? { color: 'var(--crm-color-danger)', fontWeight: 700 } : undefined}>
+                  {num(it.cantidadRecibida ?? it.cantidad, 3)}
+                  {falta && <div className={s.hint} style={{ margin: 0 }}>faltan {num(it.cantidad - it.cantidadRecibida, 3)}</div>}
+                </td>
+              )}
+            </tr>
+          );
+        })}
       </Table>
 
       <div className={s.hint}>
         {esEntrada ? (
           <>
-            Los costos son los que <strong>declaró la cafetería</strong> y quedaron congelados en el
-            renglón: de ahí sale la rentabilidad cuando esta mercadería se venda en el mostrador.
+            Los costos son los que <strong>declaró la cafetería</strong> para este envío y quedan en el
+            documento. La venta en el mostrador toma el costo de la <strong>ficha</strong> del producto.
             Coffit no ve este documento — es mercadería que ella misma despachó.
           </>
         ) : (
@@ -852,9 +977,10 @@ export function EnvioCafeteriaDetalleModal({ id }) {
           </>
         )}
         {envio.version > 1 && <> Esta es la <strong>versión {envio.version}</strong>: hubo correcciones después del envío original.</>}
+        {envio.recepcion === 'con_diferencias' && <> Cada faltante abrió una <strong>incidencia</strong> para la administración (Almacén › Incidencias).</>}
       </div>
 
-      {vivo && (
+      {vivo && pendiente && puedeCorregir && (
         <div className={s.callout}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input
@@ -869,9 +995,168 @@ export function EnvioCafeteriaDetalleModal({ id }) {
           </div>
           <div className={s.hint} style={{ margin: '8px 0 0' }}>
             {esEntrada
-              ? <>Anular revierte TODO: la mercadería <strong>sale</strong> del stock de la sucursal. Si ya se vendió, no se puede — para corregir cantidades o costos, usá <strong>Editar</strong>.</>
+              ? <>Todavía no lo recibieron, así que anular no toca el stock de la sucursal. Para corregir cantidades o costos, usá <strong>Editar</strong>.</>
               : <>Anular revierte TODO: la mercadería reingresa al stock y coffit tiene que deshacer su ingreso (le llega por sincronización). Para corregir cantidades, usá <strong>Editar</strong>.</>}
           </div>
+        </div>
+      )}
+      {recibido && puedeCorregir && (
+        <div className={s.hint}>
+          <strong>Ya se recibió y se controló: no se anula.</strong> Si algo en realidad no salió, corregilo
+          con <strong>Editar</strong> — la cantidad se puede bajar hasta lo que llegó.
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+/* ============================== CONTROLAR Y RECIBIR ============================== */
+
+/**
+ * EL CONTROL DEL QUE RECIBE (0113). Renglón por renglón contra el remito:
+ * "llegó completo" viene tildado (es lo normal) y se destilda solo donde falta,
+ * para escribir lo que llegó. Con diferencias se pide una segunda confirmación
+ * — cada faltante abre una incidencia — y en una ENTRADA recién acá la
+ * mercadería entra al stock de la sucursal, con lo contado.
+ */
+export function RecibirEnvioCafeteriaModal({ id }) {
+  const { store, closeModal, toast } = useProductos();
+  const [envio, setEnvio] = useState(null);
+  const [filas, setFilas] = useState({});
+  const [obs, setObs] = useState('');
+  const [confirmar, setConfirmar] = useState(false);
+  const enVuelo = useRef(false);
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    store.envioCafeteria(id)
+      .then((e) => {
+        if (!vivo) return;
+        setEnvio(e);
+        setFilas(Object.fromEntries((e.items || []).map((it) => [it.id, { completo: true, llego: '' }])));
+      })
+      .catch(() => { if (vivo) toast('No se pudo cargar el envío.', 'err'); });
+    return () => { vivo = false; };
+  }, [store, id, toast]);
+
+  const setFila = (itemId, patch) => { setConfirmar(false); setFilas((f) => ({ ...f, [itemId]: { ...f[itemId], ...patch } })); };
+  const llegoDe = (it) => {
+    const f = filas[it.id] || { completo: true };
+    return f.completo ? Number(it.cantidad) : (f.llego === '' ? null : Number(f.llego));
+  };
+  const items = envio?.items || [];
+  const errores = items.filter((it) => {
+    const n = llegoDe(it);
+    if (n == null || Number.isNaN(n) || n < 0 || n > Number(it.cantidad) + 1e-9) return true;
+    return it.modo !== 'granel' && !Number.isInteger(n);
+  });
+  const faltantes = items.filter((it) => !errores.includes(it) && llegoDe(it) + 1e-9 < Number(it.cantidad));
+
+  const guardar = async () => {
+    if (enVuelo.current || !envio) return;
+    if (errores.length) {
+      toast(`Revisá ${errores.length === 1 ? 'un renglón' : `${errores.length} renglones`}: lo que llegó va de 0 a lo enviado, y entero salvo lo que va por kilo.`, 'err');
+      return;
+    }
+    if (faltantes.length && !confirmar) { setConfirmar(true); return; }
+    enVuelo.current = true;
+    setGuardando(true);
+    let res;
+    try {
+      res = await store.recibirEnvioCafeteria(envio.id, {
+        items: items.map((it) => ({ itemId: it.id, cantidadRecibida: llegoDe(it) })),
+        observaciones: obs.trim() || undefined,
+      });
+    } finally { enVuelo.current = false; setGuardando(false); }
+    if (!res.ok) { toast(res.error || 'No se pudo registrar la recepción.', 'err'); return; }
+    pedidosCafe.refrescar();
+    const stockTxt = envio.sentido === 'entrada' ? ' Ya entró al stock de la sucursal.' : '';
+    toast(
+      res.incidencias?.length
+        ? `${envio.codigo} recibido con diferencias: se abrió ${res.incidencias.join(', ')} para la administración.${stockTxt}`
+        : `${envio.codigo} recibido OK: todo controlado.${stockTxt}`,
+      res.incidencias?.length ? 'err' : 'ok',
+    );
+    closeModal();
+  };
+
+  if (!envio) {
+    return <ModalShell title="Controlar y recibir" onClose={closeModal} footer={[{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }]}>
+      <div className={s['empty-state']}>Cargando…</div>
+    </ModalShell>;
+  }
+  const entrada = envio.sentido === 'entrada';
+  return (
+    <ModalShell
+      title={`Controlar y recibir ${envio.codigo}`}
+      subtitle={entrada
+        ? `De la cafetería a ${envio.sucursalNombre || 'la sucursal'}: entra al stock con lo que cuentes`
+        : `De ${envio.sucursalNombre || 'Sabor y Aroma'} a la cafetería`}
+      wide
+      onClose={closeModal}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal, disabled: guardando },
+        {
+          texto: guardando ? 'Registrando…'
+            : confirmar ? 'Sí, recibir con diferencias'
+              : faltantes.length ? 'Recibir con diferencias…' : 'Todo OK — recibir',
+          clase: 'btn-primary',
+          onClick: guardar,
+          disabled: guardando,
+        },
+      ]}
+    >
+      <div className={s.callout}>
+        Contá cada renglón <strong>contra el remito</strong>. Si llegó todo, dejalo tildado; si falta,
+        destildalo y escribí <strong>lo que llegó</strong>. Lo que falte abre una incidencia para la
+        administración.
+      </div>
+
+      <Table cols={[{ h: 'Producto' }, { h: 'Enviado', num: true }, { h: 'Llegó completo' }, { h: 'Llegó', num: true }, { h: 'Diferencia', num: true }]}>
+        {items.map((it) => {
+          const f = filas[it.id] || { completo: true, llego: '' };
+          const n = llegoDe(it);
+          const mal = errores.includes(it);
+          const dif = n == null || Number.isNaN(n) ? null : n - Number(it.cantidad);
+          return (
+            <tr key={it.id}>
+              <td>{it.nombre}</td>
+              <td className={s.num}>{num(it.cantidad, 3)} {it.unidad}</td>
+              <td>
+                <input
+                  type="checkbox" checked={f.completo}
+                  onChange={(e) => setFila(it.id, { completo: e.target.checked, llego: e.target.checked ? '' : f.llego })}
+                />
+              </td>
+              <td className={s.num}>
+                <input
+                  type="number" min="0" max={it.cantidad} step={it.modo === 'granel' ? 'any' : '1'}
+                  disabled={f.completo}
+                  value={f.completo ? it.cantidad : f.llego}
+                  placeholder="lo que llegó"
+                  style={{ width: 110, ...(mal ? { borderColor: 'var(--crm-color-danger)' } : {}) }}
+                  onChange={(e) => setFila(it.id, { llego: e.target.value })}
+                />
+              </td>
+              <td className={s.num} style={dif && dif < 0 ? { color: 'var(--crm-color-danger)', fontWeight: 700 } : undefined}>
+                {dif == null ? '—' : dif === 0 ? 'OK' : `${num(dif, 3)} ${it.unidad}`}
+              </td>
+            </tr>
+          );
+        })}
+      </Table>
+
+      <div className={s.field}>
+        <label>Observaciones</label>
+        <input value={obs} maxLength={500} placeholder="Opcional — caja abierta, llegó tarde…" onChange={(e) => setObs(e.target.value)} />
+      </div>
+
+      {confirmar && faltantes.length > 0 && (
+        <div className={cx(s.callout, s.warn)}>
+          Faltan cosas en <strong>{faltantes.length === 1 ? 'un renglón' : `${faltantes.length} renglones`}</strong>
+          {' '}({faltantes.map((it) => `${it.nombre}: ${num(Number(it.cantidad) - llegoDe(it), 3)} ${it.unidad}`).join(' · ')}).
+          Se va a abrir una incidencia por cada uno. ¿Confirmás que contaste bien?
         </div>
       )}
     </ModalShell>
@@ -898,16 +1183,27 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
   const [esGranel, setEsGranel] = useState(!!producto?.esGranel);
   const [precio, setPrecio] = useState(producto?.precio != null ? String(producto.precio) : '');
   const [costo, setCosto] = useState(producto?.costo != null ? String(producto.costo) : '');
+  /* Precio POR MARGEN = lo fija la distribuidora desde Compras. El café lo ve
+   * pero no lo cambia: mandarle un número lo convertiría en precio fijo. */
+  const porMargen = esEdicion && !!producto?.porMargen;
 
   /* El margen, en vivo mientras se tipea: es la única forma de darse cuenta en
    * el momento de que el precio no cierra. Con los dos números a la vista, un
    * costo más alto que el precio salta solo. */
+  /* SOBRE EL PRECIO SIN IVA: el IVA que cobra el mostrador es de ARCA, no
+   * del café, y el costo es neto. Es el mismo margen que después da la venta.
+   * Un producto nuevo nace con 21 % (lo que pone el alta). */
+  /* 21 % salvo lo que la ley grava a la mitad (el pan): lo elige quien carga. */
+  const [iva, setIva] = useState(producto?.iva ?? 21);
+  /* Vender por debajo del costo puede ser a propósito (una liquidación, una
+   * muestra), pero no por un cero de menos: se tilda para poder guardar. */
+  const [aPerdida, setAPerdida] = useState(false);
   const margen = useMemo(() => {
-    const p = Number(precio);
+    const p = Number(precio) / (1 + iva / 100);
     const c = Number(costo);
     if (!(p > 0) || costo === '' || Number.isNaN(c)) return null;
-    return ((p - c) / p) * 100;
-  }, [precio, costo]);
+    return { pct: ((p - c) / p) * 100, neto: p, queda: p - c };
+  }, [precio, costo, iva]);
 
   const enVuelo = useRef(false);
   const [guardando, setGuardando] = useState(false);
@@ -917,7 +1213,11 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
     const n = nombre.trim();
     if (!n) { toast('Poné el nombre del producto.', 'err'); return; }
     const p = Number(precio);
-    if (!(p > 0)) { toast('Poné a cuánto se vende en el mostrador.', 'err'); return; }
+    if (!porMargen && !(p > 0)) { toast('Poné a cuánto se vende en el mostrador.', 'err'); return; }
+    if (margen && margen.pct <= 0 && !aPerdida) {
+      toast('El precio no cubre el costo: corregilo, o tildá que lo vendés a pérdida a propósito.', 'err');
+      return;
+    }
 
     enVuelo.current = true;
     setGuardando(true);
@@ -927,8 +1227,10 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
        * que no es lo mismo que mandar 0 y declarar que no cuesta nada. */
       const c = costo === '' ? undefined : Number(costo);
       res = esEdicion
-        ? await store.editarProductoCafeteria(producto.id, { nombre: n, precio: p, costo: c })
-        : await store.crearProductoCafeteria({ nombre: n, esGranel, precio: p, costo: c });
+        ? await store.editarProductoCafeteria(producto.id, {
+          nombre: n, precio: porMargen ? undefined : p, costo: c, iva, confirmarPerdida: aPerdida || undefined,
+        })
+        : await store.crearProductoCafeteria({ nombre: n, esGranel, precio: p, costo: c, iva, confirmarPerdida: aPerdida || undefined });
     } finally { enVuelo.current = false; setGuardando(false); }
     if (!res.ok) { toast(res.error || 'No se pudo guardar.', 'err'); return; }
     toast(
@@ -945,7 +1247,7 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
     <ModalShell
       title={esEdicion ? `Editar ${producto.nombre}` : 'Nuevo producto de la cafetería'}
       subtitle={esEdicion
-        ? 'Se corrige el nombre, el costo y el precio. Cómo se vende (por unidad o por kilo) no se cambia: eso sería otro producto.'
+        ? 'Se corrige el nombre, el costo y el precio del mostrador (los precios de otras listas no se tocan). Cómo se vende (por unidad o por kilo) no se cambia: eso sería otro producto.'
         : 'Lo que elabora la cafetería y se vende en el mostrador. El costo lo declarás vos: no se compra, así que no sale de ningún proveedor.'}
       onClose={closeModal}
       footer={[
@@ -987,38 +1289,74 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
       </div>
 
       <div className={s.field}>
-        <label>Costo — lo que te cuesta hacerlo</label>
+        <label>Costo — lo que te cuesta hacerlo, sin IVA</label>
         <input
           type="number" min="0" step="any" value={costo}
           placeholder="700"
           onChange={(e) => setCosto(e.target.value)}
         />
         <div className={s.hint} style={{ marginBottom: 0 }}>
-          El <strong>envío lo va a tomar de acá solo</strong>, así que no hay que volver a tipearlo
-          cada vez. Si una tanda sale más cara se corrige en ese envío, y eso no cambia este número.
+          Es el costo con el que <strong>se registra cada venta</strong> de este producto y con el que
+          se valúa su stock, y el <strong>envío lo toma de acá solo</strong>. Si una tanda sale más cara
+          se corrige en ese envío, y eso no cambia este número: si el costo cambió de verdad, cambialo acá.
           {esEdicion && producto?.costo == null && <> Todavía no cargaste ninguno.</>}
         </div>
       </div>
 
       <div className={s.field}>
-        <label>Precio en el mostrador <span className={s.req}>*</span></label>
-        <input
-          type="number" min="0" step="any" value={precio}
-          placeholder="1500"
-          onChange={(e) => setPrecio(e.target.value)}
-        />
+        <label>IVA del mostrador</label>
+        <select value={iva} onChange={(e) => setIva(Number(e.target.value))}>
+          <option value={21}>21 % — lo general</option>
+          <option value={10.5}>10,5 % — lo que la ley grava a la mitad (ej. el pan)</option>
+          <option value={0}>Sin IVA — tipo remito, el precio es todo neto</option>
+        </select>
         <div className={s.hint} style={{ marginBottom: 0 }}>
-          Lo que <strong>paga el cliente</strong>, con IVA incluido.
+          {iva === 0
+            ? <>Sin IVA el precio del mostrador queda <strong>entero para vos</strong>. Si alguna vez se factura, sale como IVA 0 %: confirmalo con el contador.</>
+            : 'Si no sabés cuál va, dejá 21 % y consultalo con el contador.'}
         </div>
       </div>
+
+      {porMargen ? (
+        <div className={s.field}>
+          <label>Precio en el mostrador</label>
+          <div className={cx(s.callout)} style={{ margin: 0 }}>
+            Lo fija <strong>Sabor y Aroma por margen</strong> sobre tu costo, así que desde acá no se
+            cambia. Si tiene que ser otro, pedíselo a ellos.
+          </div>
+        </div>
+      ) : (
+        <div className={s.field}>
+          <label>Precio en el mostrador <span className={s.req}>*</span></label>
+          <input
+            type="number" min="0" step="any" value={precio}
+            placeholder="1500"
+            onChange={(e) => setPrecio(e.target.value)}
+          />
+          <div className={s.hint} style={{ marginBottom: 0 }}>
+            Lo que <strong>paga el cliente</strong>, con IVA incluido.
+          </div>
+        </div>
+      )}
 
       {/* El margen en vivo: con los dos números a la vista, un precio que no
           cierra se ve antes de guardar y no tres meses después. */}
       {margen != null && (
-        <div className={cx(s.callout, margen <= 0 ? s.warn : s.ok)}>
-          {margen <= 0
-            ? <>Con ese costo <strong>estarías perdiendo plata</strong> en cada uno: el precio no llega a cubrirlo.</>
-            : <>Margen: <strong>{margen.toFixed(1)}%</strong> — de cada {money(Number(precio))} que cobrás, te quedan {money(Number(precio) - Number(costo))}.</>}
+        <div className={cx(s.callout, margen.pct <= 0 ? s.warn : s.ok)}>
+          {margen.pct <= 0
+            ? (
+              <>
+                Con ese costo <strong>estarías perdiendo plata</strong> en cada uno: sin el IVA quedan{' '}
+                {money(margen.neto)} y hacerlo cuesta {money(Number(costo))}.
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }}>
+                  <input type="checkbox" checked={aPerdida} onChange={(e) => setAPerdida(e.target.checked)} />
+                  Lo vendo a pérdida a propósito
+                </label>
+              </>
+            )
+            : <>Margen: <strong>{margen.pct.toFixed(1)}%</strong> — de cada {money(Number(precio))} que cobrás,{' '}
+              {iva > 0 ? <>{money(Number(precio) - margen.neto)} son IVA ({num(iva, 1)}%) y </> : <>sin IVA, </>}
+              te quedan {money(margen.queda)}.</>}
         </div>
       )}
 
@@ -1059,8 +1397,11 @@ export function PedidoCafeteriaFormModal({ inicial = null }) {
    */
   const [sucId, setSucId] = useState(() => String(
     inicial?.sucursalId
-    || (() => { try { return localStorage.getItem(ULTIMA_SUC_PEDIDO) || ''; } catch { return ''; } })()
-    || ctx.sucursalId || '',
+    || sucursalPropuesta(
+      store,
+      (() => { try { return localStorage.getItem(ULTIMA_SUC_PEDIDO) || ''; } catch { return ''; } })(),
+      ctx, esVozDelCafe(can),
+    ),
   ));
   /* El mismo candado del envío: dos clicks mandaban dos pedidos iguales, y del
    * otro lado alguien armaba dos envíos. Ver el comentario en el formulario
@@ -1068,6 +1409,9 @@ export function PedidoCafeteriaFormModal({ inicial = null }) {
   const enVuelo = useRef(false);
   const [enviando, setEnviando] = useState(false);
   const [obs, setObs] = useState('');
+  /* El pedido GEMELO que encontró el servidor: hoy ya pediste esto mismo a esa
+   * sucursal y sigue abierto. Se pregunta en vez de rebotar. */
+  const [gemelo, setGemelo] = useState(null);
   /** { prodId, presId, cantidad } */
   const [items, setItems] = useState(() => (inicial?.items ?? []).map((it) => ({
     prodId: it.prodId, presId: it.presId ?? null, cantidad: it.cantidad ?? '',
@@ -1077,7 +1421,9 @@ export function PedidoCafeteriaFormModal({ inicial = null }) {
   const delItem = (i) => setItems((r) => r.filter((_, j) => j !== i));
   const agregar = (prod, presId) => setItems((r) => [...r, { prodId: prod.id, presId: presId ?? null, cantidad: '' }]);
 
-  const guardar = async () => {
+  useEffect(() => { setGemelo(null); }, [items, sucId]);
+
+  const guardar = async (confirmarDuplicado = false) => {
     const parsed = items
       .filter((it) => Number(it.cantidad) > 0)
       .map((it) => ({
@@ -1093,9 +1439,15 @@ export function PedidoCafeteriaFormModal({ inicial = null }) {
     setEnviando(true);
     let res;
     try {
-      res = await store.crearPedidoCafeteria({ sucursalId: suc, observaciones: obs.trim(), items: parsed });
+      res = await store.crearPedidoCafeteria({
+        sucursalId: suc, observaciones: obs.trim(), items: parsed, confirmarDuplicado: confirmarDuplicado || undefined,
+      });
     } finally { enVuelo.current = false; setEnviando(false); }
-    if (!res.ok) { toast(res.error || 'No se pudo enviar el pedido.', 'err'); return; }
+    if (!res.ok) {
+      if (res.status === 409) { setGemelo(res.datos?.duplicado || '—'); return; }
+      toast(res.error || 'No se pudo enviar el pedido.', 'err');
+      return;
+    }
     try { localStorage.setItem(ULTIMA_SUC_PEDIDO, String(suc)); } catch { /* modo privado */ }
     toast(`${res.codigo} enviado a ${store.getSucursal?.(suc)?.nombre || 'la sucursal'}. El estado lo seguís en esta pantalla.`, 'ok');
     closeModal();
@@ -1112,11 +1464,27 @@ export function PedidoCafeteriaFormModal({ inicial = null }) {
         {
           texto: enviando ? 'Enviando…' : 'Enviar pedido',
           clase: 'btn-primary',
-          onClick: guardar,
-          disabled: enviando,
+          onClick: () => guardar(),
+          disabled: enviando || !!gemelo,
         },
       ]}
     >
+      {gemelo && (
+        <div className={cx(s.callout, s.warn)}>
+          <div>
+            Hoy ya pediste <strong>exactamente esto</strong> a esa sucursal: <strong>{gemelo}</strong>, y
+            sigue abierto. Si fue el mismo pedido mandado dos veces, <strong>cancelá</strong>. Si de verdad
+            necesitás otro igual, confirmalo.
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <Btn variant="btn-ghost" small onClick={closeModal}>Cancelar — ya estaba pedido</Btn>
+            <Btn variant="btn-primary" small disabled={enviando} onClick={() => guardar(true)}>
+              {enviando ? 'Enviando…' : 'Va igual, es otro pedido'}
+            </Btn>
+          </div>
+        </div>
+      )}
+
       <div className={s.field}>
         <label>{v.pedidoSucLabel} <span className={s.req}>*</span></label>
         <select value={sucId} onChange={(e) => setSucId(e.target.value)}>

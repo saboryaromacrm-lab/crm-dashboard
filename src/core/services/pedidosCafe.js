@@ -15,6 +15,7 @@ const INTERVALO_MS = 30000;
 
 let _count = 0;
 let _sinResolver = 0;
+let _porRecibir = 0;
 let _timer = null;
 const _listeners = new Set();
 
@@ -26,10 +27,14 @@ async function tick() {
      * abierto hasta que sale el envío. La campanita, en cambio, solo los sin
      * tomar — lo que alguien ya está atendiendo no necesita interrumpir.
      * Un solo pedido a la API para los dos números. */
-    const sr = n + (Number(r?.armando) || 0);
-    if (n !== _count || sr !== _sinResolver) {
+    /* Y lo que espera que YO lo controle y reciba (0113): un envío sin
+     * recibir es trabajo pendiente igual que un pedido sin armar. */
+    const sr = n + (Number(r?.armando) || 0) + (Number(r?.porRecibir) || 0);
+    const pr = Number(r?.porRecibir) || 0;
+    if (n !== _count || sr !== _sinResolver || pr !== _porRecibir) {
       _count = n;
       _sinResolver = sr;
+      _porRecibir = pr;
       _listeners.forEach((l) => l());
     }
   } catch { /* API caída: el próximo tick reintenta */ }
@@ -53,6 +58,8 @@ export const pedidosCafe = {
   count: () => _count,
   /** Sin tomar + armándose: lo que sigue abierto (el globito del menú). */
   sinResolver: () => _sinResolver,
+  /** Envíos que le toca controlar y recibir a quien mira (0113): el globito de su pestaña. */
+  porRecibir: () => _porRecibir,
   subscribe(listener) {
     asegurarPolling();
     _listeners.add(listener);

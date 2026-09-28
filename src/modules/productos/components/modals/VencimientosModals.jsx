@@ -12,7 +12,7 @@
  * Ventas con el formulario ya lleno. Un solo lugar para crear ofertas en todo
  * el sistema, con su vista previa y sus siete mecánicas.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFechaVenc } from '../../domain/format.js';
@@ -69,27 +69,32 @@ export function VencimientoEditarModal({ registro }) {
 
 /* ============================== PROCESAR ============================== */
 export function VencimientoProcesarModal({ registro }) {
-  const { store, act, closeModal, can } = useProductos();
+  const { store, act, closeModal } = useProductos();
   const [vendidas, setVendidas] = useState('0');
   const disponible = store.cant(registro.productoId, registro.sucursalId, registro.presentacionId ?? null, 'disponible');
-  // Dar de baja lo vencido es una merma: alcanza con `merma` (la API igual).
-  const puedeBajar = can('inventario') || can('merma');
 
   const v = Number(vendidas) || 0;
   const perdidas = Math.max(0, Math.round((registro.cantidad - v) * 100) / 100);
   const alcanza = disponible + 1e-9 >= perdidas;
-  const [bajarStock, setBajarStock] = useState(puedeBajar);
   const excede = v > registro.cantidad + 1e-9;
+  /* La baja de lo perdido es OBLIGATORIA (27/9/2026, la API también): con la
+   * opción de destildarla, la pérdida podía contarse dos veces. Y como mueve
+   * stock, se confirma dos veces, con candado de doble clic. */
+  const [confirmando, setConfirmando] = useState(false);
+  const enVuelo = useRef(false);
 
-  const procesar = () => act(
-    store.procesarVencimiento(registro.id, {
-      unidadesVendidas: v,
-      generarMerma: bajarStock && perdidas > 0,
-    }),
-    perdidas > 0
-      ? `Procesado: pérdida real ${money(perdidas * registro.costoUnitario)}.`
-      : 'Procesado: se vendió todo antes de vencer — pérdida cero.',
-  );
+  const procesar = () => {
+    if (excede || enVuelo.current) return;
+    if (perdidas > 0 && !alcanza) return;
+    if (!confirmando) { setConfirmando(true); return; }
+    enVuelo.current = true;
+    act(
+      store.procesarVencimiento(registro.id, { unidadesVendidas: v, generarMerma: perdidas > 0 }),
+      perdidas > 0
+        ? `Procesado: pérdida real ${money(perdidas * registro.costoUnitario)}, dada de baja del stock.`
+        : 'Procesado: se vendió todo antes de vencer — pérdida cero.',
+    ).finally(() => { enVuelo.current = false; setConfirmando(false); });
+  };
 
   return (
     <ModalShell
@@ -97,9 +102,19 @@ export function VencimientoProcesarModal({ registro }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Procesar', clase: 'btn-primary', onClick: () => { if (!excede) procesar(); } },
+        { texto: confirmando ? 'Sí, procesar' : 'Procesar…', clase: 'btn-primary', onClick: procesar, disabled: excede || (perdidas > 0 && !alcanza) },
       ]}
     >
+      {confirmando && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>Segunda confirmación.</strong>{' '}
+          {perdidas > 0
+            ? <>Se dan de baja <strong>{num(perdidas)} {registro.unidad}</strong> de {registro.nombre} en{' '}
+              {store.getSucursal(registro.sucursalId)?.nombre ?? 'la sucursal'} (pérdida {money(perdidas * registro.costoUnitario)}).</>
+            : <>Se cierra el registro sin pérdida.</>}
+          {' '}No se deshace. ¿Confirmás?
+        </div>
+      )}
       <div className={s['detalle-grid']}>
         <Di label="Venció">{fmtFechaVenc(registro.fechaVencimiento)}</Di>
         <Di label="Sucursal">{store.getSucursal(registro.sucursalId)?.nombre ?? '—'}</Di>
@@ -110,7 +125,7 @@ export function VencimientoProcesarModal({ registro }) {
         <label>¿Cuántas se vendieron ANTES de vencer? <span className={s.req}>*</span></label>
         <input
           type="number" min="0" max={registro.cantidad} step={registro.unidad === 'kg' ? '0.001' : '1'}
-          value={vendidas} autoFocus onChange={(e) => setVendidas(e.target.value)}
+          value={vendidas} autoFocus onChange={(e) => { setConfirmando(false); setVendidas(e.target.value); }}
         />
       </div>
       <div className={cx(s.callout, excede ? s.warn : perdidas > 0 ? undefined : s.ok)}>
@@ -121,22 +136,19 @@ export function VencimientoProcesarModal({ registro }) {
             : 'Se vendió todo antes de vencer: pérdida cero. Bien ahí.'}
       </div>
       {perdidas > 0 && (
-        puedeBajar ? (
-          <>
-            <label className={s.field} style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 6 }}>
-              <input type="checkbox" checked={bajarStock} onChange={(e) => setBajarStock(e.target.checked)} style={{ width: 'auto' }} />
-              <span>Bajar del stock lo perdido (movimiento «vencido», disponible → estado vencido)</span>
-            </label>
-            {bajarStock && !alcanza && (
-              <div className={cx(s.callout, s.warn)}>
-                ⚠ El stock disponible es {store.fmtCant(store.getProducto(registro.productoId), registro.presentacionId ?? null, disponible)}: no alcanza
-                para bajar {num(perdidas)}. Destildá para procesar solo el registro, o corregí el stock primero.
-              </div>
-            )}
-          </>
-        ) : (
-          <div className={s.hint}>La baja de stock la registra alguien con permiso de inventario; el registro queda asentado igual.</div>
-        )
+        <>
+          <div className={s.hint}>
+            Lo perdido <strong>sale del stock</strong> en el mismo acto (movimiento «vencido»): el registro y el stock
+            no pueden decir cosas distintas.
+          </div>
+          {!alcanza && (
+            <div className={cx(s.callout, s.warn)}>
+              ⚠ El stock disponible es {store.fmtCant(store.getProducto(registro.productoId), registro.presentacionId ?? null, disponible)}: no alcanza
+              para dar de baja {num(perdidas)}. Si ya se había dado de baja a mano, pedile al administrador que
+              corrija el stock (Control de stock) y después procesá.
+            </div>
+          )}
+        </>
       )}
     </ModalShell>
   );

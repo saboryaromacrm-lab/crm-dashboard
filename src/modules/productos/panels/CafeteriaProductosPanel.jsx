@@ -18,7 +18,8 @@ import { money, num } from '../domain/format.js';
 import { antiguedad, esVozDelCafe, vozCafeteria } from '../domain/cafeteria.voz.js';
 import { Table, PanelHead, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
 
-export function CafeteriaProductosPanel() {
+/** `embebido`: vive como pestaña de Cafetería (sin su propio encabezado). */
+export function CafeteriaProductosPanel({ embebido = false }) {
   const { store, openModal, toast, can } = useProductos();
   const v = useMemo(() => vozCafeteria(esVozDelCafe(can)), [can]);
   /* La misma llave que la API pide para escribir. La cajera ve la lista pero
@@ -127,17 +128,25 @@ export function CafeteriaProductosPanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
-      <PanelHead
-        title={v.prodTitulo}
-        desc={v.prodSub}
-        actions={puedeCargar && (
-          <Btn variant="btn-primary" onClick={() => openModal('productoCafeteria', { onListo: cargar })}>
+      {!embebido && (
+        <PanelHead
+          title={v.prodTitulo}
+          desc={v.prodSub}
+          actions={puedeCargar && (
+            <Btn variant="btn-primary" onClick={() => openModal('productoCafeteria', { onListo: cargar })}>
+              {v.prodBtn}
+            </Btn>
+          )}
+        />
+      )}
+      {embebido && <div className={s.hint} style={{ margin: 0 }}>{v.prodSub}</div>}
+
+      <div className={s.toolbar}>
+        {embebido && puedeCargar && (
+          <Btn variant="btn-primary" small onClick={() => openModal('productoCafeteria', { onListo: cargar })}>
             {v.prodBtn}
           </Btn>
         )}
-      />
-
-      <div className={s.toolbar}>
         <label className={s.hint} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
           <input type="checkbox" checked={verBajas} onChange={(e) => setVerBajas(e.target.checked)} />
           Ver también los dados de baja
@@ -161,10 +170,12 @@ export function CafeteriaProductosPanel() {
 
       <div className={s.hint}>
         Un producto de acá <strong>no se compra</strong>: no lleva proveedor ni formato de compra.
-        El <strong>costo</strong> es lo que te cuesta hacerlo y lo declarás vos — el envío lo toma
-        de acá solo, y se puede corregir en un envío puntual si una tanda salió más cara (eso queda
-        en ese envío y no cambia la ficha). El <strong>precio</strong> es lo que paga el cliente en
-        el mostrador, con IVA.
+        El <strong>costo</strong> es lo que te cuesta hacerlo, sin IVA, y lo declarás vos: con ese
+        número <strong>se registra cada venta</strong> y se valúa el stock, y el envío lo toma de acá
+        solo (se puede corregir en un envío puntual si una tanda salió más cara — eso queda en ese
+        envío y no cambia la ficha). El <strong>precio</strong> es lo que paga el cliente en el
+        mostrador, con IVA; el <strong>margen</strong> se calcula sobre el precio sin IVA, igual que
+        la rentabilidad de las ventas.
       </div>
       <div className={s.hint} style={{ marginTop: 0 }}>
         <strong>Mirá las fechas.</strong> Un costo que no se toca hace meses se muestra igual de
@@ -174,7 +185,7 @@ export function CafeteriaProductosPanel() {
       </div>
       <div className={s.hint} style={{ marginTop: 0 }}>
         <strong>Dar de baja</strong> lo saca del catálogo y del buscador del envío, pero no toca
-        nada de lo ya cargado ni de lo ya vendido — es "dejé de hacerlo", no "esto nunca existió".
+        nada de lo ya cargado ni de lo ya vendido — es «dejé de hacerlo», no «esto nunca existió».
       </div>
     </div>
   );

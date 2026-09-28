@@ -92,6 +92,9 @@ const pasaFiltroTipo = (m, f) => {
   // El flete es un pago con una naturaleza propia, no un tipo de movimiento
   // aparte: filtrarlo responde "¿cuánto le adelanté de fletes a este proveedor?".
   if (f === 'flete') return m.kind === 'pago' && !!m.esFlete;
+  // La NC de un gasto (27/9/2026) sale con las NC y también con los gastos.
+  if (f === 'nc' && m.kind === 'nc_gasto') return true;
+  if (f === 'gasto' && m.kind === 'nc_gasto') return true;
   return m.kind === f;
 };
 
@@ -164,10 +167,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
 
   const conciliar = () => act(provApi.conciliar(proveedorId), 'Conciliado hasta hoy.').then(refrescar);
   const desconciliar = () => act(provApi.desconciliar(proveedorId), 'Marca de conciliación quitada.').then(refrescar);
-  const borrarAjuste = async (id) => {
-    const ok = await act(provApi.borrarAjuste(id), 'Ajuste eliminado.');
-    if (ok) refrescar();
-  };
+  const borrarAjuste = (m) => openModal('borrarAjuste', { ajuste: m, onDone: refrescar });
 
   const volver = <Btn small onClick={onVolver}>← Estados de cuenta</Btn>;
 
@@ -387,7 +387,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
               <td className={s.num}>{m.haber > 0 ? money(m.haber) : ''}</td>
               <td className={s.num}>{money(m.acumulado ?? 0)}</td>
               <td>
-                {esAjuste && esJefe && <Btn small onClick={() => borrarAjuste(m.id)}>×</Btn>}
+                {esAjuste && esJefe && <Btn small onClick={() => borrarAjuste(m)}>×</Btn>}
                 {/* Anular solo si no tiene NADA aplicado: con imputaciones vivas
                     la API lo rechaza, y ofrecerlo sería un botón roto. */}
                 {m.kind === 'pago' && esJefe && m.aplicado <= EPS && (

@@ -3,6 +3,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useGastos } from '../../context/GastosContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { errorMsg, gastosApi } from '../../services/gastos.api.js';
+import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '../segundaConfirmacion.jsx';
 import {
   MEDIOS_PAGO, TIPOS_DOC_GASTO, hoyISO, r2, nombreProveedor,
 } from '../../domain/constants.js';
@@ -23,12 +24,57 @@ import {
  * Si el proveedor elegido tiene pagos a cuenta sin aplicar —el caso de la
  * cajera que ya le pagó— se avisa acá mismo y al guardar se ofrece aplicarlos.
  */
+/**
+ * DE QUÉ GASTO DESCUENTA LA NOTA DE CRÉDITO (0115, 28/9/2026). El plomero manda
+ * una NC de $200 por la factura de $1.000: elegida acá, esa factura pasa a
+ * deber $800. Sin elegir, la NC queda como crédito general del proveedor (baja
+ * su saldo, pero no el de ningún gasto en particular).
+ */
+function DescuentaDeGasto({ f, setF, opciones, setProvNc, gastoId, original }) {
+  useEffect(() => { setProvNc(f.proveedorId ? String(f.proveedorId) : ''); }, [f.proveedorId, setProvNc]);
+  const lista = opciones.filter((g) => g.id !== gastoId && g.tipoDoc !== 'nota_credito');
+  const actual = original?.refGasto;
+  return (
+    <div className={s.field} style={{ gridColumn: '1 / -1' }}>
+      <label>Descuenta del gasto</label>
+      <select
+        value={f.refGastoId}
+        onChange={(e) => setF((x) => ({ ...x, refGastoId: e.target.value }))}
+        disabled={!f.proveedorId}
+      >
+        <option value="">— Ninguno: queda como crédito del proveedor —</option>
+        {actual && !lista.some((g) => g.id === actual.id) && (
+          <option value={String(actual.id)}>Gasto #{actual.id}{actual.numero ? ` · ${actual.numero}` : ''} (el actual)</option>
+        )}
+        {lista.map((g) => (
+          <option key={g.id} value={String(g.id)}>
+            Gasto #{g.id}{g.numero ? ` · ${g.numero}` : ''} · {fmtFecha(g.fecha)} · debe {money(g.saldo)}
+          </option>
+        ))}
+      </select>
+      <div className={s.hint} style={{ margin: '6px 0 0' }}>
+        {f.proveedorId
+          ? 'Elegido, el saldo de ese gasto baja por la nota de crédito. No puede descontar más de lo que el gasto debe.'
+          : 'Elegí primero el proveedor del padrón para ver sus gastos pendientes.'}
+      </div>
+    </div>
+  );
+}
+
 export function GastoFormModal({ gastoId, onChange }) {
   const {
     categoriasActivas, proveedores, sucursales, ctx, esJefe, closeModal, toast,
     nombreSucursal, recargarContadores,
   } = useGastos();
   const editando = !!gastoId;
+
+  /* De qué gasto descuenta una NC (0115): los que ese proveedor todavía debe. */
+  const [provNc, setProvNc] = useState('');
+  const { data: gastosDelProv } = useResource(
+    `nc-ref:${provNc}`,
+    () => gastosApi.cuentasAPagar({ proveedorId: Number(provNc) }),
+    { enabled: !!provNc },
+  );
 
   const { data: original, loading } = useResource(
     `gasto-form:${gastoId ?? 'nuevo'}`,
@@ -65,6 +111,8 @@ export function GastoFormModal({ gastoId, onChange }) {
     /* Solo para un gasto viejo con `otros` sin desglosar: ver `sinDetallar`. */
     otros: '',
     observaciones: '',
+    /* La NC (0115): de qué gasto descuenta. Vacío = crédito general del proveedor. */
+    refGastoId: '',
   });
   /**
    * LA ALÍCUOTA CON LA QUE SE CALCULA EL IVA (0071, pedido del dueño: "poner el
@@ -100,27 +148,30 @@ export function GastoFormModal({ gastoId, onChange }) {
       negocio: original.negocio || 'distribuidora',
       condicionPago: original.condicionPago,
       vencimiento: original.vencimiento ? String(original.vencimiento).slice(0, 10) : '',
-      iva: original.iva || '',
-      impInternos: original.impInternos || '',
-      percDgi: original.percDgi || '',
-      percDgr: original.percDgr || '',
+      /* La NC se guarda en NEGATIVO (0114): acá se muestra en positivo, como
+       * el papel, y el servidor le vuelve a poner el signo. */
+      iva: Math.abs(original.iva || 0) || '',
+      impInternos: Math.abs(original.impInternos || 0) || '',
+      percDgi: Math.abs(original.percDgi || 0) || '',
+      percDgr: Math.abs(original.percDgr || 0) || '',
       /* Lo que quedó en `otros` sin detallar (gasto viejo, o generado por la
        * API): se despeja restando los tres, y el campo aparece solo si hay. */
-      otros: r2((original.otros || 0) - (original.impInternos || 0)
-        - (original.percDgi || 0) - (original.percDgr || 0)) || '',
+      otros: Math.abs(r2((original.otros || 0) - (original.impInternos || 0)
+        - (original.percDgi || 0) - (original.percDgr || 0))) || '',
       observaciones: original.observaciones ?? '',
+      refGastoId: original.refGastoId ? String(original.refGastoId) : '',
     });
     /* Un gasto viejo no tiene renglones: se le arma UNO con su descripción y
      * su total, así editarlo lo migra al formato nuevo sin perder nada. */
     setItems(original.items?.length
       ? original.items.map((i) => ({ concepto: i.concepto, monto: String(i.monto) }))
-      : [{ concepto: original.descripcion || 'Gasto', monto: String(original.total || '') }]);
+      : [{ concepto: original.descripcion || 'Gasto', monto: String(Math.abs(original.total || 0) || '') }]);
     /* El modo no se guarda: SE DEDUCE. Si el neto guardado coincide con la
      * suma de los renglones y hay IVA, se cargaron netos (factura A). El gasto
      * viejo migrado cae en `false` solo: su renglón único es el total. */
     if (original.items?.length) {
       const sumaGuardada = r2(original.items.reduce((a, i) => a + Number(i.monto), 0));
-      setIvaAparte(Number(original.iva) > 0.009 && Math.abs(sumaGuardada - Number(original.neto)) < 0.01);
+      setIvaAparte(Math.abs(Number(original.iva)) > 0.009 && Math.abs(sumaGuardada - Math.abs(Number(original.neto))) < 0.01);
     } else {
       setIvaAparte(false);
     }
@@ -342,6 +393,8 @@ export function GastoFormModal({ gastoId, onChange }) {
         percDgr: r2(f.percDgr),
         otros: r2(f.otros),
       }),
+      /* La NC (0115): de qué gasto descuenta; `null` = de ninguno. */
+      ...(f.tipoDoc === 'nota_credito' ? { refGastoId: f.refGastoId ? Number(f.refGastoId) : null } : {}),
       // "Se paga ahora" cubre EL RESTO: lo que los pagos tomados no explican.
       ...(pagaAhora && !editando && resto > 0.009
         ? {
@@ -500,7 +553,7 @@ export function GastoFormModal({ gastoId, onChange }) {
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Fecha del comprobante</label>
-          <input type="date" value={f.fecha} onChange={set('fecha')} disabled={bloqueado} />
+          <input type="date" max={hoyISO()} value={f.fecha} onChange={set('fecha')} disabled={bloqueado} />
         </div>
         <div className={s.field}>
           <label>Tipo</label>
@@ -508,6 +561,12 @@ export function GastoFormModal({ gastoId, onChange }) {
             {Object.entries(TIPOS_DOC_GASTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
+        {f.tipoDoc === 'nota_credito' && (
+          <DescuentaDeGasto
+            f={f} setF={setF} opciones={gastosDelProv ?? []} setProvNc={setProvNc}
+            gastoId={gastoId} original={original}
+          />
+        )}
         <div className={s.field}>
           <label>Letra</label>
           {/* Viene puesta por el proveedor; cambiarla re-decide el modo de los
@@ -749,7 +808,7 @@ export function GastoFormModal({ gastoId, onChange }) {
         </div>
         <div className={s.field}>
           <label>Vence el</label>
-          <input type="date" value={f.vencimiento} onChange={set('vencimiento')} />
+          <input type="date" min={f.fecha || undefined} value={f.vencimiento} onChange={set('vencimiento')} />
           <div className={s.hint} style={{ margin: '6px 0 0' }}>
             Sin vencimiento no aparece en Cuentas a pagar como atrasado.
           </div>
@@ -894,7 +953,7 @@ export function DetalleGastoModal({ gastoId, onChange }) {
       ]}
     >
       <div className={s['detalle-grid']}>
-        <Di label="Estado"><GastoEstadoPill estado={g.estado} /></Di>
+        <Di label="Estado"><GastoEstadoPill estado={g.estado} tipoDoc={g.tipoDoc} /></Di>
         <Di label="Fecha">{fmtFecha(g.fecha)}</Di>
         <Di label="Comprobante">
           {TIPOS_DOC_GASTO[g.tipoDoc] || g.tipoDoc} {g.letra} {g.numero || '—'}
@@ -920,9 +979,24 @@ export function DetalleGastoModal({ gastoId, onChange }) {
           <Di label="Otros">{money(r2(g.otros - g.impInternos - g.percDgi - g.percDgr))}</Di>
         )}
         <Di label="Total"><strong>{money(g.total)}</strong></Di>
-        <Di label="Pagado">{money(g.pagado)}</Di>
-        <Di label="Saldo"><Saldo valor={g.saldo}>{money(g.saldo)}</Saldo></Di>
+        {g.tipoDoc === 'nota_credito' ? (
+          <Di label="Descuenta del">
+            {g.refGasto ? <>gasto #{g.refGasto.id}{g.refGasto.numero ? ` · ${g.refGasto.numero}` : ''}</> : 'ninguno (crédito del proveedor)'}
+          </Di>
+        ) : (
+          <>
+            <Di label="Pagado">{money(g.pagadoEnPlata ?? g.pagado)}</Di>
+            {g.acreditado > 0.009 && <Di label="Notas de crédito">{money(g.acreditado)}</Di>}
+            <Di label="Saldo"><Saldo valor={g.saldo}>{money(g.saldo)}</Saldo></Di>
+          </>
+        )}
       </div>
+      {g.notasCredito?.length > 0 && (
+        <div className={s.hint}>
+          Le descuentan: {g.notasCredito.map((n) => `NC #${n.id}${n.numero ? ` (${n.numero})` : ''} por ${money(-n.total)}`).join(' · ')}.
+          Para sacarla, se edita o se anula la nota de crédito.
+        </div>
+      )}
 
       <div className={s['section-title']}>Pagos aplicados</div>
       <Table
@@ -993,22 +1067,32 @@ export function PagarGastoModal({ gastoId, onChange }) {
   );
   const hayTurno = !!caja?.id && caja.estado === 'abierta';
   const saleDeCaja = medio === 'efectivo' && hayTurno && desdeCaja;
+  /* Sale plata: segunda confirmación + candado del doble clic (27/9/2026). */
+  const conf = useSegundaConfirmacion([importe, medio, fecha, referencia, saleDeCaja].join('|'));
 
-  const pagar = async () => {
-    if (!(Number(importe) > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return; }
-    const ok = await act(
-      gastosApi.pagarGasto(gastoId, {
-        importe: r2(importe),
-        medio,
-        fecha,
-        referencia: referencia.trim(),
-        cajaSesionId: saleDeCaja ? caja.id : undefined,
-        usuarioId: ctx.usuarioId ?? undefined,
-      }),
-      'Pago registrado.',
-    );
-    if (ok) onChange?.();
-  };
+  const pagar = () => conf.clic(
+    () => {
+      if (!(Number(importe) > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return false; }
+      if (g && Number(importe) - g.saldo > 0.009) { toast(`Al gasto le faltan ${money(g.saldo)}: no se paga de más.`, 'err'); return false; }
+      return true;
+    },
+    async (confirmarDuplicado) => {
+      const ok = await act(
+        gastosApi.pagarGasto(gastoId, {
+          importe: r2(importe),
+          medio,
+          fecha,
+          referencia: referencia.trim(),
+          cajaSesionId: saleDeCaja ? caja.id : undefined,
+          usuarioId: ctx.usuarioId ?? undefined,
+          confirmarDuplicado: confirmarDuplicado || undefined,
+        }),
+        'Pago registrado.',
+        { alConflicto: conf.alConflicto },
+      );
+      if (ok) onChange?.();
+    },
+  );
 
   if (loading || !g) {
     return (
@@ -1025,12 +1109,18 @@ export function PagarGastoModal({ gastoId, onChange }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Registrar pago', clase: 'btn-primary', onClick: pagar },
+        { texto: textoBoton(conf, 'Registrar pago…', `Sí, pagar ${money(r2(importe))}`), clase: 'btn-primary', onClick: pagar },
       ]}
     >
+      <AvisoSegundaConfirmacion confirmando={conf.confirmando} gemelo={conf.gemelo}>
+        Se registra un pago de <strong>{money(r2(importe))}</strong> por {MEDIOS_PAGO[medio] ?? medio}
+        {saleDeCaja ? <> que <strong>sale del cajón</strong> (turno #{caja.id})</> : null} contra el gasto #{g.id}.
+        {medio === 'efectivo' && !saleDeCaja ? <> <strong>Ojo: es efectivo pero NO sale de ningún turno de caja</strong>, así que no va a figurar en ningún arqueo.</> : null}
+      </AvisoSegundaConfirmacion>
       <div className={s['detalle-grid']}>
         <Di label="Total">{money(g.total)}</Di>
-        <Di label="Ya pagado">{money(g.pagado)}</Di>
+        <Di label="Ya pagado">{money(g.pagadoEnPlata ?? g.pagado)}</Di>
+        {g.acreditado > 0.009 && <Di label="Notas de crédito">{money(g.acreditado)}</Di>}
         <Di label="Saldo"><Saldo valor={g.saldo}>{money(g.saldo)}</Saldo></Di>
       </div>
 
@@ -1050,7 +1140,7 @@ export function PagarGastoModal({ gastoId, onChange }) {
         </div>
         <div className={s.field}>
           <label>Fecha</label>
-          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+          <input type="date" max={hoyISO()} value={fecha} onChange={(e) => setFecha(e.target.value)} />
         </div>
         <div className={s.field}>
           <label>Referencia</label>

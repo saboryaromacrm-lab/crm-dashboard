@@ -864,7 +864,18 @@ function TabMermas() {
   const mesActual = hoyIso().slice(0, 7);
   const mesDe = (f) => { const d = new Date(f); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
   const delMes = movs.filter((m) => mesDe(m.fecha) === mesActual);
-  const plataMes = delMes.reduce((a, m) => a + (Number(m.costoUnitario) || 0) * m.cantidad, 0);
+  /* La plata del mes la cuenta el SERVIDOR (27/9/2026): la lista de abajo son
+   * los últimos movimientos que trae la carga inicial, y sumarla daba de menos
+   * en un mes movido. Respeta sucursal y tipo; el buscador de texto no. */
+  const [perdidaMes, setPerdidaMes] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    store.perdidasMesVencimientos({ sucursalId: sucF || undefined, tipo: tipoF || undefined })
+      .then((r) => { if (vivo) setPerdidaMes(r); })
+      .catch(() => { if (vivo) setPerdidaMes(null); });
+    return () => { vivo = false; };
+  }, [store, sucF, tipoF, store.getVersion?.()]);
+  const plataMes = perdidaMes ? perdidaMes.plata : delMes.reduce((a, m) => a + (Number(m.costoUnitario) || 0) * m.cantidad, 0);
 
   /* De dónde nació la baja. Las dos que vienen de un circuito se muestran como
    * chip (con el código en el tooltip) en vez de repetir el texto crudo: una

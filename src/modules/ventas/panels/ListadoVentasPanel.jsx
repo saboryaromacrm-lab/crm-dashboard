@@ -243,7 +243,7 @@ export function ListadoVentasPanel() {
       reload();
       recargarBadge();
     } catch (e) {
-      toast(e?.data?.message || 'ARCA sigue sin responder: la venta queda en Sin facturar.', 'err');
+      toast(e?.data?.message || 'ARCA sigue sin responder: la venta queda en Caídas por ARCA.', 'err');
     } finally {
       setFacturando(null);
     }

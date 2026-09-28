@@ -7,6 +7,7 @@ import { MEDIOS_PAGO, hoyISO, r2 } from '../../domain/constants.js';
 import {
   Table, Btn, Di, ModalShell, Pill, Saldo, money, fmtFecha, fmtFechaHora, s,
 } from '../ui.jsx';
+import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '../segundaConfirmacion.jsx';
 
 /* ==================================================================== *
  * Registrar un pago (desde el módulo, no desde la caja)
@@ -37,10 +38,14 @@ export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
   );
   const hayTurno = !!caja?.id && caja.estado === 'abierta';
   const saleDeCaja = medio === 'efectivo' && hayTurno && desdeCaja;
+  /* Sale plata: segunda confirmación + candado del doble clic (27/9/2026). */
+  const conf = useSegundaConfirmacion([proveedorId, importe, medio, fecha, concepto, referencia, sucursalId, saleDeCaja].join('|'));
 
-  const registrar = async () => {
-    if (!proveedorId) { toast('Elegí a qué proveedor se le pagó.', 'err'); return; }
-    if (!(Number(importe) > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return; }
+  const registrar = () => conf.clic(() => {
+    if (!proveedorId) { toast('Elegí a qué proveedor se le pagó.', 'err'); return false; }
+    if (!(Number(importe) > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return false; }
+    return true;
+  }, async (confirmarDuplicado) => {
     const res = await act(
       gastosApi.crearPago({
         proveedorId: Number(proveedorId),
@@ -52,8 +57,10 @@ export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
         sucursalId: sucursalId ? Number(sucursalId) : undefined,
         cajaSesionId: saleDeCaja ? caja.id : undefined,
         usuarioId: ctx.usuarioId ?? undefined,
+        confirmarDuplicado: confirmarDuplicado || undefined,
       }),
       'Pago registrado. Queda a cuenta: se aplica al cargar el gasto (o desde su detalle).',
+      { alConflicto: conf.alConflicto },
     );
     if (!res) return;
     onChange?.();
@@ -61,7 +68,7 @@ export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
     // gasto ya está cargado, el camino es su detalle › "Aplicar un pago
     // existente" — y si se quiere pagar un gasto puntual, su botón "Pagar"
     // registra y aplica en un solo paso.
-  };
+  });
 
   return (
     <ModalShell
@@ -71,9 +78,15 @@ export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Registrar pago', clase: 'btn-primary', onClick: registrar },
+        { texto: textoBoton(conf, 'Registrar pago…', `Sí, registrar ${money(r2(importe))}`), clase: 'btn-primary', onClick: registrar },
       ]}
     >
+      <AvisoSegundaConfirmacion confirmando={conf.confirmando} gemelo={conf.gemelo}>
+        Se registra un pago de <strong>{money(r2(importe))}</strong> por {MEDIOS_PAGO[medio] ?? medio} a{' '}
+        <strong>{proveedores.find((p) => String(p.id) === String(proveedorId))?.nombre ?? 'el proveedor'}</strong>
+        {saleDeCaja ? <> que <strong>sale del cajón</strong> (turno #{caja.id})</> : null}. Queda a cuenta hasta aplicarlo.
+        {medio === 'efectivo' && !saleDeCaja ? <> <strong>Ojo: es efectivo pero NO sale de ningún turno de caja</strong>, así que no va a figurar en ningún arqueo.</> : null}
+      </AvisoSegundaConfirmacion>
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Proveedor <span className={s.req}>*</span></label>
@@ -98,7 +111,7 @@ export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
         </div>
         <div className={s.field}>
           <label>Fecha</label>
-          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+          <input type="date" max={hoyISO()} value={fecha} onChange={(e) => setFecha(e.target.value)} />
         </div>
       </div>
 
@@ -315,6 +328,9 @@ export function CuentaProveedorModal({ proveedorId }) {
             <Di label="Mercadería (Compras)">{money(cuenta.mercaderia)}</Di>
             <Di label="Gastos">{money(cuenta.gastos)}</Di>
             <Di label="Total comprado"><strong>{money(cuenta.comprado)}</strong></Di>
+            {Math.abs(cuenta.ajustes ?? 0) > 0.009 && (
+              <Di label="Ajustes del estado de cuenta">{money(cuenta.ajustes)}</Di>
+            )}
             <Di label="Pagado">{money(cuenta.pagado)}</Di>
             <Di label="Saldo">
               <strong style={{ color: cuenta.saldo > 0.009 ? 'var(--crm-color-danger)' : 'var(--crm-color-success)' }}>

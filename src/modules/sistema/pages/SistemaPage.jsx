@@ -41,7 +41,7 @@ const DOCUMENTOS = [
   { clave: 'presupuesto', label: 'Presupuesto (cliente)', hint: 'La hoja formal que se le manda al cliente.' },
   { clave: 'hojaArmado', label: 'Hoja de armado (presupuestos)', hint: 'Sin precios, con columna en blanco para el lápiz.' },
   { clave: 'listaPreparacion', label: 'Listas de preparación (envíos)', hint: 'Enteros y Fraccionados de las transferencias.' },
-  { clave: 'remitoCafeteria', label: 'Remito a Cafetería', hint: 'El papel que acompaña la mercadería que sale para el café, valorizada a costo.' },
+  { clave: 'remitoCafeteria', label: 'Remito a Cafetería', hint: 'El papel que acompaña la mercadería entre la distribuidora y el café, en los dos sentidos. Sale solo al enviar y lleva la columna para controlar al recibir.' },
   { clave: 'planillaConteo', label: 'Planilla del control de stock', hint: 'La hoja que se lleva a la góndola: casillero en blanco para anotar a lápiz. Papel grande — en rollo no queda lugar para escribir.' },
   { clave: 'remitoTransferencia', label: 'Remito de transferencia', hint: 'Se reimprime desde el detalle de un envío. Lleva las tres cantidades —pedido, enviado y recibido— porque la diferencia entre ellas es lo que se reclama.' },
   { clave: 'valeMovimiento', label: 'Vale de movimiento de stock', hint: 'El papel que se firma al dar de baja mercadería (merma, vencido, defectuoso, ajuste). Chico a propósito: son tres renglones y se archiva de a uno.' },

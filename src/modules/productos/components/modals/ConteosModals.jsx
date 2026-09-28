@@ -168,6 +168,12 @@ export function ConteoModal({ conteoId, alTerminar }) {
   const [vista, setVista] = useState('pendientes'); // pendientes | contados | todos
   const [cantidades, setCantidades] = useState({}); // itemId → texto tipeado
   const [ocupado, setOcupado] = useState(false);
+  /* El candado del doble clic va con `useRef`: el estado de React recién se ve
+   * en el dibujo siguiente, y dos clics seguidos leían los dos "libre" (así se
+   * aplicaba un control dos veces). La API ahora también lo frena. */
+  const enVuelo = useRef(false);
+  /* Aplicar mueve stock y plata: se confirma dos veces (27/9/2026). */
+  const [confirmarAplicar, setConfirmarAplicar] = useState(false);
   const buscadorRef = useRef(null);
   const inputRefs = useRef({});
 
@@ -274,9 +280,11 @@ export function ConteoModal({ conteoId, alTerminar }) {
   };
 
   const accion = async (fn, msgOk) => {
+    if (enVuelo.current) return null;
+    enVuelo.current = true;
     setOcupado(true);
-    const r = await fn();
-    setOcupado(false);
+    let r;
+    try { r = await fn(); } finally { enVuelo.current = false; setOcupado(false); }
     if (r?.ok === false) { toast(r.error, 'err'); return null; }
     if (msgOk) toast(msgOk, 'ok');
     return r;
@@ -294,6 +302,8 @@ export function ConteoModal({ conteoId, alTerminar }) {
   };
 
   const aplicar = async () => {
+    if (!confirmarAplicar) { setConfirmarAplicar(true); return; }
+    setConfirmarAplicar(false);
     const r = await accion(() => store.aplicarConteo(conteoId));
     if (!r) return;
     const avisos = r.avisos ?? r.data?.avisos ?? [];
@@ -319,10 +329,16 @@ export function ConteoModal({ conteoId, alTerminar }) {
     footer.push({ texto: ocupado ? '…' : 'Cerrar el control', clase: 'btn-primary', onClick: cerrarControl, disabled: ocupado || data.contados === 0 });
   } else if (data.estado === 'cerrado') {
     footer.push({ texto: 'Volver', clase: 'btn-ghost', onClick: () => { closeModal(); alTerminar?.(); } });
-    footer.push({ texto: 'Reabrir para seguir contando', clase: 'btn-ghost', onClick: () => accion(() => store.reabrirConteo(conteoId)).then((r) => r && recargar()), disabled: ocupado });
+    /* Reabrir es del que revisa (la API lo exige): si no, el que contaba podía
+     * cambiar números después de la revisión. */
     if (puedeAplicar) {
+      footer.push({ texto: 'Reabrir para seguir contando', clase: 'btn-ghost', onClick: () => accion(() => store.reabrirConteo(conteoId)).then((r) => r && recargar()), disabled: ocupado });
       footer.push({ texto: 'Descartar', clase: 'btn-delete', onClick: () => accion(() => store.descartarConteo(conteoId), 'Control descartado.').then((r) => { if (r) { closeModal(); alTerminar?.(); } }), disabled: ocupado });
-      footer.push({ texto: ocupado ? 'Aplicando…' : `Aplicar ${conDif.length} ajuste(s)`, clase: 'btn-primary', onClick: aplicar, disabled: ocupado });
+      if (confirmarAplicar) footer.push({ texto: 'No, revisar', clase: 'btn-ghost', onClick: () => setConfirmarAplicar(false), disabled: ocupado });
+      footer.push({
+        texto: ocupado ? 'Aplicando…' : confirmarAplicar ? `Sí, aplicar ${conDif.length} ajuste(s) al stock` : `Aplicar ${conDif.length} ajuste(s)…`,
+        clase: 'btn-primary', onClick: aplicar, disabled: ocupado,
+      });
     }
   } else {
     footer.push({ texto: 'Cerrar', clase: 'btn-ghost', onClick: () => { closeModal(); alTerminar?.(); } });
@@ -337,6 +353,15 @@ export function ConteoModal({ conteoId, alTerminar }) {
       footer={footer}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 16, overflow: 'hidden', flex: 1 }}>
+
+        {confirmarAplicar && (
+          <div className={cx(s.callout, s.warn)}>
+            <strong>Segunda confirmación.</strong> Vas a ajustar el stock de{' '}
+            <strong>{store.getSucursal(data.sucursalId)?.nombre ?? 'la sucursal'}</strong> en {conDif.length} producto(s):
+            faltantes por {money(Math.abs(faltante))} y sobrantes por {money(Math.abs(sobrante))}. Lo no contado no se toca.
+            Esto no se deshace: si algo no te cierra, tocá <strong>No, revisar</strong>.
+          </div>
+        )}
 
         {enCurso && (
           <>
@@ -412,7 +437,7 @@ export function ConteoModal({ conteoId, alTerminar }) {
                   {enCurso ? (
                     <input
                       ref={(el) => { inputRefs.current[it.id] = el; }}
-                      type="number" step="any" min="0"
+                      type="number" step={it.unidad === 'kg' ? 'any' : '1'} min="0"
                       value={cantidades[it.id] ?? ''}
                       placeholder={it.contado != null ? String(it.contado) : ''}
                       onChange={(e) => setCantidades((x) => ({ ...x, [it.id]: e.target.value }))}

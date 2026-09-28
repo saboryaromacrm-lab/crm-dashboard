@@ -68,6 +68,12 @@ function EtapasProducto({ paso, irA }) {
   );
 }
 
+/** Kilos de granel que consume 1 kg de paquete con esta merma (ver `escalaPaquete`). */
+const escalaDe = (tam, merma) => {
+  const m = Math.min(Math.max(Number(String(merma ?? '').replace(',', '.')) || 0, 0), 50) / 100;
+  return (Number(tam) || 0) / (1 - m);
+};
+
 export function ProductoFormModal({ prodId }) {
   const { store, act, closeModal, toast } = useProductos();
   const prod = prodId != null ? store.getProducto(prodId) : null;
@@ -89,6 +95,7 @@ export function ProductoFormModal({ prodId }) {
     iva: prod?.iva != null ? String(prod.iva) : '21',
     // '' = heredar el redondeo de configuración, que es el caso normal.
     redondeo: prod?.redondeo == null ? '' : String(prod.redondeo),
+    merma: prod?.merma ? String(prod.merma) : '0',
     // Se conserva tal cual (lo asigna la tienda): ya no tiene campo visible.
     idExterno: prod?.idExterno || '',
     // Solo alta (etapa 2): crea el Formato de Compra de entrada — con el
@@ -179,6 +186,8 @@ export function ProductoFormModal({ prodId }) {
       etiquetas: f.etiquetas,
       iva: Number(f.iva),
       redondeo: f.redondeo === '' ? null : Number(f.redondeo),
+      /* La merma solo existe para lo que se fracciona (granel). */
+      ...(esGranel ? { merma: Math.min(Math.max(Number(String(f.merma).replace(',', '.')) || 0, 0), 50) } : {}),
       idExterno: f.idExterno.trim(),
       esGranel,
       soloFraccionar: esGranel ? soloFraccionar : false,
@@ -447,6 +456,26 @@ export function ProductoFormModal({ prodId }) {
           El redondeo se aplica sobre el precio final con IVA. Dejalo heredado salvo que este
           producto necesite otra cosa.
         </div>
+        {esGranel && (
+          <>
+            <div className={s['form-grid']} style={{ marginTop: 10 }}>
+              <div className={s.field}>
+                <label>Merma al fraccionar (%)</label>
+                <input
+                  type="number" min="0" max="50" step="0.5"
+                  value={f.merma}
+                  onChange={(e) => set('merma', e.target.value)}
+                />
+              </div>
+            </div>
+            <div className={s.hint}>
+              Lo que se pierde al llenar los paquetes (lo que queda en la bolsa, lo que se cae, la
+              balanza). Sube el costo de cada paquete: con {num(Number(String(f.merma).replace(',', '.')) || 0, 1)}%, una bolsa de 1 kg
+              cuesta como {num(escalaDe(1, f.merma), 3)} kg de granel. Si el paquete va por margen, su precio acompaña.
+              No toca el precio del suelto.
+            </div>
+          </>
+        )}
 
         {/* --- Tienda: SOLO informativo, sin campos (decisión del dueño 17/8) --- */}
         <Seccion>Tienda</Seccion>
@@ -854,6 +883,21 @@ function PresentacionesTab({ prod: p }) {
                   : guardada.precioFinal != null
                     ? money(guardada.precioFinal)
                     : <span style={{ color: 'var(--crm-color-danger)' }}>sin precio</span>}
+                {/* EL PAQUETE MÁS BARATO POR KILO QUE EL SUELTO (26/9/2026): el
+                    paquete lleva bolsa, etiqueta y trabajo, así que casi nunca
+                    debería salir menos por kg. Avisa, no bloquea — puede ser
+                    una promo a propósito. */}
+                {(() => {
+                  const kg = Number(guardada?.tamKg) || 0;
+                  const suelto = store.precioGondola(p);
+                  if (!(guardada?.precioFinal > 0) || !(kg > 0) || !(suelto > 0)) return null;
+                  const porKg = guardada.precioFinal / kg;
+                  return porKg < suelto - 0.005 ? (
+                    <div className={s.hint} style={{ margin: '3px 0 0', fontWeight: 400, color: 'var(--crm-color-warning)' }}>
+                      sale {money(porKg)}/kg: más barato que el suelto ({money(suelto)}/kg)
+                    </div>
+                  ) : null;
+                })()}
               </div>
               <div className={s.muted} style={{ paddingTop: 8 }}>{num(stk, 0)} paq.</div>
               {guardada ? (
@@ -969,8 +1013,9 @@ function VentaTab({ prod: p, pres = null }) {
   const esPaquete = !!pres;
   /* La BASE del precio (0072), no el costo real: acá vive el markup, y con
    * mercadería sin factura las dos difieren — el paquete la hereda del kilo. */
+  // El paquete consume sus kilos MÁS la merma del fraccionado (0110).
   const neto = esPaquete
-    ? store.costoPrecio(p) * (Number(pres.tamKg) || 0)
+    ? store.costoPrecio(p) * store.escalaPaquete(pres.tamKg, p.merma)
     : store.costoPrecio(p);
   const unidad = esPaquete ? '/paquete' : (p.tipo === 'granel' ? '/kg' : '/u');
   /** El código del artículo en sí: el del paquete es el de su etiqueta. */

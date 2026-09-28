@@ -1,51 +1,112 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { errorMsg, ventasApi } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
-import { imprimirArqueoCaja } from '@core/services/imprimir.js';
+import { imprimirArqueoCaja, imprimirEnvioCaja } from '@core/services/imprimir.js';
 import { Table, Di, Btn, ModalShell, money, fmtFechaHora, s } from '../ui.jsx';
 
 /* ==================================================================== *
  * Apertura
  * ==================================================================== */
 
+/*
+ * APERTURA CON FONDO FIJO (0111, pedido del dueño): "si abrí con $50.000, que
+ * quede eso". Con fondo cargado en la sucursal, el que no es jefe no escribe
+ * el monto: confirma que están o los cuenta billete por billete, y lo que
+ * falte queda avisado al administrador. El jefe abre con el monto propuesto
+ * (lo puede cambiar para ese turno; el fondo fijo lo cambia el superadmin en
+ * Gerencia › Sucursales). Sin fondo cargado, la primera apertura lo fija.
+ */
 export function AbrirCajaModal({ onChange }) {
-  const { ctx, sucursales, usuarios, act, closeModal, toast } = useVentas();
-  const [montoInicial, setMontoInicial] = useState('');
-  const [observaciones, setObservaciones] = useState('');
-
+  const { ctx, sucursales, usuarios, act, closeModal, toast, esJefe } = useVentas();
   const sucursal = sucursales.find((x) => x.id === ctx.sucursalId);
   const usuario = usuarios.find((u) => u.id === ctx.usuarioId);
+  /* FRESCO DEL SERVIDOR, no de la lista del arranque (26/9/2026): la primera
+   * apertura fija el fondo y la lista de sucursales cargada al entrar seguía
+   * diciendo que no había — el modal pedía un monto que el servidor rechazaba. */
+  const { data: ap, loading: cargandoAp, error: errorAp } = useResource(
+    `apertura:${ctx.sucursalId}`,
+    () => ventasApi.cajaApertura(ctx.sucursalId),
+    { enabled: !!ctx.sucursalId },
+  );
+  /* Lo propuesto: lo que dejó de cambio el último cierre, o el fondo fijo. */
+  const fondo = ap?.propuesto != null ? Number(ap.propuesto) : null;
+  const conFondoFijo = fondo != null && !esJefe;
+
+  const [montoInicial, setMontoInicial] = useState('');
+  /* El jefe arranca con lo propuesto ya escrito (lo puede cambiar). */
+  useEffect(() => {
+    if (fondo != null) setMontoInicial((m) => (m === '' ? String(fondo) : m));
+  }, [fondo]);
+  const [observaciones, setObservaciones] = useState('');
+  /** Para el que no es jefe: 'si' (están) o 'contar' (no están: se cuentan). */
+  const [respuesta, setRespuesta] = useState(null);
+  const [billetes, setBilletes] = useState({});
+  const contado = totalBilletes(billetes);
+  const [enviando, setEnviando] = useState(false);
+  const candado = useRef(false);
 
   const abrir = async () => {
-    // El fondo es obligatorio: sin punto de partida no hay arqueo posible.
-    if (!(Number(montoInicial) > 0)) {
-      toast('Declará el fondo inicial: la caja siempre arranca con un monto.', 'err');
-      return;
+    if (candado.current) return;
+    let cuerpo;
+    if (conFondoFijo) {
+      if (!respuesta) { toast(`Confirmá si están los ${money(fondo)} del fondo.`, 'err'); return; }
+      if (respuesta === 'contar' && !Object.values(billetes).some((c) => Number(c) > 0)) {
+        toast('Contá los billetes del cajón: el turno abre con lo que haya.', 'err');
+        return;
+      }
+      cuerpo = respuesta === 'si' ? { fondoCompleto: true } : { billetes: billetesLimpios(billetes) };
+    } else {
+      // El fondo es obligatorio: sin punto de partida no hay arqueo posible.
+      if (!(Number(montoInicial) > 0)) {
+        toast('Declará el fondo inicial: la caja siempre arranca con un monto.', 'err');
+        return;
+      }
+      cuerpo = { montoInicial: r2(montoInicial) };
     }
-    const ok = await act(
-      ventasApi.abrirCaja({
-        sucursalId: ctx.sucursalId,
-        usuarioId: ctx.usuarioId ?? undefined,
-        montoInicial: r2(montoInicial),
-        observaciones,
-      }),
-      'Caja abierta.',
-      { recargar: false },
-    );
-    if (ok) onChange?.();
+    candado.current = true;
+    setEnviando(true);
+    try {
+      const ok = await act(
+        ventasApi.abrirCaja({
+          sucursalId: ctx.sucursalId,
+          usuarioId: ctx.usuarioId ?? undefined,
+          observaciones,
+          ...cuerpo,
+        }),
+        'Caja abierta.',
+        { recargar: false },
+      );
+      if (ok) onChange?.();
+    } finally {
+      candado.current = false;
+      setEnviando(false);
+    }
   };
+
+  const dif = conFondoFijo && respuesta === 'contar' ? r2(contado - fondo) : 0;
+
+  if (cargandoAp || errorAp) {
+    return (
+      <ModalShell title="Abrir caja" onClose={closeModal} footer={[{ texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal }]}>
+        {errorAp
+          ? <div className={cx(s.callout, s.warn)}>No se pudo consultar el fondo de la caja: <strong>{errorAp}</strong></div>
+          : <div className={s['empty-state']}>Consultando el fondo de la caja…</div>}
+      </ModalShell>
+    );
+  }
 
   return (
     <ModalShell
       title="Abrir caja"
+      wide={conFondoFijo && respuesta === 'contar'}
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Abrir turno', clase: 'btn-primary', onClick: abrir },
+        { texto: enviando ? 'Abriendo…' : 'Abrir turno', clase: 'btn-primary', onClick: abrir, disabled: enviando || (conFondoFijo && !respuesta) },
       ]}
     >
       <div className={s['detalle-grid']}>
@@ -53,19 +114,56 @@ export function AbrirCajaModal({ onChange }) {
         <Di label="Cajero">{usuario?.nombre || '—'}</Di>
       </div>
 
-      <div className={s.field}>
-        <label>Fondo inicial <span className={s.req}>*</span></label>
-        <input
-          type="number" min="0" step="100" autoFocus
-          placeholder="Ej: 50000"
-          value={montoInicial}
-          onChange={(e) => setMontoInicial(e.target.value)}
-        />
-        <div className={s.hint} style={{ margin: '6px 0 0' }}>
-          El efectivo con el que arranca el cajón. Es el punto de partida del arqueo
-          y es obligatorio: sin fondo declarado no se abre el turno.
+      {conFondoFijo ? (
+        <>
+          <div className={s.callout}>
+            {ap.dejadoEnCaja != null ? (
+              <>
+                En el último cierre{ap.ultimoCierre ? ` (${fmtFechaHora(ap.ultimoCierre)})` : ''} quedaron{' '}
+                <strong>{money(fondo)}</strong> de cambio en la caja de {sucursal?.nombre || 'esta sucursal'}.
+                {ap.fondoFijo != null && Math.abs(ap.fondoFijo - fondo) > 0.009 && (
+                  <> El fondo fijo es {money(ap.fondoFijo)}.</>
+                )}
+              </>
+            ) : (
+              <>El fondo fijo de la caja de {sucursal?.nombre || 'esta sucursal'} es <strong>{money(fondo)}</strong>.</>
+            )}
+          </div>
+          <div className={s.field}>
+            <label>¿Están los {money(fondo)} en el cajón?</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Btn variant={respuesta === 'si' ? 'btn-primary' : undefined} onClick={() => setRespuesta('si')}>Sí, están</Btn>
+              <Btn variant={respuesta === 'contar' ? 'btn-primary' : undefined} onClick={() => setRespuesta('contar')}>No, los cuento</Btn>
+            </div>
+          </div>
+          {respuesta === 'contar' && (
+            <>
+              <ConteoBilletes cant={billetes} setCant={setBilletes} />
+              {Object.values(billetes).some((c) => Number(c) > 0) && Math.abs(dif) > 0.009 && (
+                <div className={cx(s.callout, s.warn)}>
+                  {dif < 0 ? `Faltan ${money(-dif)}` : `Sobran ${money(dif)}`} respecto de los {money(fondo)}. El turno abre con{' '}
+                  <strong>{money(contado)}</strong> y queda avisado al administrador.
+                </div>
+              )}
+            </>
+          )}
+        </>
+      ) : (
+        <div className={s.field}>
+          <label>Fondo inicial <span className={s.req}>*</span></label>
+          <input
+            type="number" min="0" step="100" autoFocus
+            placeholder="Ej: 50000"
+            value={montoInicial}
+            onChange={(e) => setMontoInicial(e.target.value)}
+          />
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            {ap?.fondoFijo == null
+              ? <>Este monto queda como <strong>fondo fijo</strong> de la caja de {sucursal?.nombre || 'esta sucursal'}: las próximas aperturas arrancan con él.</>
+              : <>Propuesto: {ap.dejadoEnCaja != null ? 'lo que quedó de cambio en el último cierre' : 'el fondo fijo'} ({money(fondo)}). Podés abrir este turno con otro monto; el fondo fijo lo cambia el superadmin en Gerencia › Sucursales.</>}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className={s.field}>
         <label>Observaciones</label>
@@ -136,10 +234,13 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
    * a pedir la confirmación.
    */
   const [confirmando, setConfirmando] = useState(false);
+  /* El pago gemelo (27/9/2026): la API avisa con 409 que ese día ya hay un
+   * pago igual al mismo proveedor; el siguiente "Sí" lo confirma a propósito. */
+  const [gemelo, setGemelo] = useState(null);
   const enviando = useRef(false);
   const firma = [tipo, destino, importe, motivo, tipoProveedor, proveedorId, referencia, esFlete].join('|');
   const firmaConfirmada = useRef('');
-  if (confirmando && firmaConfirmada.current !== firma) setConfirmando(false);
+  if (confirmando && firmaConfirmada.current !== firma) { setConfirmando(false); setGemelo(null); }
 
   const validar = () => {
     if (!(Number(importe) > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return false; }
@@ -181,13 +282,14 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
           concepto: motivo.trim(),
           referencia: referencia.trim(),
           esFlete: esFlete || undefined,
+          confirmarDuplicado: gemelo != null || undefined,
         }),
         esFlete
           ? 'Flete registrado. Se le descuenta de su factura cuando se cargue.'
           : tipoProveedor === 'mercaderia'
             ? 'Pago registrado. Queda a cuenta en Compras › Pagos en sucursal hasta que se cargue la factura.'
             : 'Pago registrado. Queda a cuenta en Gastos › Pagos en sucursal hasta que se cargue el comprobante.',
-        { recargar: false },
+        { recargar: false, alConflicto: (d) => setGemelo(d?.duplicado ?? '—') },
       );
       if (ok) onChange?.();
       return;
@@ -213,7 +315,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
       footer={confirmando
         ? [
           { texto: 'Volver a editar', clase: 'btn-ghost', onClick: () => setConfirmando(false) },
-          { texto: 'Sí, registrar', clase: tipo === 'egreso' ? 'btn-delete' : 'btn-primary', onClick: registrar },
+          { texto: gemelo != null ? 'Sí, es otro pago' : 'Sí, registrar', clase: tipo === 'egreso' ? 'btn-delete' : 'btn-primary', onClick: registrar },
         ]
         : [
           { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
@@ -235,6 +337,12 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
           <div className={s.hint} style={{ margin: '6px 0 0' }}>
             Cambia el efectivo esperado del arqueo y no se puede borrar. Revisá el importe antes de confirmar.
           </div>
+          {gemelo != null && (
+            <div style={{ marginTop: 8 }}>
+              <strong>Hoy ya hay un pago igual a este proveedor{gemelo !== '—' ? ` (pago #${gemelo})` : ''}.</strong>{' '}
+              Si fue un doble clic, volvé. Si de verdad se le pagó dos veces lo mismo, confirmalo.
+            </div>
+          )}
         </div>
       )}
       <div className={s.hint}>
@@ -449,6 +557,64 @@ function ContadorBilletesModal({ inicial, onUsar, onCerrar }) {
   );
 }
 
+/** El total de un conteo por billete (pesos enteros: la suma es exacta). */
+function totalBilletes(cant) {
+  return DENOMINACIONES.reduce((acc, d) => {
+    const n = Math.floor(Number(cant?.[d])) || 0;
+    return acc + (n > 0 ? d * n : 0);
+  }, 0);
+}
+/** Solo los billetes con cantidad, como los espera la API. */
+function billetesLimpios(cant) {
+  const out = {};
+  for (const d of DENOMINACIONES) {
+    const n = Math.floor(Number(cant?.[d])) || 0;
+    if (n > 0) out[d] = n;
+  }
+  return out;
+}
+
+/**
+ * EL CONTADOR DE BILLETES EN LA PANTALLA, sin campo de monto (0111): el total
+ * sale SOLO de los billetes. Es la forma de contar del cajero al cerrar y al
+ * abrir con el fondo incompleto — no hay manera de tipear un número.
+ */
+function ConteoBilletes({ cant, setCant }) {
+  const refs = useRef({});
+  const total = totalBilletes(cant);
+  return (
+    <div className={s.callout} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className={s.hint} style={{ margin: 0 }}>Cuántos de cada billete. Enter baja al siguiente; el total se calcula solo.</div>
+      {DENOMINACIONES.map((d, i) => {
+        const n = Math.floor(Number(cant[d])) || 0;
+        return (
+          <div key={d} style={{ display: 'grid', gridTemplateColumns: '90px 90px 1fr', gap: 8, alignItems: 'center' }}>
+            <span className={s.mono} style={{ textAlign: 'right', fontWeight: 600 }}>$ {d.toLocaleString('es-AR')}</span>
+            <input
+              ref={(el) => { refs.current[d] = el; }}
+              type="number" min="0" step="1" placeholder="0" inputMode="numeric"
+              autoFocus={i === 0}
+              value={cant[d] ?? ''}
+              onChange={(e) => {
+                const v = e.target.value.replace(/[^\d]/g, '');
+                setCant((c) => ({ ...c, [d]: v }));
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); refs.current[DENOMINACIONES[i + 1]]?.focus(); }
+              }}
+            />
+            <span className={cx(s.mono, !n && s.muted)} style={{ textAlign: 'right' }}>{n ? money(d * n) : '—'}</span>
+          </div>
+        );
+      })}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 6 }}>
+        <span>Total contado</span>
+        <strong className={s.mono} style={{ fontSize: 22 }}>{money(total)}</strong>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Botón + estado del contador para los dos modales que piden "Efectivo
  * contado" (control intermedio y cierre). Devuelve el botón a poner debajo
@@ -492,7 +658,7 @@ function useContadorBilletes(setMonto) {
  * servidor solo deja escribir el texto: el conteo no se toca).
  */
 export function ControlCajaModal({ cajaSesionId, onChange }) {
-  const { ctx, closeModal, toast, operadorId } = useVentas();
+  const { ctx, closeModal, toast, operadorId, esJefe } = useVentas();
   const [contado, setContado] = useState('');
   const [nota, setNota] = useState('');
   const [explicacion, setExplicacion] = useState('');
@@ -531,6 +697,8 @@ export function ControlCajaModal({ cajaSesionId, onChange }) {
       onChange?.();
     });
   };
+  /* El texto del paso 1 no le promete al que no es jefe que va a ver el
+   * esperado: no lo va a ver (0111). */
 
   const explicar = () => {
     if (!explicacion.trim()) { toast('Escribí por qué hay diferencia.', 'err'); return; }
@@ -554,6 +722,18 @@ export function ControlCajaModal({ cajaSesionId, onChange }) {
     closeModal();
   };
 
+  /* A ciegas (0111): el que no es jefe registra su conteo y nada más — la
+   * respuesta del servidor no trae el esperado ni la diferencia. */
+  if (control?.ciego) {
+    return (
+      <ModalShell title="Control de caja" onClose={closeModal} footer={[{ texto: 'Listo', clase: 'btn-primary', onClick: closeModal }]}>
+        <div className={cx(s.callout, s.ok)}>
+          Conteo registrado: <strong>{money(control.contadoEfectivo)}</strong>. Queda en los controles del turno y lo revisa el administrador.
+        </div>
+      </ModalShell>
+    );
+  }
+
   if (!control) {
     return (
       <ModalShell
@@ -566,8 +746,8 @@ export function ControlCajaModal({ cajaSesionId, onChange }) {
       >
         <div className={s.hint}>
           Contá el efectivo del cajón <strong>sin mirar el sistema</strong>. Al registrar, el conteo
-          queda guardado tal cual y recién ahí aparecen el esperado y la diferencia. El turno sigue
-          abierto y se puede seguir vendiendo.
+          queda guardado tal cual{esJefe ? ' y recién ahí aparecen el esperado y la diferencia' : ' y lo revisa el administrador'}.
+          El turno sigue abierto y se puede seguir vendiendo.
         </div>
 
         <div className={s['form-grid']}>
@@ -768,7 +948,9 @@ function Renglon({ label, valor, tenue }) {
  */
 export function DetalleArqueo({ arqueo, ciego: forzarCiego = false }) {
   const cerrado = arqueo.sesion?.estado === 'cerrada';
-  const ciego = !cerrado && (forzarCiego || !!arqueo.ciego);
+  /* El servidor lo manda ciego al que no es jefe SIEMPRE, también cerrado
+   * (0111). `forzarCiego` es el paso 1 del cierre del jefe. */
+  const ciego = !!arqueo.ciego || (!cerrado && forzarCiego);
   const medios = Object.entries(arqueo.medios || {}).filter(([m]) => !ciego || m !== 'efectivo');
   const efectivo = arqueo.medios?.efectivo?.total ?? 0;
   const aCiegas = <span className={s.muted}>se ve después de contar</span>;
@@ -802,10 +984,29 @@ export function DetalleArqueo({ arqueo, ciego: forzarCiego = false }) {
           )}
         </div>
 
-        {/* Solo con el turno cerrado hay conteo contra el cual comparar. */}
-        {cerrado && (
+        {/* A ciegas y cerrado: lo que contó, envió y dejó de fondo — sin la
+            diferencia, que solo ve el administrador (0111). */}
+        {cerrado && ciego && (
           <>
             <Renglon label="Efectivo contado" valor={money(arqueo.sesion.declaradoEfectivo)} />
+            {arqueo.sesion.envioEfectivo != null && (
+              <>
+                <Renglon label="Quedó de fondo" valor={money(arqueo.sesion.fondoQueda)} />
+                <Renglon label="Enviado" valor={money(arqueo.sesion.envioEfectivo)} />
+              </>
+            )}
+          </>
+        )}
+        {/* Solo con el turno cerrado hay conteo contra el cual comparar. */}
+        {cerrado && !ciego && (
+          <>
+            <Renglon label="Efectivo contado" valor={money(arqueo.sesion.declaradoEfectivo)} />
+            {arqueo.sesion.envioEfectivo != null && (
+              <>
+                <Renglon label="Quedó de fondo" valor={money(arqueo.sesion.fondoQueda)} tenue />
+                <Renglon label="Enviado" valor={money(arqueo.sesion.envioEfectivo)} tenue />
+              </>
+            )}
             <div className={cx(s.pasoFila, s.pasoFuerte)}>
               <span>Diferencia</span>
               <strong
@@ -907,7 +1108,156 @@ function sacarComprobanteArqueo(arqueo, { sucursales, usuarios, ctx, reimpresion
   });
 }
 
-export function CerrarCajaModal({ cajaSesionId, onChange }) {
+/*
+ * CERRAR CAJA (0111): el administrador y el superadmin cierran como siempre
+ * (conteo a ciegas, "Ver resultado", confirmación). Todos los demás cierran
+ * CONTANDO Y ENVIANDO, sin ver en ningún momento lo que el sistema espera.
+ */
+export function CerrarCajaModal(props) {
+  const { esJefe } = useVentas();
+  return esJefe ? <CerrarCajaJefeModal {...props} /> : <CerrarCajaEnvioModal {...props} />;
+}
+
+/**
+ * EL CIERRE DEL CAJERO: CONTAR, DEJAR EL FONDO Y ENVIAR (0111, pedido del dueño).
+ *
+ * 1. Cuenta el cajón billete por billete — no hay campo de monto.
+ * 2. Ve lo que ÉL contó, lo que queda de fondo para mañana y lo que envía;
+ *    nunca el esperado ni la diferencia.
+ * 3. Confirma una segunda vez, y el envío cierra el turno.
+ * El servidor recibe los billetes y suma él: tampoco por la API se tipea.
+ */
+function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
+  const { ctx, closeModal, toast, setOperador, sucursales, usuarios, operadorId } = useVentas();
+  const [billetes, setBilletes] = useState({});
+  const [paso, setPaso] = useState('contar');
+  const [enviando, setEnviando] = useState(false);
+  const candado = useRef(false);
+  const { data: turno, loading } = useResource(`turno-envio:${cajaSesionId}`, () => ventasApi.cajaArqueo(cajaSesionId));
+  const sucursalId = turno?.sesion?.sucursalId ?? ctx.sucursalId;
+  /* El fondo fijo, fresco del servidor (la lista del arranque puede estar vieja). */
+  const { data: ap, loading: cargandoAp } = useResource(
+    `apertura-cierre:${sucursalId}`, () => ventasApi.cajaApertura(sucursalId), { enabled: !!sucursalId },
+  );
+  const sucursal = sucursales.find((x) => x.id === sucursalId);
+  const fondo = ap?.fondoFijo != null ? Number(ap.fondoFijo) : Number(turno?.montoInicial) || 0;
+  const contado = totalBilletes(billetes);
+  const queda = Math.min(contado, fondo);
+  const envio = r2(contado - queda);
+  const faltaFondo = r2(fondo - queda);
+  const conto = Object.values(billetes).some((c) => Number(c) > 0);
+
+  const aConfirmar = () => {
+    if (!conto) { toast('Contá los billetes del cajón antes de enviar.', 'err'); return; }
+    setPaso('confirmar');
+  };
+
+  const enviar = async () => {
+    if (candado.current) return;
+    candado.current = true;
+    setEnviando(true);
+    try {
+      const r = await ventasApi.enviarCierreCaja(cajaSesionId, {
+        billetes: billetesLimpios(billetes),
+        confirmado: true,
+        usuarioId: ctx.usuarioId ?? undefined,
+        operadorId: operadorId ?? undefined,
+      });
+      const nombreDe = (id) => usuarios?.find((u) => u.id === id)?.nombre || '';
+      const salio = await imprimirEnvioCaja(
+        { ...r, sesionId: r.sesion?.id, cierre: r.sesion?.cierre },
+        { moneda: money, fechaHora: fmtFechaHora, sucursal: sucursal?.nombre || '', cajero: nombreDe(r.sesion?.usuarioId) },
+      );
+      toast(`Caja cerrada. Enviaste ${money(r.envio)}; quedan ${money(r.fondoQueda)} de fondo en la caja.`, 'ok');
+      if (!salio) toast('La caja se cerró, pero el navegador bloqueó la impresión. Reimprimila desde el historial.', 'err');
+      setOperador(null);
+      onChange?.();
+      closeModal();
+    } catch (e) {
+      toast(errorMsg(e), 'err');
+    } finally {
+      candado.current = false;
+      setEnviando(false);
+    }
+  };
+
+  if (loading || cargandoAp) {
+    return (
+      <ModalShell title="Cerrar caja" onClose={closeModal} footer={[{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }]}>
+        <div className={s['empty-state']}>Preparando el cierre…</div>
+      </ModalShell>
+    );
+  }
+
+  const resumen = (
+    <div className={s.callout}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '4px 16px', justifyContent: 'start', alignItems: 'baseline' }}>
+        <span>Contaste</span><strong className={s.mono} style={{ fontSize: 18 }}>{money(contado)}</strong>
+        <span>Queda de fondo en la caja</span><strong className={s.mono} style={{ fontSize: 18 }}>{money(queda)}</strong>
+        <span>Enviás</span><strong className={s.mono} style={{ fontSize: 22, color: 'var(--crm-color-accent)' }}>{money(envio)}</strong>
+      </div>
+      <div className={s.hint} style={{ margin: '8px 0 0' }}>
+        Dejá <strong>{money(queda)}</strong> en la caja: es el fondo para el próximo turno{fondo ? ` (fondo fijo ${money(fondo)})` : ''}.
+      </div>
+      {conto && faltaFondo > 0.009 && (
+        <div className={cx(s.callout, s.warn)} style={{ margin: '8px 0 0' }}>
+          Contaste menos que el fondo fijo: <strong>no se envía nada</strong>, todo queda como fondo y
+          queda avisado al administrador (faltan {money(faltaFondo)}).
+        </div>
+      )}
+    </div>
+  );
+
+  if (paso === 'confirmar') {
+    return (
+      <ModalShell
+        title="Cerrar caja — confirmar envío"
+        onClose={closeModal}
+        footer={[
+          { texto: 'Volver a contar', clase: 'btn-ghost', onClick: () => setPaso('contar'), disabled: enviando },
+          { texto: enviando ? 'Enviando…' : `Sí, enviar ${money(envio)} y cerrar`, clase: 'btn-delete', onClick: enviar, disabled: enviando },
+        ]}
+      >
+        <div className={cx(s.callout, s.warn)}>
+          ¿Confirmás? Se envían <strong>{money(envio)}</strong> detallados en billetes, quedan{' '}
+          <strong>{money(queda)}</strong> de fondo en la caja y <strong>el turno se cierra</strong>: no se
+          puede reabrir.
+        </div>
+        <Table cols={[{ h: 'Billete' }, { h: 'Cantidad', num: true }, { h: 'Importe', num: true }]}>
+          {DENOMINACIONES.filter((d) => Math.floor(Number(billetes[d])) > 0).map((d) => (
+            <tr key={d}>
+              <td className={s.mono}>$ {d.toLocaleString('es-AR')}</td>
+              <td className={s.num}>{Math.floor(Number(billetes[d]))}</td>
+              <td className={s.num}>{money(d * Math.floor(Number(billetes[d])))}</td>
+            </tr>
+          ))}
+        </Table>
+        {resumen}
+      </ModalShell>
+    );
+  }
+
+  return (
+    <ModalShell
+      title="Cerrar caja — contar y enviar"
+      wide
+      onClose={closeModal}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+        { texto: `Enviar ${money(envio)}`, clase: 'btn-primary', onClick: aConfirmar, disabled: !conto },
+      ]}
+    >
+      <div className={s.hint}>
+        Contá <strong>todo el efectivo del cajón</strong>, billete por billete. El sistema aparta el
+        fondo para mañana y te dice cuánto enviar.
+      </div>
+      <ConteoBilletes cant={billetes} setCant={setBilletes} />
+      {conto && resumen}
+    </ModalShell>
+  );
+}
+
+function CerrarCajaJefeModal({ cajaSesionId, onChange }) {
   const { ctx, act, closeModal, toast, setOperador, sucursales, usuarios, operadorId } = useVentas();
   const [declarado, setDeclarado] = useState('');
   const [observaciones, setObservaciones] = useState('');
@@ -1109,6 +1459,26 @@ export function ArqueoTurnoModal({ cajaSesionId }) {
      * papel sale sin conteo y avisandolo, que es justo lo que se necesita para
      * un control a mitad del dia. Salvo A CIEGAS: el papel del turno abierto
      * lleva el esperado, y el que cuenta no lo tiene que ver. */
+    /* A ciegas, lo que se reimprime es el ENVÍO: billetes, fondo y enviado. */
+    arqueo?.ciego && arqueo?.sesion?.envioEfectivo != null && {
+      texto: 'Reimprimir envío',
+      clase: 'btn-primary',
+      onClick: async () => {
+        const ses = arqueo.sesion;
+        const nombreDe = (id) => usuarios?.find((u) => u.id === id)?.nombre || '';
+        const suc = sucursales.find((x) => x.id === ses.sucursalId);
+        const fondoSuc = suc?.fondoCaja != null ? Number(suc.fondoCaja) : null;
+        const salio = await imprimirEnvioCaja({
+          sesionId: ses.id, cierre: ses.cierre, billetes: ses.billetes, contado: ses.declaradoEfectivo,
+          envio: ses.envioEfectivo, fondoQueda: ses.fondoQueda, fondo: fondoSuc,
+          faltaFondo: fondoSuc != null ? Math.max(0, fondoSuc - (Number(ses.fondoQueda) || 0)) : 0,
+        }, {
+          moneda: money, fechaHora: fmtFechaHora, sucursal: suc?.nombre || '',
+          cajero: nombreDe(ses.usuarioId), usuario: nombreDe(ctx?.usuarioId), reimpresion: true,
+        });
+        if (!salio) toast('El navegador bloqueó la ventana de impresión.', 'err');
+      },
+    },
     !arqueo?.ciego && {
       texto: 'Imprimir',
       clase: 'btn-primary',

@@ -26,8 +26,10 @@
  *     el resto se descarta con aviso en la fila.
  */
 
+/* Las siglas sueltas se juntan (28/9/2026): "S.A." → "sa", "S.R.L." → "srl",
+ * así "Nuevo Cosmos S.A." y "Nuevo Cosmos SA" son el mismo nombre. */
 const norm = (v) => String(v ?? '').toLowerCase().normalize('NFD')
-  .replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  .replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9]+/g, ' ').trim().replace(/\b([a-z0-9]) (?=[a-z0-9]\b)/g, '$1');
 const soloDigitos = (v) => String(v ?? '').replace(/\D/g, '');
 
 /** ¿Son el mismo nombre, más allá de mayúsculas, acentos y puntuación? */

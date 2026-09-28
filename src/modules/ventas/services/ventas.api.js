@@ -158,6 +158,8 @@ export const ventasApi = {
 
   /* Caja */
   cajaActual: (sucursalId) => httpClient.get(`/caja/actual/${sucursalId}`),
+  /** Con cuánto debería abrir: lo que dejó el último cierre, o el fondo fijo (0111). */
+  cajaApertura: (sucursalId) => httpClient.get(`/caja/apertura/${sucursalId}`),
   cajaTurnos: (filtros) => httpClient.get(`/caja${qs(filtros)}`),
   cajaArqueo: (id) => httpClient.get(`/caja/${id}/arqueo`),
   abrirCaja: (data) => httpClient.post('/caja/abrir', data),
@@ -166,6 +168,8 @@ export const ventasApi = {
   explicarControl: (id, controlId, data) => httpClient.patch(`/caja/${id}/control/${controlId}`, data),
   /** El conteo a ciegas del cierre: devuelve el arqueo completo (ver caja.module). */
   conteoCierre: (id, data) => httpClient.post(`/caja/${id}/conteo-cierre`, data),
+  /** El cierre del cajero (0111): billetes contados, fondo que queda y envío. */
+  enviarCierreCaja: (id, data) => httpClient.post(`/caja/${id}/enviar`, data),
   movimientoCaja: (id, data) => httpClient.post(`/caja/${id}/movimiento`, data),
 
   /* Pagos a proveedores (la plata que sale, desde la caja o desde Gastos) */

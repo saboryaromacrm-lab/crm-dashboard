@@ -76,7 +76,7 @@ function TrazaPago({ c }) {
  * sucursal y "sin aplicar" del pago) viven adentro de la suya.
  */
 export function FacturacionPanel() {
-  const { store, isAdmin, can, openModal } = useProductos();
+  const { store, can, openModal } = useProductos();
   useSeccion('comprobantes');
 
   /** Filtro COMPARTIDO por las dos pestañas. */
@@ -100,6 +100,9 @@ export function FacturacionPanel() {
   // Sin `isAdmin ||` a propósito: con él, revocarle el permiso a un admin no
   // haría nada. El superadmin queda cubierto por el comodín `*` de su rol.
   const verNoFiscal = can('liquidaciones');
+  /* Cargar comprobantes va por el PERMISO de Facturación, no por el rol (26/9/2026):
+   * un encargado con el permiso tiene que poder cargar; un admin sin él, no. */
+  const puedeCargar = can('compras.facturacion');
 
   const comps = store.state.comprobantes
     .slice()
@@ -162,7 +165,7 @@ export function FacturacionPanel() {
       <PanelHead
         title="Facturación"
         desc="Comprobantes de compra y la plata que las sucursales ya pagaron. El stock ingresa por la recepción."
-        actions={isAdmin && <Btn variant="btn-primary" onClick={() => openModal('comprobanteForm', {})}>+ Nuevo comprobante</Btn>}
+        actions={puedeCargar && <Btn variant="btn-primary" onClick={() => openModal('comprobanteForm', {})}>+ Nuevo comprobante</Btn>}
       />
 
       {/* El proveedor manda sobre las dos pestañas: va afuera, arriba de todo. */}
@@ -219,7 +222,7 @@ export function FacturacionPanel() {
                   <td className={s.num}>{money(c.total)}</td>
                   <td className={s['actions-col']}>
                     <div className={s['row-actions']} onClick={(e) => e.stopPropagation()}>
-                      {isAdmin && (
+                      {puedeCargar && (
                         <Btn small variant="btn-primary" onClick={() => openModal('comprobanteForm', { remito: c })}>
                           Llegó la factura
                         </Btn>

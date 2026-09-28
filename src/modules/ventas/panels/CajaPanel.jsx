@@ -19,7 +19,7 @@ function Diferencia({ valor, cerrado }) {
 }
 
 export function CajaPanel() {
-  const { sucursales, usuarios, ctx, openModal } = useVentas();
+  const { sucursales, usuarios, ctx, openModal, esJefe } = useVentas();
   const [sucursalId, setSucursalId] = useState(String(ctx.sucursalId ?? ''));
   const [estado, setEstado] = useState('');
 
@@ -112,8 +112,9 @@ export function CajaPanel() {
       <div className={s.stats}>
         <Stat label="Turnos abiertos" value={stats.abiertos} accent={stats.abiertos ? 'accent-green' : undefined} />
         <Stat label="Turnos cerrados" value={stats.cerrados} />
-        <Stat label="Con diferencia" value={stats.conDiferencia} accent={stats.conDiferencia ? 'accent-amber' : undefined} />
-        <Stat label="Diferencia acumulada" value={money(stats.neto)} accent={Math.abs(stats.neto) >= 0.01 ? 'accent-red' : undefined} />
+        {/* Las diferencias son del administrador: el resto no las ve (0111). */}
+        {esJefe && <Stat label="Con diferencia" value={stats.conDiferencia} accent={stats.conDiferencia ? 'accent-amber' : undefined} />}
+        {esJefe && <Stat label="Diferencia acumulada" value={money(stats.neto)} accent={Math.abs(stats.neto) >= 0.01 ? 'accent-red' : undefined} />}
       </div>
 
       <div className={s.toolbar}>
@@ -132,10 +133,13 @@ export function CajaPanel() {
       {error && <div className={cx(s.callout, s.warn)}>No se pudieron cargar los turnos: <strong>{error}</strong></div>}
 
       <Table
-        cols={[
+        cols={esJefe ? [
           { h: 'Turno' }, { h: 'Sucursal' }, { h: 'Cajero' }, { h: 'Apertura' }, { h: 'Cierre' },
           { h: 'Fondo', num: true }, { h: 'Efectivo sistema', num: true }, { h: 'Contado', num: true },
           { h: 'Diferencia', num: true }, { h: 'Estado' },
+        ] : [
+          { h: 'Turno' }, { h: 'Sucursal' }, { h: 'Cajero' }, { h: 'Apertura' }, { h: 'Cierre' },
+          { h: 'Fondo', num: true }, { h: 'Contado', num: true }, { h: 'Enviado', num: true }, { h: 'Estado' },
         ]}
         empty={loading ? 'Cargando…' : 'No hay turnos de caja con esos filtros.'}
         pag={pag}
@@ -150,19 +154,23 @@ export function CajaPanel() {
               <td>{fmtFechaHora(t.apertura)}</td>
               <td>{t.cierre ? fmtFechaHora(t.cierre) : <span className={s.muted}>—</span>}</td>
               <td className={s.num}>{money(t.montoInicial)}</td>
-              <td className={s.num}>{cerrado ? money(t.sistemaEfectivo) : <span className={s.muted}>—</span>}</td>
+              {esJefe && <td className={s.num}>{cerrado ? money(t.sistemaEfectivo) : <span className={s.muted}>—</span>}</td>}
               <td className={s.num}>{cerrado ? money(t.declaradoEfectivo) : <span className={s.muted}>—</span>}</td>
-              <td className={s.num}><Diferencia valor={t.diferencia} cerrado={cerrado} /></td>
+              {esJefe
+                ? <td className={s.num}><Diferencia valor={t.diferencia} cerrado={cerrado} /></td>
+                : <td className={s.num}>{t.envioEfectivo != null ? money(t.envioEfectivo) : <span className={s.muted}>—</span>}</td>}
               <td><Pill pill={cerrado ? 'est-recibida' : 'est-pendiente'} label={cerrado ? 'Cerrado' : 'Abierto'} /></td>
             </tr>
           );
         })}
       </Table>
 
-      <div className={s.hint}>
-        La diferencia es <strong>contado − sistema</strong> sobre el efectivo. Los demás medios se
-        concilian contra el resumen del banco o del posnet.
-      </div>
+      {esJefe && (
+        <div className={s.hint}>
+          La diferencia es <strong>contado − sistema</strong> sobre el efectivo. Los demás medios se
+          concilian contra el resumen del banco o del posnet.
+        </div>
+      )}
     </div>
   );
 }
