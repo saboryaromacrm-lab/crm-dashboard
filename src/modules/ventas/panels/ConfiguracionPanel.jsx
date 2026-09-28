@@ -29,7 +29,7 @@ const TAB_KEY = 'crm.ventas.configuracion.tab';
 
 /** En qué pestaña vive cada campo de la config: para marcar dónde hay cambios. */
 const tabDeCampo = (k) => {
-  if (['puntoVenta', 'condicionIvaEmpresa', 'arcaHabilitado'].includes(k)) return 'facturacion';
+  if (['puntoVenta', 'condicionIvaEmpresa', 'arcaHabilitado', 'topeSinIdentificar'].includes(k)) return 'facturacion';
   if (/^(ctaCte|presupuesto)/.test(k)) return 'clientes';
   if (/^(caja|permitirStock|mediosPago$|mediosFacturar|recargoCuotas|lector|balanza)/.test(k)) return 'caja';
   return 'precios';
@@ -645,6 +645,12 @@ export function ConfiguracionPanel() {
                 .filter(([k]) => k !== 'consumidor_final' && k !== 'no_categorizado')
                 .map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
+          </Campo>
+          <Campo
+            label="Tope para facturar sin identificar al comprador ($)"
+            hint="Por encima de este total, ARCA exige el DNI o CUIT del consumidor final en la Factura B y rechaza la que no lo trae. Con la facturación prendida, la caja frena ANTES de cobrar y pide elegir el cliente. ARCA lo actualiza seguido: confirmá el valor vigente con tu contador. 0 = sin control."
+          >
+            <input type="number" min="0" step="1000" value={draft.topeSinIdentificar ?? 0} onChange={setNum('topeSinIdentificar')} />
           </Campo>
           <Interruptor
             label="Facturación electrónica (ARCA)"

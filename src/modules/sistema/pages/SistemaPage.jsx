@@ -97,6 +97,7 @@ async function cuerpoMuestra(clave, empresa, impresion) {
       ],
       extras: [],
       subtotalNeto: 12000,
+      ivaTotal: 2520,
       total: 14520,
       cae: '75123456789012',
       caeVencimiento: '2026-08-29T12:00:00-03:00',
@@ -350,6 +351,29 @@ export function SistemaPage() {
                     Quién factura, como figura ante ARCA. Va en las facturas y adentro del
                     certificado. Si es igual al nombre de arriba, dejala vacía.
                   </div>
+                </div>
+              </div>
+              {/* Van impresos en la factura electrónica (28/9/2026). */}
+              <div className={s['form-grid']}>
+                <div className={s.field}>
+                  <label htmlFor="emp-iibb">Ingresos Brutos (N° de inscripción)</label>
+                  <input
+                    id="emp-iibb"
+                    value={empresa.ingresosBrutos ?? ''}
+                    placeholder="Ej.: 30-12345678-9 o Convenio Multilateral 901-123456-7"
+                    onChange={(e) => setEmpresa((x) => ({ ...x, ingresosBrutos: e.target.value }))}
+                  />
+                  <div className={s.hint}>Tal como figura en tu constancia; va impreso en cada factura.</div>
+                </div>
+                <div className={s.field}>
+                  <label htmlFor="emp-inicio">Inicio de actividades</label>
+                  <input
+                    id="emp-inicio"
+                    type="date"
+                    value={empresa.inicioActividades ?? ''}
+                    onChange={(e) => setEmpresa((x) => ({ ...x, inicioActividades: e.target.value }))}
+                  />
+                  <div className={s.hint}>La fecha de tu constancia de inscripción en ARCA.</div>
                 </div>
               </div>
               <div className={s['form-grid']}>

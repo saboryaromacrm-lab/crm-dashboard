@@ -106,11 +106,14 @@ let _cache = null;
 let _cacheAt = 0;
 export async function configImpresion() {
   if (_cache && Date.now() - _cacheAt < 60000) return _cache;
-  const [empresa, impresion] = await Promise.all([
+  const [empresa, impresion, ventas] = await Promise.all([
     httpClient.get('/configuracion/empresa'),
     httpClient.get('/configuracion/impresion'),
+    /* La condición de IVA del EMISOR vive en la config de ventas (es la que
+       decide la letra): la factura la imprime de ahí, no escrita fija. */
+    httpClient.get('/configuracion/ventas').catch(() => ({})),
   ]);
-  _cache = { empresa, impresion };
+  _cache = { empresa: { ...empresa, condicionIva: ventas?.condicionIvaEmpresa || 'responsable_inscripto' }, impresion };
   _cacheAt = Date.now();
   return _cache;
 }
@@ -1146,6 +1149,12 @@ const COND_IVA_TEXTO = {
 
 const DOC_TEXTO = { cuit: 'CUIT', cuil: 'CUIL', dni: 'DNI', sin_identificar: '' };
 
+/** 'AAAA-MM-DD' → 'DD/MM/AAAA', sin pasar por Date (no hay huso que correr el día). */
+const fechaCorta = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso || '');
+};
+
 /** Cómo se nombra un comprobante en el papel (para el "asociado" de una nota). */
 const TIPO_TEXTO = {
   ticket: 'Ticket',
@@ -1276,6 +1285,18 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
    */
   const domicilioEmisor = venta.sucursalDireccion || empresa.direccion || '';
 
+  /*
+   * RÉGIMEN DE TRANSPARENCIA FISCAL AL CONSUMIDOR (Ley 27.743). La factura B
+   * no discrimina el IVA, pero tiene que informar cuánto IVA CONTIENE el
+   * total, y los otros impuestos nacionales indirectos (acá no hay: van en
+   * cero). En la A el IVA ya está discriminado arriba.
+   */
+  const transparencia = letra === 'B' ? `<div class="sub transparencia">
+      <div><strong>Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)</strong></div>
+      <div>IVA Contenido: <strong>${moneda(Number(venta.ivaTotal) || 0)}</strong></div>
+      <div>Otros Impuestos Nacionales Indirectos: <strong>${moneda(0)}</strong></div>
+    </div>` : '';
+
   const qr = await qrSvg(venta.qrArca);
   const caeVto = venta.caeVencimiento ? fecha(venta.caeVencimiento) : '';
   /* El motivo de la nota es la PRIMERA línea de las observaciones; la segunda
@@ -1300,7 +1321,9 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
         <div><strong>Emisor:</strong> ${esc(empresa.razonSocial || empresa.nombre || '')}</div>
         ${empresa.cuit ? `<div><strong>CUIT:</strong> ${esc(empresa.cuit)}</div>` : ''}
         ${domicilioEmisor ? `<div><strong>Domicilio:</strong> ${esc(domicilioEmisor)}</div>` : ''}
-        <div><strong>Cond. IVA:</strong> IVA Responsable Inscripto</div>
+        <div><strong>Cond. IVA:</strong> ${esc(COND_IVA_TEXTO[empresa.condicionIva] || COND_IVA_TEXTO.responsable_inscripto)}</div>
+        ${empresa.ingresosBrutos ? `<div><strong>Ingresos Brutos:</strong> ${esc(empresa.ingresosBrutos)}</div>` : ''}
+        ${empresa.inicioActividades ? `<div><strong>Inicio de actividades:</strong> ${esc(fechaCorta(empresa.inicioActividades))}</div>` : ''}
       </div>
       <div>
         <div><strong>Cliente:</strong> ${esc(venta.clienteNombre || '')}</div>
@@ -1325,6 +1348,8 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
     </div>
 
     ${esNota && motivo ? `<div class="sub"><strong>Motivo:</strong> ${esc(motivo)}</div>` : ''}
+
+    ${transparencia}
 
     ${venta.cae ? `<div class="cajaCae">
       ${qr ? `<div class="qr">${qr}</div>` : ''}
