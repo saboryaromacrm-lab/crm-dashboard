@@ -787,6 +787,29 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     }
   };
 
+  /*
+   * LA APP ARMA LA ESTRUCTURA SOLA (28/9/2026, pedido del dueño). Si el
+   * proveedor no tiene estructura, el PDF se leyó con la lectura automática:
+   * si cerró con el papel, se ofrece dejarla como la suya; si no, se abre el
+   * asistente para marcar las columnas una vez. Al guardar la estructura, el
+   * asistente vuelve a abrir esta misma factura para leerla con ella.
+   */
+  const usarLecturaAutomatica = async () => {
+    try {
+      await store.formatoFacturaProveedor(parseInt(provId, 10), 'auto');
+      setPropuestaPdf((d) => (d ? { ...d, confirmada: true } : d));
+      toast('Listo: las facturas de este proveedor se van a leer solas.', 'ok');
+    } catch (e) {
+      toast(e?.data?.message || 'No se pudo guardar.', 'err');
+    }
+  };
+  const abrirAsistente = () => openModal('asistenteFactura', {
+    proveedorId: parseInt(provId, 10),
+    proveedorNombre: provElegido?.nombre || '',
+    lecturaId: lectura.id,
+    volver: { proveedorId: provId, lectura },
+  });
+
   /**
    * ASOCIAR A MANO un renglón que la lectura no reconoció: el admin elige el
    * producto del sistema y el renglón se agrega al alta con el código del
@@ -1629,7 +1652,30 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                 <strong>{propuestaPdf.renglones.length} renglones leídos</strong>
                 {' '}· {propuestaPdf.renglones.filter((x) => x.productoId).length} con producto propuesto
                 {propuestaPdf.cierra && <> · <strong>el total cierra con el papel</strong></>}
+                {propuestaPdf.fuente === 'automatico' && <span className={s.muted}> · lectura automática</span>}
+                {propuestaPdf.fuente === 'plantilla' && <span className={s.muted}> · estructura propia</span>}
               </div>
+
+              {/* La lectura automática cerró con el papel: se ofrece dejarla como la estructura del proveedor. */}
+              {propuestaPdf.fuente === 'automatico' && propuestaPdf.control?.cierra && !propuestaPdf.confirmada && provId && (
+                <div className={cx(s.callout, s.ok)} style={{ marginTop: 6, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ flex: 1, minWidth: 220 }}>
+                    Se leyó sola y la suma de los renglones <strong>cierra con el subtotal del papel</strong>.
+                    ¿Leer así todas las facturas de {provElegido?.nombre || 'este proveedor'}?
+                  </span>
+                  <Btn small variant="btn-primary" onClick={usarLecturaAutomatica}>Sí, usar la lectura automática</Btn>
+                </div>
+              )}
+              {/* No cerró: los renglones pueden estar incompletos; la salida es marcar las columnas una vez. */}
+              {(propuestaPdf.fuente === 'automatico' || propuestaPdf.fuente === 'plantilla') && propuestaPdf.control && !propuestaPdf.control.cierra && provId && (
+                <div className={cx(s.callout, s.warn)} style={{ marginTop: 6, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ flex: 1, minWidth: 220 }}>
+                    La lectura <strong>no cierra con el papel</strong>: revisá los renglones, o armá la estructura de este
+                    proveedor marcando las columnas una vez.
+                  </span>
+                  <Btn small onClick={abrirAsistente}>{propuestaPdf.fuente === 'plantilla' ? 'Rehacer la estructura' : 'Armar la estructura'}</Btn>
+                </div>
+              )}
 
               {propuestaPdf.encabezado?.numero && (
                 <div style={{ marginTop: 4 }}>
@@ -1694,6 +1740,11 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           {propuestaPdf && !propuestaPdf.receta && (
             <div style={{ marginTop: 8, color: 'var(--crm-color-warning)' }}>
               {propuestaPdf.avisos?.map((a, i) => <div key={i}>· {a}</div>)}
+              {propuestaPdf.fuente && provId && (
+                <div style={{ marginTop: 6 }}>
+                  <Btn small variant="btn-primary" onClick={abrirAsistente}>Armar la estructura con el asistente</Btn>
+                </div>
+              )}
               {propuestaPdf.texto && (
                 <details style={{ marginTop: 6 }}>
                   <summary className={s.hint} style={{ cursor: 'pointer', margin: 0 }}>Ver el texto extraído</summary>

@@ -26,7 +26,7 @@ export async function extraerLineasPdf(pdfjs, datos) {
   const tarea = pdfjs.getDocument({
     // COPIA: pdf.js se queda con el buffer que recibe (lo manda a su worker y
     // lo deja inutilizable). Sin la copia, releer el mismo PDF fallaba.
-    data: (datos instanceof Uint8Array ? datos : new Uint8Array(datos)).slice(),
+    data: datos instanceof ArrayBuffer ? new Uint8Array(datos.slice(0)) : new Uint8Array(datos),
     verbosity: 0,
     // No se renderiza nada: compilar las fuentes del archivo con eval no sirve y abre superficie.
     isEvalSupported: false,
@@ -43,7 +43,9 @@ export async function extraerLineasPdf(pdfjs, datos) {
       const tc = await page.getTextContent();
       const frags = tc.items
         .filter((it) => it.str && it.str.trim())
-        .map((it) => ({ x: it.transform[4], y: it.transform[5], s: it.str }));
+        // `w` (ancho) es lo que permite ubicar cada palabra en su columna: el
+        // asistente de estructura y la lectura por plantilla trabajan con eso.
+        .map((it) => ({ x: it.transform[4], y: it.transform[5], w: Number(it.width) || 0, s: it.str }));
       fragmentos += frags.length;
       if (fragmentos > MAX_FRAGMENTOS) {
         throw new PdfDemasiadoGrande('Ese PDF tiene demasiado texto para leerlo. Cargá los renglones a mano.');

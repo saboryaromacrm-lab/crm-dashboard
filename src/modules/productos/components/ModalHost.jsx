@@ -34,6 +34,7 @@ import { ImportarCostosModal } from './modals/ImportarCostosModal.jsx';
 import { ImportarFormatosVentaModal } from './modals/ImportarFormatosVentaModal.jsx';
 import { RedondearMarkupsModal } from './modals/RedondearMarkupsModal.jsx';
 import { MoverListaModal } from './modals/MoverListaModal.jsx';
+import { AsistenteFacturaModal } from './modals/AsistenteFacturaModal.jsx';
 import { ActualizarClasificacionModal } from './modals/ActualizarClasificacionModal.jsx';
 import { LecturaFacturaModal } from './modals/LecturaFacturaModal.jsx';
 import { HistorialPreciosModal, MargenesMasivosModal } from './modals/PreciosModals.jsx';
@@ -255,6 +256,7 @@ const REGISTRY = {
   importarFormatosVenta: ImportarFormatosVentaModal,
   redondearMarkups: RedondearMarkupsModal,
   moverLista: MoverListaModal,
+  asistenteFactura: AsistenteFacturaModal,
   actualizarClasificacion: ActualizarClasificacionModal,
   /* `importarProveedores` se mudó al módulo Proveedores (27/8): alimenta el
    * padrón, y el padrón se administra allá. */

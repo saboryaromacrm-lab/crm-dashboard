@@ -16,7 +16,13 @@ import { FORMATOS } from '../domain/facturas/recetas.js';
 import { Btn, PanelHead, Pill, Stat, Table, usePaginado, s } from '../components/ui.jsx';
 
 const norm = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
-const nombreFormato = new Map(FORMATOS.map((f) => [f.id, f.nombre]));
+/* Además de las recetas hechas a mano: la lectura automática (confirmada para
+   ese proveedor) y la estructura propia que armó el asistente. */
+const nombreFormato = new Map([
+  ['auto', 'Lectura automática'],
+  ['plantilla', 'Estructura propia (asistente)'],
+  ...FORMATOS.map((f) => [f.id, f.nombre]),
+]);
 
 const FILTROS = [
   ['sin', 'Sin estructura'],
@@ -26,7 +32,7 @@ const FILTROS = [
 ];
 
 export function FacturasProveedoresPanel() {
-  const { store, toast, isAdmin } = useProductos();
+  const { store, toast, isAdmin, openModal } = useProductos();
   const [filas, setFilas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [filtro, setFiltro] = useState('sin');
@@ -124,16 +130,26 @@ export function FacturasProveedoresPanel() {
             </td>
             <td>
               {isAdmin ? (
-                <select
-                  id={`fp-formato-${f.id}`}
-                  aria-label={`Estructura de ${f.nombre}`}
-                  value={f.formato || ''}
-                  disabled={guardando === f.id}
-                  onChange={(e) => cambiarFormato(f, e.target.value)}
-                >
-                  <option value="">— Sin estructura —</option>
-                  {FORMATOS.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
-                </select>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select
+                    id={`fp-formato-${f.id}`}
+                    aria-label={`Estructura de ${f.nombre}`}
+                    value={f.formato || ''}
+                    disabled={guardando === f.id}
+                    onChange={(e) => cambiarFormato(f, e.target.value)}
+                  >
+                    <option value="">— Sin estructura (prueba la lectura automática) —</option>
+                    <option value="auto">Lectura automática</option>
+                    {f.tienePlantilla && <option value="plantilla">Estructura propia (asistente)</option>}
+                    {FORMATOS.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+                  </select>
+                  <Btn
+                    small
+                    onClick={() => openModal('asistenteFactura', { proveedorId: f.id, proveedorNombre: f.nombre, onListo: cargar })}
+                  >
+                    {f.tienePlantilla ? 'Rehacer con el asistente' : 'Asistente'}
+                  </Btn>
+                </div>
               ) : (
                 f.formato
                   ? <Pill pill="est-recibida" label={nombreFormato.get(f.formato) ?? f.formato} />
@@ -149,10 +165,10 @@ export function FacturasProveedoresPanel() {
       </Table>
 
       <div className={s.hint}>
-        <strong>Cómo sumar la estructura de un proveedor:</strong> mandame una o dos facturas PDF suyas de
-        muestra y la armo; queda para siempre. Si ese proveedor factura con el mismo sistema que otro que ya
-        tiene estructura (por ejemplo Tango), elegí ese formato acá y probá con una factura: si el total
-        cierra, sirve. <strong>Artículos que ya reconoce</strong> son los códigos del papel que ya quedaron
+        <strong>Cómo tiene estructura un proveedor, sin que nadie programe nada:</strong> la primera factura PDF
+        suya se intenta leer sola (<strong>lectura automática</strong>); si la suma cierra con el papel, la app te
+        ofrece dejarla así. Si no cierra, el <strong>Asistente</strong> te pide tocar un renglón de ejemplo y marcar
+        qué es cada parte (código, descripción, cantidad, precio, importe): se guarda y desde ahí se lee sola. <strong>Artículos que ya reconoce</strong> son los códigos del papel que ya quedaron
         asociados a tus productos: la primera factura de cada proveedor se asocia a mano, y de ahí en más
         se reconocen solos.
       </div>

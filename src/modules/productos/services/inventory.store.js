@@ -15,7 +15,6 @@
 import { httpClient, HttpError } from '@core/services/httpClient.js';
 import { leerClave, escribirClave, leerSesion } from '@core/auth/sesion.js';
 import { num, fmtTam } from '../domain/format.js';
-import { formatoDe } from '../domain/facturas/recetas.js';
 import { leerRenglonesPdf } from '../domain/facturas/leerRenglones.js';
 import { pdfjsDelNavegador } from '../domain/facturas/lineasPdf.js';
 
@@ -1277,7 +1276,8 @@ const papelFactura = (archivoId) => httpClient.urlProtegida(`/facturas/archivos/
  * servidor solo viaja lo leído (unos KB) para reconocer los productos. Solo
  * lectura — no toca nada; el alta precarga y la persona confirma.
  */
-async function leerRenglonesLectura(id) {
+/** El PDF de una factura de la bandeja, bajado con la sesión (para leerlo acá). */
+async function pdfDeLectura(id) {
   const lec = await lecturaFactura(id);
   const pdf = (lec.archivos || []).find((a) => a.mime === 'application/pdf');
   if (!pdf) {
@@ -1285,13 +1285,17 @@ async function leerRenglonesLectura(id) {
       ? 'Esta factura es una foto: por ahora los renglones se leen solo de PDFs digitales. Se carga a mano.'
       : 'Esta factura ya no tiene el archivo (se borra al cargarla). Agregala de nuevo para leerla.');
   }
-  const [pdfjs, datos] = await Promise.all([
-    pdfjsDelNavegador(),
-    httpClient.urlProtegida(`/facturas/archivos/${pdf.id}`).then((u) => fetch(u)).then((r) => r.arrayBuffer()),
-  ]);
-  const leida = await leerRenglonesPdf({ pdfjs, datos, formato: formatoDe(lec) });
+  const datos = await httpClient.urlProtegida(`/facturas/archivos/${pdf.id}`).then((u) => fetch(u)).then((r) => r.arrayBuffer());
+  return { lec, datos };
+}
+
+async function leerRenglonesLectura(id) {
+  const [{ lec, datos }, pdfjs] = await Promise.all([pdfDeLectura(id), pdfjsDelNavegador()]);
+  // El proveedor viaja en el detalle: su formato y, si la armó, su estructura propia.
+  const leida = await leerRenglonesPdf({ pdfjs, datos, proveedor: lec });
+  const extra = { fuente: leida.fuente, control: leida.control ?? null, confirmada: !!leida.confirmada, texto: leida.texto };
   if (!leida.formato) {
-    return { receta: null, cierra: false, encabezado: null, renglones: [], pie: null, avisos: leida.avisos, texto: leida.texto };
+    return { receta: null, cierra: false, encabezado: null, renglones: [], pie: null, avisos: leida.avisos, ...extra };
   }
   const propuesta = await httpClient.post(`/facturas/lecturas/${id}/emparejar`, {
     receta: leida.formato,
@@ -1300,12 +1304,14 @@ async function leerRenglonesLectura(id) {
     pie: leida.pie,
     avisos: leida.avisos,
   });
-  return { ...propuesta, texto: leida.texto };
+  return { ...propuesta, ...extra };
 }
 
 /* ---- La guía por proveedor de Procesamiento de facturas (28/9/2026) ---- */
 const facturasPorProveedor = () => httpClient.get('/facturas/proveedores');
 const formatoFacturaProveedor = (proveedorId, formato) => httpClient.put(`/facturas/proveedores/${proveedorId}/formato`, { formato });
+/** La estructura propia que armó el asistente (queda en uso para ese proveedor). */
+const plantillaFacturaProveedor = (proveedorId, plantilla) => httpClient.put(`/facturas/proveedores/${proveedorId}/plantilla`, { plantilla });
 const espacioFacturas = () => httpClient.get('/facturas/espacio');
 const liberarFacturas = () => httpClient.post('/facturas/liberar', {});
 
@@ -1386,7 +1392,7 @@ export const inventoryStore = {
   facturasReferenciables,
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
-  papelFactura, leerRenglonesLectura, facturasPorProveedor, formatoFacturaProveedor, espacioFacturas, liberarFacturas,
+  papelFactura, leerRenglonesLectura, facturasPorProveedor, formatoFacturaProveedor, plantillaFacturaProveedor, pdfDeLectura, espacioFacturas, liberarFacturas,
   pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
   enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria, costosEntradaCafeteria, depositoCafeteria,
   productosCafeteria, crearProductoCafeteria, editarProductoCafeteria, bajaProductoCafeteria,
