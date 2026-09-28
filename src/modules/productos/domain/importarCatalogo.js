@@ -161,7 +161,7 @@ export function categoriaProveedor(g, soloCargados) {
  * juntan y se importan como uno. Orden: el de más renglones primero — es el
  * que fija el precio del producto que no tenía ningún costo.
  */
-export function destinosDeProveedores(grupos, decision, padron, catalogo, costoNetoEntry = () => null) {
+export function destinosDeProveedores(grupos, decision, padron, catalogo, costoNetoEntry = () => null, opciones = {}) {
   const m = new Map();
   for (const g of grupos) {
     const d = decision[g.clave];
@@ -181,7 +181,7 @@ export function destinosDeProveedores(grupos, decision, padron, catalogo, costoN
     t.filas.push(...g.filas);
   }
   return [...m.values()]
-    .map((t) => ({ ...t, plan: armarPlanCostos(t.filas, catalogo, t.nuevo ? -1 : t.id, costoNetoEntry) }))
+    .map((t) => ({ ...t, plan: armarPlanCostos(t.filas, catalogo, t.nuevo ? -1 : t.id, costoNetoEntry, opciones) }))
     .sort((a, b) => b.filas.length - a.filas.length);
 }
 
@@ -295,7 +295,20 @@ const NO_MARCAS = new Set(['GRANEL', 'VARIOS', 'SIN MARCA', '']);
  * No crea productos: un código sin match no tiene de dónde sacar nombre,
  * marca ni categoría, así que queda listado aparte para cargarlo a mano.
  */
-export function armarPlanCostos(comprasFilas, catalogo, proveedorId, costoNetoEntry = () => null) {
+/**
+ * LO QUE NUNCA SE IMPORTA SOLO (28/9/2026, pedido del dueño: "que no me importe
+ * esto, puede haber errores"):
+ *  · `sin_costo`: el producto existe pero el archivo trae costo $0 (o un
+ *    descuento de 100%). Pisaría el costo real con cero — y con él el precio.
+ *  · `salto`: el costo nuevo es más de `SALTO_COSTO` veces el anterior, o menos
+ *    de su tercio: casi siempre un error de tipeo o de bulto en el sistema
+ *    viejo. Entra solo si se tilda a propósito (`incluirSaltos`).
+ * Los que no tienen producto ya no se importaban nunca (`no_encontrado`).
+ */
+export const SALTO_COSTO = 3;
+export const ESTADOS_QUE_SE_IMPORTAN = new Set(['actualiza', 'agrega']);
+
+export function armarPlanCostos(comprasFilas, catalogo, proveedorId, costoNetoEntry = () => null, { incluirSaltos = false } = {}) {
   const porCodigo = new Map((catalogo || []).map((p) => [String(p.codigoPropio ?? '').trim(), p]));
   const vistos = new Set();
   const items = [];
@@ -317,12 +330,23 @@ export function armarPlanCostos(comprasFilas, catalogo, proveedorId, costoNetoEn
     if (!prod) { filas.push({ codigo, nombre: '', estado: 'no_encontrado', netoUnit }); continue; }
     if (prod.estado === 'archivado') { filas.push({ codigo, nombre: prod.nombre, estado: 'archivado', netoUnit }); continue; }
 
-    vistos.add(codigo);
+    if (!(costo > 0) || !(netoUnit > 0)) {
+      filas.push({ codigo, nombre: prod.nombre, estado: 'sin_costo', netoUnit });
+      continue;
+    }
     const formatoPrevio = (prod.formatosCompra || prod.proveedores || []).find((f) => f.proveedorId === proveedorId);
+    const costoAnterior = formatoPrevio ? costoNetoEntry(formatoPrevio, prod.iva) : null;
+    const salto = costoAnterior > 0 && (netoUnit / costoAnterior > SALTO_COSTO || costoAnterior / netoUnit > SALTO_COSTO);
+    if (salto && !incluirSaltos) {
+      filas.push({ codigo, nombre: prod.nombre, estado: 'salto', costoAnterior, netoUnit });
+      continue;
+    }
+    vistos.add(codigo);
     filas.push({
       codigo, nombre: prod.nombre, estado: formatoPrevio ? 'actualiza' : 'agrega',
-      costoAnterior: formatoPrevio ? costoNetoEntry(formatoPrevio, prod.iva) : null,
+      costoAnterior,
       netoUnit,
+      salto,
     });
     items.push({
       codigoPropio: codigo,
@@ -340,6 +364,10 @@ export function armarPlanCostos(comprasFilas, catalogo, proveedorId, costoNetoEn
       noEncontrados: filas.filter((f) => f.estado === 'no_encontrado').length,
       archivados: filas.filter((f) => f.estado === 'archivado').length,
       repetidos: filas.filter((f) => f.estado === 'repetido').length,
+      sinCosto: filas.filter((f) => f.estado === 'sin_costo').length,
+      saltos: filas.filter((f) => f.estado === 'salto' || f.salto).length,
+      saltosFuera: filas.filter((f) => f.estado === 'salto').length,
+      noSeImportan: filas.filter((f) => !ESTADOS_QUE_SE_IMPORTAN.has(f.estado)).length,
     },
   };
 }

@@ -107,3 +107,26 @@ test('sin "solo cargados", el que no se parece a nadie queda "a decidir" (no se 
   assert.equal(categoriaProveedor(zeta, false), 'decidir');
   assert.equal(decisionInicialProveedores(g, false)['distribuidora zeta'], '');
 });
+
+test('NO se importan: sin producto, costo $0 ni saltos de más de ×3 (salvo que se incluyan a propósito)', async () => {
+  const { armarPlanCostos } = await import('./importarCatalogo.js');
+  const catalogo = [
+    { id: 1, codigoPropio: 'A', nombre: 'Normal', formatosCompra: [{ proveedorId: 9 }] },
+    { id: 2, codigoPropio: 'B', nombre: 'En cero', formatosCompra: [{ proveedorId: 9 }] },
+    { id: 3, codigoPropio: 'C', nombre: 'Salto x10', formatosCompra: [{ proveedorId: 9 }] },
+    { id: 4, codigoPropio: 'D', nombre: 'Baja a la décima', formatosCompra: [{ proveedorId: 9 }] },
+  ];
+  const f = (c, p) => ({ Codigo: c, PrecioLista: String(p), Cantidad: '1', CostoFlete: '0' });
+  const filas = [f('A', 110), f('B', 0), f('C', 1000), f('D', 10), f('ZZZ1010', 0), f('ZZZ9', 500)];
+  const costoAnterior = () => 100;
+  const plan = armarPlanCostos(filas, catalogo, 9, costoAnterior);
+  assert.deepEqual(plan.items.map((i) => i.codigoPropio), ['A'], 'solo entra el normal (100 → 110)');
+  const est = Object.fromEntries(plan.filas.map((x) => [x.codigo, x.estado]));
+  assert.equal(est.B, 'sin_costo', 'costo $0 no pisa el costo real');
+  assert.equal(est.C, 'salto', '100 → 1000 es un salto');
+  assert.equal(est.D, 'salto', '100 → 10 también');
+  assert.equal(est.ZZZ1010, 'no_encontrado');
+  assert.equal(plan.resumen.noSeImportan, 5);
+  const conSaltos = armarPlanCostos(filas, catalogo, 9, costoAnterior, { incluirSaltos: true });
+  assert.deepEqual(conSaltos.items.map((i) => i.codigoPropio).sort(), ['A', 'C', 'D'], 'tildando, los saltos entran; el $0 nunca');
+});

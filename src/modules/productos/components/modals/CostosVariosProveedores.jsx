@@ -63,6 +63,8 @@ export function CostosVariosProveedores({ archivo, soloCargados, onVolver }) {
    * solo los que tienen duda. Y cuáles ya se revisaron: la fila sugerida deja de
    * estar en amarillo cuando se la confirma ("Está bien") o se elige otra cosa. */
   const [filtro, setFiltro] = useState('todos');
+  /* Los saltos de costo grandes (×3) NO entran salvo que se tilde a propósito. */
+  const [incluirSaltos, setIncluirSaltos] = useState(false);
   const [revisados, setRevisados] = useState(() => new Set());
   const categoria = useMemo(
     () => Object.fromEntries(grupos.map((g) => [g.clave, categoriaProveedor(g, soloCargados)])),
@@ -81,15 +83,19 @@ export function CostosVariosProveedores({ archivo, soloCargados, onVolver }) {
    * se importan como uno. Orden: el de más renglones primero.
    */
   const destinos = useMemo(
-    () => destinosDeProveedores(grupos, decision, padron, store.state.productos, store.costoNetoEntry),
-    [grupos, decision, padron, store],
+    () => destinosDeProveedores(grupos, decision, padron, store.state.productos, store.costoNetoEntry, { incluirSaltos }),
+    [grupos, decision, padron, store, incluirSaltos],
   );
 
   const tot = destinos.reduce((a, t) => ({
     actualiza: a.actualiza + t.plan.resumen.actualiza,
     agrega: a.agrega + t.plan.resumen.agrega,
     noEncontrados: a.noEncontrados + t.plan.resumen.noEncontrados,
-  }), { actualiza: 0, agrega: 0, noEncontrados: 0 });
+    sinCosto: a.sinCosto + t.plan.resumen.sinCosto,
+    saltos: a.saltos + t.plan.resumen.saltos,
+    saltosFuera: a.saltosFuera + t.plan.resumen.saltosFuera,
+    noSeImportan: a.noSeImportan + t.plan.resumen.noSeImportan,
+  }), { actualiza: 0, agrega: 0, noEncontrados: 0, sinCosto: 0, saltos: 0, saltosFuera: 0, noSeImportan: 0 });
   const nuevos = destinos.filter((t) => t.nuevo);
 
   /* Productos SIN ningún costo que vienen de más de un proveedor: fija el
@@ -214,11 +220,31 @@ export function CostosVariosProveedores({ archivo, soloCargados, onVolver }) {
           </div>
         )}
         <div className={cx(s.callout, s.ok)}>
-          <strong>{destinos.length}</strong> proveedor(es) · <strong>{tot.actualiza}</strong> costo(s) se actualizan ·{' '}
-          <strong>{tot.agrega}</strong> se agregan
-          {tot.noEncontrados > 0 && <> · <strong>{tot.noEncontrados}</strong> código(s) sin producto (no se crean)</>}
+          <strong>{destinos.length}</strong> proveedor(es) · se importan <strong>{tot.actualiza}</strong> costo(s) que se
+          actualizan y <strong>{tot.agrega}</strong> que se agregan
           {nuevos.length > 0 && <> · se crean <strong>{nuevos.length}</strong> proveedor(es)</>}
         </div>
+        {tot.noSeImportan > 0 && (
+          <div className={cx(s.callout, s.info)}>
+            <strong>{tot.noSeImportan}</strong> renglón(es) <strong>NO se importan</strong> y no tocan nada:
+            {tot.noEncontrados > 0 && <> {tot.noEncontrados} sin producto con ese código en tu catálogo;</>}
+            {tot.sinCosto > 0 && <> {tot.sinCosto} con costo $0 en el archivo (no se pisa el costo que tienen);</>}
+            {tot.saltosFuera > 0 && <> {tot.saltosFuera} con un salto de costo de más de ×3 (casi siempre un error del archivo);</>}
+            {tot.noSeImportan - tot.noEncontrados - tot.sinCosto - tot.saltosFuera > 0 && (
+              <> {tot.noSeImportan - tot.noEncontrados - tot.sinCosto - tot.saltosFuera} repetidos o archivados;</>
+            )}
+            {' '}están en «Ver detalle» de cada proveedor, aparte.
+          </div>
+        )}
+        {tot.saltos > 0 && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: '0 0 12px' }}>
+            <input type="checkbox" checked={incluirSaltos} onChange={(e) => { setIncluirSaltos(e.target.checked); setConfirmando(false); }} style={{ width: 'auto' }} />
+            <span>
+              Importar también los <strong>{tot.saltos}</strong> con salto de costo de más de ×3 — solo si revisaste que son
+              aumentos o bajas reales.
+            </span>
+          </label>
+        )}
         {sinCostoCompartidos.length > 0 && (
           <div className={cx(s.callout, s.warn)}>
             <strong>{sinCostoCompartidos.length}</strong> producto(s) no tenían ningún costo y vienen de más de un
@@ -226,7 +252,7 @@ export function CostosVariosProveedores({ archivo, soloCargados, onVolver }) {
             alternativos y se cambia en la ficha del producto. Ej.: {sinCostoCompartidos.slice(0, 3).map((x) => `${x.nombre} (${x.provs[0]})`).join(' · ')}.
           </div>
         )}
-        <Table cols={[{ h: 'Proveedor' }, { h: 'Del archivo' }, { h: 'Actualiza', num: true }, { h: 'Agrega', num: true }, { h: 'Sin producto', num: true }, { h: '' }]}>
+        <Table cols={[{ h: 'Proveedor' }, { h: 'Del archivo' }, { h: 'Actualiza', num: true }, { h: 'Agrega', num: true }, { h: 'No se importan', num: true }, { h: '' }]}>
           {destinos.map((t) => (
             <FilaDestino key={t.key} t={t} abierto={abierto === t.key} alternar={() => setAbierto(abierto === t.key ? null : t.key)} />
           ))}
@@ -371,8 +397,20 @@ function FilaMapeo({ g, valor, padron, soloCargados, dudoso, revisado, onRevisad
   );
 }
 
+const MOTIVO_NO_SE_IMPORTA = {
+  no_encontrado: 'Sin producto con este código en tu catálogo',
+  sin_costo: 'El archivo trae costo $0: no se pisa el que tiene',
+  salto: 'El costo cambia más de ×3: revisalo (tildá arriba para incluirlo)',
+  archivado: 'El producto está archivado',
+  repetido: 'Código repetido en el archivo',
+  sin_codigo: 'Renglón sin código',
+};
+
 function FilaDestino({ t, abierto, alternar }) {
   const r = t.plan.resumen;
+  const [verFuera, setVerFuera] = useState(false);
+  const entran = t.plan.filas.filter((f) => f.estado === 'actualiza' || f.estado === 'agrega');
+  const fuera = t.plan.filas.filter((f) => f.estado !== 'actualiza' && f.estado !== 'agrega');
   return (
     <>
       <tr>
@@ -383,26 +421,49 @@ function FilaDestino({ t, abierto, alternar }) {
         <td className={s.hint} style={{ margin: 0 }}>{t.delArchivo.join(' · ')}</td>
         <td className={s.num}>{r.actualiza}</td>
         <td className={s.num}>{r.agrega}</td>
-        <td className={s.num}>{r.noEncontrados || ''}</td>
+        <td className={s.num}>{r.noSeImportan || ''}</td>
         <td><Btn small onClick={alternar}>{abierto ? 'Ocultar' : 'Ver detalle'}</Btn></td>
       </tr>
       {abierto && (
         <tr>
           <td colSpan={6} style={{ background: 'var(--crm-color-surface-2, rgba(0,0,0,.03))' }}>
+            <div className={s['section-title']} style={{ marginTop: 0 }}>Se importan ({entran.length})</div>
             <Table cols={[{ h: 'Código' }, { h: 'Producto' }, { h: 'Costo anterior', num: true }, { h: 'Costo nuevo', num: true }, { h: 'Estado' }]}>
-              {t.plan.filas.map((f, i) => (
+              {entran.map((f, i) => (
                 <tr key={i}>
-                  <td className={s.mono}>{f.codigo || '—'}</td>
-                  <td>{f.nombre || <span className={s.muted}>—</span>}</td>
+                  <td className={s.mono}>{f.codigo}</td>
+                  <td>{f.nombre}</td>
                   <td className={s.num}>{f.costoAnterior != null ? money(f.costoAnterior) : '—'}</td>
-                  <td className={s.num}>{f.netoUnit != null ? money(f.netoUnit) : '—'}</td>
-                  <td style={{ fontSize: 13 }}>{{
-                    actualiza: 'Actualiza el costo', agrega: 'Agrega el proveedor', no_encontrado: 'Sin producto con este código',
-                    archivado: 'Archivado', repetido: 'Repetido', sin_codigo: 'Sin código',
-                  }[f.estado]}</td>
+                  <td className={s.num}>{money(f.netoUnit)}</td>
+                  <td style={{ fontSize: 13 }}>
+                    {f.estado === 'actualiza' ? 'Actualiza el costo' : 'Agrega el proveedor'}
+                    {f.salto && <span style={{ color: 'var(--crm-color-warning)', fontWeight: 600 }}> · salto ×3 (incluido a propósito)</span>}
+                  </td>
                 </tr>
               ))}
             </Table>
+            {fuera.length > 0 && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0 6px' }}>
+                  <div className={s['section-title']} style={{ margin: 0 }}>No se importan ({fuera.length})</div>
+                  <Btn small onClick={() => setVerFuera((v) => !v)}>{verFuera ? 'Ocultar' : 'Ver cuáles'}</Btn>
+                </div>
+                <div className={s.hint} style={{ marginTop: 0 }}>Estos renglones no tocan nada: ni costos ni productos.</div>
+                {verFuera && (
+                  <Table cols={[{ h: 'Código' }, { h: 'Producto' }, { h: 'Costo actual', num: true }, { h: 'En el archivo', num: true }, { h: 'Por qué no se importa' }]}>
+                    {fuera.map((f, i) => (
+                      <tr key={i}>
+                        <td className={s.mono}>{f.codigo || '—'}</td>
+                        <td>{f.nombre || <span className={s.muted}>—</span>}</td>
+                        <td className={s.num}>{f.estado === 'salto' && f.costoAnterior != null ? money(f.costoAnterior) : '—'}</td>
+                        <td className={s.num}>{f.estado === 'salto' ? money(f.netoUnit) : '—'}</td>
+                        <td style={{ fontSize: 13, color: 'var(--crm-color-text-muted)' }}>{MOTIVO_NO_SE_IMPORTA[f.estado] ?? f.estado}</td>
+                      </tr>
+                    ))}
+                  </Table>
+                )}
+              </>
+            )}
           </td>
         </tr>
       )}

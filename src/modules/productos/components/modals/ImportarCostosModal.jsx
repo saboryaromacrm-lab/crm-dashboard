@@ -29,7 +29,9 @@ import { Btn, Table, s } from '../ui.jsx';
 const ETIQUETA_ESTADO = {
   actualiza: { texto: 'Actualiza el costo', color: 'var(--crm-color-success)' },
   agrega: { texto: 'Agrega el proveedor', color: 'var(--crm-color-success)' },
-  no_encontrado: { texto: 'No hay producto con este código', color: 'var(--crm-color-warning)' },
+  no_encontrado: { texto: 'No se importa: no hay producto con este código', color: 'var(--crm-color-text-muted)' },
+  sin_costo: { texto: 'No se importa: el archivo trae costo $0', color: 'var(--crm-color-text-muted)' },
+  salto: { texto: 'No se importa: el costo cambia más de ×3', color: 'var(--crm-color-warning)' },
   archivado: { texto: 'Está archivado', color: 'var(--crm-color-warning)' },
   repetido: { texto: 'Código repetido en el archivo', color: 'var(--crm-color-warning)' },
   sin_codigo: { texto: 'Sin código', color: 'var(--crm-color-warning)' },
@@ -49,6 +51,7 @@ export function ImportarCostosModal() {
   const [varios, setVarios] = useState(false);
   const [soloCargados, setSoloCargados] = useState(true);
   const [enVarios, setEnVarios] = useState(false);
+  const [incluirSaltos, setIncluirSaltos] = useState(false);
 
   const proveedores = store.state.proveedores.filter((p) => p.proveeMercaderia !== false);
 
@@ -86,8 +89,8 @@ export function ImportarCostosModal() {
 
   const plan = useMemo(() => {
     if (!archivo || !proveedorId) return null;
-    return armarPlanCostos(archivo.filas, store.state.productos, Number(proveedorId), store.costoNetoEntry);
-  }, [archivo, proveedorId, store]);
+    return armarPlanCostos(archivo.filas, store.state.productos, Number(proveedorId), store.costoNetoEntry, { incluirSaltos });
+  }, [archivo, proveedorId, store, incluirSaltos]);
 
   const continuar = () => {
     if (!archivo) { toast('Elegí el archivo de formatos de compra.', 'err'); return; }
@@ -321,7 +324,15 @@ export function ImportarCostosModal() {
             {plan.resumen.noEncontrados > 0 && <> · <strong>{plan.resumen.noEncontrados}</strong> sin producto</>}
             {plan.resumen.archivados > 0 && <> · {plan.resumen.archivados} archivado(s)</>}
             {plan.resumen.repetidos > 0 && <> · {plan.resumen.repetidos} repetido(s) en el archivo</>}
+            {plan.resumen.sinCosto > 0 && <> · {plan.resumen.sinCosto} con costo $0 (no se importan)</>}
+            {plan.resumen.saltosFuera > 0 && <> · {plan.resumen.saltosFuera} con salto de costo de más de ×3 (no se importan)</>}
           </div>
+          {plan.resumen.saltos > 0 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: '0 0 12px' }}>
+              <input type="checkbox" checked={incluirSaltos} onChange={(e) => setIncluirSaltos(e.target.checked)} style={{ width: 'auto' }} />
+              <span>Importar también los <strong>{plan.resumen.saltos}</strong> con salto de costo de más de ×3 — solo si revisaste que son reales.</span>
+            </label>
+          )}
 
           {plan.resumen.noEncontrados > 0 && (
             <div className={cx(s.callout, s.warn)}>
@@ -339,7 +350,7 @@ export function ImportarCostosModal() {
                   <td className={s.mono}>{f.codigo || '—'}</td>
                   <td>{f.nombre || <span className={s.muted}>—</span>}</td>
                   <td className={s.num}>{f.costoAnterior != null ? money(f.costoAnterior) : <span className={s.muted}>—</span>}</td>
-                  <td className={s.num}>{f.netoUnit != null ? money(f.netoUnit) : <span className={s.muted}>—</span>}</td>
+                  <td className={s.num}>{f.netoUnit != null && ['actualiza', 'agrega', 'salto'].includes(f.estado) ? money(f.netoUnit) : <span className={s.muted}>—</span>}</td>
                   <td style={{ color: et.color, fontWeight: 600, fontSize: 13 }}>{et.texto}</td>
                 </tr>
               );
