@@ -1,18 +1,23 @@
 /**
- * ACTUALIZAR FORMATOS DE VENTA DE UN PROVEEDOR (28/9/2026, pedido del dueño)
+ * ACTUALIZAR FORMATOS DE VENTA (28/9/2026, pedido del dueño)
  * ============================================================================
  * El hermano de «Actualizar costos»: se sube el «Listado de Formatos» de
- * Ventas del sistema viejo, filtrado por un proveedor, y se actualiza SOLO el
- * formato de venta (markup o precio fijo, y de a cuántas unidades se vende).
- * No toca costos, stock ni productos.
+ * Ventas del sistema viejo y se actualiza SOLO el formato de venta (markup o
+ * precio fijo, y de a cuántas unidades se vende). No toca costos, stock ni
+ * productos. Dos modos, igual que costos:
+ *
+ *  · UN PROVEEDOR: el archivo filtrado por proveedor en el sistema viejo; solo
+ *    se tocan los productos que en el CRM tienen a ese proveedor.
+ *  · TODOS (archivo completo, 29/9/2026): el archivo NO trae la columna
+ *    proveedor, así que cada producto se agrupa por el proveedor que tiene en
+ *    el CRM (el que fija el precio). La vista previa se ve por proveedor y se
+ *    puede excluir los que no se quieran tocar.
  *
  * Reglas fijadas con el dueño:
  *  · Se importan TODAS las listas del archivo. La que no existe en el CRM se
- *    CREA — al final del orden de preferencia, para que nunca le gane el
- *    precio a una lista que ya estaba (eso lo decide el servidor).
- *  · Solo los productos que en el CRM tienen a ESE proveedor en su formato de
- *    compra: el archivo no dice de quién es cada artículo, el proveedor elegido
- *    es el que acota qué se toca. El resto queda afuera, listado.
+ *    CREA — al final del orden de preferencia (eso lo decide el servidor).
+ *  · Dos listas del archivo que caen en la misma del CRM: gana la de más
+ *    renglones y las otras se marcan como choque (ver `resolverChoques`).
  *  · Las listas que el producto tiene y el archivo no trae, no se tocan.
  *
  * Todo lo que es plata se calcula con `cotizar` (el espejo de pricing del
@@ -43,6 +48,40 @@ export function modalidadDelCanal(canal, modalidades) {
 export const claveLista = (canal, numero) => `${String(canal ?? '').trim()}|${String(numero ?? '').trim()}`;
 
 /**
+ * DOS LISTAS DEL ARCHIVO, UNA DEL CRM (29/9/2026, archivo completo): el
+ * sistema viejo tiene "Distribución/mayorista 1" y "… 2", y las dos caen en la
+ * Mayorista 1 del CRM. Sin esto ganaba la que apareciera primero en el
+ * archivo — al azar. Se queda la de MÁS renglones (la que de verdad se usa);
+ * las otras quedan sin importar, marcadas como choque, para que la persona
+ * les elija otro destino si las quiere.
+ */
+export function resolverChoques(listas) {
+  const porDestino = new Map();
+  for (const l of listas) {
+    if (l.destino.tipo !== 'existente') continue;
+    const k = l.destino.listaId;
+    if (!porDestino.has(k)) porDestino.set(k, []);
+    porDestino.get(k).push(l);
+  }
+  const perdedoras = new Map();
+  for (const grupo of porDestino.values()) {
+    if (grupo.length < 2) continue;
+    const [ganadora, ...resto] = [...grupo].sort((a, b) => b.filas - a.filas);
+    for (const l of resto) perdedoras.set(l.clave, ganadora);
+  }
+  return listas.map((l) => {
+    const g = perdedoras.get(l.clave);
+    return g
+      ? {
+        ...l,
+        choque: true,
+        destino: { tipo: 'afuera', motivo: `va a la misma lista que «${g.canal} ${g.numero}», que tiene más renglones: elegile otro destino si la querés importar` },
+      }
+      : l;
+  });
+}
+
+/**
  * LAS LISTAS DEL ARCHIVO y adónde va cada una, por defecto.
  *
  * Misma modalidad y mismo número ("Minorista 10" → Minorista 10). La única
@@ -60,8 +99,8 @@ export function listasDelArchivo(filas, catalogo) {
     if (!porClave.has(clave)) porClave.set(clave, { clave, canal: String(f.Canal ?? '').trim(), numero: Number(f.NroLista) || 0, filas: 0 });
     porClave.get(clave).filas += 1;
   }
-  return [...porClave.values()]
-    .sort((a, b) => a.numero - b.numero)
+  const resultado = [...porClave.values()]
+    .sort((a, b) => b.filas - a.filas || a.numero - b.numero)
     .map((l) => {
       const mod = modalidadDelCanal(l.canal, modalidades);
       const deMod = mod ? listas.filter((x) => x.modalidadId === mod.id) : [];
@@ -76,6 +115,35 @@ export function listasDelArchivo(filas, catalogo) {
       else destino = { tipo: 'afuera', motivo: `no hay una modalidad para el canal «${l.canal}»` };
       return { ...l, modalidad: mod, destino };
     });
+  return resolverChoques(resultado);
+}
+
+const RE_TAM_NOMBRE = /\s*X\s?[\d.,]+\s?(KG|K|GRS|GS|G)\b.*$/;
+
+/**
+ * EL ÍNDICE DEL CATÁLOGO, armado UNA vez (29/9/2026). El archivo completo trae
+ * miles de renglones: buscar cada uno recorriendo el catálogo entero eran
+ * decenas de millones de comparaciones. Con mapas es una búsqueda por renglón.
+ */
+export function indiceArticulos(productos) {
+  const porCodigo = new Map();
+  const porBarras = new Map();
+  const porBase = new Map();
+  for (const p of productos || []) {
+    const c = String(p.codigoPropio ?? '').trim();
+    if (c && !porCodigo.has(c)) porCodigo.set(c, p);
+    const pres = p.presentaciones || [];
+    for (const x of pres) {
+      const b = String(x.codigoBarras ?? '').trim();
+      if (b && !porBarras.has(b)) porBarras.set(b, { prod: p, pres: x });
+    }
+    if (pres.length) {
+      const base = norm(p.nombre).replace(RE_TAM_NOMBRE, '').trim();
+      if (!porBase.has(base)) porBase.set(base, []);
+      porBase.get(base).push(p);
+    }
+  }
+  return { porCodigo, porBarras, porBase };
 }
 
 /**
@@ -83,26 +151,19 @@ export function listasDelArchivo(filas, catalogo) {
  * el PAQUETE fraccionado — primero por el código de barras de su etiqueta y
  * después por nombre + tamaño contra su madre ("MIX COCO NUTS X250G" → el
  * paquete de 250 g de Mix Coco Nuts), igual que lo ató el catálogo completo.
+ * Acepta el catálogo o su índice (el plan pasa el índice, armado una vez).
  */
-export function buscarArticulo(fila, productos) {
-  const codigo = String(fila.Codigo ?? '').trim();
-  const prod = (productos || []).find((p) => String(p.codigoPropio ?? '').trim() === codigo);
+export function buscarArticulo(fila, productosOIndice) {
+  const idx = Array.isArray(productosOIndice) ? indiceArticulos(productosOIndice) : productosOIndice;
+  const prod = idx.porCodigo.get(String(fila.Codigo ?? '').trim());
   if (prod) return { prod, pres: null };
 
-  const barras = String(fila.CodBar ?? '').trim();
-  if (barras) {
-    for (const p of productos || []) {
-      const pres = (p.presentaciones || []).find((x) => String(x.codigoBarras ?? '').trim() === barras);
-      if (pres) return { prod: p, pres };
-    }
-  }
+  const porBarras = idx.porBarras.get(String(fila.CodBar ?? '').trim());
+  if (porBarras) return porBarras;
+
   const t = partirTamano(String(fila.Producto ?? ''));
   if (t) {
-    const base = norm(t.base);
-    for (const p of productos || []) {
-      if (!(p.presentaciones || []).length) continue;
-      const n = norm(p.nombre).replace(/\s*X\s?[\d.,]+\s?(KG|K|GRS|GS|G)\b.*$/, '').trim();
-      if (n !== base) continue;
+    for (const p of idx.porBase.get(norm(t.base)) || []) {
       const pres = p.presentaciones.find((x) => Math.abs((Number(x.tamKg) || 0) - t.kg) < 1e-6);
       if (pres) return { prod: p, pres };
     }
@@ -136,10 +197,14 @@ export const ESTADOS_FV = {
  * EL PLAN: qué pasa con cada renglón, antes de tocar nada.
  *
  * `destinos`: clave de lista del archivo → destino elegido en pantalla (ver
- * `listasDelArchivo`). `esDelProveedor(prod)`: el filtro por proveedor.
- * `cotizar(prod, pres, fila)` → precio final del formato, o null.
+ * `listasDelArchivo`). `esDelProveedor(prod)`: el filtro por proveedor (null =
+ * archivo completo, no se filtra). `proveedorDe(prod)` → {id, nombre} o null:
+ * con quién se agrupa cada renglón. `cotizar(prod, pres, fila)` → precio final.
  */
-export function armarPlanFormatosVenta(filas, { productos, destinos, esDelProveedor, cotizar = () => null }) {
+export function armarPlanFormatosVenta(filas, {
+  productos, destinos, esDelProveedor = null, proveedorDe = () => null, cotizar = () => null,
+}) {
+  const idx = indiceArticulos(productos);
   const items = [];
   const afuera = [];
   const vistos = new Set();
@@ -163,12 +228,12 @@ export function armarPlanFormatosVenta(filas, { productos, destinos, esDelProvee
     }
     if (nueva.modoPrecio === 'markup' && !Number.isFinite(nueva.markup)) { fuera('markup ilegible'); continue; }
 
-    const art = buscarArticulo(f, productos);
+    const art = buscarArticulo(f, idx);
     if (!art) { fuera('no hay en el CRM un producto ni un paquete con este código'); continue; }
     const { prod, pres } = art;
     const nombre = pres ? `${prod.nombre} · paquete ${pres.tamKg >= 1 ? `${pres.tamKg} kg` : `${Math.round(pres.tamKg * 1000)} g`}` : prod.nombre;
     if (prod.estado === 'archivado') { fuera('está archivado', { nombre }); continue; }
-    if (!esDelProveedor(prod)) { fuera('en el CRM no tiene a este proveedor en su formato de compra', { nombre }); continue; }
+    if (esDelProveedor && !esDelProveedor(prod)) { fuera('en el CRM no tiene a este proveedor en su formato de compra', { nombre }); continue; }
 
     const ambito = `${prod.id}:${pres?.id ?? ''}`;
     // Por la lista DESTINO, no la del archivo: si dos listas del archivo van a
@@ -180,12 +245,15 @@ export function armarPlanFormatosVenta(filas, { productos, destinos, esDelProvee
     const actuales = (pres ? pres.listas : prod.listas) || [];
     const actual = destino.tipo === 'existente' ? actuales.find((l) => l.listaId === destino.listaId) || null : null;
     const estado = !actual ? 'agrega' : (mismaFila(actual, nueva) ? 'igual' : 'cambia');
+    const prov = proveedorDe(prod);
 
     items.push({
       codigo,
       nombre,
       productoId: prod.id,
       presentacionId: pres?.id ?? null,
+      proveedorId: prov?.id ?? 0,
+      proveedor: prov?.nombre ?? 'Sin proveedor en el CRM',
       clave,
       listaArchivo: etiquetaArchivo,
       destino,
@@ -198,27 +266,31 @@ export function armarPlanFormatosVenta(filas, { productos, destinos, esDelProvee
     });
   }
 
-  return {
-    items,
-    afuera,
-    resumen: {
-      cambia: items.filter((i) => i.estado === 'cambia').length,
-      agrega: items.filter((i) => i.estado === 'agrega').length,
-      igual: items.filter((i) => i.estado === 'igual').length,
-      afuera: afuera.length,
-    },
-  };
+  const resumen = { cambia: 0, agrega: 0, igual: 0, afuera: afuera.length };
+  for (const i of items) resumen[i.estado] += 1;
+  return { items, afuera, resumen };
+}
+
+/** El plan agrupado por proveedor (archivo completo): qué cambia de cada uno. */
+export function resumenPorProveedor(plan) {
+  const m = new Map();
+  for (const i of plan.items) {
+    if (!m.has(i.proveedorId)) m.set(i.proveedorId, { id: i.proveedorId, nombre: i.proveedor, cambia: 0, agrega: 0, igual: 0 });
+    m.get(i.proveedorId)[i.estado] += 1;
+  }
+  return [...m.values()].sort((a, b) => (b.cambia + b.agrega) - (a.cambia + a.agrega) || String(a.nombre).localeCompare(String(b.nombre)));
 }
 
 /**
  * Lo que viaja al servidor: solo lo que cambia o se agrega, con la lista ya
  * resuelta — `listaId` si existe, `listaNueva` (su clave) si hay que crearla.
+ * `excluidos`: proveedores que la persona sacó de la importación completa.
  */
-export function cuerpoImportacion(plan, listas, proveedorId) {
-  const aEnviar = plan.items.filter((i) => i.estado !== 'igual');
+export function cuerpoImportacion(plan, listas, proveedorId, { excluidos = new Set() } = {}) {
+  const aEnviar = plan.items.filter((i) => i.estado !== 'igual' && !excluidos.has(i.proveedorId));
   const clavesNuevas = new Set(aEnviar.filter((i) => i.destino.tipo === 'nueva').map((i) => i.clave));
   return {
-    proveedorId,
+    ...(proveedorId ? { proveedorId } : { todos: true }),
     listasNuevas: listas
       .filter((l) => clavesNuevas.has(l.clave))
       .map((l) => ({ clave: l.clave, modalidadId: l.destino.modalidadId, numero: l.destino.numero, nombre: l.destino.nombre })),

@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  armarPlanFormatosVenta, buscarArticulo, cuerpoImportacion, filaDelArchivo, listasDelArchivo,
+  armarPlanFormatosVenta, buscarArticulo, cuerpoImportacion, filaDelArchivo, listasDelArchivo, resumenPorProveedor,
 } from './importarFormatosVenta.js';
 
 const CATALOGO = {
@@ -100,3 +100,52 @@ test('dos listas del archivo al mismo destino del CRM: la segunda queda afuera, 
   assert.equal(plan.items[0].despues.markup, 45);
   assert.match(plan.afuera[0].motivo, /ya carga esta lista/);
 });
+
+/* ---------------- Archivo completo, todos los proveedores (29/9/2026) ---------------- */
+
+test('choque: dos listas del archivo que caen en la misma del CRM — gana la de más renglones', () => {
+  const archivo = [
+    ...Array(5).fill(0).map(() => fila('1', 'x', 'Distribucion/mayorista', 2)),
+    fila('1', 'x', 'Distribucion/mayorista', 1),
+  ];
+  const ls = listasDelArchivo(archivo, CATALOGO);
+  const d = Object.fromEntries(ls.map((l) => [l.clave, l]));
+  assert.deepEqual(d['Distribucion/mayorista|2'].destino, { tipo: 'existente', listaId: 50 });
+  assert.equal(d['Distribucion/mayorista|1'].choque, true);
+  assert.equal(d['Distribucion/mayorista|1'].destino.tipo, 'afuera');
+  assert.match(d['Distribucion/mayorista|1'].destino.motivo, /misma lista/);
+});
+
+test('archivo completo: sin filtro de proveedor, agrupado por el proveedor del CRM y con exclusión', () => {
+  const archivo = [
+    fila('100', 'ACEITE DE CHIA', 'Minorista', 1, { MarkUp__: '45.00 %' }),
+    fila('400', 'DE OTRO', 'Minorista', 1),
+    fila('999', 'NO EXISTE', 'Minorista', 1),
+  ];
+  const destinos = Object.fromEntries(listasDelArchivo(archivo, CATALOGO).map((l) => [l.clave, l.destino]));
+  const nombres = { 7: 'Biosalud', 9: 'Otro SA' };
+  const plan = armarPlanFormatosVenta(archivo, {
+    productos: PRODUCTOS, destinos, esDelProveedor: null,
+    proveedorDe: (p) => ({ id: p.formatosCompra[0].proveedorId, nombre: nombres[p.formatosCompra[0].proveedorId] }),
+  });
+  assert.equal(plan.items.length, 2, 'entran los de cualquier proveedor');
+  assert.deepEqual(resumenPorProveedor(plan).map((r) => [r.nombre, r.cambia + r.agrega]), [['Biosalud', 1], ['Otro SA', 1]]);
+  const cuerpo = cuerpoImportacion(plan, listasDelArchivo(archivo, CATALOGO), null, { excluidos: new Set([9]) });
+  assert.equal(cuerpo.todos, true);
+  assert.equal(cuerpo.proveedorId, undefined);
+  assert.deepEqual(cuerpo.items.map((i) => i.productoId), [1], 'el proveedor excluido no viaja');
+});
+
+test('índice: miles de renglones contra el catálogo en un instante', () => {
+  const productos = Array.from({ length: 3000 }, (_, i) => ({
+    id: i + 1, codigoPropio: `C${i}`, nombre: `Producto ${i}`, estado: 'activo', listas: [], formatosCompra: [{ proveedorId: 7 }],
+  }));
+  const archivo = Array.from({ length: 7000 }, (_, i) => fila(`C${i % 3500}`, 'x', 'Minorista', 1));
+  const destinos = Object.fromEntries(listasDelArchivo(archivo, CATALOGO).map((l) => [l.clave, l.destino]));
+  const t0 = Date.now();
+  const plan = armarPlanFormatosVenta(archivo, { productos, destinos });
+  assert.ok(Date.now() - t0 < 1500, `tardó ${Date.now() - t0} ms`);
+  assert.equal(plan.items.length, 3000);
+  assert.equal(buscarArticulo(fila('C10', 'x', 'Minorista', 1), productos).prod.id, 11, 'también acepta el catálogo directo');
+});
+

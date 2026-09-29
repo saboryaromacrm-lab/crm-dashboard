@@ -1,11 +1,16 @@
 /**
- * ACTUALIZAR FORMATOS DE VENTA DE UN PROVEEDOR (28/9/2026, pedido del dueño)
+ * ACTUALIZAR FORMATOS DE VENTA (28/9/2026, pedido del dueño)
  * ============================================================================
- * El «Listado de Formatos» de Ventas del sistema viejo, filtrado por proveedor.
- * Toca SOLO el formato de venta: markup o precio fijo, y de a cuántas unidades
- * se vende. Las reglas viven en `domain/importarFormatosVenta.js`; acá se
- * eligen el proveedor, el archivo y adónde va cada lista, y se muestra todo
- * antes de tocar nada.
+ * El «Listado de Formatos» de Ventas del sistema viejo. Toca SOLO el formato
+ * de venta: markup o precio fijo, y de a cuántas unidades se vende. Dos modos,
+ * igual que «Actualizar costos»:
+ *  · UN PROVEEDOR: el archivo filtrado por proveedor en el sistema viejo.
+ *  · TODOS (archivo completo, 29/9/2026): el archivo no trae proveedor, así
+ *    que cada producto se agrupa por el que tiene en el CRM; se ve el resumen
+ *    por proveedor y se puede excluir los que no se quieran tocar.
+ * Las reglas viven en `domain/importarFormatosVenta.js`; acá se eligen el
+ * modo, el archivo y adónde va cada lista, y se muestra todo antes de tocar
+ * nada. Con miles de renglones, las tablas van paginadas.
  */
 import { useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
@@ -13,10 +18,10 @@ import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num as fmtNum } from '../../domain/format.js';
 import { leerTexto, parseCsv, tipoDeArchivo } from '../../domain/importarCatalogo.js';
 import {
-  ESTADOS_FV, armarPlanFormatosVenta, cuerpoImportacion, listasDelArchivo,
+  ESTADOS_FV, armarPlanFormatosVenta, cuerpoImportacion, listasDelArchivo, resumenPorProveedor,
 } from '../../domain/importarFormatosVenta.js';
 import { ModalShell } from '../Modal.jsx';
-import { Btn, Table, s } from '../ui.jsx';
+import { Btn, Table, usePaginado, s } from '../ui.jsx';
 
 const normNombre = (x) => String(x ?? '').toUpperCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[^A-Z0-9]/g, '');
 
@@ -33,6 +38,9 @@ const COLOR_ESTADO = {
   igual: 'var(--crm-color-text-muted)',
 };
 
+/** Un archivo con más renglones que esto es, casi seguro, el completo. */
+const RENGLONES_ARCHIVO_COMPLETO = 2000;
+
 export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = null }) {
   const { store, closeModal, toast } = useProductos();
   const [paso, setPaso] = useState(1);
@@ -40,6 +48,11 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
   const [leyendo, setLeyendo] = useState(false);
   /* Desde la guía por proveedor llega elegido: el archivo no lo pisa. */
   const [proveedorId, setProveedorId] = useState(proveedorInicial ? String(proveedorInicial) : '');
+  /** Archivo completo (todos los proveedores) o de uno solo. */
+  const [varios, setVarios] = useState(false);
+  /** Proveedores sacados de la importación completa. */
+  const [excluidos, setExcluidos] = useState(() => new Set());
+  const [filtroProv, setFiltroProv] = useState('');
   /** clave de lista del archivo → valor del selector ('L49', 'nueva', 'afuera'). */
   const [eleccion, setEleccion] = useState({});
   const [filtro, setFiltro] = useState('cambios');
@@ -49,6 +62,7 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
   const [resultado, setResultado] = useState(null);
 
   const proveedores = store.state.proveedores.filter((p) => p.proveeMercaderia !== false);
+  const nombreDeProv = useMemo(() => new Map(store.state.proveedores.map((p) => [p.id, p.nombre])), [store.state.proveedores]);
   /* Memorizado: un objeto nuevo en cada render hacía recalcular la vista
      previa entera (miles de productos) con cada tecla o clic. */
   const catalogo = useMemo(
@@ -68,10 +82,14 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
       } else {
         setArchivo({ nombre: file.name, filas });
         setEleccion({});
-        /* El sistema viejo pone el proveedor en el NOMBRE del archivo
+        setExcluidos(new Set());
+        /* El completo se reconoce por el nombre o por el tamaño: se pasa solo
+           a "todos". El de un proveedor trae su nombre en el archivo
            ("… Formatos BIOSALUD.csv"): si coincide con uno del padrón, se
            preselecciona. Gana el nombre más largo ("Sol Azteca" antes que "Sol"). */
-        if (!proveedorId) {
+        const esCompleto = /complet/i.test(file.name) || filas.length > RENGLONES_ARCHIVO_COMPLETO;
+        if (esCompleto && !proveedorInicial) setVarios(true);
+        if (!proveedorId && !esCompleto) {
           const n = normNombre(file.name);
           const cand = proveedores
             .filter((p) => normNombre(p.nombre).length >= 3 && n.includes(normNombre(p.nombre)))
@@ -91,35 +109,56 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
     return listasDelArchivo(archivo.filas, catalogo).map((l) => {
       const e = eleccion[l.clave];
       if (!e) return l;
-      if (e === 'afuera') return { ...l, destino: { tipo: 'afuera', motivo: 'elegiste no importar esta lista' } };
+      if (e === 'afuera') return { ...l, choque: false, destino: { tipo: 'afuera', motivo: 'elegiste no importar esta lista' } };
       if (e === 'nueva') {
-        return { ...l, destino: { tipo: 'nueva', modalidadId: l.modalidad.id, numero: l.numero, nombre: `lista ${l.numero} del sistema viejo` } };
+        return { ...l, choque: false, destino: { tipo: 'nueva', modalidadId: l.modalidad.id, numero: l.numero, nombre: `lista ${l.numero} del sistema viejo` } };
       }
-      return { ...l, destino: { tipo: 'existente', listaId: Number(e.slice(1)) } };
+      return { ...l, choque: false, destino: { tipo: 'existente', listaId: Number(e.slice(1)) } };
     });
   }, [archivo, catalogo, eleccion]);
 
   const plan = useMemo(() => {
-    if (!archivo || !proveedorId) return null;
+    if (!archivo || (!varios && !proveedorId)) return null;
     const provId = Number(proveedorId);
     const destinos = Object.fromEntries(listas.map((l) => [l.clave, l.destino]));
     return armarPlanFormatosVenta(archivo.filas, {
       productos: store.state.productos,
       destinos,
-      esDelProveedor: (p) => (p.formatosCompra || p.proveedores || []).some((f) => f.proveedorId === provId),
+      esDelProveedor: varios ? null : (p) => (p.formatosCompra || p.proveedores || []).some((f) => f.proveedorId === provId),
+      /* Con quién se agrupa: el proveedor que fija el precio (o el primero). */
+      proveedorDe: (p) => {
+        const fs = p.formatosCompra || p.proveedores || [];
+        const f = fs.find((x) => x.usarParaPrecio) || fs[0];
+        return f ? { id: f.proveedorId, nombre: nombreDeProv.get(f.proveedorId) ?? `Proveedor ${f.proveedorId}` } : null;
+      },
       cotizar: (prod, pres, fila) => {
         const costo = pres ? store.costoPrecio(prod) * store.escalaPaquete(pres.tamKg, prod.merma) : undefined;
         const v = store.ventaFormato(prod, fila, costo);
         return v.finalFormato > 0 ? v.finalFormato : null;
       },
     });
-  }, [archivo, proveedorId, listas, store]);
+  }, [archivo, varios, proveedorId, listas, store, nombreDeProv]);
 
-  const aImportar = plan ? plan.resumen.cambia + plan.resumen.agrega : 0;
+  const porProveedor = useMemo(() => (plan && varios ? resumenPorProveedor(plan) : []), [plan, varios]);
+  /* Lo que de verdad va: sin los proveedores excluidos. */
+  const efectivos = useMemo(() => (plan ? plan.items.filter((i) => !excluidos.has(i.proveedorId)) : []), [plan, excluidos]);
+  const cuenta = useMemo(() => {
+    const c = { cambia: 0, agrega: 0, igual: 0 };
+    for (const i of efectivos) c[i.estado] += 1;
+    return c;
+  }, [efectivos]);
+  const aImportar = cuenta.cambia + cuenta.agrega;
+
+  const visibles = useMemo(() => efectivos.filter((i) => (!filtroProv || String(i.proveedorId) === filtroProv)
+    && (filtro === 'todos' ? true : filtro === 'cambios' ? i.estado !== 'igual' : i.estado === filtro)), [efectivos, filtro, filtroProv]);
+  const pag = usePaginado(visibles, 'fv-importar', `${filtro}|${filtroProv}`);
+  const pagAfuera = usePaginado(plan?.afuera ?? [], 'fv-afuera', String(plan?.afuera.length ?? 0));
+  const pagSaltados = usePaginado(resultado?.saltados ?? [], 'fv-saltados', '');
+
   const nuevasUsadas = plan
-    ? listas.filter((l) => l.destino.tipo === 'nueva' && plan.items.some((i) => i.clave === l.clave && i.estado !== 'igual'))
+    ? listas.filter((l) => l.destino.tipo === 'nueva' && efectivos.some((i) => i.clave === l.clave && i.estado !== 'igual'))
     : [];
-  const nombreProv = proveedores.find((p) => String(p.id) === String(proveedorId))?.nombre ?? '';
+  const nombreProv = varios ? 'todos los proveedores' : (proveedores.find((p) => String(p.id) === String(proveedorId))?.nombre ?? '');
   const etiquetaDestino = (l) => {
     if (l.destino.tipo === 'existente') return listasActivas.find((x) => x.id === l.destino.listaId)?.etiqueta ?? 'lista';
     if (l.destino.tipo === 'nueva') return `${l.modalidad?.nombre ?? ''} ${l.destino.numero} (nueva)`;
@@ -129,8 +168,17 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
 
   const continuar = () => {
     if (!archivo) { toast('Elegí el archivo de formatos de venta.', 'err'); return; }
-    if (!proveedorId) { toast('Elegí de qué proveedor es el archivo.', 'err'); return; }
+    if (!varios && !proveedorId) { toast('Elegí de qué proveedor es el archivo, o marcá "Todos los proveedores".', 'err'); return; }
     setPaso(2);
+  };
+
+  const alternarProv = (id) => {
+    setConfirmando(false);
+    setExcluidos((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
   };
 
   /* Segunda confirmación y candado: cambia precios de góndola de muchos
@@ -141,12 +189,12 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
     if (enVuelo.current) return;
     enVuelo.current = true;
     setGuardando(true);
-    const res = await store.importarFormatosVenta(cuerpoImportacion(plan, listas, Number(proveedorId)));
+    const res = await store.importarFormatosVenta(cuerpoImportacion(plan, listas, varios ? null : Number(proveedorId), { excluidos }));
     setGuardando(false);
     enVuelo.current = false;
     if (!res.ok) { setConfirmando(false); toast(res.error || 'No se pudo importar.', 'err'); return; }
     setResultado(res);
-    toast(aImportar ? `${(res.actualizados ?? 0) + (res.agregados ?? 0)} formato(s) de venta importado(s).` : 'Proveedor marcado como revisado: ya estaba al día.', 'ok');
+    toast(aImportar ? `${fmtNum((res.actualizados ?? 0) + (res.agregados ?? 0), 0)} formato(s) de venta importado(s).` : 'Marcado como revisado: ya estaba al día.', 'ok');
   };
 
   /* ------------------------------- resultado ------------------------------- */
@@ -154,9 +202,10 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
     return (
       <ModalShell title="Formatos de venta actualizados" wide onClose={closeModal} footer={[{ texto: 'Listo', clase: 'btn-primary', onClick: closeModal }]}>
         <div className={cx(s.callout, s.ok)}>
-          <strong>{resultado.actualizados ?? 0}</strong> formato(s) actualizado(s) y{' '}
-          <strong>{resultado.agregados ?? 0}</strong> agregado(s), de <strong>{resultado.proveedor}</strong>.
+          <strong>{fmtNum(resultado.actualizados ?? 0, 0)}</strong> formato(s) actualizado(s) y{' '}
+          <strong>{fmtNum(resultado.agregados ?? 0, 0)}</strong> agregado(s), de <strong>{resultado.proveedor}</strong>.
           Los precios que cambiaron quedaron en la evolución de precios.
+          {resultado.proveedoresAnotados > 1 && <> Quedó anotado en la guía de <strong>{resultado.proveedoresAnotados}</strong> proveedores.</>}
         </div>
         {resultado.listasCreadas?.length > 0 && (
           <div className={cx(s.callout, s.info)}>
@@ -167,9 +216,9 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
         )}
         {resultado.saltados?.length > 0 && (
           <>
-            <div className={s['section-title']}>No se importaron ({resultado.saltados.length})</div>
-            <Table cols={[{ h: 'Código' }, { h: 'Producto' }, { h: 'Por qué' }]}>
-              {resultado.saltados.map((x, i) => (
+            <div className={s['section-title']}>No se importaron ({fmtNum(resultado.saltados.length, 0)})</div>
+            <Table cols={[{ h: 'Código' }, { h: 'Producto' }, { h: 'Por qué' }]} pag={pagSaltados}>
+              {pagSaltados.visibles.map((x, i) => (
                 <tr key={i}><td className={s.mono}>{x.codigo || '—'}</td><td>{x.nombre || '—'}</td><td>{x.motivo}</td></tr>
               ))}
             </Table>
@@ -182,9 +231,9 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
   const footer = paso === 2
     ? [
       { texto: 'Volver', clase: 'btn-ghost', onClick: () => { setConfirmando(false); setPaso(1); } },
-      aImportar || !plan?.items.length
+      aImportar || !efectivos.length
         ? {
-          texto: guardando ? 'Importando…' : confirmando ? 'Sí, importar' : `Importar ${aImportar} formato(s)…`,
+          texto: guardando ? 'Importando…' : confirmando ? 'Sí, importar' : `Importar ${fmtNum(aImportar, 0)} formato(s)…`,
           clase: 'btn-primary',
           onClick: guardando || !aImportar ? () => {} : importar,
         }
@@ -197,37 +246,49 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
       { texto: 'Continuar', clase: 'btn-primary', onClick: continuar },
     ];
 
-  const visibles = plan
-    ? plan.items.filter((i) => (filtro === 'todos' ? true : filtro === 'cambios' ? i.estado !== 'igual' : i.estado === filtro))
-    : [];
-
   return (
     <ModalShell
-      title="Actualizar formatos de venta de un proveedor"
-      subtitle={paso === 1 ? 'Paso 1 de 2 · Proveedor y archivo' : 'Paso 2 de 2 · Listas y vista previa'}
+      title={varios ? 'Actualizar formatos de venta de todos los proveedores' : 'Actualizar formatos de venta de un proveedor'}
+      subtitle={paso === 1 ? 'Paso 1 de 2 · Archivo' : 'Paso 2 de 2 · Listas y vista previa'}
       size="lg"
       onClose={closeModal}
       footer={footer}
     >
       {paso === 1 && (
         <>
-          <div className={cx(s.callout, s.info)}>
-            Un solo archivo: el <strong>Listado de Formatos</strong> de Ventas que exporta el sistema
-            viejo, de un proveedor. Se actualiza <strong>solo el formato de venta</strong> (markup o
-            precio fijo, y de a cuántas unidades se vende) de los productos que en el CRM tienen a ese
-            proveedor. No toca costos ni stock, y las listas que el producto tiene y el archivo no
-            trae quedan como están.
+          {/* Igual que costos: los dos modos a la vista desde que se abre. */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+            <Btn variant={!varios ? 'btn-primary' : 'btn-ghost'} onClick={() => setVarios(false)}>Un proveedor</Btn>
+            <Btn variant={varios ? 'btn-primary' : 'btn-ghost'} onClick={() => setVarios(true)}>Todos los proveedores (archivo completo)</Btn>
           </div>
 
-          <div className={s.field} style={{ marginBottom: 14 }}>
-            <label htmlFor="fv-proveedor">Proveedor</label>
-            <select id="fv-proveedor" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-              <option value="">— Elegí el proveedor —</option>
-              {proveedores.slice().sort((a, b) => a.nombre.localeCompare(b.nombre)).map((p) => (
-                <option key={p.id} value={p.id}>{p.nombre}</option>
-              ))}
-            </select>
+          <div className={cx(s.callout, s.info)}>
+            {varios ? (
+              <>
+                Un solo archivo: el <strong>Listado de Formatos</strong> de Ventas <strong>completo</strong>. Como no
+                trae el proveedor, cada producto se agrupa por el que tiene en el CRM: en la vista previa ves qué
+                cambia de cada proveedor y podés <strong>excluir</strong> los que no quieras tocar.
+              </>
+            ) : (
+              <>
+                Un solo archivo: el <strong>Listado de Formatos</strong> de Ventas de un proveedor. Se actualiza solo
+                el formato de venta de los productos que en el CRM tienen a ese proveedor.
+              </>
+            )}
+            {' '}No toca costos ni stock, y las listas que el producto tiene y el archivo no trae quedan como están.
           </div>
+
+          {!varios && (
+            <div className={s.field} style={{ marginBottom: 14 }}>
+              <label htmlFor="fv-proveedor">Proveedor</label>
+              <select id="fv-proveedor" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
+                <option value="">— Elegí el proveedor —</option>
+                {proveedores.slice().sort((a, b) => a.nombre.localeCompare(b.nombre)).map((p) => (
+                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <label
             style={{
@@ -246,7 +307,7 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
           {archivo && (
             <div className={cx(s.callout, s.ok)}>
               <strong>{archivo.nombre}</strong> · {fmtNum(archivo.filas.length, 0)} renglones
-              {nombreProv && <> · proveedor <strong>{nombreProv}</strong></>}
+              {nombreProv && <> · <strong>{nombreProv}</strong></>}
             </div>
           )}
         </>
@@ -257,9 +318,9 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
           <div className={s['section-title']} style={{ marginTop: 0 }}>A qué lista va cada una</div>
           <div className={s.hint} style={{ marginTop: 0 }}>
             Cada lista del sistema viejo va a la del CRM con la misma modalidad y número; la que no
-            existe se <strong>crea</strong>. Las nuevas entran <strong>al final del orden de
-            preferencia</strong>: no le ganan el precio a las que ya tenés — se usan cuando se las
-            asignás a un cliente o se elige la lista a mano en la caja.
+            existe se <strong>crea</strong> al final del orden de preferencia (no le gana el precio a las que ya
+            tenés). Si dos listas del archivo caen en la misma del CRM, queda la de más renglones y la otra se
+            marca para que le elijas destino.
           </div>
           <Table cols={[{ h: 'Lista del sistema viejo' }, { h: 'Renglones', num: true }, { h: 'Va a' }]}>
             {listas.map((l) => {
@@ -267,8 +328,11 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
                 ?? (l.destino.tipo === 'existente' ? `L${l.destino.listaId}` : l.destino.tipo);
               return (
                 <tr key={l.clave}>
-                  <td>{l.canal} {l.numero}</td>
-                  <td className={s.num}>{l.filas}</td>
+                  <td>
+                    {l.canal} {l.numero}
+                    {l.choque && <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-warning)' }}>{l.destino.motivo}</div>}
+                  </td>
+                  <td className={s.num}>{fmtNum(l.filas, 0)}</td>
                   <td>
                     <select
                       id={`fv-lista-${l.clave}`}
@@ -286,21 +350,54 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
             })}
           </Table>
 
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '14px 0 8px' }}>
+          {varios && porProveedor.length > 0 && (
+            <>
+              <div className={s['section-title']}>Por proveedor</div>
+              <div className={s.hint} style={{ marginTop: 0 }}>
+                Destildá los proveedores que no quieras tocar ahora. Cada producto va con el proveedor que tiene en
+                el CRM (el que fija el precio).
+              </div>
+              <div style={{ maxHeight: 240, overflow: 'auto' }}>
+                <Table cols={[{ h: '' }, { h: 'Proveedor' }, { h: 'Cambian', num: true }, { h: 'Se agregan', num: true }, { h: 'Sin cambios', num: true }]}>
+                  {porProveedor.map((p) => (
+                    <tr key={p.id} className={s.clickable} onClick={() => alternarProv(p.id)}>
+                      <td>
+                        <input
+                          type="checkbox" aria-label={`Incluir ${p.nombre}`} checked={!excluidos.has(p.id)}
+                          onChange={() => alternarProv(p.id)} onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
+                      <td>{p.nombre}</td>
+                      <td className={s.num}>{fmtNum(p.cambia, 0)}</td>
+                      <td className={s.num}>{fmtNum(p.agrega, 0)}</td>
+                      <td className={cx(s.num, s.muted)}>{fmtNum(p.igual, 0)}</td>
+                    </tr>
+                  ))}
+                </Table>
+              </div>
+            </>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '14px 0 8px', alignItems: 'center' }}>
             {[
-              ['cambios', `Cambian o se agregan (${aImportar})`],
-              ['cambia', `${ESTADOS_FV.cambia} (${plan.resumen.cambia})`],
-              ['agrega', `${ESTADOS_FV.agrega} (${plan.resumen.agrega})`],
-              ['igual', `${ESTADOS_FV.igual} (${plan.resumen.igual})`],
-              ['todos', `Todos (${plan.items.length})`],
+              ['cambios', `Cambian o se agregan (${fmtNum(aImportar, 0)})`],
+              ['cambia', `${ESTADOS_FV.cambia} (${fmtNum(cuenta.cambia, 0)})`],
+              ['agrega', `${ESTADOS_FV.agrega} (${fmtNum(cuenta.agrega, 0)})`],
+              ['igual', `${ESTADOS_FV.igual} (${fmtNum(cuenta.igual, 0)})`],
+              ['todos', `Todos (${fmtNum(efectivos.length, 0)})`],
             ].map(([id, texto]) => (
               <Btn key={id} small variant={filtro === id ? 'btn-primary' : 'btn-ghost'} onClick={() => setFiltro(id)}>{texto}</Btn>
             ))}
+            {varios && (
+              <select id="fv-filtro-prov" aria-label="Filtrar por proveedor" value={filtroProv} onChange={(e) => setFiltroProv(e.target.value)}>
+                <option value="">Todos los proveedores</option>
+                {porProveedor.filter((p) => !excluidos.has(p.id)).map((p) => <option key={p.id} value={String(p.id)}>{p.nombre}</option>)}
+              </select>
+            )}
           </div>
           <div className={s.hint} style={{ marginTop: 0 }}>
-            El precio nuevo lo calcula el CRM con <strong>su</strong> costo; «Sistema viejo» es el que
-            figuraba allá. Si no coinciden, el costo es distinto: conviene actualizar primero los costos
-            de {nombreProv || 'este proveedor'}.
+            El precio nuevo lo calcula el CRM con <strong>su</strong> costo; «Sistema viejo» es el que figuraba
+            allá. Si no coinciden, el costo es distinto: conviene actualizar primero los costos.
           </div>
           <Table
             cols={[
@@ -308,13 +405,16 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
               { h: 'Precio hoy', num: true }, { h: 'Precio nuevo', num: true }, { h: 'Sistema viejo', num: true },
             ]}
             empty="No hay renglones con este filtro."
+            pag={pag}
           >
-            {visibles.map((i) => (
+            {pag.visibles.map((i) => (
               <tr key={`${i.productoId}-${i.presentacionId ?? 0}-${i.clave}`}>
                 <td className={s.mono}>{i.codigo}</td>
                 <td>
                   {i.nombre}
-                  <div className={s.hint} style={{ margin: 0, color: COLOR_ESTADO[i.estado] }}>{ESTADOS_FV[i.estado]}</div>
+                  <div className={s.hint} style={{ margin: 0, color: COLOR_ESTADO[i.estado] }}>
+                    {ESTADOS_FV[i.estado]}{varios ? ` · ${i.proveedor}` : ''}
+                  </div>
                 </td>
                 <td>{i.listaArchivo} → {etiquetaDestino(destinoDe[i.clave])}</td>
                 <td>{textoFila(i.antes)}</td>
@@ -328,9 +428,9 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
 
           {plan.afuera.length > 0 && (
             <>
-              <div className={s['section-title']}>No se importan ({plan.afuera.length})</div>
-              <Table cols={[{ h: 'Código' }, { h: 'Producto' }, { h: 'Lista' }, { h: 'Por qué' }]}>
-                {plan.afuera.map((a, k) => (
+              <div className={s['section-title']}>No se importan ({fmtNum(plan.afuera.length, 0)})</div>
+              <Table cols={[{ h: 'Código' }, { h: 'Producto' }, { h: 'Lista' }, { h: 'Por qué' }]} pag={pagAfuera}>
+                {pagAfuera.visibles.map((a, k) => (
                   <tr key={k}>
                     <td className={s.mono}>{a.codigo || '—'}</td><td>{a.nombre}</td><td>{a.lista}</td><td>{a.motivo}</td>
                   </tr>
@@ -341,9 +441,10 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
 
           {confirmando && (
             <div className={cx(s.callout, s.warn)} style={{ marginTop: 14 }}>
-              <strong>Segunda confirmación.</strong> Se cambian <strong>{plan.resumen.cambia}</strong> y se
-              agregan <strong>{plan.resumen.agrega}</strong> formato(s) de venta de{' '}
+              <strong>Segunda confirmación.</strong> Se cambian <strong>{fmtNum(cuenta.cambia, 0)}</strong> y se
+              agregan <strong>{fmtNum(cuenta.agrega, 0)}</strong> formato(s) de venta de{' '}
               <strong>{nombreProv}</strong>
+              {varios && excluidos.size > 0 && <> (sin {excluidos.size} proveedor(es) excluido(s))</>}
               {nuevasUsadas.length > 0 && <>, y se crean {nuevasUsadas.length} lista(s): {nuevasUsadas.map((l) => `${l.modalidad?.nombre} ${l.numero}`).join(', ')}</>}.
               Los precios de góndola que dependen de estos formatos cambian en el acto. Tocá «Sí, importar» para seguir.
             </div>
