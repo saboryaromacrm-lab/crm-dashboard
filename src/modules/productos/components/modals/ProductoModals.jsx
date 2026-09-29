@@ -130,6 +130,17 @@ export function ProductoFormModal({ prodId }) {
         0,
       )
     : 0;
+  /* LO QUE PASA A COFFIT AL MARCARLO (0120): el stock que hay hoy era de la
+     distribuidora; desde que se marca, los envíos lo mandan sin cobrar, así
+     que al guardar se le cobra a Coffit en su cuenta corriente, al costo de la
+     última factura (menos lo que ya hubiera pagado). Acá se avisa antes. */
+  const stockAlMarcar = ed && prod && !prod.soloCafeteria && soloCafeteria
+    ? store.suma({ productoId: prod.id, presentacionId: null, estado: 'disponible' })
+      + (prod.presentaciones || []).reduce(
+        (a, pr) => a + store.suma({ productoId: prod.id, presentacionId: pr.id, estado: 'disponible' }) * (Number(pr.tamKg) || 0),
+        0,
+      )
+    : 0;
   const [origenCafeteria, setOrigenCafeteria] = useState(!!prod?.origenCafeteria);
   const marcarSoloCafeteria = (v) => { setSoloCafeteria(v); if (v) setOrigenCafeteria(false); };
   const marcarOrigenCafeteria = (v) => { setOrigenCafeteria(v); if (v) setSoloCafeteria(false); };
@@ -276,6 +287,14 @@ export function ProductoFormModal({ prodId }) {
             </span>
           </span>
         </label>
+        {stockAlMarcar > 0.0005 && (
+          <div className={cx(s.callout, s.warn)}>
+            Hoy hay <strong>{num(stockAlMarcar, prod.tipo === 'granel' ? 3 : 0)} {prod.tipo === 'granel' ? 'kg' : 'u.'}</strong> en
+            stock. Al guardar, ese stock <strong>pasa a ser de Coffit</strong> y se le cobra en su cuenta
+            corriente al costo de la última factura (lo que ya hubiera pagado en facturas no se cobra de
+            nuevo). Desde ahí, los envíos de este artículo no le cobran nada.
+          </div>
+        )}
         {/*
           EL ESPEJO DEL DE ARRIBA (0097), y no se pisan: aquel dice "esto no se
           vende acá", este dice "esto no se compra acá". Marcarlo habilita que

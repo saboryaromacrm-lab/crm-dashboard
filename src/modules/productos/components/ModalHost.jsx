@@ -38,6 +38,7 @@ import { AsistenteFacturaModal } from './modals/AsistenteFacturaModal.jsx';
 import { ActualizarClasificacionModal } from './modals/ActualizarClasificacionModal.jsx';
 import { LecturaFacturaModal } from './modals/LecturaFacturaModal.jsx';
 import { HistorialPreciosModal, MargenesMasivosModal } from './modals/PreciosModals.jsx';
+import { CierreCoffitModal, MotivoCoffitModal, MovimientoCoffitModal } from './modals/CuentaCoffitModals.jsx';
 
 /* Confirmación genérica reutilizable. */
 function ConfirmModal({ title, texto, onOk, claseOk = 'btn-primary' }) {
@@ -256,6 +257,9 @@ const REGISTRY = {
   importarFormatosVenta: ImportarFormatosVentaModal,
   redondearMarkups: RedondearMarkupsModal,
   moverLista: MoverListaModal,
+  movimientoCoffit: MovimientoCoffitModal,
+  cierreCoffit: CierreCoffitModal,
+  motivoCoffit: MotivoCoffitModal,
   asistenteFactura: AsistenteFacturaModal,
   actualizarClasificacion: ActualizarClasificacionModal,
   /* `importarProveedores` se mudó al módulo Proveedores (27/8): alimenta el

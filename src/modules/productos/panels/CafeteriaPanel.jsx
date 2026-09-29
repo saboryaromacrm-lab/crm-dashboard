@@ -19,13 +19,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
-import { money, num, fmtFecha, isoDate } from '../domain/format.js';
+import { money, num, fmtFecha, fmtFechaVenc, isoDate } from '../domain/format.js';
 import { ESTADOS_PEDIDO_CAFE, MODOS_ENVIO_CAFE, RECEPCION_ENVIO_CAFE, estadoEnvioCafe } from '../domain/constants.js';
 import { esVozDelCafe, vozCafeteria } from '../domain/cafeteria.voz.js';
 import { Table, PanelHead, Stat, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
 import { pedidosCafe } from '@core/services/pedidosCafe.js';
 import { CafeteriaProductosPanel } from './CafeteriaProductosPanel.jsx';
 import { CoffitCompras, CoffitGastos } from './CoffitComprasGastos.jsx';
+import { CoffitCuenta } from './CoffitCuenta.jsx';
 
 const inicioDeMes = () => {
   const d = new Date();
@@ -44,6 +45,8 @@ const pestanasDe = (v) => [
   { id: 'productos', label: v.prodSeccion },
   /* La plata de Coffit, separada en sus dos orígenes (29/9/2026, pedido del
    * dueño): lo comprado a proveedores y los gastos. Solo con las métricas. */
+  /* LA CUENTA ENTRE LOS DOS NEGOCIOS (0120): quién le debe a quién, hoy. */
+  { id: 'cuenta', label: 'Cuenta corriente', metricas: true },
   { id: 'compras', label: 'Compras de mercadería', metricas: true },
   { id: 'gastos', label: 'Gastos', metricas: true },
   { id: 'metrica', label: 'Métrica', metricas: true },
@@ -243,7 +246,7 @@ export function CafeteriaPanel() {
           if (pestana === 'productos') return null;
           /* Compras y gastos se cargan en su lugar (Compras › Facturación y
              Gastos); desde acá solo se miran. */
-          if (pestana === 'compras' || pestana === 'gastos') return null;
+          if (pestana === 'compras' || pestana === 'gastos' || pestana === 'cuenta') return null;
           /* PEDIR VIVE ACÁ (28/9/2026, pedido del dueño): antes era una
              entrada aparte del menú, «Pedido a la distribuidora». Para el café
              es el botón principal de su pestaña de pedidos; el que además
@@ -371,13 +374,13 @@ export function CafeteriaPanel() {
           <div className={s.stats}>
             <Stat label={v.statSalida} value={money(resumen?.enviado ?? 0)} />
             <Stat label={v.statEntrada} value={money(resumen?.recibido ?? 0)} />
-            {/* El número que antes no existía: de qué lado quedó la cuenta
-                entre los dos negocios en el período. */}
+            {/* De qué lado quedó la cuenta entre los dos negocios, con todo lo
+                anterior (0120): el detalle está en la pestaña Cuenta corriente. */}
             <Stat
-              label={(resumen?.saldo ?? 0) >= 0 ? v.saldoCasa : v.saldoCafe}
-              value={money(Math.abs(resumen?.saldo ?? 0))}
+              label={`${(resumen?.saldoCuenta ?? 0) >= 0 ? v.saldoCasa : v.saldoCafe} al ${fmtFechaVenc(resumen?.saldoCuentaAl)}`}
+              value={money(Math.abs(resumen?.saldoCuenta ?? 0))}
             />
-            <Stat label="Gastos imputados" value={money(resumen?.gastos ?? 0)} />
+            <Stat label="Gastos imputados (sin IVA)" value={money(resumen?.gastos ?? 0)} />
             {/* Es "le mandamos + gastos", no el costo de los dos sentidos:
                 al lado de "Nos mandó" el nombre viejo se leía como un error. */}
             <Stat
@@ -389,10 +392,10 @@ export function CafeteriaPanel() {
 
           {/* Cómo se arman el saldo y el costo: lo mismo que Gerencia. */}
           <div className={s.hint} style={{ marginTop: 0 }}>
-            El <strong>saldo</strong> y el <strong>costo</strong> cuentan lo comprado para el café, lo
-            mandado desde el stock propio y los gastos. Lo de <strong>uso exclusivo</strong> se cuenta una
-            sola vez, al comprarlo: mandarlo después no lo suma de nuevo — por eso pueden ser menos que
-            {' '}“{v.statSalida}”. Son los mismos números que Gerencia.
+            El <strong>saldo</strong> es el de la cuenta corriente con Coffit, con todo lo anterior y los
+            pagos: el detalle renglón por renglón está en la pestaña <strong>Cuenta corriente</strong>. Lo que
+            Coffit ya pagó en la factura se cuenta una sola vez, al comprarlo: mandarlo después no lo suma de
+            nuevo — por eso puede ser menos que{' '}“{v.statSalida}”.
           </div>
           </>)}
 
@@ -482,8 +485,10 @@ export function CafeteriaPanel() {
                   <td>
                     {a.nombre}
                     {a.compartido && (
-                      <div className={s.hint} style={{ margin: 0 }}>
-                        comprado para Coffit en una factura · falta mandarle
+                      <div className={s.hint} style={{ margin: 0, color: a.negativo ? 'var(--crm-color-danger)' : undefined }}>
+                        {a.negativo
+                          ? 'se mandó como ya pagado y la compra se anuló: se descuenta de la próxima compra para Coffit'
+                          : 'comprado para Coffit en una factura · falta mandarle'}
                       </div>
                     )}
                   </td>
@@ -603,6 +608,9 @@ export function CafeteriaPanel() {
 
       {pestana === 'productos' && <CafeteriaProductosPanel embebido />}
 
+      {pestana === 'cuenta' && verMetricas && (
+        <CoffitCuenta desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} />
+      )}
       {pestana === 'compras' && verMetricas && (
         <CoffitCompras desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} />
       )}

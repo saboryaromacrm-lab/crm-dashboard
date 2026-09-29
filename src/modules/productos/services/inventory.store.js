@@ -1183,6 +1183,15 @@ const metricaCafeteria = (filtros) => httpClient.get('/cafeteria/metrica' + _qsP
 /** Compras y gastos de Coffit en detalle (29/9/2026): los mismos totales que el resumen. */
 const comprasCafeteria = (filtros) => httpClient.get('/cafeteria/compras' + _qsPagos(filtros || {}));
 const gastosCafeteria = (filtros) => httpClient.get('/cafeteria/gastos' + _qsPagos(filtros || {}));
+/* LA CUENTA CORRIENTE CON COFFIT (0120). No tocan el inventario: sin recargarlo. */
+const cuentaCoffit = (filtros) => httpClient.get('/cafeteria/cuenta' + _qsPagos(filtros || {}));
+const movimientoCoffit = (o) => _sinRecargar(() => httpClient.post('/cafeteria/cuenta/movimientos', o));
+const anularMovimientoCoffit = (id, motivo) => _sinRecargar(() => httpClient.post(`/cafeteria/cuenta/movimientos/${id}/anular`, { motivo }));
+const cerrarCuentaCoffit = (o) => _sinRecargar(() => httpClient.post('/cafeteria/cuenta/cierres', o));
+const reabrirCierreCoffit = (id, motivo) => _sinRecargar(() => httpClient.post(`/cafeteria/cuenta/cierres/${id}/reabrir`, { motivo }));
+const cierreCoffit = (id) => httpClient.get(`/cafeteria/cuenta/cierres/${id}`);
+/** El costo al que va a salir cada producto hacia Coffit (última factura). */
+const costosSalidaCafeteria = (ids) => httpClient.get('/cafeteria/costos-salida?ids=' + (ids || []).join(','));
 /** Último costo declarado por la cafetería, por `producto-presentación`. Se
  *  propone en el formulario de entrada: es una sugerencia, no un dato. */
 const costosEntradaCafeteria = () => httpClient.get('/cafeteria/costos-entrada');
@@ -1399,6 +1408,8 @@ export const inventoryStore = {
   pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
   enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria, costosEntradaCafeteria, depositoCafeteria,
   comprasCafeteria, gastosCafeteria,
+  cuentaCoffit, movimientoCoffit, anularMovimientoCoffit, cerrarCuentaCoffit, reabrirCierreCoffit, cierreCoffit,
+  costosSalidaCafeteria,
   productosCafeteria, crearProductoCafeteria, editarProductoCafeteria, bajaProductoCafeteria,
   crearEnvioCafeteria, editarEnvioCafeteria, anularEnvioCafeteria, recibirEnvioCafeteria,
   perdidasMesVencimientos,

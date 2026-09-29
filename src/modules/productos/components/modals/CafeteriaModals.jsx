@@ -375,6 +375,35 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
     [fuenteCosto],
   );
 
+  /*
+   * LO QUE SALE HACIA COFFIT VA AL COSTO DE LA ÚLTIMA FACTURA (29/9/2026,
+   * decisión del dueño). Ese costo lo sabe la API: se le pide por los
+   * productos del envío, de a los que falten, y se muestra el mismo número que
+   * va a quedar congelado. Mientras llega, el del formato de compra.
+   */
+  const [costosSalida, setCostosSalida] = useState({});
+  const idsSinCosto = entrada ? '' : [...new Set(items.map((it) => it.prodId))]
+    .filter((id) => id && !(id in costosSalida)).sort((a, b) => a - b).join(',');
+  useEffect(() => {
+    if (!idsSinCosto) return undefined;
+    let vivo = true;
+    const ids = idsSinCosto.split(',').map(Number);
+    store.costosSalidaCafeteria(ids)
+      .then((m) => {
+        if (!vivo) return;
+        setCostosSalida((prev) => {
+          const next = { ...prev };
+          for (const id of ids) next[id] = m?.[id] ?? null;
+          return next;
+        });
+      })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [idsSinCosto, store]);
+
+  /** Recibida la entrada, su costo quedó fijo en la cuenta con Coffit (0120). */
+  const costoFijo = esEdicion && entrada && envio?.recepcion && envio.recepcion !== 'pendiente';
+
   /** Costo congelado por renglón que ya estaba: clave prod-pres. */
   const congelados = useMemo(() => new Map(
     (envio?.items ?? []).map((it) => [`${it.productoId}-${it.presentacionId ?? 0}`, it.costoUnitario]),
@@ -408,7 +437,7 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
     if (congelados.has(clave)) return { costo: congelados.get(clave), congelado: true };
     const prod = store.getProducto(it.prodId);
     if (!prod) return { costo: 0, congelado: false };
-    const cn = store.costoNeto(prod);
+    const cn = costosSalida[it.prodId] ?? store.costoNeto(prod);
     const pres = it.presId ? store.presDe(prod, it.presId) : null;
     return { costo: pres ? cn * store.escalaPaquete(pres.tamKg || 1, prod.merma) : cn, congelado: false };
   };
@@ -593,8 +622,8 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
             Qué es cada cosa (góndola o insumo) <strong>lo decide Coffit al recibir</strong> en su
             almacén “Sabor y Aroma” — acá solo viaja el detalle completo.{' '}
             {esEdicion
-              ? <>El costo congelado de cada renglón <strong>se conserva</strong>; un renglón nuevo entra al costo de hoy.</>
-              : <>El costo se congela al enviar, con el costo de hoy.</>}
+              ? <>El costo congelado de cada renglón <strong>se conserva</strong>; un renglón nuevo entra al costo de la última factura.</>
+              : <>El costo se congela al enviar: el de la <strong>última factura</strong> de cada producto (sin factura, el de lista).</>}
           </>
         )}
       </div>
@@ -661,7 +690,8 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
                 <input
                   type="number" min="0" step="any" value={it.costo}
                   placeholder="costo"
-                  title="Costo unitario que declara Coffit"
+                  disabled={costoFijo && congelados.has(`${it.prodId}-${it.presId ?? 0}`)}
+                  title={costoFijo ? 'Ya se recibió: el costo quedó fijo en la cuenta con Coffit' : 'Costo unitario que declara Coffit'}
                   style={Number(it.cantidad) > 0 && it.costo === ''
                     ? {
                       borderColor: 'var(--crm-color-warning)',
@@ -674,6 +704,18 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
                     Un costo de hace cuatro meses propuesto en silencio es el
                     error caro de esta pantalla: entra igual y la rentabilidad
                     queda mal sin que nada avise. */}
+                {/* UN COSTO QUE SE ALEJA MÁS DE UN 15 % DEL DE LA FICHA (0120,
+                    acordado en la conciliación): se avisa, no se frena. */}
+                {(() => {
+                  const ref = Number(costoPrevio(it.prodId, it.presId));
+                  const c = Number(it.costo);
+                  if (!(ref > 0) || it.costo === '' || !(c > 0) || Math.abs(c - ref) / ref <= 0.15) return null;
+                  return (
+                    <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-warning)', fontWeight: 600 }}>
+                      {c > ref ? '+' : ''}{Math.round(((c - ref) / ref) * 100)}% contra {money(ref)}
+                    </div>
+                  );
+                })()}
                 {it.costo !== '' && costoPrevio(it.prodId, it.presId) === it.costo && (() => {
                   const f = fuenteCosto(it.prodId, it.presId);
                   if (!f) return null;
@@ -698,9 +740,9 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
             ) : (
               <div style={{ alignSelf: 'center' }}>
                 <span className={cx(s.mono)}>{money(costoU)}</span>
-                {esEdicion && (
-                  <div className={s.hint} style={{ margin: 0 }}>{congelado ? 'congelado' : 'costo de hoy'}</div>
-                )}
+                <div className={s.hint} style={{ margin: 0 }}>
+                  {congelado ? 'congelado' : (costosSalida[it.prodId] != null ? 'última factura' : 'costo de lista')}
+                </div>
               </div>
             )}
             <div className={cx(s.mono, s.num)} style={{ fontWeight: 700, alignSelf: 'center' }}>

@@ -283,14 +283,15 @@ export function CoffitGastos({ desde, hasta, setDesde, setHasta }) {
   const totalLista = lista.reduce((a, g) => a + g.total, 0);
 
   const exportar = () => descargarCsv('coffit-gastos.csv',
-    ['Fecha', 'Tipo', 'Número', 'Proveedor', 'Rubro', 'Sucursal', 'Descripción', 'Neto', 'IVA', 'Total', 'Estado'],
+    ['Fecha', 'Tipo', 'Número', 'Proveedor', 'Rubro', 'Sucursal', 'Descripción', 'Neto', 'IVA', 'Total', 'A su cuenta', 'Estado'],
     lista.map((g) => [fmtFecha(g.fecha), TIPOS_DOC_GASTO[g.tipoDoc] || g.tipoDoc, g.numero, g.proveedor, g.rubro, g.sucursal,
-      g.descripcion, csvNum(g.neto), csvNum(g.iva), csvNum(g.total), ESTADOS_GASTO[g.estado]?.label || g.estado]));
+      g.descripcion, csvNum(g.neto), csvNum(g.iva), csvNum(g.total), csvNum(g.paraCuenta), ESTADOS_GASTO[g.estado]?.label || g.estado]));
 
   return (
     <>
       <div className={s.stats}>
-        <Stat label="Gastos de Coffit" value={money(datos?.total ?? 0)} accent="accent-amber" />
+        <Stat label="Gastos de Coffit (con IVA)" value={money(datos?.total ?? 0)} />
+        <Stat label="A su cuenta (sin IVA ni percepciones)" value={money(datos?.totalCuenta ?? 0)} accent="accent-amber" />
         <Stat label="Comprobantes" value={num(datos?.gastos?.length ?? 0, 0)} />
         <Stat label="Rubros" value={num(datos?.porRubro?.length ?? 0, 0)} />
       </div>
@@ -326,7 +327,7 @@ export function CoffitGastos({ desde, hasta, setDesde, setHasta }) {
       <Table
         cols={[
           { h: 'Fecha' }, { h: 'Comprobante' }, { h: 'Proveedor' }, { h: 'Rubro' },
-          { h: 'Descripción' }, { h: 'Estado' }, { h: 'Total', num: true },
+          { h: 'Descripción' }, { h: 'Estado' }, { h: 'Total', num: true }, { h: 'A su cuenta', num: true },
         ]}
         empty={cargando ? 'Cargando…' : 'Ningún gasto de Coffit en el período.'}
         pag={pag}
@@ -349,11 +350,12 @@ export function CoffitGastos({ desde, hasta, setDesde, setHasta }) {
               <td>{g.rubro}</td>
               <td className={s.muted}>{g.descripcion || '—'}{g.sucursal && <div className={s.hint} style={{ margin: 0 }}>{g.sucursal}</div>}</td>
               <td><Pill pill={est.pill} label={est.label || g.estado} /></td>
-              <td className={cx(s.num, s.mono)} style={{ fontWeight: 700 }}>{money(g.total)}</td>
+              <td className={cx(s.num, s.mono)}>{money(g.total)}</td>
+              <td className={cx(s.num, s.mono)} style={{ fontWeight: 700 }}>{money(g.paraCuenta)}</td>
             </tr>,
             abierto && (
               <tr key={`${g.id}-det`}>
-                <td colSpan={7} style={{ background: 'var(--crm-color-surface-2, rgba(0,0,0,.03))' }}>
+                <td colSpan={8} style={{ background: 'var(--crm-color-surface-2, rgba(0,0,0,.03))' }}>
                   {g.renglones.map((r, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', maxWidth: 520 }}>
                       <span>{r.concepto || '—'}</span><span className={s.mono}>{money(r.monto)}</span>
@@ -370,8 +372,9 @@ export function CoffitGastos({ desde, hasta, setDesde, setHasta }) {
       </Table>
 
       <div className={s.hint}>
-        Son los gastos cargados en <strong>Gastos</strong> con <strong>Negocio: Coffit</strong>. Van por
-        el total del comprobante; la nota de crédito resta. Para que uno aparezca acá, se elige
+        Son los gastos cargados en <strong>Gastos</strong> con <strong>Negocio: Coffit</strong>. A su cuenta
+        corriente entran <strong>sin IVA ni percepciones</strong> (eso lo recupera la empresa); la nota de
+        crédito resta. Cambiar el negocio de un gasto queda registrado en la auditoría. Para que uno aparezca acá, se elige
         ese negocio al cargarlo.
       </div>
     </>

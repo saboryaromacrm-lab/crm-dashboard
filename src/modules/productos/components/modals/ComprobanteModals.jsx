@@ -658,9 +658,14 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * En la conversión del remito la marca ya se congeló al cargarlo. La API
    * aplica la misma regla y congela lo mismo en la factura.
    */
+  /* LA NOTA HEREDA LA MARCA DE SU FACTURA (0120): lo que en la factura era de
+   * Coffit lo es también en la NC o ND que la ajusta. La API aplica lo mismo. */
+  const refFactura = refId && refId !== '0' ? store.getComprobante(Number(refId)) : null;
+  const heredadosRef = new Set((refFactura?.items ?? []).filter((x) => x.paraCafeteria).map((x) => Number(x.productoId)));
+  const heredaDeRef = (it) => esNota && !!it.productoId && heredadosRef.has(parseInt(it.productoId, 10));
   const deCoffit = (it) => {
     if (esConversion) return !!it.paraCafeteria;
-    if (todoCoffit || it.paraCafeteria) return true;
+    if (todoCoffit || it.paraCafeteria || heredaDeRef(it)) return true;
     return !!(it.productoId && store.getProducto(parseInt(it.productoId, 10))?.soloCafeteria);
   };
   const delCafe = items.reduce((acc, it) => {
@@ -1855,7 +1860,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                   const marcado = deCoffit(it);
                   const motivo = esConversion ? 'marcado al cargar el remito'
                     : prod.soloCafeteria ? 'uso exclusivo (ficha)'
-                      : todoCoffit ? 'todo el comprobante' : '';
+                      : heredaDeRef(it) ? 'era de Coffit en la factura que ajusta'
+                        : todoCoffit ? 'todo el comprobante' : '';
                   return (
                     <label
                       style={{
