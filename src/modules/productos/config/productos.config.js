@@ -45,11 +45,12 @@ export const COMPRAS_PANELS = [
   /*
    * MÁRGENES (16/9/2026, pedido del dueño): el mapa de markups del catálogo
    * entero, para dejar de entrar producto por producto a ver qué margen tiene
-   * cada uno. Va pegado a Productos porque es la misma pregunta mirada al
+   * cada uno. Desde el 29/9/2026 se llama LISTAS DE PRECIOS (el id queda
+   * 'margenes' para no romper enlaces ni permisos). Va pegado a Productos porque es la misma pregunta mirada al
    * revés —del valor hacia los productos, y no del producto hacia su valor— y
    * lleva su mismo permiso: muestra costos.
    */
-  { id: 'margenes',       label: 'Márgenes',       icon: PercentIcon,        permiso: 'compras.productos' },
+  { id: 'margenes',       label: 'Listas de precios', icon: PercentIcon,        permiso: 'compras.productos' },
   { id: 'catalogos',      label: 'Catálogos',      icon: SellIcon,           permiso: 'compras.catalogos' },
   /*
    * El ABM de la ficha se mudó al MÓDULO Proveedores (0068). Acá queda solo lo

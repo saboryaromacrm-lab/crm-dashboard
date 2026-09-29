@@ -1,5 +1,6 @@
 /**
- * MÁRGENES — todos los markups del catálogo, de un pantallazo.
+ * LISTAS DE PRECIOS (ex "Márgenes", renombrada el 29/9/2026) — todas las listas
+ * con todos los markups del catálogo, de un pantallazo. Cada lista arranca plegada.
  * ============================================================================
  * Nació de un pedido del dueño (16/9/2026): *"para ver qué markup tiene cada
  * producto tengo que entrar producto por producto y no termino más, siendo que
@@ -61,6 +62,9 @@ export function MargenesPanel() {
   const [grupoSel, setGrupoSel] = useState(null);
   /** Listas cuyo resumen se desplegó entero (ver `TOPE_VALORES`). */
   const [desplegadas, setDesplegadas] = useState(() => new Set());
+  /** Listas abiertas. Arrancan todas plegadas (pedido del dueño, 29/9/2026):
+      son muchas y de entrada alcanza con verlas en fila. */
+  const [abiertas, setAbiertas] = useState(() => new Set());
 
   /** Opciones de los filtros, derivadas del catálogo ya cargado (sin red). */
   const opciones = useMemo(() => {
@@ -94,6 +98,21 @@ export function MargenesPanel() {
   const grupos = useMemo(() => agruparMargenes(filas), [filas]);
   const resumen = useMemo(() => resumenPorLista(grupos), [grupos]);
   const columnas = useMemo(() => columnasDeMargenes(filas), [filas]);
+
+  /* Las tarjetas: las listas con artículos (el resumen) más las activas que
+     todavía no tienen ninguno, para que la pantalla muestre TODAS las listas
+     de precios y no solo las usadas. Van en el mismo orden de preferencia. */
+  const listasCatalogo = store.state.listasCatalogo?.listas;
+  const tarjetas = useMemo(() => {
+    const usadas = new Set(resumen.map((l) => l.listaId));
+    const vacias = (listasCatalogo ?? [])
+      .filter((x) => x.activa && !usadas.has(x.id))
+      .map((x) => ({
+        listaId: x.id, lista: x.nombre || '', modalidad: x.modalidad || '',
+        orden: Number(x.orden) || 0, total: 0, mayor: 0, grupos: [],
+      }));
+    return [...resumen, ...vacias].sort((a, b) => a.orden - b.orden || String(a.lista).localeCompare(String(b.lista)));
+  }, [resumen, listasCatalogo]);
   const grillaTodas = useMemo(() => grillaDeMargenes(filas), [filas]);
 
   const seleccionado = useMemo(
@@ -170,8 +189,8 @@ export function MargenesPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
-        title="Márgenes"
-        desc="Qué markup tiene cada producto en cada lista, sin entrar uno por uno. Clic en un valor para ver quiénes lo tienen."
+        title="Listas de precios"
+        desc="Todas las listas con sus markups. Tocá una lista para desplegarla y un valor para ver qué artículos lo tienen."
         actions={(
           <div style={{ display: 'flex', gap: 8 }}>
             {isAdmin && (
@@ -184,7 +203,7 @@ export function MargenesPanel() {
 
       <div className={s.stats}>
         <Stat label="Artículos con precio" value={num(totales.articulos, 0)} />
-        <Stat label="Listas" value={num(columnas.length, 0)} />
+        <Stat label="Listas" value={num(tarjetas.length, 0)} />
         <Stat label="Markups distintos" value={num(totales.valores, 0)} />
         {/* El precio puesto a mano no sigue ningún markup: si son muchos, el
             mapa de márgenes explica menos de lo que parece. Por eso se cuenta. */}
@@ -217,35 +236,91 @@ export function MargenesPanel() {
         {hayFiltro && <Btn small onClick={limpiar}>Limpiar</Btn>}
       </div>
 
-      {/* ------------------------- 1. EL RESUMEN ------------------------- */}
-      {resumen.length === 0 ? (
+      {/* ------------------------- 1. LAS LISTAS -------------------------- */}
+      {tarjetas.length === 0 ? (
         <div className={cx(s.callout, s.info)}>
-          No hay ningún formato de venta cargado con los filtros puestos. El markup se carga en la
-          ficha del producto, en <strong>Compras › Productos → Formato de Venta</strong>.
+          No hay ninguna lista de precios activa. Las listas se crean en
+          <strong> Ventas › Configuración</strong>.
         </div>
-      ) : resumen.map((l) => {
-        const abierta = desplegadas.has(l.listaId);
-        const visibles = abierta ? l.grupos : l.grupos.slice(0, TOPE_VALORES);
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span className={s.muted} style={{ flex: 1 }}>
+            {num(tarjetas.length, 0)} lista(s). Tocá una para ver sus markups.
+          </span>
+          <Btn small onClick={() => setAbiertas(new Set(tarjetas.filter((l) => l.total).map((l) => l.listaId)))}>
+            Desplegar todas
+          </Btn>
+          <Btn small onClick={() => setAbiertas(new Set())} disabled={!abiertas.size}>Plegar todas</Btn>
+        </div>
+      )}
+      {tarjetas.map((l) => {
+        const abierta = abiertas.has(l.listaId);
+        const completa = desplegadas.has(l.listaId);
+        const visibles = completa ? l.grupos : l.grupos.slice(0, TOPE_VALORES);
         const ocultos = l.grupos.length - visibles.length;
+        const markups = l.grupos.filter((g) => g.modoPrecio === 'markup');
+        /* El más usado, que es lo primero que uno quiere saber de una lista
+           sin abrirla (los grupos vienen ordenados por markup, no por cantidad). */
+        const principal = markups.reduce((a, g) => (!a || g.cantidad > a.cantidad ? g : a), null);
+        const alternar = () => {
+          if (!l.total) return;
+          setAbiertas((prev) => {
+            const next = new Set(prev);
+            if (next.has(l.listaId)) next.delete(l.listaId); else next.add(l.listaId);
+            return next;
+          });
+        };
         return (
           <div key={l.listaId} className={cx(s.card, s.cardPad)}>
-            <div className={s['card-title']} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ flex: 1 }}>
+            <div
+              className={s['card-title']}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: 0, cursor: l.total ? 'pointer' : 'default' }}
+              onClick={alternar}
+              role={l.total ? 'button' : undefined}
+              tabIndex={l.total ? 0 : undefined}
+              aria-expanded={l.total ? abierta : undefined}
+              onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); alternar(); } }}
+              title={l.total ? (abierta ? 'Plegar' : 'Ver los markups de esta lista') : undefined}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  display: 'inline-block', width: 14, transition: 'transform .15s',
+                  transform: abierta ? 'rotate(90deg)' : 'none', opacity: l.total ? 1 : 0.3,
+                }}
+              >
+                ▸
+              </span>
+              <span style={{ flex: 1, minWidth: 200 }}>
                 {l.lista}
                 <span className={s.muted} style={{ fontWeight: 400 }}>
-                  {' · '}{num(l.total, 0)} artículo(s){l.modalidad ? ` · ${l.modalidad}` : ''}
+                  {' · '}
+                  {l.total
+                    ? `${num(l.total, 0)} artículo(s)`
+                    : (hayFiltro ? 'sin artículos con los filtros puestos' : 'sin artículos')}
+                  {l.modalidad && !String(l.lista).includes(l.modalidad) ? ` · ${l.modalidad}` : ''}
+                  {l.listaId === listaBaseId ? ' · lista base' : ''}
                 </span>
+                {!abierta && l.total > 0 && (
+                  <span className={s.hint} style={{ display: 'block', margin: '2px 0 0', fontWeight: 400 }}>
+                    {markups.length
+                      ? `${num(markups.length, 0)} markup(s) distinto(s) · el más usado: ${etiquetaValor(principal)} (${num(principal.cantidad, 0)})`
+                      : 'Todos con precio definido a mano'}
+                    {markups.length > 0 && l.grupos.length !== markups.length ? ' · algunos con precio a mano' : ''}
+                  </span>
+                )}
               </span>
-              {isAdmin && l.grupos.some((g) => g.modoPrecio === 'markup') && (
-                <Btn small onClick={() => redondear(l.listaId, l.lista)}>Redondear esta lista</Btn>
+              {isAdmin && markups.length > 0 && (
+                <Btn small onClick={(e) => { e.stopPropagation(); redondear(l.listaId, l.lista); }}>Redondear esta lista</Btn>
               )}
-              {isAdmin && l.listaId !== listaBaseId && (
-                <Btn small onClick={() => openModal('moverLista', { origenId: l.listaId, origen: l.lista, filas })}>
+              {isAdmin && l.total > 0 && l.listaId !== listaBaseId && (
+                <Btn small onClick={(e) => { e.stopPropagation(); openModal('moverLista', { origenId: l.listaId, origen: l.lista, filas }); }}>
                   Mover a otra lista
                 </Btn>
               )}
             </div>
-            {visibles.map((g) => {
+            {abierta && <div style={{ marginTop: 10 }} />}
+            {abierta && visibles.map((g) => {
               const activo = g.clave === grupoSel;
               const ancho = l.mayor > 0 ? Math.max(2, Math.round((g.cantidad / l.mayor) * 100)) : 0;
               return (
@@ -288,7 +363,7 @@ export function MargenesPanel() {
                 </div>
               );
             })}
-            {ocultos > 0 && (
+            {abierta && ocultos > 0 && (
               <Btn
                 small
                 onClick={() => setDesplegadas((prev) => {
