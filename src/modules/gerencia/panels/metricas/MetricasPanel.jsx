@@ -17,98 +17,25 @@ import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { money, num } from '@modules/productos/domain/format.js';
 import { Table, PanelHead, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
 import { Barras, Columnas } from './graficos.jsx';
-import { compacto } from './formato.js';
-
-/* ------------------------------ fechas ------------------------------ */
-const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const DIAS_SEMANA = ['', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-const fechaCorta = (p) => `${Number(p.slice(8, 10))}/${Number(p.slice(5, 7))}`;
-const fechaLarga = (p) => `${p.slice(8, 10)}/${p.slice(5, 7)}/${p.slice(0, 4)}`;
-
-/** Los períodos que se usan todos los días. */
-function rangoDe(preset) {
-  const h = new Date();
-  const hoy = iso(h);
-  const d = (y, m, dd) => iso(new Date(y, m, dd));
-  switch (preset) {
-    case 'hoy': return [hoy, hoy];
-    case '7d': return [d(h.getFullYear(), h.getMonth(), h.getDate() - 6), hoy];
-    case '30d': return [d(h.getFullYear(), h.getMonth(), h.getDate() - 29), hoy];
-    case 'mes-pasado': return [d(h.getFullYear(), h.getMonth() - 1, 1), d(h.getFullYear(), h.getMonth(), 0)];
-    case 'anio': return [d(h.getFullYear(), 0, 1), hoy];
-    case '12m': return [d(h.getFullYear(), h.getMonth() - 11, 1), hoy];
-    case 'mes':
-    default: return [d(h.getFullYear(), h.getMonth(), 1), hoy];
-  }
-}
-const PRESETS = [
-  ['hoy', 'Hoy'], ['7d', 'Últimos 7 días'], ['mes', 'Este mes'], ['mes-pasado', 'Mes pasado'],
-  ['30d', 'Últimos 30 días'], ['anio', 'Este año'], ['12m', 'Últimos 12 meses'], ['otro', 'Elegir fechas…'],
-];
-/** El agrupamiento que se lee bien según el largo del período. */
-const pasoPara = (desde, hasta) => {
-  const dias = (Date.parse(hasta) - Date.parse(desde)) / 86_400_000 + 1;
-  return dias <= 45 ? 'dia' : dias <= 180 ? 'semana' : 'mes';
-};
-const etiquetaPeriodo = (p, paso) => (paso === 'mes' ? `${MESES[Number(p.slice(5, 7)) - 1]} ${p.slice(2, 4)}` : fechaCorta(p));
-const tituloPeriodo = (p, paso) => (paso === 'mes' ? `${MESES[Number(p.slice(5, 7)) - 1]} ${p.slice(0, 4)}` : paso === 'semana' ? `Semana del ${fechaLarga(p)}` : fechaLarga(p));
-
-/** Hace cuánto, en palabras. */
-function haceCuanto(isoFecha) {
-  if (!isoFecha) return 'nunca';
-  const min = Math.round((Date.now() - new Date(isoFecha).getTime()) / 60_000);
-  if (min < 1) return 'recién';
-  if (min < 60) return `hace ${min} min`;
-  const h = Math.round(min / 60);
-  return h < 24 ? `hace ${h} h` : `hace ${Math.round(h / 24)} días`;
-}
-
-const pctTxt = (v) => (v == null ? '—' : `${num(v, 1)}%`);
-
-/* ------------------------------ piezas chicas ------------------------------ */
-/** Un número con su comparación contra el período anterior (flecha + texto, nunca color solo). */
-function Tile({ label, valor, variacion, detalle, alerta }) {
-  const sube = variacion != null && variacion > 0.05;
-  const baja = variacion != null && variacion < -0.05;
-  return (
-    <div className={cx(s.card, s.cardPad)} style={{ minWidth: 0, flex: '1 1 180px', boxSizing: 'border-box' }}>
-      <div className={s['mini-label']}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, overflowWrap: 'anywhere', color: alerta ? 'var(--crm-color-warning, #b45309)' : 'var(--crm-color-text)' }}>{valor}</div>
-      {variacion != null && (
-        <div style={{ fontSize: 12, color: sube ? 'var(--crm-color-success)' : baja ? 'var(--crm-color-danger)' : 'var(--crm-color-text-secondary)' }}>
-          {sube ? '▲' : baja ? '▼' : '='} {variacion > 0 ? '+' : ''}{num(variacion, 1)}% <span style={{ color: 'var(--crm-color-text-secondary)' }}>vs período anterior</span>
-        </div>
-      )}
-      {detalle && <div className={s.hint} style={{ margin: '2px 0 0' }}>{detalle}</div>}
-    </div>
-  );
-}
-const Tiles = ({ children }) => <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>{children}</div>;
-function Bloque({ titulo, sub, children, acciones }) {
-  return (
-    <div className={cx(s.card, s.cardPad)} style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0, boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 180 }}>
-          <div className={s['card-title']} style={{ margin: 0 }}>{titulo}</div>
-          {sub && <div className={s.hint} style={{ margin: 0 }}>{sub}</div>}
-        </div>
-        {acciones}
-      </div>
-      {children}
-    </div>
-  );
-}
-const Aviso = ({ tono = 'info', children }) => <div className={cx(s.callout, s[tono])} style={{ margin: 0 }}>{children}</div>;
-const Cargando = () => <div className={s.hint}>Cargando…</div>;
+import {
+  DIAS_SEMANA, MEDIOS, PRESETS, compacto, etiquetaPeriodo, fechaLarga, haceCuanto, nombrePaso, pasoPara, pctTxt, rangoDe, tituloPeriodo,
+} from './formato.js';
+import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles } from './piezas.jsx';
+import { PestanaGranel } from './PestanaGranel.jsx';
+import { PestanaComparar } from './PestanaComparar.jsx';
 
 /* ============================================================================
  * EL PANEL
  * ========================================================================== */
-const PESTANAS = [['ventas', 'Ventas'], ['rentabilidad', 'Rentabilidad'], ['proveedores', 'Proveedores y listas'], ['stock', 'Stock']];
+const PESTANAS = [
+  ['ventas', 'Ventas'], ['comparar', 'Comparar fechas'], ['granel', 'Granel y enteros'], ['rentabilidad', 'Rentabilidad'],
+  ['proveedores', 'Proveedores y listas'], ['stock', 'Stock'],
+];
 
 export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
   const [pestana, setPestana] = useState(pestanaInicial);
+  /** Rentabilidad: todo, solo granel o solo enteros. Vive acá para que «Ver todos» desde Granel llegue filtrado. */
+  const [tipoRent, setTipoRent] = useState('');
   const [preset, setPreset] = useState('mes');
   const [manual, setManual] = useState(() => rangoDe('mes'));
   const [desde, hasta] = preset === 'otro' ? manual : rangoDe(preset);
@@ -148,7 +75,7 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)', minWidth: 0 }}>
       <PanelHead
         title="Métricas"
-        desc="Ventas, rentabilidad, proveedores y stock. Se actualiza solo cada 10 minutos; con «Sincronizar» traés lo último en el momento."
+        desc="Ventas, comparación de fechas, granel y enteros, rentabilidad, proveedores y stock. Se actualiza solo cada 10 minutos; con «Sincronizar» traés lo último en el momento."
         actions={(
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span className={s.hint} style={{ margin: 0 }} title={e?.ultimaOk ? new Date(e.ultimaOk).toLocaleString('es-AR') : ''}>
@@ -160,13 +87,16 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
       />
       {e?.error && <Aviso tono="warn"><strong>La última actualización falló:</strong> {e.error}</Aviso>}
       {e?.vacio && !e?.error && <Aviso>Las métricas se están armando por primera vez con toda la historia. Tarda unos segundos: apretá «Sincronizar» o volvé en un momento.</Aviso>}
+      {e?.tiposCambiaron && !e?.vacio && (
+        <Aviso>Cambió el tipo (granel o entero) de algún producto: en unos minutos se reacomoda toda la historia sola, para que granel y enteros usen la misma clasificación en todos los días.</Aviso>
+      )}
       {msgSync && <Aviso tono={msgSync.tono}>{msgSync.texto}</Aviso>}
 
       {/* Filtros: una sola fila, arriba de todo, valen para todas las pestañas. */}
       <div className={s.toolbar} style={{ margin: 0 }}>
         {pestana !== 'stock' && (
-          <select className={s['select-inline']} value={preset} onChange={(ev) => { const v = ev.target.value; if (v === 'otro') setManual([desde, hasta]); setPreset(v); }} aria-label="Período">
-            {PRESETS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          <select className={s['select-inline']} value={preset} onChange={(ev) => { const v = ev.target.value; if (v === 'otro') setManual([desde, hasta]); setPreset(v); }} aria-label={pestana === 'comparar' ? 'Período A' : 'Período'}>
+            {PRESETS.map(([k, l]) => <option key={k} value={k}>{pestana === 'comparar' ? `A: ${l}` : l}</option>)}
           </select>
         )}
         {preset === 'otro' && pestana !== 'stock' && (
@@ -181,7 +111,7 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
         </select>
         {pestana !== 'stock' && (
           <select className={s['select-inline']} value={pasoElegido} onChange={(ev) => setPasoElegido(ev.target.value)} aria-label="Agrupar por">
-            <option value="">Agrupar: automático ({paso === 'dia' ? 'día' : paso})</option>
+            <option value="">Agrupar: automático ({nombrePaso(paso)})</option>
             <option value="dia">Por día</option>
             <option value="semana">Por semana</option>
             <option value="mes">Por mes</option>
@@ -203,7 +133,11 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
       </div>
 
       {pestana === 'ventas' && <PestanaVentas qs={qs} paso={paso} version={version} />}
-      {pestana === 'rentabilidad' && <PestanaRentabilidad qs={qs} paso={paso} version={version} />}
+      {pestana === 'comparar' && <PestanaComparar desde={desde} hasta={hasta} sucursalId={sucursalId} paso={paso} version={version} />}
+      {pestana === 'granel' && (
+        <PestanaGranel qs={qs} paso={paso} version={version} onVerTodos={(t) => { setTipoRent(t); setPestana('rentabilidad'); }} />
+      )}
+      {pestana === 'rentabilidad' && <PestanaRentabilidad qs={qs} paso={paso} version={version} tipo={tipoRent} setTipo={setTipoRent} />}
       {pestana === 'proveedores' && <PestanaProveedores qs={qs} version={version} />}
       {pestana === 'stock' && <PestanaStock sucursalId={sucursalId} version={version} />}
     </div>
@@ -241,15 +175,15 @@ function PestanaVentas({ qs, paso, version }) {
               formato={money}
             />
           </Bloque>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: 12 }}>
+          <Grilla>
             <Bloque titulo="Por sucursal" sub="Venta neta y participación">
               <Barras datos={d.porSucursal.map((x) => ({ clave: x.sucursalId, etiqueta: x.nombre, valor: x.ventaNeta, detalle: `${num(x.tickets, 0)} tickets · promedio ${money(x.ticketPromedio)}`, p: x.participacion }))} formato={compacto} sufijo={(x) => `· ${pctTxt(x.p)}`} />
             </Bloque>
             <Bloque titulo="Cómo se cobra" sub="Por medio de pago">
               <Barras datos={d.porMedio.map((x) => ({ clave: x.medio, etiqueta: MEDIOS[x.medio] ?? x.medio, valor: x.importe, detalle: `${num(x.cantidad, 0)} cobros` }))} formato={compacto} />
             </Bloque>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: 12 }}>
+          </Grilla>
+          <Grilla>
             <Bloque titulo="A qué hora se vende" sub="Tickets por hora del día (hora argentina)">
               <Columnas
                 titulo="Tickets por hora"
@@ -273,8 +207,8 @@ function PestanaVentas({ qs, paso, version }) {
                 etiquetaCada={1}
               />
             </Bloque>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: 12 }}>
+          </Grilla>
+          <Grilla>
             <Bloque titulo="Mejores clientes" sub="Los 10 que más compraron en el período">
               <Table cols={[{ h: 'Cliente' }, { h: 'Tickets', num: true }, { h: 'Venta neta', num: true }, { h: '%', num: true }]} empty="Sin datos.">
                 {d.topClientes.map((x) => (
@@ -289,13 +223,12 @@ function PestanaVentas({ qs, paso, version }) {
                 ))}
               </Table>
             </Bloque>
-          </div>
+          </Grilla>
         </>
       )}
     </div>
   );
 }
-const MEDIOS = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta_debito: 'Débito', tarjeta_credito: 'Crédito', qr: 'QR', cheque: 'Cheque', otro: 'Otro' };
 
 /* ============================================================================
  * RENTABILIDAD Y PROVEEDORES/LISTAS — una tabla de márgenes con lentes
@@ -316,8 +249,8 @@ function TablaMargenes({ d, lente, conCompras, clave }) {
       return (va - vb) * dir;
     });
   }, [d, q, orden]);
-  const pag = usePaginado(filas, clave, `${q}|${orden}|${lente}`);
-  const exportar = () => descargarCsv(`margenes-por-${lente}-${d.desde}-${d.hasta}.csv`,
+  const pag = usePaginado(filas, clave, `${q}|${orden}|${lente}|${d.tipo ?? ''}`);
+  const exportar = () => descargarCsv(`margenes-por-${lente}${d.tipo ? `-solo-${d.tipo}` : ''}-${d.desde}-${d.hasta}.csv`,
     [NOMBRE_LENTE[lente], ...(lente === 'producto' ? ['Unidades'] : []), 'Venta neta', 'Costo', 'Margen', 'Margen %', 'IVA absorbido', 'Participación %', ...(conCompras ? ['Compras (neto)'] : [])],
     filas.map((x) => [x.nombre, ...(lente === 'producto' ? [csvNum(x.unidades ?? 0, 3)] : []), csvNum(x.ventaNeta), csvNum(x.costo), csvNum(x.margen), x.margenPct == null ? '' : csvNum(x.margenPct, 1), csvNum(x.ivaAbsorbido), x.participacion == null ? '' : csvNum(x.participacion, 1), ...(conCompras ? [x.comprasNeto == null ? '' : csvNum(x.comprasNeto)] : [])]));
   return (
@@ -384,23 +317,32 @@ function AvisoCobertura({ t }) {
   );
 }
 
-function PestanaRentabilidad({ qs, paso, version }) {
+const TIPOS_RENT = [['', 'Todo'], ['granel', 'Solo granel'], ['entero', 'Solo enteros']];
+
+function PestanaRentabilidad({ qs, paso, version, tipo, setTipo }) {
   const [lente, setLente] = useState('producto');
-  const { data: d, loading, error } = useResource(`metricas:margenes:${qs}:${lente}:${version}`, () => httpClient.get(`/metricas/margenes?${qs}&lente=${lente}`));
+  const qt = `${qs}&lente=${lente}${tipo ? `&tipo=${tipo}` : ''}`;
+  const { data: d, loading, error } = useResource(`metricas:margenes:${qt}:${version}`, () => httpClient.get(`/metricas/margenes?${qt}`));
   if (error) return <Aviso tono="warn">{error}</Aviso>;
   if (!d) return <Cargando />;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, opacity: loading ? 0.6 : 1 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {TIPOS_RENT.map(([k, l]) => (
+          <Btn key={k || 'todo'} small variant={tipo === k ? 'btn-primary' : 'btn-ghost'} onClick={() => setTipo(k)}>{l}</Btn>
+        ))}
+        {tipo && <span className={s.hint} style={{ margin: 0 }}>Todos los números de abajo son solo de {tipo === 'granel' ? 'granel (en paquetes y suelto)' : 'enteros'}.</span>}
+      </div>
       <TilesMargen t={d.totales} anterior={d.anterior} />
       <AvisoCobertura t={d.totales} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: 12 }}>
+      <Grilla>
         <Bloque titulo="Ganancia en el tiempo" sub={`Margen en $ por ${paso === 'dia' ? 'día' : paso}`}>
           <Columnas titulo="Margen en el tiempo" datos={d.serie.map((x) => ({ etiqueta: etiquetaPeriodo(x.periodo, paso), titulo: tituloPeriodo(x.periodo, paso), valor: x.margen, detalle: `Venta ${money(x.ventaNeta)} · margen ${pctTxt(x.margenPct)}` }))} formato={money} />
         </Bloque>
         <Bloque titulo="Margen % en el tiempo" sub="Si baja con la venta estable, algo se está vendiendo más barato o comprando más caro">
           <Columnas titulo="Margen porcentual en el tiempo" datos={d.serie.map((x) => ({ etiqueta: etiquetaPeriodo(x.periodo, paso), titulo: tituloPeriodo(x.periodo, paso), valor: x.margenPct ?? 0, detalle: x.margenPct == null ? 'Sin ventas con costo' : `Margen ${money(x.margen)}` }))} formato={(v) => `${num(v, 1)}%`} eje={(v) => `${num(v, 0)}%`} />
         </Bloque>
-      </div>
+      </Grilla>
       <Bloque
         titulo="Qué deja más plata"
         sub="Margen = venta de los renglones con costo − ese costo. Tocá «Ordenar» para ver los de menor margen."
