@@ -171,10 +171,27 @@ export function SistemaPage() {
   const { can } = usePermissions();
   // Solo las secciones del rol: lo no asignado no se muestra, ni en el menú.
   const secciones = useMemo(() => SISTEMA_SECCIONES.filter((x) => can(x.permiso)), [can]);
-  const [seccion, setSeccion] = useState(secciones[0]?.id);
+  const [seccion, setSeccion] = useState(() => (
+    /* Google devuelve acá después de autorizar el Drive (`?respaldo=…`): se abre directo en Respaldos. */
+    secciones.some((x) => x.id === 'respaldos') && new URLSearchParams(window.location.search).has('respaldo')
+      ? 'respaldos'
+      : secciones[0]?.id
+  ));
   const [empresa, setEmpresa] = useState(null);
   const [impresion, setImpresion] = useState(null);
   const [aviso, setAviso] = useState(null);
+  /* El resultado de conectar el Drive viaja en la dirección: se muestra una vez y se limpia. */
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const r = q.get('respaldo');
+    if (!r) return;
+    setAviso(r === 'conectado'
+      ? { tipo: 'ok', texto: 'Google Drive conectado. Ya podés programar la copia o apretar «Respaldar ahora».' }
+      : { tipo: 'err', texto: `No se pudo conectar Google Drive: ${q.get('motivo') || 'error desconocido'}` });
+    q.delete('respaldo'); q.delete('motivo');
+    const resto = q.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${resto ? `?${resto}` : ''}`);
+  }, []);
   const [guardando, setGuardando] = useState(false);
   const [previewDoc, setPreviewDoc] = useState('ticketPos');
 
@@ -194,7 +211,8 @@ export function SistemaPage() {
 
   useEffect(() => {
     if (!aviso) return undefined;
-    const t = setTimeout(() => setAviso(null), 4000);
+    /* Un error de conexión trae el motivo: se deja más tiempo para poder leerlo. */
+    const t = setTimeout(() => setAviso(null), aviso.tipo === 'err' ? 12000 : 4000);
     return () => clearTimeout(t);
   }, [aviso]);
 

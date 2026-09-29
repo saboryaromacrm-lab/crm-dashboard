@@ -7,6 +7,10 @@
  * si el servidor se cae con sus backups adentro, la copia de afuera salva) y
  * el RASTRO (cada descarga queda en auditoría y la última se muestra acá:
  * "hace tres meses que nadie baja una copia" tiene que estar a la vista).
+ *
+ * Desde el 29/9/2026 además hay una COPIA AUTOMÁTICA A GOOGLE DRIVE, a la hora
+ * programada y a mano (`DriveRespaldoPanel`): la copia de afuera deja de
+ * depender de que alguien se acuerde de bajarla.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
@@ -14,6 +18,7 @@ import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import { PanelHead, Btn, Stat, Table, s } from '@modules/productos/components/ui.jsx';
 import { fmtFechaHora, num } from '@modules/productos/domain/format.js';
+import { DriveRespaldoPanel } from './DriveRespaldoPanel.jsx';
 
 export function RespaldosPanel({ onAviso }) {
   const { permissions } = usePermissions();
@@ -85,7 +90,7 @@ export function RespaldosPanel({ onAviso }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Respaldos"
-        desc="La copia externa de la base, bajada a esta máquina. Los backups automáticos corren en el servidor (Dokploy) y la restauración se hace allá."
+        desc="La copia externa de la base: automática a Google Drive y, si querés, bajada a esta máquina. Los backups del servidor (Dokploy) corren aparte y la restauración se hace allá."
         actions={(
           <Btn variant="btn-primary" disabled={bajando || !!error} onClick={descargar}>
             {bajando ? 'Generando…' : 'Descargar respaldo (.sql)'}
@@ -94,6 +99,9 @@ export function RespaldosPanel({ onAviso }) {
       />
 
       {error && <div className={cx(s.callout, s.warn)}>{error}</div>}
+
+      {/* LA COPIA AUTOMÁTICA: lo primero, porque es la que no depende de nadie. */}
+      <DriveRespaldoPanel esSuper={esSuper} onAviso={onAviso} />
 
       {info && (
         <div className={s.stats}>
@@ -106,24 +114,25 @@ export function RespaldosPanel({ onAviso }) {
       )}
 
       <div className={cx(s.callout, s.info)} style={{ margin: 0 }}>
-        <strong>Para qué sirve esta copia.</strong> Los backups automáticos viven en el mismo
-        servidor que la base: un problema grande se los puede llevar juntos. El archivo que se
-        descarga acá es <strong>la copia de afuera</strong> — llevala a un pendrive o a un Drive
-        cada tanto. Se restaura sobre una base con el sistema ya migrado, cargándolo con
+        <strong>Para qué sirve esta copia.</strong> Los backups del servidor viven en el mismo
+        lugar que la base: un problema grande se los puede llevar juntos. La copia de Drive (o
+        el archivo que se descarga acá) es <strong>la copia de afuera</strong>. Se restaura sobre una base con el sistema ya migrado, cargándolo con
         <code> psql</code>; las instrucciones exactas van en el encabezado del propio archivo.
       </div>
 
       <div>
-        <div className={s['section-title']}>Descargas registradas</div>
+        <div className={s['section-title']}>Registro de copias</div>
         <Table
-          cols={[{ h: 'Fecha y hora' }, { h: 'Qué se bajó' }, { h: 'Quién' }]}
-          empty="Nadie descargó una copia todavía."
+          cols={[{ h: 'Fecha y hora' }, { h: 'Qué pasó' }, { h: 'Quién' }]}
+          empty="Todavía no se hizo ninguna copia."
         >
           {(info?.descargas ?? []).map((d, i) => (
             <tr key={i}>
               <td style={{ whiteSpace: 'nowrap' }}>{fmtFechaHora(d.fecha)}</td>
-              <td>{d.detalle}</td>
-              <td>{d.usuario || <span className={s.muted}>—</span>}</td>
+              <td>
+                {d.campo && <strong>{d.campo}</strong>}{d.campo && d.detalle ? ' · ' : ''}{d.detalle}
+              </td>
+              <td>{d.usuario || <span className={s.muted}>{d.campo?.includes('(programado)') ? 'Automático' : '—'}</span>}</td>
             </tr>
           ))}
         </Table>
