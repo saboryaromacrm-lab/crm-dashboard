@@ -14,6 +14,7 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import SettingsIcon from '@mui/icons-material/Settings';
+import InsightsIcon from '@mui/icons-material/Insights';
 
 export const GERENCIA_SECCIONES = [
   { id: 'usuarios', label: 'Usuarios y roles', icon: GroupIcon, permiso: 'gerencia.usuarios' },
@@ -26,6 +27,13 @@ export const GERENCIA_SECCIONES = [
      * por la mercadería sin factura, posición fiscal y control por proveedor. */
     id: 'rentabilidad', label: 'Rentabilidad', icon: TrendingUpIcon, permiso: 'gerencia.rentabilidad',
     desc: 'Margen real por producto, marca, categoría y proveedor — con el IVA absorbido por la mercadería sin factura a la vista.',
+  },
+  {
+    /* 29/9/2026 (0122): ventas en el tiempo, rentabilidad, proveedores y listas,
+     * stock que rota. Lee tablas resumen, así no frena las cajas. La llave
+     * `gerencia.metricas` no se asigna a ningún rol: solo el superadmin. */
+    id: 'metricas', label: 'Métricas', icon: InsightsIcon, permiso: 'gerencia.metricas',
+    desc: 'Ventas, rentabilidad, proveedores, listas y stock, casi en vivo.',
   },
   {
     id: 'valorizacion', label: 'Valorización de stock', icon: Inventory2Icon, permiso: 'gerencia.valorizacion', pronto: true,
