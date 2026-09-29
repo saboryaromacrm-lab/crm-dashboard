@@ -4,7 +4,7 @@ import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
 
 /**
  * Placeholder reutilizable para módulos que todavía no se implementaron.
- * Mantiene la cabecera estándar del CRM y una tarjeta "Próximamente".
+ * Mantiene la cabecera estándar del ERP y una tarjeta "Próximamente".
  *
  * @param {{ title: string, subtitle?: string, note?: string }} props
  */

@@ -14,7 +14,7 @@
  *      son ~250 KB que se descargan SOLO si alguien abre la cámara y el
  *      navegador no tiene la nativa. El bundle de la app no crece.
  *
- * La cámara exige **contexto seguro**: HTTPS o localhost. Entrando al CRM por
+ * La cámara exige **contexto seguro**: HTTPS o localhost. Entrando al ERP por
  * `http://<ip-de-la-red>:3000` desde el celular, `getUserMedia` no existe y el
  * navegador no da ningún error entendible — por eso `motivoSinCamara()` lo
  * detecta ANTES de pedir permiso y la pantalla explica qué hacer.
@@ -31,7 +31,7 @@ const FORMATOS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'i
 export function motivoSinCamara() {
   if (typeof navigator === 'undefined') return 'Sin navegador.';
   if (typeof window !== 'undefined' && window.isSecureContext === false) {
-    return 'La cámara necesita una conexión segura (HTTPS). Estás entrando por HTTP a una IP de la red, y los navegadores bloquean la cámara ahí. Se puede escanear con el lector USB, o abrir el CRM por HTTPS.';
+    return 'La cámara necesita una conexión segura (HTTPS). Estás entrando por HTTP a una IP de la red, y los navegadores bloquean la cámara ahí. Se puede escanear con el lector USB, o abrir el ERP por HTTPS.';
   }
   if (!navigator.mediaDevices?.getUserMedia) {
     return 'Este navegador no da acceso a la cámara.';

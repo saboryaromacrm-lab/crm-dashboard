@@ -9,7 +9,7 @@
  * LO QUE HAY QUE ENTENDER DEL ARCHIVO (y no es un mapeo directo):
  *
  *  1. La mitad derecha es CONTABLE (saldos, facturado, vencimientos) y NO se
- *     importa: el saldo del CRM nace de los comprobantes. Los saldos iniciales
+ *     importa: el saldo del ERP nace de los comprobantes. Los saldos iniciales
  *     son un paso propio el día del corte. De esa mitad solo se rescata
  *     "Productos asociados", que alimenta el avance de migración ("35 de 64").
  *
@@ -88,7 +88,7 @@ const MEDIO = {
 };
 
 /**
- * Cada fila del archivo, resuelta contra el padrón que YA está en el CRM:
+ * Cada fila del archivo, resuelta contra el padrón que YA está en el ERP:
  *   'nuevo'     no existe: se crea.
  *   'completar' existe (mismo CUIT o mismo nombre): se le completan los campos
  *               vacíos, nunca se pisa lo cargado a mano.

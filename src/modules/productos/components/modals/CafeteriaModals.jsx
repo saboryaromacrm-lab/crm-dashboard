@@ -1415,7 +1415,7 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
 /* ==================================================================== *
  * EL PEDIDO DE LA CAFETERÍA — la demanda, no el envío
  * ==================================================================== *
- * Lo arma el usuario del rol Cafetería (su única pantalla del CRM) contra el
+ * Lo arma el usuario del rol Cafetería (su única pantalla del ERP) contra el
  * catálogo completo, con la disponibilidad a la vista. NO toca stock ni habla
  * de plata: es "esto necesito" — el que arma el envío corrige a lo que de
  * verdad va, y el envío cierra el pedido.

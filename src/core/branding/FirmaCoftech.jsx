@@ -12,7 +12,7 @@ import styles from './Coftech.module.css';
  * cien veces por día, habría costado en CADA carga: Babel standalone (~1,5 MB)
  * para compilar veinte líneas mientras el cajero mira una pantalla vacía, y
  * una petición a otro dominio en el camino crítico — si ese dominio tarda, se
- * lo come el CRM entero. Acá van compiladas con el resto del bundle.
+ * lo come el ERP entero. Acá van compiladas con el resto del bundle.
  *
  * EL HOVER ES CSS, no estado de React. El original guardaba `isHovered` en un
  * `useState`: un re-render por cada entrada y salida del mouse sobre algo que

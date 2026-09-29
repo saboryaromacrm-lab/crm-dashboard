@@ -11,7 +11,7 @@
  *
  * La vista previa es donde se decide TODO lo que la máquina no puede sola:
  * incluir o no una fila, mercadería vs. gastos, y los DUDOSOS — el archivo
- * dice "NUEVO COSMOS S.A" y en el CRM ya está "Nuevo Cosmo S.A. - Lucfel"
+ * dice "NUEVO COSMOS S.A" y en el ERP ya está "Nuevo Cosmo S.A. - Lucfel"
  * cargado a mano: emparejarlos evita el duplicado, y eso se confirma mirando.
  */
 import { useMemo, useRef, useState } from 'react';

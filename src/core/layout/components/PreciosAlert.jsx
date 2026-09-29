@@ -1,7 +1,7 @@
 /**
  * ALERTA DE CAMBIO DE PRECIOS — el aviso al cajero, en cualquier pantalla
  * ============================================================================
- * Cuando alguien actualiza precios, todos los cajeros con el CRM abierto tienen
+ * Cuando alguien actualiza precios, todos los cajeros con el ERP abierto tienen
  * los precios viejos en memoria. Este aviso se los dice y les da el botón para
  * traer los nuevos de una.
  *
@@ -10,7 +10,7 @@
  * en pantalla.
  *
  * El resto de las decisiones son las del aviso de pedidos, por las mismas razones:
- *  - El primer tick NO alerta: al abrir el CRM el catálogo ya está fresco. La
+ *  - El primer tick NO alerta: al abrir el ERP el catálogo ya está fresco. La
  *    alerta es para lo que cambia MIENTRAS estás trabajando.
  *  - Solo lo ve quien tiene el punto de venta: al que no cobra no le cambia nada.
  *  - Tampoco lo ve QUIEN hizo el cambio — ya lo sabe.

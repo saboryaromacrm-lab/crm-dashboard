@@ -1171,7 +1171,7 @@ const moverDestinoPago = (id, destino) => _mutate(() => httpClient.patch(`/pagos
 const actualizarPapelPago = (id, datos) => _mutate(() => httpClient.patch(`/pagos-proveedor/${id}/papel`, datos));
 
 /* ---- Cafetería (coffit) ----
- * El envío es un PUNTO DE SALIDA a costo: el CRM no lleva el stock del café
+ * El envío es un PUNTO DE SALIDA a costo: el ERP no lleva el stock del café
  * (coffit es el dueño). Crear/anular pasan por `_mutate` porque mueven stock. */
 const enviosCafeteria = (filtros) => httpClient.get('/cafeteria/envios' + _qsPagos(filtros || {}));
 const envioCafeteria = (id) => httpClient.get('/cafeteria/envios/' + id);

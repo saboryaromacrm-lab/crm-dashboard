@@ -1,5 +1,5 @@
 /**
- * ALERTA DE PEDIDOS WEB — el aviso vivo, en cualquier pantalla del CRM
+ * ALERTA DE PEDIDOS WEB — el aviso vivo, en cualquier pantalla del ERP
  * ============================================================================
  * Escucha el poller de órdenes y, cuando el contador SUBE (entró un pedido
  * nuevo mientras el sistema está abierto), muestra un aviso chico arriba al
@@ -7,7 +7,7 @@
  * aviso con el contador — no una pila de carteles.
  *
  * Decisiones deliberadas:
- *  - El primer tick NO alerta: lo que ya estaba pendiente al abrir el CRM se
+ *  - El primer tick NO alerta: lo que ya estaba pendiente al abrir el ERP se
  *    ve en los badges; la alerta es para lo que ENTRA ahora.
  *  - Solo lo ve la ADMINISTRACIÓN. Los pedidos del sitio los revisa y acepta el
  *    administrador; el cajero no maneja esa parte, así que un cartel cada vez

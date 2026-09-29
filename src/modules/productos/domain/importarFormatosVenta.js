@@ -7,16 +7,16 @@
  * productos. Dos modos, igual que costos:
  *
  *  · UN PROVEEDOR: el archivo filtrado por proveedor en el sistema viejo; solo
- *    se tocan los productos que en el CRM tienen a ese proveedor.
+ *    se tocan los productos que en el ERP tienen a ese proveedor.
  *  · TODOS (archivo completo, 29/9/2026): el archivo NO trae la columna
  *    proveedor, así que cada producto se agrupa por el proveedor que tiene en
- *    el CRM (el que fija el precio). La vista previa se ve por proveedor y se
+ *    el ERP (el que fija el precio). La vista previa se ve por proveedor y se
  *    puede excluir los que no se quieran tocar.
  *
  * Reglas fijadas con el dueño:
- *  · Se importan TODAS las listas del archivo. La que no existe en el CRM se
+ *  · Se importan TODAS las listas del archivo. La que no existe en el ERP se
  *    CREA — al final del orden de preferencia (eso lo decide el servidor).
- *  · Dos listas del archivo que caen en la misma del CRM: gana la de más
+ *  · Dos listas del archivo que caen en la misma del ERP: gana la de más
  *    renglones y las otras se marcan como choque (ver `resolverChoques`).
  *  · Las listas que el producto tiene y el archivo no trae, no se tocan.
  *
@@ -34,7 +34,7 @@ const norm = (s) => String(s ?? '').toUpperCase().normalize('NFD').replace(/\p{D
   .replace(/\s+/g, ' ')
   .trim();
 
-/** Canal del sistema viejo → palabra con la que se busca la modalidad del CRM. */
+/** Canal del sistema viejo → palabra con la que se busca la modalidad del ERP. */
 export function modalidadDelCanal(canal, modalidades) {
   const c = norm(canal);
   const esMayor = /MAYOR|DISTRIB/.test(c);
@@ -48,9 +48,9 @@ export function modalidadDelCanal(canal, modalidades) {
 export const claveLista = (canal, numero) => `${String(canal ?? '').trim()}|${String(numero ?? '').trim()}`;
 
 /**
- * DOS LISTAS DEL ARCHIVO, UNA DEL CRM (29/9/2026, archivo completo): el
+ * DOS LISTAS DEL ARCHIVO, UNA DEL ERP (29/9/2026, archivo completo): el
  * sistema viejo tiene "Distribución/mayorista 1" y "… 2", y las dos caen en la
- * Mayorista 1 del CRM. Sin esto ganaba la que apareciera primero en el
+ * Mayorista 1 del ERP. Sin esto ganaba la que apareciera primero en el
  * archivo — al azar. Se queda la de MÁS renglones (la que de verdad se usa);
  * las otras quedan sin importar, marcadas como choque, para que la persona
  * les elija otro destino si las quiere.
@@ -86,7 +86,7 @@ export function resolverChoques(listas) {
  *
  * Misma modalidad y mismo número ("Minorista 10" → Minorista 10). La única
  * excepción es la que ya fijó la importación del catálogo completo: la lista 2
- * del sistema viejo es la Mayorista del CRM, que nació como "Mayorista 1". Lo
+ * del sistema viejo es la Mayorista del ERP, que nació como "Mayorista 1". Lo
  * que no existe se propone CREAR con ese número — y la próxima vez ya aparece
  * y se reusa sola.
  */
@@ -171,7 +171,7 @@ export function buscarArticulo(fila, productosOIndice) {
   return null;
 }
 
-/** El renglón del archivo hecho fila de formato de venta del CRM. */
+/** El renglón del archivo hecho fila de formato de venta del ERP. */
 export function filaDelArchivo(f) {
   const precioDefinido = /PRECIO/i.test(String(f.Actualizacion__ ?? ''));
   const unidades = Math.max(1, num(f.Cantidad) || 1);
@@ -229,15 +229,15 @@ export function armarPlanFormatosVenta(filas, {
     if (nueva.modoPrecio === 'markup' && !Number.isFinite(nueva.markup)) { fuera('markup ilegible'); continue; }
 
     const art = buscarArticulo(f, idx);
-    if (!art) { fuera('no hay en el CRM un producto ni un paquete con este código'); continue; }
+    if (!art) { fuera('no hay en el ERP un producto ni un paquete con este código'); continue; }
     const { prod, pres } = art;
     const nombre = pres ? `${prod.nombre} · paquete ${pres.tamKg >= 1 ? `${pres.tamKg} kg` : `${Math.round(pres.tamKg * 1000)} g`}` : prod.nombre;
     if (prod.estado === 'archivado') { fuera('está archivado', { nombre }); continue; }
-    if (esDelProveedor && !esDelProveedor(prod)) { fuera('en el CRM no tiene a este proveedor en su formato de compra', { nombre }); continue; }
+    if (esDelProveedor && !esDelProveedor(prod)) { fuera('en el ERP no tiene a este proveedor en su formato de compra', { nombre }); continue; }
 
     const ambito = `${prod.id}:${pres?.id ?? ''}`;
     // Por la lista DESTINO, no la del archivo: si dos listas del archivo van a
-    // parar a la misma del CRM, la segunda pisaría a la primera en silencio.
+    // parar a la misma del ERP, la segunda pisaría a la primera en silencio.
     const claveItem = `${ambito}|${destino.tipo === 'existente' ? `L${destino.listaId}` : `N${clave}`}`;
     if (vistos.has(claveItem)) { fuera('otra fila del archivo ya carga esta lista para este producto', { nombre }); continue; }
     vistos.add(claveItem);
@@ -253,7 +253,7 @@ export function armarPlanFormatosVenta(filas, {
       productoId: prod.id,
       presentacionId: pres?.id ?? null,
       proveedorId: prov?.id ?? 0,
-      proveedor: prov?.nombre ?? 'Sin proveedor en el CRM',
+      proveedor: prov?.nombre ?? 'Sin proveedor en el ERP',
       clave,
       listaArchivo: etiquetaArchivo,
       destino,

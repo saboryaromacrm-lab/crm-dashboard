@@ -6,7 +6,7 @@
  * igual que «Actualizar costos»:
  *  · UN PROVEEDOR: el archivo filtrado por proveedor en el sistema viejo.
  *  · TODOS (archivo completo, 29/9/2026): el archivo no trae proveedor, así
- *    que cada producto se agrupa por el que tiene en el CRM; se ve el resumen
+ *    que cada producto se agrupa por el que tiene en el ERP; se ve el resumen
  *    por proveedor y se puede excluir los que no se quieran tocar.
  * Las reglas viven en `domain/importarFormatosVenta.js`; acá se eligen el
  * modo, el archivo y adónde va cada lista, y se muestra todo antes de tocar
@@ -266,13 +266,13 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
             {varios ? (
               <>
                 Un solo archivo: el <strong>Listado de Formatos</strong> de Ventas <strong>completo</strong>. Como no
-                trae el proveedor, cada producto se agrupa por el que tiene en el CRM: en la vista previa ves qué
+                trae el proveedor, cada producto se agrupa por el que tiene en el ERP: en la vista previa ves qué
                 cambia de cada proveedor y podés <strong>excluir</strong> los que no quieras tocar.
               </>
             ) : (
               <>
                 Un solo archivo: el <strong>Listado de Formatos</strong> de Ventas de un proveedor. Se actualiza solo
-                el formato de venta de los productos que en el CRM tienen a ese proveedor.
+                el formato de venta de los productos que en el ERP tienen a ese proveedor.
               </>
             )}
             {' '}No toca costos ni stock, y las listas que el producto tiene y el archivo no trae quedan como están.
@@ -317,9 +317,9 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
         <>
           <div className={s['section-title']} style={{ marginTop: 0 }}>A qué lista va cada una</div>
           <div className={s.hint} style={{ marginTop: 0 }}>
-            Cada lista del sistema viejo va a la del CRM con la misma modalidad y número; la que no
+            Cada lista del sistema viejo va a la del ERP con la misma modalidad y número; la que no
             existe se <strong>crea</strong> al final del orden de preferencia (no le gana el precio a las que ya
-            tenés). Si dos listas del archivo caen en la misma del CRM, queda la de más renglones y la otra se
+            tenés). Si dos listas del archivo caen en la misma del ERP, queda la de más renglones y la otra se
             marca para que le elijas destino.
           </div>
           <Table cols={[{ h: 'Lista del sistema viejo' }, { h: 'Renglones', num: true }, { h: 'Va a' }]}>
@@ -355,7 +355,7 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
               <div className={s['section-title']}>Por proveedor</div>
               <div className={s.hint} style={{ marginTop: 0 }}>
                 Destildá los proveedores que no quieras tocar ahora. Cada producto va con el proveedor que tiene en
-                el CRM (el que fija el precio).
+                el ERP (el que fija el precio).
               </div>
               <div style={{ maxHeight: 240, overflow: 'auto' }}>
                 <Table cols={[{ h: '' }, { h: 'Proveedor' }, { h: 'Cambian', num: true }, { h: 'Se agregan', num: true }, { h: 'Sin cambios', num: true }]}>
@@ -396,7 +396,7 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
             )}
           </div>
           <div className={s.hint} style={{ marginTop: 0 }}>
-            El precio nuevo lo calcula el CRM con <strong>su</strong> costo; «Sistema viejo» es el que figuraba
+            El precio nuevo lo calcula el ERP con <strong>su</strong> costo; «Sistema viejo» es el que figuraba
             allá. Si no coinciden, el costo es distinto: conviene actualizar primero los costos.
           </div>
           <Table

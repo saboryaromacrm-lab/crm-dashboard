@@ -1,7 +1,7 @@
 /**
  * INVENTARIO — configuración de los menús internos.
  * ============================================================================
- * El subsistema de inventario alimenta DOS módulos del CRM que comparten el
+ * El subsistema de inventario alimenta DOS módulos del ERP que comparten el
  * mismo motor (singleton): **Compras** y **Almacén**. Cada uno define su propio
  * sub-menú (sub-sidebar izquierdo) con este catálogo. Es DATO, no lógica.
  *
@@ -88,7 +88,7 @@ export const ALMACEN_PANELS = [
    * El globito son los que APURAN: vencidos sin procesar + vencen en ≤7 días.
    */
   { id: 'vencimientos',   label: 'Vencimientos',   icon: EventBusyIcon,      permiso: 'almacen.vencimientos', badge: 'vencimientos' },
-  // Punto de SALIDA hacia coffit: el CRM no lleva el stock del café. El globito
+  // Punto de SALIDA hacia coffit: el ERP no lleva el stock del café. El globito
   // avisa la demanda del café que espera (pedidos pendientes o armándose).
   /* Dos permisos: la distribuidora entra por `almacen.cafeteria` y el rol
      Coffit por el suyo — es la misma pantalla, y cada uno ve y opera lo
@@ -99,7 +99,7 @@ export const ALMACEN_PANELS = [
   { id: 'cafeteria',      label: 'Coffit',      labelCafe: 'Sabor y Aroma',      icon: LocalCafeIcon,      permiso: ['almacen.cafeteria', 'almacen.cafeteria-entradas', 'almacen.cafeteria-pedidos'], badge: 'pedidosCafe' },
   /*
    * La pantalla DE la cafetería: armar el pedido a la distribuidora. Es la
-   * única sección del rol Cafetería — ese usuario entra al CRM y ve SOLO esto.
+   * única sección del rol Cafetería — ese usuario entra al ERP y ve SOLO esto.
    */
   /*
    * La puerta chica al catálogo del café: la cafetería da de alta lo que

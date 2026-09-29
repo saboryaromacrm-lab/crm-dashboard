@@ -8,7 +8,7 @@
  *
  * El ORDEN recomendado se ve en la fila: primero los costos del proveedor y
  * después sus formatos de venta — el precio nuevo es markup sobre el costo
- * del CRM, así que con el costo viejo el precio sale mal aunque el markup
+ * del ERP, así que con el costo viejo el precio sale mal aunque el markup
  * esté bien.
  *
  * Qué se importó lo dice la API (`/productos/importaciones-por-proveedor`):

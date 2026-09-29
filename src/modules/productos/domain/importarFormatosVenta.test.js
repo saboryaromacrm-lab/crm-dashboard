@@ -76,8 +76,8 @@ test('plan: afuera lo de otro proveedor, la madre a $0 y lo que no existe; igual
   assert.deepEqual(plan.resumen, { cambia: 0, agrega: 3, igual: 1, afuera: 3 });
   const motivos = plan.afuera.map((a) => `${a.codigo}: ${a.motivo}`).join('\n');
   assert.match(motivos, /ZZZ2133: producto madre con precio \$0/);
-  assert.match(motivos, /400: en el CRM no tiene a este proveedor/);
-  assert.match(motivos, /999: no hay en el CRM/);
+  assert.match(motivos, /400: en el ERP no tiene a este proveedor/);
+  assert.match(motivos, /999: no hay en el ERP/);
 
   const cuerpo = cuerpoImportacion(plan, listas, 7);
   assert.equal(cuerpo.items.length, 3, 'el que queda igual no viaja');
@@ -89,7 +89,7 @@ test('plan: afuera lo de otro proveedor, la madre a $0 y lo que no existe; igual
   assert.equal(cuerpo.items.find((i) => i.listaNueva).listaNueva, 'Minorista|10');
 });
 
-test('dos listas del archivo al mismo destino del CRM: la segunda queda afuera, no pisa', () => {
+test('dos listas del archivo al mismo destino del ERP: la segunda queda afuera, no pisa', () => {
   const archivo = [
     fila('100', 'ACEITE DE CHIA', 'Minorista', 1, { MarkUp__: '45.00 %' }),
     fila('100', 'ACEITE DE CHIA', 'Minorista', 10, { MarkUp__: '55.00 %' }),
@@ -103,7 +103,7 @@ test('dos listas del archivo al mismo destino del CRM: la segunda queda afuera, 
 
 /* ---------------- Archivo completo, todos los proveedores (29/9/2026) ---------------- */
 
-test('choque: dos listas del archivo que caen en la misma del CRM — gana la de más renglones', () => {
+test('choque: dos listas del archivo que caen en la misma del ERP — gana la de más renglones', () => {
   const archivo = [
     ...Array(5).fill(0).map(() => fila('1', 'x', 'Distribucion/mayorista', 2)),
     fila('1', 'x', 'Distribucion/mayorista', 1),
@@ -116,7 +116,7 @@ test('choque: dos listas del archivo que caen en la misma del CRM — gana la de
   assert.match(d['Distribucion/mayorista|1'].destino.motivo, /misma lista/);
 });
 
-test('archivo completo: sin filtro de proveedor, agrupado por el proveedor del CRM y con exclusión', () => {
+test('archivo completo: sin filtro de proveedor, agrupado por el proveedor del ERP y con exclusión', () => {
   const archivo = [
     fila('100', 'ACEITE DE CHIA', 'Minorista', 1, { MarkUp__: '45.00 %' }),
     fila('400', 'DE OTRO', 'Minorista', 1),

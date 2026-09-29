@@ -49,7 +49,7 @@ export function RespaldosPanel({ onAviso }) {
     if (bajando) return;
     setBajando(true);
     try {
-      const nombre = await httpClient.descargar('/sistema/respaldos/descargar', 'respaldo-crm.sql');
+      const nombre = await httpClient.descargar('/sistema/respaldos/descargar', 'respaldo-erp.sql');
       onAviso?.({ tipo: 'ok', texto: `Respaldo descargado: ${nombre}. Guardalo fuera de esta máquina también (pendrive, Drive).` });
       cargar();
     } catch (e) {

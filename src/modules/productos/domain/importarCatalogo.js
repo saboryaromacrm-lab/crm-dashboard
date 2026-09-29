@@ -2,7 +2,7 @@
  * IMPORTACIÓN DE CATÁLOGOS — el traductor del sistema viejo.
  * ============================================================================
  * Convierte los tres CSV que exporta el sistema de gestión anterior (maestro de
- * productos + formatos de compra + formatos de venta) en el modelo del CRM.
+ * productos + formatos de compra + formatos de venta) en el modelo del ERP.
  * Todo pasa acá, en el navegador: así la VISTA PREVIA es instantánea y a la API
  * le llega un plan ya armado para escribir en una sola transacción.
  *
@@ -278,7 +278,7 @@ const NO_MARCAS = new Set(['GRANEL', 'VARIOS', 'SIN MARCA', '']);
  * Arma el plan de importación y su reporte.
  *
  * `opciones`:
- *   listaMinorista / listaMayorista  ids de las listas del CRM a las que van
+ *   listaMinorista / listaMayorista  ids de las listas del ERP a las que van
  *                                    las listas 1 y 2 del sistema viejo
  *   publicarConMayorista             publicar en la tienda solo lo que tenga
  *                                    precio mayorista

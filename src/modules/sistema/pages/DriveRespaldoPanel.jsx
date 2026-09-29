@@ -266,7 +266,7 @@ export function DriveRespaldoPanel({ esSuper, onAviso }) {
 
       <div className={s.hint}>
         <strong>Para abrir una copia cifrada</strong> (bajada de Drive): en cualquier computadora con Node.js,{' '}
-        <code>node descifrar-respaldo.mjs respaldo-crm-….sql.gz.enc</code> pide la contraseña y deja el <code>.sql</code>{' '}
+        <code>node descifrar-respaldo.mjs respaldo-erp-….sql.gz.enc</code> pide la contraseña y deja el <code>.sql</code>{' '}
         listo para restaurar. El programa está en la carpeta <code>scripts</code> del sistema.
       </div>
     </div>
