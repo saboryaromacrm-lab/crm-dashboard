@@ -13,6 +13,8 @@
  *    sentido: ahí el stock INGRESA y el costo lo declara ella.
  *  · MÉTRICA — qué se movió en el período, agregado por artículo y con filtros,
  *    por sentido. El agregado lo hace la API: acá solo se muestra.
+ *  · COMPRAS DE MERCADERÍA y GASTOS (29/9/2026) — lo que se compró y se gastó
+ *    para Coffit, en detalle. Ver `CoffitComprasGastos.jsx`.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
@@ -23,6 +25,7 @@ import { esVozDelCafe, vozCafeteria } from '../domain/cafeteria.voz.js';
 import { Table, PanelHead, Stat, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
 import { pedidosCafe } from '@core/services/pedidosCafe.js';
 import { CafeteriaProductosPanel } from './CafeteriaProductosPanel.jsx';
+import { CoffitCompras, CoffitGastos } from './CoffitComprasGastos.jsx';
 
 const inicioDeMes = () => {
   const d = new Date();
@@ -39,7 +42,11 @@ const pestanasDe = (v) => [
   /* Los productos del café, adentro de la sección (27/9/2026): antes eran una
    * entrada aparte del menú, lejos de los envíos que los usan. */
   { id: 'productos', label: v.prodSeccion },
-  { id: 'metrica', label: 'Métrica' },
+  /* La plata de Coffit, separada en sus dos orígenes (29/9/2026, pedido del
+   * dueño): lo comprado a proveedores y los gastos. Solo con las métricas. */
+  { id: 'compras', label: 'Compras de mercadería', metricas: true },
+  { id: 'gastos', label: 'Gastos', metricas: true },
+  { id: 'metrica', label: 'Métrica', metricas: true },
 ];
 
 export function CafeteriaPanel() {
@@ -63,7 +70,7 @@ export function CafeteriaPanel() {
    */
   const verMetricas = can('almacen.cafeteria-metricas');
   const PESTANAS = useMemo(
-    () => pestanasDe(v).filter((t) => verMetricas || t.id !== 'metrica'),
+    () => pestanasDe(v).filter((t) => verMetricas || !t.metricas),
     [v, verMetricas],
   );
 
@@ -234,6 +241,9 @@ export function CafeteriaPanel() {
         actions={(() => {
           /* En Productos el botón es el del producto: vive en la pestaña. */
           if (pestana === 'productos') return null;
+          /* Compras y gastos se cargan en su lugar (Compras › Facturación y
+             Gastos); desde acá solo se miran. */
+          if (pestana === 'compras' || pestana === 'gastos') return null;
           /* PEDIR VIVE ACÁ (28/9/2026, pedido del dueño): antes era una
              entrada aparte del menú, «Pedido a la distribuidora». Para el café
              es el botón principal de su pestaña de pedidos; el que además
@@ -468,10 +478,20 @@ export function CafeteriaPanel() {
                  en el formulario. */
               const [sucMax] = Object.entries(a.porSucursal).sort((x, y) => y[1] - x[1])[0] ?? [];
               return (
-                <tr key={`${a.productoId}-${a.presentacionId ?? 0}`}>
-                  <td>{a.nombre}</td>
+                <tr key={`${a.productoId}-${a.presentacionId ?? 0}${a.compartido ? '-c' : ''}`}>
+                  <td>
+                    {a.nombre}
+                    {a.compartido && (
+                      <div className={s.hint} style={{ margin: 0 }}>
+                        comprado para Coffit en una factura · falta mandarle
+                      </div>
+                    )}
+                  </td>
                   <td className={s.mono} style={{ fontSize: 12 }}>{a.codigoPropio || '—'}</td>
                   {(deposito?.sucursales ?? []).map((su) => {
+                    /* Un compartido está mezclado con el stock de la
+                       distribuidora: no hay «de Coffit» por sucursal. */
+                    if (a.compartido) return <td key={su.id} className={cx(s.num, s.muted)}>—</td>;
                     const n = a.porSucursal[su.id] ?? 0;
                     return (
                       <td key={su.id} className={cx(s.num, s.mono)} style={{ opacity: n > 0 ? 1 : 0.3 }}>
@@ -582,6 +602,13 @@ export function CafeteriaPanel() {
       )}
 
       {pestana === 'productos' && <CafeteriaProductosPanel embebido />}
+
+      {pestana === 'compras' && verMetricas && (
+        <CoffitCompras desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} />
+      )}
+      {pestana === 'gastos' && verMetricas && (
+        <CoffitGastos desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} />
+      )}
 
       {pestana === 'metrica' && verMetricas && (
         <>

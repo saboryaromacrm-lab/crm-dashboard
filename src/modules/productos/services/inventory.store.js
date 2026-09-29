@@ -1180,6 +1180,9 @@ const resumenCafeteria = (filtros) => httpClient.get('/cafeteria/resumen' + _qsP
 const depositoCafeteria = () => httpClient.get('/cafeteria/deposito');
 /** Lo enviado a coffit en el período, agregado por artículo (con filtros). */
 const metricaCafeteria = (filtros) => httpClient.get('/cafeteria/metrica' + _qsPagos(filtros || {}));
+/** Compras y gastos de Coffit en detalle (29/9/2026): los mismos totales que el resumen. */
+const comprasCafeteria = (filtros) => httpClient.get('/cafeteria/compras' + _qsPagos(filtros || {}));
+const gastosCafeteria = (filtros) => httpClient.get('/cafeteria/gastos' + _qsPagos(filtros || {}));
 /** Último costo declarado por la cafetería, por `producto-presentación`. Se
  *  propone en el formulario de entrada: es una sugerencia, no un dato. */
 const costosEntradaCafeteria = () => httpClient.get('/cafeteria/costos-entrada');
@@ -1395,6 +1398,7 @@ export const inventoryStore = {
   papelFactura, leerRenglonesLectura, facturasPorProveedor, formatoFacturaProveedor, plantillaFacturaProveedor, pdfDeLectura, espacioFacturas, liberarFacturas,
   pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
   enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria, costosEntradaCafeteria, depositoCafeteria,
+  comprasCafeteria, gastosCafeteria,
   productosCafeteria, crearProductoCafeteria, editarProductoCafeteria, bajaProductoCafeteria,
   crearEnvioCafeteria, editarEnvioCafeteria, anularEnvioCafeteria, recibirEnvioCafeteria,
   perdidasMesVencimientos,

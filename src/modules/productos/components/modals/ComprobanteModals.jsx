@@ -273,6 +273,8 @@ function filaDesdeItemRemito(it, entry) {
     modo: 'bulto',
     codigoProveedor: '',
     descripcionPapel: '',
+    // La marca de Coffit se decidió al cargar el remito: acá no se toca.
+    paraCafeteria: !!it.paraCafeteria,
   };
 }
 
@@ -357,6 +359,10 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     })
     : [nuevoItem()]));
   const [busquedaLote, setBusquedaLote] = useState(false);
+  /* TODO EL PAPEL ES DE COFFIT (29/9/2026, pedido del dueño): tilda todos los
+   * renglones, también los que se agreguen después. Destildarlo devuelve cada
+   * renglón a su propio tilde. */
+  const [todoCoffit, setTodoCoffit] = useState(false);
 
   /* ---- Lectura de renglones desde el PDF digital ----
    * Si el papel de la bandeja es un PDF con capa de texto, el backend lo lee
@@ -646,18 +652,25 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   const factorBonif = bruto > 0 ? 1 - bonifImporte / bruto : 1;
 
   /*
-   * LO QUE DE ESTE PAPEL ES DE COFFIT (0101). Sale de la marca de la ficha
-   * («uso exclusivo de Cafetería»), no de un tilde: el que carga no decide
-   * nada, pero LO VE antes de guardar — y si está mal, se corrige en la ficha
-   * ahora y no en el resumen del mes. La API congela lo mismo en la factura.
+   * LO QUE DE ESTE PAPEL ES DE COFFIT (0101 · 0119). Tres fuentes, en este
+   * orden: el artículo de uso exclusivo de Coffit (la ficha manda, no se
+   * destilda), «todo el comprobante es de Coffit» y el tilde de cada renglón.
+   * En la conversión del remito la marca ya se congeló al cargarlo. La API
+   * aplica la misma regla y congela lo mismo en la factura.
    */
+  const deCoffit = (it) => {
+    if (esConversion) return !!it.paraCafeteria;
+    if (todoCoffit || it.paraCafeteria) return true;
+    return !!(it.productoId && store.getProducto(parseInt(it.productoId, 10))?.soloCafeteria);
+  };
   const delCafe = items.reduce((acc, it) => {
-    const p = it.productoId ? store.getProducto(parseInt(it.productoId, 10)) : null;
-    if (!p?.soloCafeteria) return acc;
+    if (!it.productoId) return acc;
+    acc.conProducto += 1;
+    if (!deCoffit(it)) return acc;
     acc.renglones += 1;
     acc.neto += calcRow(it).neto * factorBonif;
     return acc;
-  }, { renglones: 0, neto: 0 });
+  }, { renglones: 0, neto: 0, conProducto: 0 });
 
   // El IVA se recalcula renglón por renglón sobre el neto bonificado: con dos
   // alícuotas distintas (21 y 10,5) no alcanza con prorratear el IVA total.
@@ -1197,6 +1210,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           // (proveedor, código) → producto. Vacío si el ítem se cargó a mano.
           codigoProveedor: it.codigoProveedor || undefined,
           descripcionPapel: it.descripcionPapel || undefined,
+          paraCafeteria: deCoffit(it) || undefined,
         };
       });
     if (!parsed.length) { toast('Agregá al menos un ítem completo: cantidad y, si va por bultos, el tamaño del bulto.', 'err'); return; }
@@ -1585,6 +1599,21 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         </div>
       )}
 
+      {!esConversion && tipo && (
+        <label className={s['granel-toggle']} style={{ marginBottom: 10 }}>
+          <input type="checkbox" checked={todoCoffit} onChange={(e) => setTodoCoffit(e.target.checked)} />
+          <span>
+            <span className={s['t-title']}>{textoTodoCoffit(tipo)}</span><br />
+            <span className={s['t-sub']}>
+              Todo lo que trae se le carga a Coffit, por el neto (el IVA sigue siendo crédito fiscal
+              de la empresa). La mercadería entra igual al depósito y queda guardada para Coffit
+              hasta que se la mandes: ese envío ya no le vuelve a cobrar. Si es solo una parte,
+              dejalo sin tildar y marcá los renglones en el paso de ítems.
+            </span>
+          </span>
+        </label>
+      )}
+
       {/* EL CANDADO DEL DOBLE INGRESO (26/8): la factura de un remito ya
           ingresado NO se carga como comprobante nuevo — el stock entraría dos
           veces. Se avisa y se ofrece el camino correcto con un clic. */}
@@ -1775,6 +1804,15 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           renglón lo pasa a &ldquo;u. sueltas&rdquo;: la cantidad y el costo pasan a ser por unidad.
         </div>
       )}
+      {!esConversion && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 10px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={todoCoffit} onChange={(e) => setTodoCoffit(e.target.checked)} />
+          <span>
+            <strong>{textoTodoCoffit(tipo)}</strong>
+            <span className={s.muted}> · o tildá «Para Coffit» solo en los renglones que son de ella</span>
+          </span>
+        </label>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr .6fr .8fr .9fr .6fr .6fr 1fr auto', gap: 8, marginBottom: 6 }}>
         {['Producto', 'Cantidad', 'Por bulto', 'Costo', 'Desc%', 'IVA%', 'Subtotal', ''].map((h, i) => (
           <div key={i} className={s['mini-label']}>{h}</div>
@@ -1812,6 +1850,29 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                     {r.costoUnitario > 0 && <> · <strong>{money(r.costoUnitario)}/{u.replace('.', '')}</strong></>}
                   </div>
                 )}
+                {(() => {
+                  /* El tilde se ve siempre; se bloquea cuando lo decide otra cosa. */
+                  const marcado = deCoffit(it);
+                  const motivo = esConversion ? 'marcado al cargar el remito'
+                    : prod.soloCafeteria ? 'uso exclusivo (ficha)'
+                      : todoCoffit ? 'todo el comprobante' : '';
+                  return (
+                    <label
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginTop: 2,
+                        cursor: motivo ? 'default' : 'pointer',
+                        color: marcado ? 'var(--crm-color-primary, #2e7d32)' : 'var(--crm-color-text-secondary)',
+                      }}
+                      title={motivo ? `Para Coffit: ${motivo}` : 'Este renglón se le carga a Coffit'}
+                    >
+                      <input
+                        type="checkbox" checked={marcado} disabled={!!motivo}
+                        onChange={(e) => setItem(i, { paraCafeteria: e.target.checked })}
+                      />
+                      <span>Para Coffit{motivo ? <span className={s.muted}> · {motivo}</span> : null}</span>
+                    </label>
+                  );
+                })()}
               </div>
             ) : (
               <BuscadorProducto
@@ -2170,9 +2231,14 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
               display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6,
               borderTop: '1px dashed var(--crm-color-border)', color: 'var(--crm-color-text-secondary)',
             }}
-            title="Artículos marcados «uso exclusivo de Coffit» en su ficha. La factura sigue siendo de la distribuidora frente al proveedor y frente a ARCA; esto es a quién le pesa el costo."
+            title="La factura sigue siendo de la empresa frente al proveedor y frente a ARCA; esto es a quién le pesa el costo. Se ve en Almacén › Coffit › Compras de mercadería."
           >
-            <span>De eso, para Coffit ({delCafe.renglones} renglón{delCafe.renglones === 1 ? '' : 'es'} de uso exclusivo)</span>
+            <span>
+              De eso, para Coffit
+              {' '}({delCafe.renglones === delCafe.conProducto
+                ? 'todo'
+                : `${delCafe.renglones} renglón${delCafe.renglones === 1 ? '' : 'es'}`})
+            </span>
             <strong>{money(delCafe.neto)}</strong>
           </div>
         )}
@@ -2693,6 +2759,15 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   );
 }
 
+/** «Toda esta factura es de Coffit», con el nombre del papel que se carga. */
+function textoTodoCoffit(tipo) {
+  if (tipo === 'nota_credito') return 'Toda esta nota de crédito es de Coffit';
+  if (tipo === 'nota_debito') return 'Toda esta nota de débito es de Coffit';
+  if (tipo === 'remito') return 'Todo este remito es de Coffit';
+  if (tipo === 'liquidacion') return 'Toda esta liquidación es de Coffit';
+  return 'Toda esta factura es de Coffit';
+}
+
 function nuevoItem() {
   return {
     productoId: '', bultos: '1', porBulto: '', costoBulto: '', descuento: '0', iva: '21', costoAuto: true,
@@ -2701,6 +2776,8 @@ function nuevoItem() {
     // Del renglón leído del PDF (vacíos si el ítem se cargó a mano). Viajan al
     // guardar y alimentan el mapeo aprendido de artículos del proveedor.
     codigoProveedor: '', descripcionPapel: '',
+    // Tildado «para Coffit» (0119). El exclusivo de la ficha lo es siempre.
+    paraCafeteria: false,
   };
 }
 
@@ -3125,7 +3202,7 @@ export function ComprobanteDetalleModal({ id }) {
         </div>
         {c.netoCafeteria > 0.009 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--crm-color-text-secondary)' }}>
-            <span>De eso, para Coffit <span className={s.muted}>· artículos de uso exclusivo</span></span>
+            <span>De eso, para Coffit <span className={s.muted}>· renglones marcados «para Coffit»</span></span>
             <strong>{money(c.netoCafeteria)}</strong>
           </div>
         )}
