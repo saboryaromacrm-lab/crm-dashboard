@@ -613,11 +613,16 @@ function Di({ label, children }) {
   return <div className={s.di}><div className={s.l}>{label}</div><div className={s.v}>{children}</div></div>;
 }
 
-export function DetalleProductoModal({ prodId }) {
+/**
+ * `pestana`: el nombre de la pestaña con que abre (p. ej. 'Presentaciones',
+ * desde «Crear fraccionados» en Compras › Productos). Las pestañas se eligen
+ * por nombre y no por posición: la de Presentaciones solo existe en granel.
+ */
+export function DetalleProductoModal({ prodId, pestana }) {
   const { store, isAdmin, closeModal, openModal } = useProductos();
   useSeccion('movimientos');
   const p = store.getProducto(prodId);
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState(pestana || 'Resumen');
   if (!p) return null;
 
   // Compra y Venta, en ese orden: es el recorrido real del producto — primero
@@ -629,7 +634,8 @@ export function DetalleProductoModal({ prodId }) {
     { label: 'Evolución de precios', C: EvolucionPreciosTab },
   ];
   if (p.tipo === 'granel') tabDefs.push({ label: 'Presentaciones', C: PresentacionesTab });
-  const Active = (tabDefs[tab] || tabDefs[0]).C;
+  const activa = tabDefs.find((t) => t.label === tab) || tabDefs[0];
+  const Active = activa.C;
 
   const footer = [];
   if (isAdmin) footer.push({ texto: 'Editar producto', clase: 'btn-primary', onClick: () => openModal('producto', { prodId: p.id }) });
@@ -638,13 +644,13 @@ export function DetalleProductoModal({ prodId }) {
   return (
     <ModalShell title={'Detalle — ' + p.nombre} wide onClose={closeModal} footer={footer}>
       <Tabs
-        value={tab}
+        value={activa.label}
         onChange={(e, v) => setTab(v)}
         variant="scrollable"
         scrollButtons="auto"
         sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
       >
-        {tabDefs.map((t) => <Tab key={t.label} label={t.label} />)}
+        {tabDefs.map((t) => <Tab key={t.label} value={t.label} label={t.label} />)}
       </Tabs>
       <Active prod={p} />
     </ModalShell>
@@ -772,14 +778,17 @@ function estadoCodigo(row, previoDe, repetidos) {
 function PresentacionesTab({ prod: p }) {
   const { store, isAdmin, toast, closeModal, openModal } = useProductos();
   const neto = store.costoNeto(p);
-  const [rows, setRows] = useState(() =>
-    (p.presentaciones || []).map((pr) => ({
+  const [rows, setRows] = useState(() => {
+    const guardadas = (p.presentaciones || []).map((pr) => ({
       id: pr.id,
       tamStr: pr.tamKg ? String(pr.tamKg < 1 ? Math.round(pr.tamKg * 1000) : pr.tamKg) : '',
       unidad: pr.tamKg && pr.tamKg < 1 ? 'g' : 'kg',
       codigoBarras: pr.codigoBarras ?? '',
-    })),
-  );
+    }));
+    // Sin ninguna todavía (y quien puede crearlas): arranca con un renglón listo para
+    // escribir. Un renglón vacío no se guarda (se descarta al guardar).
+    return guardadas.length || !isAdmin ? guardadas : [{ id: null, tamStr: '', unidad: 'g', codigoBarras: '' }];
+  });
   const [generando, setGenerando] = useState(null);
   const setRow = (i, patch) => setRows((r) => r.map((row, j) => (j === i ? { ...row, ...patch } : row)));
   const delRow = (i) => setRows((r) => r.filter((_, j) => j !== i));

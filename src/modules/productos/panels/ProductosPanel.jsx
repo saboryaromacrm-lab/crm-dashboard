@@ -7,11 +7,65 @@ import { FormatosPorProveedorPanel } from './FormatosPorProveedorPanel.jsx';
 import { num } from '../domain/format.js';
 import { ESTADOS_PRODUCTO } from '../domain/constants.js';
 import {
-  Table, PanelHead, TipoBadge, EstadoProductoBadge, Btn, usePaginado, s,
+  Table, PanelHead, TipoBadge, EstadoProductoBadge, Btn, Pill, usePaginado, s,
 } from '../components/ui.jsx';
 
 /** Texto comparable: sin mayúsculas ni acentos. */
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+
+/**
+ * GRANEL SIN FRACCIONADOS (30/9/2026, pedido del dueño): ningún granel se
+ * vende suelto — todos se venden en sus paquetes (los hijos, las
+ * presentaciones). Una madre sin hijos no se puede fraccionar ni vender: su
+ * stock queda trabado. Fuera de la regla: lo archivado (ya no está en juego)
+ * y lo exclusivo de Coffit (se consume en la cafetería, no va al mostrador).
+ */
+const faltanFraccionados = (p) => p.tipo === 'granel' && !p.soloCafeteria
+  && (p.estado || 'activo') !== 'archivado' && !(p.presentaciones || []).length;
+
+/**
+ * Los kg sueltos disponibles de cada madre (todas las sucursales), en UNA
+ * pasada por el stock: `store.suma` por producto recorrería el stock entero
+ * cientos de veces.
+ */
+function kgPorMadre(stock) {
+  const m = new Map();
+  for (const x of stock) {
+    if (x.presentacionId || x.estado !== 'disponible') continue;
+    m.set(x.productoId, (m.get(x.productoId) || 0) + (Number(x.cantidad) || 0));
+  }
+  return m;
+}
+
+/**
+ * El aviso de arriba: cuántos granel no tienen fraccionados y cuántos kg
+ * quedan trabados. Un clic filtra la lista. Se calcula con el catálogo ya
+ * cargado (cada producto trae sus presentaciones): no pide nada a la red.
+ */
+function AvisoSinFraccionados({ activo, onVer, kgDe }) {
+  const { store } = useProductos();
+  const { cantidad, kg } = useMemo(() => {
+    let n = 0; let k = 0;
+    for (const p of store.state.productos) {
+      if (!faltanFraccionados(p)) continue;
+      n += 1; k += kgDe.get(p.id) || 0;
+    }
+    return { cantidad: n, kg: k };
+  }, [store.state.productos, kgDe]);
+  if (!cantidad) return null;
+  return (
+    <div className={cx(s.callout, s.warn)} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', margin: 0 }}>
+      <span>
+        <strong>
+          {cantidad === 1 ? 'Un producto a granel no tiene' : `${num(cantidad, 0)} productos a granel no tienen`} fraccionados
+        </strong>{' '}
+        (sus paquetes para vender): no se {cantidad === 1 ? 'puede' : 'pueden'} fraccionar ni vender.
+        {kg > 0 && <> Hay <strong>{num(kg, 2)} kg</strong> en stock esperando.</>}
+      </span>
+      {!activo && <Btn small variant="btn-primary" onClick={onVer}>Ver cuáles</Btn>}
+    </div>
+  );
+}
 
 /**
  * Los discontinuados que ya se agotaron: el sistema los DETECTA y los propone,
@@ -88,14 +142,17 @@ function CatalogoProductos() {
     return { marcas: [...marcas].sort(), categorias: [...categorias].sort() };
   }, [store.state.productos]);
 
+  const kgDe = useMemo(() => kgPorMadre(store.state.stock), [store.state.stock]);
+  const sinHijos = tipo === 'sin-hijos';
+
   const productos = useMemo(() => {
     const ql = norm(q);
     const provId = proveedorId ? Number(proveedorId) : null;
-    return store.state.productos.filter((p) => {
+    const lista = store.state.productos.filter((p) => {
       const est = p.estado || 'activo';
       if (estadoF === 'vigentes' && est === 'archivado') return false;
       if (estadoF !== 'vigentes' && estadoF !== '' && est !== estadoF) return false;
-      if (tipo && p.tipo !== tipo) return false;
+      if (sinHijos ? !faltanFraccionados(p) : tipo && p.tipo !== tipo) return false;
       if (marca && p.marca !== marca) return false;
       if (categoria && p.categoria !== categoria) return false;
       if (provId && !(p.formatosCompra || []).some((e) => e.proveedorId === provId)) return false;
@@ -106,7 +163,11 @@ function CatalogoProductos() {
         // etiqueta propia y es lo que la balanza o la caja escanean.
         || (p.presentaciones || []).some((pr) => pr.codigoBarras && pr.codigoBarras.includes(q.trim()));
     });
-  }, [store.state.productos, q, tipo, marca, categoria, proveedorId, estadoF]);
+    // Sin fraccionados: primero lo que más kg tiene trabados, que es lo más urgente.
+    return sinHijos
+      ? lista.sort((a, b) => (kgDe.get(b.id) || 0) - (kgDe.get(a.id) || 0) || a.nombre.localeCompare(b.nombre, 'es'))
+      : lista;
+  }, [store.state.productos, q, tipo, sinHijos, kgDe, marca, categoria, proveedorId, estadoF]);
 
   /*
    * CADA FRACCIONADO ES UNA FILA PROPIA (decisión del dueño, 9/8/2026): el
@@ -194,6 +255,7 @@ function CatalogoProductos() {
         <td>
           {p.nombre}
           <EstadoProductoBadge estado={p.estado} />
+          {faltanFraccionados(p) && <span style={{ marginLeft: 6 }} title="No tiene paquetes para vender: no se puede fraccionar ni vender"><Pill pill="st-defectuoso" label="Sin fraccionados" /></span>}
         </td>
         <td>{p.marca || '—'}</td>
         <td><TipoBadge prod={p} /></td>
@@ -204,6 +266,11 @@ function CatalogoProductos() {
           <div className={s['row-actions']} onClick={stop}>
             {isAdmin ? (
               <>
+                {faltanFraccionados(p) && (
+                  <Btn variant="btn-primary" small onClick={() => openModal('detalleProducto', { prodId: p.id, pestana: 'Presentaciones' })}>
+                    Crear fraccionados
+                  </Btn>
+                )}
                 <Btn variant="btn-edit" small onClick={() => openModal('producto', { prodId: p.id })}>Editar</Btn>
                 {(p.estado || 'activo') === 'activo' ? (
                   <Btn small onClick={() => openModal('bajaProducto', { prodId: p.id })}>Dar de baja</Btn>
@@ -240,6 +307,7 @@ function CatalogoProductos() {
         )}
       />
       {isAdmin && <AvisoParaArchivar />}
+      <AvisoSinFraccionados kgDe={kgDe} activo={sinHijos} onVer={() => { setTipo('sin-hijos'); setEstadoF('vigentes'); }} />
       <div className={s.toolbar}>
         <input type="search" placeholder="Buscar por nombre, marca o código..." value={q} onChange={(e) => setQ(e.target.value)} />
         <select className={s['select-inline']} value={categoria} onChange={(e) => setCategoria(e.target.value)}>
@@ -269,6 +337,7 @@ function CatalogoProductos() {
           <option value="">Todos los tipos</option>
           <option value="granel">A granel</option>
           <option value="entero">Enteros</option>
+          <option value="sin-hijos">A granel sin fraccionados</option>
         </select>
         {/* `estadoF` también se limpia: `hayFiltro` lo cuenta, así que el botón
             APARECÍA cuando lo único cambiado era el estado — y al hacer clic no
@@ -289,6 +358,7 @@ function CatalogoProductos() {
       {hayFiltro && (
         <div className={s.hint} style={{ margin: 0 }}>
           {productos.length} de {store.state.productos.length} productos.
+          {sinHijos && ' Primero los que más kg tienen en stock esperando. Al guardar sus fraccionados, salen solos de esta lista.'}
           {isAdmin && ' «Actualizar márgenes» y «Exportar CSV» alcanzan solo a los filtrados.'}
         </div>
       )}
