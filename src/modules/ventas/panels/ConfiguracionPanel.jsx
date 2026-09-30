@@ -7,6 +7,7 @@ import { ventasApi } from '../services/ventas.api.js';
 import { CONDICIONES_IVA, MEDIOS_PAGO, OPCIONES_REDONDEO_PRECIO } from '../domain/constants.js';
 import { PanelHead, Btn, s } from '../components/ui.jsx';
 import { PanelArca } from '../components/PanelArca.jsx';
+import { MercadoPagoPanel } from '../components/MercadoPagoPanel.jsx';
 import { ListasPanel } from './ListasPanel.jsx';
 
 /*
@@ -24,6 +25,8 @@ const PESTANAS = [
   { id: 'caja', label: 'Caja y cobro', permiso: 'ventas.configuracion' },
   { id: 'facturacion', label: 'Facturación', permiso: 'ventas.configuracion' },
   { id: 'clientes', label: 'Cuenta corriente y presupuestos', permiso: 'ventas.configuracion' },
+  // Cobro con QR de Mercado Pago (0126): conexión y cajas con su QR.
+  { id: 'mercadopago', label: 'Mercado Pago', permiso: 'ventas.configuracion' },
 ];
 const TAB_KEY = 'crm.ventas.configuracion.tab';
 
@@ -674,6 +677,8 @@ export function ConfiguracionPanel() {
         </div>
         </div>
       )}
+
+      {tabActiva === 'mercadopago' && <MercadoPagoPanel />}
 
       {tabActiva === 'clientes' && (
         <div className={s['dash-grid']}>

@@ -11,6 +11,7 @@ import { FacturaACuit } from '../FacturaACuit.jsx';
 import { Table, Btn, Di, ModalShell, VentaTag, money, fmtFechaHora, s } from '../ui.jsx';
 import { configImpresion, imprimirVenta } from '@core/services/imprimir.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
+import { leerTokenTerminal } from '@core/auth/terminal.js';
 import p from '../../styles/Pos.module.css';
 
 /**
@@ -40,6 +41,9 @@ import p from '../../styles/Pos.module.css';
  * nada que elegir. Los medios de pago arrancan en efectivo por el total.
  */
 const TERC = 'transferencia_proveedor';
+/** El medio de pantalla del cobro por QR de Mercado Pago (0126). */
+const QR_MP = 'qr_mp';
+const etiquetaMedio = (m) => (m === QR_MP ? 'QR Mercado Pago' : MEDIOS_PAGO[m] ?? m);
 const CREDITO = 'tarjeta_credito';
 /* Los planes que existen. Lista cerrada, igual que en la API: un campo libre
  * dejaría cobrar "en 4" sin tener % cargado para 4, y el recargo saldría 0. */
@@ -66,6 +70,8 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
    */
   const [aCuit, setACuit] = useState(null);
   const ofreceCuit = !!config.arcaHabilitado && !facturaInterna && !!cliente?.esConsumidorFinal;
+  // Marcar «resuelto a mano» un cobro pagado sin venta: solo administración (la API lo exige igual).
+  const { esAdmin: puedeResolver } = usePermissions();
   // Si deja de aplicar (pasó a cuenta corriente), no queda un CUIT colgado.
   useEffect(() => { if (!ofreceCuit || condicionPago !== 'contado') setACuit(null); }, [ofreceCuit, condicionPago]);
 
@@ -105,10 +111,25 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
     { enabled: ctaCteDisponible && condicionPago === 'cuenta_corriente' },
   );
 
+  /*
+   * COBRO CON QR DE MERCADO PAGO (0126). Solo si ESTE equipo tiene su caja de
+   * Mercado Pago (Ventas › Configuración › Mercado Pago): el monto va al QR
+   * pegado en este mostrador. `qr_mp` es un medio de la pantalla; la venta lo
+   * guarda como «QR / billetera» con el número de operación de Mercado Pago.
+   */
+  const terminalToken = leerTokenTerminal();
+  const { data: miCajaMp } = useResource(
+    `mp-mi-caja:${terminalToken || '-'}`,
+    () => ventasApi.mpMiCaja(terminalToken),
+    { enabled: !!terminalToken },
+  );
+  const cajaMp = miCajaMp?.configurado && miCajaMp?.caja ? miCajaMp.caja : null;
+
   const medios = useMemo(() => {
     const habilitados = (config.mediosPago ?? []).filter((m) => MEDIOS_PAGO[m]);
-    return habilitados.length ? habilitados : Object.keys(MEDIOS_PAGO);
-  }, [config.mediosPago]);
+    const base = habilitados.length ? habilitados : Object.keys(MEDIOS_PAGO);
+    return cajaMp ? [...base, QR_MP] : base;
+  }, [config.mediosPago, cajaMp]);
 
   /*
    * EL RECARGO POR CUOTAS (0100). El total que se cobra deja de ser el de la
@@ -223,6 +244,131 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
 
   /* ------------------------------ Confirmar ------------------------------ */
 
+  /* ------------------------ Cobro con QR de Mercado Pago ------------------------ */
+  const montoQrMp = r2(pagos.filter((x) => x.medio === QR_MP).reduce((a, x) => a + (Number(x.importe) || 0), 0));
+  const [cobroQr, setCobroQr] = useState(null);
+  const [ocupadoQr, setOcupadoQr] = useState(false);
+  const ocupadoQrRef = useRef(false);
+  const cerrandoQrRef = useRef(false);
+  const [motivoResuelto, setMotivoResuelto] = useState('');
+
+  // Si la pantalla se recargó con un cobro en curso, se retoma.
+  useEffect(() => {
+    let vivo = true;
+    ventasApi.mpCobroDeVenta(ventaId)
+      .then((c) => { if (vivo && c && ['esperando', 'procesando', 'error'].includes(c.estado)) setCobroQr(c); })
+      .catch(() => { /* sin Mercado Pago: nada que retomar */ });
+    return () => { vivo = false; };
+  }, [ventaId]);
+
+  const iniciarCobroQr = async (tipo) => {
+    if (enviandoRef.current) return;
+    if (pagos.some((x) => x.medio === CREDITO && x.cuotas && Number(x.importe) > 0)) { toast('Con QR de Mercado Pago no se combina crédito en cuotas.', 'err'); return; }
+    if (pagos.some((x) => x.medio === TERC && Number(x.importe) > 0)) { toast('Con QR de Mercado Pago no se combina transferencia a proveedor.', 'err'); return; }
+    enviandoRef.current = true; setEnviando(true);
+    try {
+      const c = await ventasApi.mpCrearCobro({
+        ventaId,
+        terminalToken,
+        montoQr: montoQrMp,
+        confirmar: {
+          tipo,
+          cajaSesionId: cajaSesionId ?? undefined,
+          operadorId: operadorId ?? undefined,
+          observaciones,
+          pagos: pagosReales.filter((x) => x.medio !== QR_MP && Number(x.importe) > 0).map((x) => ({ medio: x.medio, importe: r2(x.importe) })),
+          ...(aCuit && tipo === 'factura' ? { facturaCuit: { cuit: aCuit.cuit, ...(aCuit.manual ? { manual: aCuit.manual } : {}) } } : {}),
+        },
+      });
+      setCobroQr(c);
+    } catch (e) {
+      toast(e?.data?.message || 'No se pudo mandar el cobro al QR.', 'err');
+    } finally {
+      enviandoRef.current = false; setEnviando(false);
+    }
+  };
+
+  // Mientras espera: se consulta cada 2 s (el servidor, a su vez, le pregunta a Mercado Pago).
+  const cobroQrId = cobroQr?.id;
+  const cobroQrVivo = !!cobroQr && ['esperando', 'procesando'].includes(cobroQr.estado);
+  useEffect(() => {
+    if (!cobroQrVivo) return undefined;
+    let vivo = true;
+    const t = setInterval(async () => {
+      try { const c = await ventasApi.mpCobro(cobroQrId); if (vivo) setCobroQr(c); } catch { /* sin red un momento: sigue */ }
+    }, 2000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [cobroQrId, cobroQrVivo]);
+
+  // Cuando cambia el estado: pagado → se imprime y se cierra; cancelado/vencido → vuelve al cobro.
+  useEffect(() => {
+    if (!cobroQr) return;
+    if (cobroQr.estado === 'pagado' && !cerrandoQrRef.current) {
+      cerrandoQrRef.current = true;
+      (async () => {
+        try {
+          const venta = await ventasApi.venta(ventaId);
+          toast(`Pago recibido por Mercado Pago: ${money(cobroQr.monto)}.`, 'ok');
+          await finalizar(venta, cobroQr.tipo);
+        } catch {
+          toast('El pago entró y la venta quedó cerrada. Si no salió el papel, reimprimila desde Ventas.', 'ok');
+          closeModal();
+        }
+      })();
+    } else if (cobroQr.estado === 'cancelado' || cobroQr.estado === 'vencido') {
+      toast(cobroQr.estado === 'vencido' ? 'El cobro por QR venció sin pago: el ticket sigue abierto.' : 'Cobro por QR cancelado: el ticket sigue abierto.', 'ok');
+      setCobroQr(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cobroQr?.estado]);
+
+  const accionQr = async (fn) => {
+    if (ocupadoQrRef.current) return;
+    ocupadoQrRef.current = true; setOcupadoQr(true);
+    try { setCobroQr(await fn()); } catch (e) { toast(e?.data?.message || 'No se pudo.', 'err'); } finally { ocupadoQrRef.current = false; setOcupadoQr(false); }
+  };
+
+  /** Lo que pasa DESPUÉS de cobrar: avisos de ARCA, el papel y cerrar el cobro. Lo usa también el cobro por QR. */
+  const finalizar = async (venta, tipo) => {
+    /*
+     * ARCA CAÍDO ≠ VENTA CAÍDA (0073): si se pidió factura y el servicio no
+     * contestó, la venta salió igual como ticket provisorio y quedó en la
+     * pestaña Sin facturar. El cajero se entera ACÁ, con el cliente enfrente
+     * — el ticket que imprime ya lleva la leyenda.
+     */
+    if (tipo === 'factura' && venta.facturarPendiente) {
+      toast(venta.facturarPorCaida
+        ? 'ARCA no respondió: la venta se cobró igual y sale el ticket con la leyenda "servicio caído de ARCA". Quedó en Ventas › Caídas por ARCA para facturarla cuando vuelva.'
+        : `ARCA no aceptó la factura: ${venta.facturarMotivo || 'sin detalle'}. La venta se cobró igual con un ticket provisorio; corregí el dato y facturala desde Ventas › Caídas por ARCA.`,
+      'err');
+    }
+    // Ticket automático (se apaga en Sistema › Impresión). El último queda
+    // guardado para "Reimprimir" desde la registradora.
+    try { localStorage.setItem('crm_ultimo_ticket', String(venta.id)); } catch { /* privado */ }
+    /*
+     * DE ACÁ EN ADELANTE LA VENTA YA ESTÁ HECHA, y lo que falla es el papel.
+     *
+     * `configImpresion()` es OTRA llamada HTTP: con la conexión colgada del
+     * celular puede fallar sola, después de una venta perfectamente
+     * registrada. Antes eso caía en el `catch` de abajo y sacaba "No se pudo
+     * registrar la venta" — mentira, y la misma mentira que se acaba de
+     * arreglar arriba: la cajera la rehacía. Un problema de impresora no
+     * puede parecerse a una venta fallada.
+     *
+     * Con CAE sale la FACTURA (con su QR) y no el ticket: `imprimirVenta`
+     * decide, para que las tres pantallas que sacan papel coincidan.
+     */
+    try {
+      const { impresion } = await configImpresion();
+      if (impresion.imprimirTicketAlCobrar) {
+        await imprimirVenta(venta, { moneda: money, fechaHora: fmtFechaHora });
+      }
+    } catch {
+      toast('La venta se registró bien, pero no se pudo imprimir: reimprimila desde Ventas.', 'err');
+    }
+    onCobrado(venta, vuelto && vuelto > 0 ? vuelto : 0);
+  };
+
   /** `tipo`: 'ticket' liquida, 'factura' emite comprobante fiscal. */
   const confirmar = async (tipo) => {
     if (enviandoRef.current) return;
@@ -253,6 +399,8 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
       toast('Supera el límite de crédito del cliente.', 'err');
       return;
     }
+    // Con QR de Mercado Pago no se confirma acá: el monto va al QR y la venta se cierra sola cuando entra el pago.
+    if (montoQrMp > 0) { await iniciarCobroQr(tipo); return; }
     enviandoRef.current = true;
     setEnviando(true);
     try {
@@ -341,43 +489,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
         venta = comoQuedo;
         toast('Se cortó la conexión, pero la venta ya se había registrado. Se sigue con esa — no la rehagas.', 'ok');
       }
-      /*
-       * ARCA CAÍDO ≠ VENTA CAÍDA (0073): si se pidió factura y el servicio no
-       * contestó, la venta salió igual como ticket provisorio y quedó en la
-       * pestaña Sin facturar. El cajero se entera ACÁ, con el cliente enfrente
-       * — el ticket que imprime ya lleva la leyenda.
-       */
-      if (tipo === 'factura' && venta.facturarPendiente) {
-        toast(venta.facturarPorCaida
-          ? 'ARCA no respondió: la venta se cobró igual y sale el ticket con la leyenda "servicio caído de ARCA". Quedó en Ventas › Caídas por ARCA para facturarla cuando vuelva.'
-          : `ARCA no aceptó la factura: ${venta.facturarMotivo || 'sin detalle'}. La venta se cobró igual con un ticket provisorio; corregí el dato y facturala desde Ventas › Caídas por ARCA.`,
-        'err');
-      }
-      // Ticket automático (se apaga en Sistema › Impresión). El último queda
-      // guardado para "Reimprimir" desde la registradora.
-      try { localStorage.setItem('crm_ultimo_ticket', String(venta.id)); } catch { /* privado */ }
-      /*
-       * DE ACÁ EN ADELANTE LA VENTA YA ESTÁ HECHA, y lo que falla es el papel.
-       *
-       * `configImpresion()` es OTRA llamada HTTP: con la conexión colgada del
-       * celular puede fallar sola, después de una venta perfectamente
-       * registrada. Antes eso caía en el `catch` de abajo y sacaba "No se pudo
-       * registrar la venta" — mentira, y la misma mentira que se acaba de
-       * arreglar arriba: la cajera la rehacía. Un problema de impresora no
-       * puede parecerse a una venta fallada.
-       *
-       * Con CAE sale la FACTURA (con su QR) y no el ticket: `imprimirVenta`
-       * decide, para que las tres pantallas que sacan papel coincidan.
-       */
-      try {
-        const { impresion } = await configImpresion();
-        if (impresion.imprimirTicketAlCobrar) {
-          await imprimirVenta(venta, { moneda: money, fechaHora: fmtFechaHora });
-        }
-      } catch {
-        toast('La venta se registró bien, pero no se pudo imprimir: reimprimila desde Ventas.', 'err');
-      }
-      onCobrado(venta, vuelto && vuelto > 0 ? vuelto : 0);
+      await finalizar(venta, tipo);
     } catch (e) {
       toast(e?.data?.message || 'No se pudo registrar la venta.', 'err');
     } finally {
@@ -395,6 +507,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   /* ------------------------------ Atajos ------------------------------ */
   useEffect(() => {
     const onKey = (e) => {
+      if (cobroQr) return; // con un cobro por QR en pantalla, F8/F10 no hacen nada
       if (e.key === 'F10') { e.preventDefault(); if (puedeLiquidar) confirmar('ticket'); }
       else if (e.key === 'F8') { e.preventDefault(); if (puedeFacturar) confirmar('factura'); }
     };
@@ -402,6 +515,57 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [puedeLiquidar, puedeFacturar, condicionPago, pagos, observaciones, vuelto, aCuit]);
+
+  if (cobroQr) {
+    const esperando = ['esperando', 'procesando'].includes(cobroQr.estado);
+    return (
+      <ModalShell
+        title="Cobro con QR de Mercado Pago"
+        muted
+        onClose={() => (esperando || cobroQr.estado === 'error'
+          ? toast('Hay un cobro por QR sin terminar: esperá el pago, cancelalo o resolvelo antes de cerrar.', 'err')
+          : closeModal())}
+        footer={cobroQr.estado === 'error' ? [
+          ...(puedeResolver ? [{ texto: 'Marcar resuelto a mano', clase: 'btn-ghost', onClick: () => (motivoResuelto.trim().length >= 5
+            ? accionQr(() => ventasApi.mpResolver(cobroQr.id, motivoResuelto))
+            : toast('Escribí qué se hizo con ese pago.', 'err')) }] : []),
+          { texto: ocupadoQr ? 'Reintentando…' : 'Reintentar cerrar la venta', clase: 'btn-primary', onClick: () => accionQr(() => ventasApi.mpReintentar(cobroQr.id)) },
+        ] : [
+          { texto: ocupadoQr ? 'Cancelando…' : 'Cancelar cobro', clase: 'btn-ghost', onClick: () => cobroQr.estado === 'esperando' && accionQr(() => ventasApi.mpCancelar(cobroQr.id)) },
+        ]}
+      >
+        {cobroQr.estado === 'error' ? (
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div className={cx(s.callout, s.warn)}><strong>El cliente pagó pero la venta no se pudo cerrar.</strong> {cobroQr.detalle}</div>
+            <div className={s.hint}>
+              No le vuelvas a cobrar: el pago ya está en Mercado Pago. Corregí la causa (por ejemplo, el stock) y tocá «Reintentar».
+            </div>
+            {puedeResolver && (
+              <div className={s.field} style={{ marginBottom: 0 }}>
+                <label htmlFor="mp-resuelto">Si no se va a cerrar (se le devolvió la plata desde Mercado Pago, o se hizo la venta de otra forma):</label>
+                <input id="mp-resuelto" value={motivoResuelto} maxLength={300} placeholder="Qué se hizo con ese pago" onChange={(e) => setMotivoResuelto(e.target.value)} />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 12, textAlign: 'center', padding: '8px 0' }}>
+            <div className={p.cobroTotal} style={{ justifyContent: 'center' }}>
+              <span className={p.cobroTotalValor}>{money(cobroQr.monto)}</span>
+            </div>
+            <div style={{ fontSize: 17 }}>
+              {cobroQr.estado === 'procesando'
+                ? <strong>Pago recibido: cerrando la venta…</strong>
+                : <>Esperando que el cliente pague con el <strong>QR de {cajaMp?.nombre || 'esta caja'}</strong>…</>}
+            </div>
+            <div className={s.hint} style={{ margin: 0 }}>
+              El cliente escanea el QR del mostrador con Mercado Pago y le aparece el monto. Cuando pague, la venta se cierra sola y sale el papel.
+              Si no paga en 15 minutos, el cobro vence solo.
+            </div>
+          </div>
+        )}
+      </ModalShell>
+    );
+  }
 
   return (
     <ModalShell
@@ -414,13 +578,14 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
         // `confirmar` avisa POR QUÉ (falta plata, es cta. cte., excede crédito).
         {
           texto: enviando ? 'Registrando…'
+            : montoQrMp > 0 ? `Facturar y mandar ${money(montoQrMp)} al QR · F8`
             : aCuit?.listo ? `Factura ${aCuit.letra} a ${aCuit.nombre.length > 22 ? `${aCuit.nombre.slice(0, 21)}…` : aCuit.nombre} · F8`
               : 'Facturar · F8',
           clase: puedeFacturar ? 'btn-ingreso' : 'btn-ghost',
           onClick: () => confirmar('factura'),
         },
         {
-          texto: enviando ? 'Registrando…' : `Liquidar ${money(totalFinal)} · F10`,
+          texto: enviando ? 'Registrando…' : montoQrMp > 0 ? `Liquidar y mandar ${money(montoQrMp)} al QR · F10` : `Liquidar ${money(totalFinal)} · F10`,
           clase: puedeLiquidar ? 'btn-primary' : 'btn-ghost',
           onClick: () => confirmar('ticket'),
         },
@@ -537,7 +702,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
               <div className={s.field} style={{ marginBottom: 0 }}>
                 {i === 0 && <label>Medio</label>}
                 <select value={x.medio} onChange={(e) => setPago(i, 'medio', e.target.value)}>
-                  {medios.map((m) => <option key={m} value={m}>{MEDIOS_PAGO[m]}</option>)}
+                  {medios.map((m) => <option key={m} value={m}>{etiquetaMedio(m)}</option>)}
                 </select>
               </div>
               <div className={s.field} style={{ marginBottom: 0 }}>

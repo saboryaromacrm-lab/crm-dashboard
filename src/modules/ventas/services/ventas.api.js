@@ -45,6 +45,17 @@ export const ventasApi = {
   /** «¿Agregarlo como cliente?» después de facturar a un CUIT. */
   agregarCompradorCliente: (ventaId) => httpClient.post(`/ventas/${ventaId}/agregar-cliente`, {}),
 
+  /* Cobro con QR de Mercado Pago (0126). */
+  mpEstado: () => httpClient.get('/mercadopago/estado'),
+  mpCrearCaja: (terminalId) => httpClient.post('/mercadopago/cajas', { terminalId }),
+  mpMiCaja: (token) => httpClient.post('/mercadopago/mi-caja', { token }),
+  mpCrearCobro: (datos) => httpClient.post('/mercadopago/cobros', datos),
+  mpCobro: (id) => httpClient.get(`/mercadopago/cobros/${id}`),
+  mpCobroDeVenta: (ventaId) => httpClient.get(`/mercadopago/cobros?ventaId=${ventaId}`),
+  mpCancelar: (id) => httpClient.post(`/mercadopago/cobros/${id}/cancelar`, {}),
+  mpReintentar: (id) => httpClient.post(`/mercadopago/cobros/${id}/reintentar`, {}),
+  mpResolver: (id, motivo) => httpClient.post(`/mercadopago/cobros/${id}/resolver`, { motivo }),
+
   /* Clientes */
   crearCliente: (data) => httpClient.post('/clientes', data),
   editarCliente: (id, data) => httpClient.patch(`/clientes/${id}`, data),
