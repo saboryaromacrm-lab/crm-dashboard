@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0c3b22" />
+    <title>Sin conexión · ERP Sabor y Aroma</title>
+    <style>
+      :root { color-scheme: light dark; --fondo: #f3f6f3; --tarjeta: #ffffff; --texto: #16211a; --suave: #56655c; --verde: #166534; }
+      @media (prefers-color-scheme: dark) { :root { --fondo: #0c1310; --tarjeta: #131c16; --texto: #e9f0ea; --suave: #a4b5aa; --verde: #2f9e5f; } }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--fondo); color: var(--texto);
+        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      .t { max-width: 420px; background: var(--tarjeta); border-radius: 14px; padding: 28px 24px; text-align: center; box-shadow: 0 6px 24px rgba(0,0,0,.08); }
+      img { width: 72px; height: 72px; border-radius: 16px; }
+      h1 { font-size: 20px; margin: 14px 0 6px; }
+      p { margin: 0 0 16px; color: var(--suave); }
+      button { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 10px 20px; background: var(--verde); color: #fff; cursor: pointer; }
+      button:focus-visible { outline: 3px solid var(--texto); outline-offset: 2px; }
+    </style>
+  </head>
+  <body>
+    <div class="t">
+      <img src="/icons/erp-192.png" alt="" />
+      <h1>No hay conexión a internet</h1>
+      <p>El ERP necesita internet para vender, cobrar y ver el stock al día. Cuando vuelva la conexión, tocá «Reintentar».</p>
+      <button type="button" onclick="location.reload()">Reintentar</button>
+    </div>
+    <script>
+      // Vuelve solo apenas hay conexión.
+      window.addEventListener('online', () => location.reload());
+    </script>
+  </body>
+</html>

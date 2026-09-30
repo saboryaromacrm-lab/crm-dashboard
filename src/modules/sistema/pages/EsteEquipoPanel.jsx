@@ -22,6 +22,59 @@ import { cx } from '@shared/utils/classNames.js';
 import { PanelHead, Btn, Table, s } from '@modules/productos/components/ui.jsx';
 import { fmtFechaHora } from '@modules/productos/domain/format.js';
 import { guardarTokenTerminal, leerTokenTerminal, olvidarTerminal } from '@core/auth/terminal.js';
+import { alCambiar, esAppInstalada, instalar, plataforma, puedeInstalar } from '@core/pwa/app.js';
+
+/**
+ * INSTALAR EL ERP COMO APP (30/9/2026). Va acá porque es parte de dejar lista
+ * una máquina, igual que registrarla. Si el navegador ofrece instalar, un
+ * botón; si no (iPhone, o ya se instaló), las instrucciones que correspondan.
+ */
+function InstalarApp() {
+  const [, refrescar] = useState(0);
+  const [resultado, setResultado] = useState('');
+  useEffect(() => alCambiar(() => refrescar((n) => n + 1)), []);
+
+  if (esAppInstalada()) {
+    return (
+      <div className={cx(s.callout, s.ok)}>
+        <strong>Estás usando el ERP como app instalada.</strong> Se abre desde su ícono, en su propia ventana.
+      </div>
+    );
+  }
+
+  const enSslip = /sslip\.io$/i.test(window.location.hostname);
+  const so = plataforma();
+  const pedir = async () => {
+    const ok = await instalar();
+    setResultado(ok ? 'Listo: el ERP quedó instalado. Ya podés abrirlo desde su ícono.' : 'No se instaló. Podés volver a intentarlo cuando quieras.');
+  };
+
+  return (
+    <div className={cx(s.callout, s.info)} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div>
+        <strong>Instalar el ERP como app en este equipo.</strong> Queda un ícono en el escritorio (o en la pantalla
+        del celular) y se abre en su propia ventana, sin la barra del navegador. Es el mismo ERP: la misma sesión,
+        el mismo registro de este equipo y siempre la última versión.
+      </div>
+      {enSslip && (
+        <div>
+          <strong>Ojo:</strong> estás en la dirección de prueba. Instalalo desde <strong>erp.saboryaroma.com</strong>,
+          que es la definitiva: la app queda atada a la dirección desde donde se instala.
+        </div>
+      )}
+      {puedeInstalar() ? (
+        <div><Btn variant="btn-primary" onClick={pedir}>Instalar el ERP como app</Btn></div>
+      ) : so === 'ios' ? (
+        <div>En iPhone o iPad: abrilo en <strong>Safari</strong>, tocá <strong>Compartir</strong> (el cuadrado con la flecha) y elegí <strong>«Agregar a inicio»</strong>.</div>
+      ) : so === 'android' ? (
+        <div>En Android: en <strong>Chrome</strong>, tocá el menú <strong>⋮</strong> y elegí <strong>«Instalar app»</strong> (o «Agregar a la pantalla principal»).</div>
+      ) : (
+        <div>En la computadora: en <strong>Chrome o Edge</strong>, tocá el ícono de instalar a la derecha de la barra de direcciones (una pantallita con una flecha), o el menú <strong>⋮</strong> › <strong>«Instalar ERP Sabor y Aroma»</strong>. Si no aparece, ya está instalado en este equipo.</div>
+      )}
+      {resultado && <div><strong>{resultado}</strong></div>}
+    </div>
+  );
+}
 
 export function EsteEquipoPanel({ onAviso }) {
   const [sucursales, setSucursales] = useState([]);
@@ -161,6 +214,8 @@ export function EsteEquipoPanel({ onAviso }) {
           </div>
         </div>
       )}
+
+      <InstalarApp />
 
       {/* ---- Todos los equipos registrados ---- */}
       <div>

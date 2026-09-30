@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "ERP Sabor y Aroma",
+  "short_name": "ERP SyA",
+  "description": "El sistema de gestión de Sabor y Aroma: ventas, caja, stock, compras y gerencia.",
+  "lang": "es-AR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f3f6f3",
+  "theme_color": "#0c3b22",
+  "icons": [
+    { "src": "/icons/erp-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/erp-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/erp-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
