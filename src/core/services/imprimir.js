@@ -1297,17 +1297,6 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
       <div>Otros Impuestos Nacionales Indirectos: <strong>${moneda(0)}</strong></div>
     </div>` : '';
 
-  /*
-   * FACTURA A A UN MONOTRIBUTISTA (Ley 27.618, RG 5003/2021). Desde 2021 el
-   * Responsable Inscripto le factura A al monotributista, y ese comprobante
-   * tiene que llevar esta leyenda: el monotributista no computa ese IVA como
-   * crédito fiscal común. Vale igual para la nota de crédito A.
-   */
-  const leyendaMonotributo = letra === 'A' && cli.condicionIva === 'monotributo'
-    ? `<div class="sub transparencia">El crédito fiscal discriminado en el presente comprobante, sólo podrá ser computado a efectos del
-      Régimen de Sostenimiento e Inclusión Fiscal para Pequeños Contribuyentes de la Ley Nº 27.618.</div>`
-    : '';
-
   const qr = await qrSvg(venta.qrArca);
   const caeVto = venta.caeVencimiento ? fecha(venta.caeVencimiento) : '';
   /* El motivo de la nota es la PRIMERA línea de las observaciones; la segunda
@@ -1361,7 +1350,6 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
     ${esNota && motivo ? `<div class="sub"><strong>Motivo:</strong> ${esc(motivo)}</div>` : ''}
 
     ${transparencia}
-    ${leyendaMonotributo}
 
     ${venta.cae ? `<div class="cajaCae">
       ${qr ? `<div class="qr">${qr}</div>` : ''}
