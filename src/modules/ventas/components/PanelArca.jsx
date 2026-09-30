@@ -110,8 +110,11 @@ export function PanelArca({ habilitado }) {
         <Di label="CUIT del certificado">
           <span className={s.mono}>{cuitLindo(est.cuit)}</span>
         </Di>
-        <Di label="Punto de venta de la casa">
-          <span className={s.mono}>{est.puntoVenta || '—'}</span>
+        <Di label="Sucursales que facturan">
+          <strong>
+            {(est.sucursales ?? []).filter((x) => x.facturaElectronica && x.puntoVenta).length}
+            {' de '}{(est.sucursales ?? []).length}
+          </strong>
         </Di>
         <Di label="Estado">
           {est.disponible
@@ -126,18 +129,21 @@ export function PanelArca({ habilitado }) {
         <div className={s['card-title']}>Punto de venta de cada local</div>
         <div className={s.hint} style={{ marginBottom: 6 }}>
           ARCA declara cada punto de venta contra un <strong>domicilio</strong> y cada uno lleva
-          su numeración correlativa aparte. Se cargan en{' '}
-          <strong>Gerencia › Sucursales</strong>, y el último número lo trae Probar conexión.
+          su numeración correlativa aparte. Cada local factura <strong>solo con el suyo</strong> y se
+          enciende de a uno en <strong>Gerencia › Sucursales</strong>; el que no está encendido emite
+          comprobantes internos, sin CAE. «Probar conexión» prueba también los puntos de venta
+          cargados que todavía no están encendidos: así se comprueba uno nuevo antes de prenderlo.
         </div>
         <Table
           cols={[
             { h: 'Sucursal' }, { h: 'Punto de venta' }, { h: 'Domicilio del comprobante' },
-            { h: 'Último autorizado', num: true },
+            { h: 'Factura' }, { h: 'Último autorizado', num: true },
           ]}
           empty="No hay sucursales cargadas."
         >
           {(est.sucursales ?? []).map((su) => {
             const probado = (prueba?.numeracion ?? []).find((n) => n.sucursalId === su.id);
+            const factura = !!su.facturaElectronica && !!su.puntoVenta;
             return (
               <tr key={su.id}>
                 <td>
@@ -145,14 +151,15 @@ export function PanelArca({ habilitado }) {
                   {su.tipo === 'distribuidora' ? <div className={s.hint}>distribuidora</div> : null}
                 </td>
                 <td className={s.mono}>
-                  {su.puntoVenta || (
-                    <span style={{ color: 'var(--crm-color-danger)' }}>
-                      sin cargar{est.puntoVenta ? ` · usa ${est.puntoVenta}` : ''}
-                    </span>
-                  )}
+                  {su.puntoVenta || <span className={s.muted}>sin cargar</span>}
                 </td>
                 <td className={su.direccion ? undefined : s.muted}>
-                  {su.direccion || 'el de la empresa'}
+                  {su.direccion || 'sin cargar'}
+                </td>
+                <td>
+                  {factura
+                    ? <strong style={{ color: 'var(--crm-color-success)' }}>✔ Con ARCA</strong>
+                    : <span className={s.muted}>{su.puntoVenta ? 'Cargado, apagado' : 'Solo interno'}</span>}
                 </td>
                 <td className={s.num}>
                   {probado
@@ -170,15 +177,13 @@ export function PanelArca({ habilitado }) {
             );
           })}
         </Table>
-        {/* Con UN local, no cargar el punto de venta es lo normal: cae al de la
-            variable de entorno y no hay nada que elegir. Con varios, significa
-            que sus facturas saldrían por la boca de expendio de otro. */}
-        {est.sinPuntoVenta > 0 && (est.sucursales?.length ?? 0) > 1 && (
-          <div className={cx(s.callout, s.warn)} style={{ marginTop: 8 }}>
-            {est.sinPuntoVenta === 1 ? 'Hay 1 local sin' : `Hay ${est.sinPuntoVenta} locales sin`}{' '}
-            punto de venta propio: sus facturas saldrían por el{' '}
-            <strong className={s.mono}>{est.puntoVenta || '(ninguno)'}</strong>, que es la boca de
-            expendio de otro domicilio. Cargáselos en <strong>Gerencia › Sucursales</strong>.
+        {/* 0124: un local sin punto de venta propio ya NO usa el de otro — emite
+            comprobantes internos. Se avisa para que se sepa, no como error. */}
+        {est.sinPuntoVenta > 0 && (
+          <div className={s.hint} style={{ marginTop: 8 }}>
+            {est.sinPuntoVenta === 1 ? '1 local no tiene' : `${est.sinPuntoVenta} locales no tienen`} punto de venta
+            propio todavía: {est.sinPuntoVenta === 1 ? 'emite' : 'emiten'} solo comprobantes internos, sin CAE,
+            hasta que se {est.sinPuntoVenta === 1 ? 'le cargue' : 'les cargue'} y se encienda en Gerencia › Sucursales.
           </div>
         )}
       </div>
@@ -284,15 +289,7 @@ export function PanelArca({ habilitado }) {
           )}
 
           {/* Los últimos números autorizados van en la tabla de sucursales de
-              arriba, al lado del punto de venta al que pertenecen: son de un
-              punto de venta y de ninguno más. Acá solo lo que no entra ahí —
-              el local que cae al de la variable de entorno. */}
-          {(prueba.numeracion ?? []).filter((n) => !n.propio).map((n) => (
-            <div key={n.puntoVenta} className={s.hint} style={{ marginTop: 6 }}>
-              <strong className={s.mono}>{n.puntoVenta}</strong> (usado por {n.sucursal}):{' '}
-              {n.tipos.map((t) => `${TIPOS_VENTA[t.tipo]?.label ?? t.tipo} ${t.error ? '✕' : t.ultimo}`).join(' · ')}
-            </div>
-          ))}
+              arriba, al lado del punto de venta al que pertenecen. */}
         </div>
       )}
 

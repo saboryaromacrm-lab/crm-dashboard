@@ -11,7 +11,7 @@
  *   - roles de sistema: editables, no borrables.
  *   - usuarios: se desactivan, nunca se borran (viven en los historiales).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
 import { useAuth } from '@core/auth/AuthContext.jsx';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
@@ -30,6 +30,67 @@ function Proximamente({ seccion }) {
       <div className={cx(s.callout, s.info)}>
         <strong>Próximamente.</strong> Esta sección está en la agenda de Gerencia y todavía no se construyó.
       </div>
+    </div>
+  );
+}
+
+/**
+ * FACTURA ELECTRÓNICA DE UNA SUCURSAL (0124, 30/9/2026). Se enciende de a
+ * una: la que está apagada emite comprobantes internos, sin CAE, y nunca usa
+ * el punto de venta de otro local.
+ *
+ * Encender es plata y papeles fiscales reales, así que pide una SEGUNDA
+ * confirmación en la misma fila, con el punto de venta y el domicilio a la
+ * vista, y lleva candado contra el doble clic. Apagar también se confirma.
+ */
+function FacturaElectronica({ su, pendiente, onCambiar }) {
+  const [preguntando, setPreguntando] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const enVuelo = useRef(false);
+  const prendida = !!su.facturaElectronica;
+  const sinPv = !String(su.puntoVenta ?? '').trim();
+  const sinDir = !String(su.direccion ?? '').trim();
+
+  const confirmar = async () => {
+    if (enVuelo.current) return;
+    enVuelo.current = true; setOcupado(true);
+    try {
+      await onCambiar(!prendida);
+    } finally {
+      enVuelo.current = false; setOcupado(false); setPreguntando(false);
+    }
+  };
+
+  if (preguntando) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 260 }}>
+        <span style={{ fontSize: 12.5 }}>
+          {prendida
+            ? <>¿Apagar la factura electrónica de <strong>{su.nombre}</strong>? Va a emitir comprobantes internos, sin CAE.</>
+            : <>¿Encender la factura electrónica de <strong>{su.nombre}</strong>? Sus facturas salen con CAE real por el punto de venta <strong>{su.puntoVenta}</strong> ({su.direccion}).</>}
+        </span>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <Btn small variant={prendida ? 'btn-danger' : 'btn-primary'} disabled={ocupado} onClick={confirmar}>
+            {ocupado ? 'Guardando…' : prendida ? 'Sí, apagar' : 'Sí, encender'}
+          </Btn>
+          <Btn small disabled={ocupado} onClick={() => setPreguntando(false)}>No</Btn>
+        </div>
+      </div>
+    );
+  }
+
+  const bloqueo = pendiente ? 'Guardá primero los cambios de la fila.'
+    : !prendida && sinPv ? 'Falta el punto de venta de ARCA de este local.'
+      : !prendida && sinDir ? 'Falta el domicilio declarado para ese punto de venta.' : '';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: bloqueo ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }} title={bloqueo || undefined}>
+        <input type="checkbox" checked={prendida} disabled={!!bloqueo || ocupado} onChange={() => setPreguntando(true)} />
+        <strong style={{ color: prendida ? 'var(--crm-color-success)' : 'var(--crm-color-text-secondary)' }}>
+          {prendida ? 'Factura con ARCA' : 'Solo comprobante interno'}
+        </strong>
+      </label>
+      {bloqueo && <span className={s.hint} style={{ margin: 0 }}>{bloqueo}</span>}
     </div>
   );
 }
@@ -539,14 +600,17 @@ export function GerenciaPage() {
       {tab === 'sucursales' && (
         <>
           <div className={cx(s.callout, s.info)}>
-            Cada local tiene <strong>su propio punto de venta de ARCA</strong>, declarado contra su
+            Cada local factura con <strong>su propio punto de venta de ARCA</strong>, declarado contra su
             domicilio y con su numeración correlativa aparte. El <strong>domicilio</strong> de acá
-            es el que sale impreso en la factura de ese local — no el de la empresa.
+            es el que sale impreso en la factura de ese local — no el de la empresa. La
+            columna <strong>Factura electrónica</strong> enciende la facturación de a una sucursal: la que
+            no la tiene prendida emite solo comprobantes internos, sin CAE, y nunca factura con el punto de
+            venta de otro local.
           </div>
           <Table
             cols={[
               { h: 'Sucursal' }, { h: 'Tipo' }, { h: 'Punto de venta' },
-              { h: 'Domicilio del comprobante' }, { h: 'Fondo de caja', num: true }, { h: 'Acciones', cls: 'actions-col' },
+              { h: 'Domicilio del comprobante' }, { h: 'Factura electrónica' }, { h: 'Fondo de caja', num: true }, { h: 'Acciones', cls: 'actions-col' },
             ]}
             empty="Sin sucursales."
           >
@@ -584,6 +648,23 @@ export function GerenciaPage() {
                       style={{ width: '100%', minWidth: 220 }}
                     />
                   </td>
+                  <td>
+                    <FacturaElectronica
+                      su={su}
+                      pendiente={sucio}
+                      onCambiar={(prender) => mutar(
+                        /* Con los datos GUARDADOS (no lo que se esté tipeando en la fila):
+                         * encender la factura no guarda de rebote un punto de venta a medio escribir. */
+                        () => httpClient.patch(`/sucursales/${su.id}`, {
+                          nombre: su.nombre, tipo: su.tipo, puntoVenta: su.puntoVenta ?? '', direccion: su.direccion ?? '',
+                          facturaElectronica: prender,
+                        }),
+                        prender
+                          ? `${su.nombre}: factura electrónica ENCENDIDA con el punto de venta ${su.puntoVenta}.`
+                          : `${su.nombre}: factura electrónica apagada. Desde ahora emite comprobantes internos.`,
+                      )}
+                    />
+                  </td>
                   <td className={s.num}>
                     <input
                       type="number" min="0" step="1000"
@@ -619,10 +700,10 @@ export function GerenciaPage() {
           <div className={s.hint}>
             El <strong>fondo de caja</strong> es con cuánto abre la caja de cada local y cuánto queda
             apartado al cerrar para el turno siguiente; si está vacío, lo fija la primera apertura.
-            Del punto de venta: dejarlo vacío es válido con <strong>un solo local</strong>: ahí se usa el punto de venta
-            de la configuración del servidor. Con varios, cada uno necesita el suyo — dos locales
-            no pueden compartirlo. El estado de la conexión y el último número autorizado de cada
-            punto de venta están en <strong>Ventas › Configuración</strong>.
+            Para encender la <strong>factura electrónica</strong> de un local: dá de alta su punto de venta
+            (tipo Web Services) en ARCA, cargalo acá con el domicilio, guardá, y probalo en{' '}
+            <strong>Ventas › Configuración › Facturación › Probar conexión</strong> (tiene que figurar autorizado).
+            Recién ahí tildá la casilla. Dos locales no pueden compartir el punto de venta.
           </div>
         </>
       )}

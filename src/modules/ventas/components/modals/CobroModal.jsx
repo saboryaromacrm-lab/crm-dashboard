@@ -43,7 +43,7 @@ const CREDITO = 'tarjeta_credito';
  * dejaría cobrar "en 4" sin tener % cargado para 4, y el recargo saldría 0. */
 const PLANES = [1, 3, 6];
 
-export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrado }) {
+export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrado, facturaInterna = false }) {
   const { getCliente, config, ctx, closeModal, toast, operadorId } = useVentas();
   const cliente = getCliente(clienteId);
 
@@ -407,6 +407,13 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
         <span className={p.cobroTotalLabel}>Total</span>
         <span className={p.cobroTotalValor}>{money(totalFinal)}</span>
       </div>
+      {/* 0124: esta sucursal todavía no factura con ARCA. Se dice ANTES de
+          apretar, para que nadie le prometa al cliente una factura con CAE. */}
+      {facturaInterna && (
+        <div className={s.hint} style={{ margin: '4px 0 0' }}>
+          Esta sucursal todavía no factura con ARCA: <strong>Facturar</strong> emite un comprobante interno, sin CAE.
+        </div>
+      )}
       {/* Con recargo, el total grande ya no es el de la mercadería: se muestra
           de dónde salió, para que el número no aparezca cambiado sin
           explicación justo cuando el cliente está mirando. */}

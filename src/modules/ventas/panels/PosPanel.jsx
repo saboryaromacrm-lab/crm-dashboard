@@ -1298,6 +1298,12 @@ export function PosPanel() {
         totales,
         clienteId: clienteActual.id,
         cajaSesionId: caja?.id ?? null,
+        /* 0124: ARCA prendido pero ESTA sucursal todavía no factura con él
+         * (sin punto de venta propio o apagada): «Facturar» emite un comprobante
+         * interno. Lo decide el servidor; acá solo se avisa al cajero. */
+        facturaInterna: !!config.arcaHabilitado
+          && !(sucursales.find((x) => x.id === sucursalId)?.facturaElectronica
+            && sucursales.find((x) => x.id === sucursalId)?.puntoVenta),
         onCobrado: (venta, vuelto) => {
           closeModal();
           openModal('ventaEmitida', {
@@ -1307,7 +1313,7 @@ export function PosPanel() {
         },
       });
     });
-  }, [puedeCobrar, problemas, activaId, ticket, clienteActual, totales, caja, guardarAhora, openModal, closeModal, trasCobrar, toast]);
+  }, [puedeCobrar, problemas, activaId, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast]);
 
   const cambiarCliente = (id) => {
     const anterior = clienteActual?.descuento || 0;
