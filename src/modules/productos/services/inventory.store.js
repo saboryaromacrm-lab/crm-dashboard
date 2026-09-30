@@ -1347,6 +1347,26 @@ const importacionesPorProveedor = () => httpClient.get('/productos/importaciones
 /** Pasar artículos de una lista a otra (28/9/2026) y quién más usa una lista. */
 const moverLista = (o) => _mutate(() => httpClient.post('/productos/mover-lista', o));
 const usoLista = (id) => httpClient.get(`/listas/${id}/uso`);
+
+/**
+ * ELIMINAR LISTAS VACÍAS (30/9/2026, Listas de precios). De a una en el
+ * servidor (`soloVacia=1`: con artículos no borra, y frena si la usan
+ * clientes, descuentos u ofertas), y el catálogo se relee UNA vez al final —
+ * no una por lista. Devuelve cuáles salieron y cuáles no, con el motivo.
+ */
+async function borrarListasVacias(ids) {
+  const hechas = []; const fallidas = [];
+  for (const id of ids) {
+    try {
+      const r = await httpClient.delete(`/listas/${id}?soloVacia=1`);
+      hechas.push({ id, desactivada: !!r?.desactivada });
+    } catch (e) {
+      fallidas.push({ id, error: _errMsg(e) });
+    }
+  }
+  if (hechas.length) { try { await refetch(); } catch { /* se ve al recargar */ } }
+  return { hechas, fallidas };
+}
 /**
  * LA TANDA DE VARIOS PROVEEDORES (28/9/2026): cada `_mutate` vuelve a bajar el
  * inventario entero (~10 MB); con un archivo de 60 proveedores eran 60
@@ -1392,7 +1412,7 @@ export const inventoryStore = {
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
   sugerenciasArchivado, archivarLote,
-  guardarPresentaciones, importarCatalogo, importarCostos, importarFormatosVenta, importacionesPorProveedor, moverLista, usoLista, importarCostosEnTanda, crearProveedorEnTanda, actualizarClasificacion,
+  guardarPresentaciones, importarCatalogo, importarCostos, importarFormatosVenta, importacionesPorProveedor, moverLista, usoLista, borrarListasVacias, importarCostosEnTanda, crearProveedorEnTanda, actualizarClasificacion,
   crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, siguienteCodigo, siguienteEan,
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,

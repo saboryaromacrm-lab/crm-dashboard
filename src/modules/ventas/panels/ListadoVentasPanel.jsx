@@ -36,6 +36,34 @@ import {
   usePaginadoServidor, money, num, fmtFechaHora, isoDate, s,
 } from '../components/ui.jsx';
 
+/** Una barra partida al 100 %: qué parte es cada una (los % van escritos al lado). */
+function Reparto({ partes }) {
+  const total = partes.reduce((a, x) => a + Math.max(0, Number(x.valor) || 0), 0);
+  return (
+    <span style={{ display: 'flex', height: 12, borderRadius: 4, overflow: 'hidden', gap: 2, background: 'var(--crm-color-surface-2, rgba(0,0,0,.05))' }}>
+      {total > 0 && partes.map((x) => {
+        const v = Math.max(0, Number(x.valor) || 0);
+        return v > 0 ? <span key={x.clave} style={{ width: `${(v / total) * 100}%`, background: x.color }} /> : null;
+      })}
+    </span>
+  );
+}
+
+/** Un renglón del reparto: color, nombre, importe, % y el detalle chico. */
+function FilaReparto({ color, nombre, importe, pct, detalle }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
+        <span>{nombre}:</span>
+        <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{money(importe)}</strong>
+        <strong>{pct == null ? '—' : `${num(pct, 1)}%`}</strong>
+      </div>
+      {detalle && <div className={s.hint} style={{ margin: '0 0 0 18px' }}>{detalle}</div>}
+    </div>
+  );
+}
+
 /** `isoDate` es LOCAL (no UTC): a las 22 h de acá "hoy" sigue siendo hoy. */
 const hoyIso = () => isoDate(new Date());
 const diasAtras = (n) => {
@@ -315,6 +343,45 @@ export function ListadoVentasPanel() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* FACTURADO vs LIQUIDADO y POR LISTA DE PRECIOS (30/9/2026, pedido del
+          dueño): qué parte de lo vendido es de cada una. Mismo filtro que el
+          resto de la pantalla; las anuladas no cuentan y las NC restan. */}
+      {t?.facturacion && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span className={s['mini-label']}>FACTURADO Y LIQUIDADO</span>
+            <Reparto partes={[
+              { clave: 'f', valor: t.facturacion.facturado, color: 'var(--crm-color-primary)' },
+              { clave: 'l', valor: t.facturacion.liquidado, color: '#ea580c' },
+            ]} />
+            <FilaReparto
+              color="var(--crm-color-primary)" nombre="Facturado (F8)" importe={t.facturacion.facturado} pct={t.facturacion.pctFacturado}
+              detalle={`${num(t.facturacion.facturas, 0)} ${t.facturacion.facturas === 1 ? 'factura' : 'facturas'}${t.facturacion.facturadoSinCae > 0.009 ? ` · ${money(t.facturacion.facturadoSinCae)} sin CAE (pendiente de ARCA o interno)` : ''}`}
+            />
+            <FilaReparto
+              color="#ea580c" nombre="Liquidado (F10)" importe={t.facturacion.liquidado} pct={t.facturacion.pctLiquidado}
+              detalle={`${num(t.facturacion.liquidaciones, 0)} ${t.facturacion.liquidaciones === 1 ? 'ticket' : 'tickets'}`}
+            />
+          </div>
+          <div className={s.card} style={{ padding: '10px 14px', flex: '2 1 320px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span className={s['mini-label']}>POR LISTA DE PRECIOS</span>
+            {t.porLista?.length ? t.porLista.map((x) => (
+              <div key={x.listaId ?? 'sin'} style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 1fr) minmax(60px, 2fr) auto', gap: 10, alignItems: 'center' }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={x.nombre}>{x.nombre}</span>
+                <span style={{ height: 10, background: 'var(--crm-color-surface-2, rgba(0,0,0,.05))', borderRadius: 4, overflow: 'hidden' }}>
+                  <span style={{ display: 'block', height: '100%', width: `${Math.max(0, Math.min(100, x.pct ?? 0))}%`, background: 'var(--crm-color-primary)', borderRadius: '0 4px 4px 0' }} />
+                </span>
+                <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                  <strong>{money(x.importe)}</strong> · <strong>{x.pct == null ? '—' : `${num(x.pct, 1)}%`}</strong>
+                  <span className={s.hint} style={{ margin: 0 }}> · {num(x.ventas, 0)} tk</span>
+                </span>
+              </div>
+            )) : <div className={s.hint}>Sin ventas en el período.</div>}
+            <div className={s.hint} style={{ margin: 0 }}>Mercadería con IVA; recargos y envíos no son de ninguna lista. Un ticket con renglones de dos listas cuenta en las dos.</div>
+          </div>
         </div>
       )}
 

@@ -25,7 +25,7 @@
  * una consulta, y cambiar un filtro tampoco. Lo único que se cuida es no
  * dibujar miles de filas de una — para eso está el paginado de siempre.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { useProductos } from '../context/ProductosContext.jsx';
@@ -52,7 +52,7 @@ const TOPE_VALORES = 12;
 const etiquetaValor = (g) => (g.modoPrecio === 'precio' ? 'Precio definido' : `${num(g.markup, 1)}%`);
 
 export function MargenesPanel() {
-  const { store, isAdmin, openModal } = useProductos();
+  const { store, isAdmin, openModal, toast } = useProductos();
   const [q, setQ] = useState('');
   const [marca, setMarca] = useState('');
   const [categoria, setCategoria] = useState('');
@@ -167,6 +167,34 @@ export function MargenesPanel() {
   const listaBaseId = Number(store.state.configVentas?.listaBaseId)
     || [...(store.state.listasCatalogo?.listas ?? [])].filter((x) => x.activa).sort((a, b) => a.orden - b.orden)[0]?.id;
 
+  /*
+   * ELIMINAR LISTAS VACÍAS (30/9/2026, pedido del dueño). Solo sin filtros
+   * puestos (con filtros, «sin artículos» puede ser solo lo filtrado), nunca
+   * la base, y con confirmación. El servidor vuelve a verificar que esté vacía
+   * de verdad (también de artículos archivados) y que no la usen clientes,
+   * descuentos ni ofertas; si alguna tiene ventas viejas, se da de baja en vez
+   * de borrarse (los tickets viejos la siguen nombrando).
+   */
+  const vaciasBorrables = hayFiltro ? [] : tarjetas.filter((l) => !l.total && l.listaId !== listaBaseId);
+  const [confirmarBorrado, setConfirmarBorrado] = useState(null); // null | { ids, texto }
+  const [borrando, setBorrando] = useState(false);
+  const borrandoRef = useRef(false);
+  const borrarListas = async () => {
+    if (borrandoRef.current || !confirmarBorrado) return;
+    borrandoRef.current = true; setBorrando(true);
+    try {
+      const { hechas, fallidas } = await store.borrarListasVacias(confirmarBorrado.ids);
+      const nombre = (id) => tarjetas.find((l) => l.listaId === id)?.lista ?? `#${id}`;
+      if (hechas.length) {
+        const bajas = hechas.filter((h) => h.desactivada).length;
+        toast(`${hechas.length === 1 ? `«${nombre(hechas[0].id)}» eliminada` : `${hechas.length} listas eliminadas`}${bajas ? ` (${bajas} dada(s) de baja: tienen ventas viejas)` : ''}.`, 'ok');
+      }
+      if (fallidas.length) toast(fallidas.map((f) => f.error).join(' · '), 'err');
+    } finally {
+      borrandoRef.current = false; setBorrando(false); setConfirmarBorrado(null);
+    }
+  };
+
   const redondear = (listaId = null, lista = '') => openModal('redondearMarkups', {
     filas,
     listaId,
@@ -251,6 +279,27 @@ export function MargenesPanel() {
             Desplegar todas
           </Btn>
           <Btn small onClick={() => setAbiertas(new Set())} disabled={!abiertas.size}>Plegar todas</Btn>
+          {isAdmin && vaciasBorrables.length > 1 && (
+            <Btn
+              small variant="btn-delete" disabled={borrando}
+              onClick={() => setConfirmarBorrado({
+                ids: vaciasBorrables.map((l) => l.listaId),
+                texto: `¿Eliminar las ${vaciasBorrables.length} listas vacías? ${vaciasBorrables.map((l) => l.lista).join(', ')}.`,
+              })}
+            >
+              Eliminar las {vaciasBorrables.length} vacías
+            </Btn>
+          )}
+        </div>
+      )}
+      {/* La confirmación (segunda pregunta) de eliminar listas, a la vista y con candado. */}
+      {confirmarBorrado && (
+        <div className={cx(s.callout, s.warn)} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', margin: 0 }}>
+          <span style={{ flex: '1 1 280px' }}>
+            {confirmarBorrado.texto} Una lista con ventas viejas se da de baja en vez de borrarse; una que usen clientes, descuentos u ofertas no se toca.
+          </span>
+          <Btn variant="btn-delete" small disabled={borrando} onClick={borrarListas}>{borrando ? 'Eliminando…' : 'Sí, eliminar'}</Btn>
+          <Btn small disabled={borrando} onClick={() => setConfirmarBorrado(null)}>No</Btn>
         </div>
       )}
       {tarjetas.map((l) => {
@@ -316,6 +365,14 @@ export function MargenesPanel() {
               {isAdmin && l.total > 0 && l.listaId !== listaBaseId && (
                 <Btn small onClick={(e) => { e.stopPropagation(); openModal('moverLista', { origenId: l.listaId, origen: l.lista, filas }); }}>
                   Mover a otra lista
+                </Btn>
+              )}
+              {isAdmin && vaciasBorrables.some((v) => v.listaId === l.listaId) && (
+                <Btn
+                  small variant="btn-delete" disabled={borrando}
+                  onClick={(e) => { e.stopPropagation(); setConfirmarBorrado({ ids: [l.listaId], texto: `¿Eliminar la lista «${l.lista}»? No tiene artículos.` }); }}
+                >
+                  Eliminar
                 </Btn>
               )}
             </div>
