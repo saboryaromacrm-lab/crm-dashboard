@@ -38,6 +38,13 @@ export const ventasApi = {
   /* Catálogos del módulo (chicos, se cargan una vez). */
   bootstrap: () => httpClient.get('/ventas/bootstrap'),
 
+  /* Factura a un CUIT desde la caja (0125). La consulta a ARCA puede tardar
+   * unos segundos; si ARCA no contesta vuelve 503 con el motivo (y si ese CUIT
+   * ya es cliente, igual lo dice en `cliente`). */
+  padronCuit: (cuit, forzar = false) => httpClient.get(`/arca/padron/${cuit}${forzar ? '?forzar=1' : ''}`),
+  /** «¿Agregarlo como cliente?» después de facturar a un CUIT. */
+  agregarCompradorCliente: (ventaId) => httpClient.post(`/ventas/${ventaId}/agregar-cliente`, {}),
+
   /* Clientes */
   crearCliente: (data) => httpClient.post('/clientes', data),
   editarCliente: (id, data) => httpClient.patch(`/clientes/${id}`, data),

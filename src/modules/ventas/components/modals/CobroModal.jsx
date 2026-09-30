@@ -7,8 +7,10 @@ import { MEDIOS_PAGO, nroComprobante } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
 import { sugerirImporteCuenta, validarTransferenciaProveedor } from '../../domain/cuentasProveedor.js';
 import { CuentaProveedorPicker } from '../CuentaProveedorPicker.jsx';
+import { FacturaACuit } from '../FacturaACuit.jsx';
 import { Table, Btn, Di, ModalShell, VentaTag, money, fmtFechaHora, s } from '../ui.jsx';
 import { configImpresion, imprimirVenta } from '@core/services/imprimir.js';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import p from '../../styles/Pos.module.css';
 
 /**
@@ -57,6 +59,15 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
    * pasaban las dos. La API ya no duplica (una emisión por venta), pero el
    * segundo cobro llegaba a mostrar un error con el cliente enfrente. */
   const enviandoRef = useRef(false);
+  /*
+   * FACTURA A UN CUIT (0125): solo vendiendo a Consumidor Final, al contado y
+   * en una sucursal que factura con ARCA. `aCuit` = null (no se usa) o
+   * `{ cuit, manual, nombre, letra, listo }` (ver FacturaACuit).
+   */
+  const [aCuit, setACuit] = useState(null);
+  const ofreceCuit = !!config.arcaHabilitado && !facturaInterna && !!cliente?.esConsumidorFinal;
+  // Si deja de aplicar (pasó a cuenta corriente), no queda un CUIT colgado.
+  useEffect(() => { if (!ofreceCuit || condicionPago !== 'contado') setACuit(null); }, [ofreceCuit, condicionPago]);
 
   /*
    * SIN REDONDEO DEL COBRO (se sacó el 8/9, por pedido del dueño).
@@ -215,6 +226,14 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   /** `tipo`: 'ticket' liquida, 'factura' emite comprobante fiscal. */
   const confirmar = async (tipo) => {
     if (enviandoRef.current) return;
+    if (aCuit && tipo === 'ticket') {
+      toast('Estás facturando a un CUIT: tocá Facturar (F8), o «Quitar» para liquidar.', 'err');
+      return;
+    }
+    if (aCuit && !aCuit.listo) {
+      toast('Buscá el CUIT en ARCA (o cargá los datos a mano) antes de facturar.', 'err');
+      return;
+    }
     if (tipo === 'ticket' && condicionPago !== 'contado') {
       toast('Liquidar es al contado. Para cuenta corriente, facturá (F8).', 'err');
       return;
@@ -247,6 +266,8 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
           // El relevo (0088): el cobro queda firmado por quien está en la caja.
           operadorId: operadorId ?? undefined,
           observaciones,
+          // Factura a un CUIT (0125): solo el CUIT; los datos los pone ARCA en el servidor.
+          ...(aCuit && tipo === 'factura' ? { facturaCuit: { cuit: aCuit.cuit, ...(aCuit.manual ? { manual: aCuit.manual } : {}) } } : {}),
           pagos: condicionPago === 'contado'
             ? pagosReales.filter((x) => Number(x.importe) > 0).map((x) => ({
               medio: x.medio, importe: r2(x.importe),
@@ -368,8 +389,8 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
   const pagosOk = condicionPago === 'cuenta_corriente'
     ? !(excedeCredito && config.ctaCteBloquearSuperado)
     : Math.abs(faltante) <= 0.01 && !avisoTerc;
-  const puedeLiquidar = pagosOk && condicionPago === 'contado' && !medioExigeFactura && !enviando;
-  const puedeFacturar = pagosOk && !enviando;
+  const puedeLiquidar = pagosOk && condicionPago === 'contado' && !medioExigeFactura && !enviando && !aCuit;
+  const puedeFacturar = pagosOk && !enviando && (!aCuit || aCuit.listo);
 
   /* ------------------------------ Atajos ------------------------------ */
   useEffect(() => {
@@ -380,7 +401,7 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [puedeLiquidar, puedeFacturar, condicionPago, pagos, observaciones, vuelto]);
+  }, [puedeLiquidar, puedeFacturar, condicionPago, pagos, observaciones, vuelto, aCuit]);
 
   return (
     <ModalShell
@@ -392,7 +413,9 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
         // Los botones nunca son un no-op silencioso: si no se puede cerrar,
         // `confirmar` avisa POR QUÉ (falta plata, es cta. cte., excede crédito).
         {
-          texto: enviando ? 'Registrando…' : 'Facturar · F8',
+          texto: enviando ? 'Registrando…'
+            : aCuit?.listo ? `Factura ${aCuit.letra} a ${aCuit.nombre.length > 22 ? `${aCuit.nombre.slice(0, 21)}…` : aCuit.nombre} · F8`
+              : 'Facturar · F8',
           clase: puedeFacturar ? 'btn-ingreso' : 'btn-ghost',
           onClick: () => confirmar('factura'),
         },
@@ -450,6 +473,11 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
             Cuenta corriente
           </Btn>
         </div>
+      )}
+
+      {/* Factura a un CUIT (0125): al contado y vendiendo a Consumidor Final. */}
+      {ofreceCuit && condicionPago === 'contado' && (
+        <FacturaACuit condicionEmpresa={config.condicionIvaEmpresa} onCambio={setACuit} />
       )}
 
       {condicionPago === 'cuenta_corriente' ? (
@@ -604,9 +632,50 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
  * Los nombres salen de los renglones del ticket (la venta guarda ids), así que
  * el cajero lee lo mismo que acabó de cargar.
  */
+/**
+ * «¿AGREGARLO COMO CLIENTE?» después de facturar a un CUIT (0125). Sí = lo
+ * crea con los datos de la factura y le pasa esta venta; No = nada (la factura
+ * igual queda con sus datos). Con candado contra el doble clic.
+ */
+function AgregarComoCliente({ venta }) {
+  const { toast, recargar } = useVentas();
+  const [estado, setEstado] = useState('pregunta'); // pregunta | guardando | listo | no
+  const enVuelo = useRef(false);
+  if (estado === 'no') return null;
+  const si = async () => {
+    if (enVuelo.current) return;
+    enVuelo.current = true; setEstado('guardando');
+    try {
+      const r = await ventasApi.agregarCompradorCliente(venta.id);
+      setEstado('listo');
+      toast(r.creado ? `${r.cliente.nombre} quedó agregado como cliente.` : `${r.cliente.nombre} ya era cliente: la venta quedó a su nombre.`, 'ok');
+      recargar?.();
+    } catch (e) {
+      setEstado('pregunta');
+      toast(e?.data?.message || 'No se pudo agregar el cliente.', 'err');
+    } finally {
+      enVuelo.current = false;
+    }
+  };
+  if (estado === 'listo') {
+    return <div className={cx(s.callout, s.ok)} style={{ marginBottom: 'var(--crm-space-3)' }}><strong>{venta.receptor.nombre}</strong> ya figura como cliente.</div>;
+  }
+  return (
+    <div className={cx(s.callout, s.info)} style={{ marginBottom: 'var(--crm-space-3)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span style={{ flex: '1 1 240px' }}>¿Agregar a <strong>{venta.receptor.nombre}</strong> como cliente? Queda con su CUIT, su condición de IVA y su domicilio.</span>
+      <Btn variant="btn-primary" small disabled={estado === 'guardando'} onClick={si}>{estado === 'guardando' ? 'Agregando…' : 'Sí, agregar'}</Btn>
+      <Btn small disabled={estado === 'guardando'} onClick={() => setEstado('no')}>No</Btn>
+    </div>
+  );
+}
+
 export function VentaEmitidaModal({ venta, vuelto = 0, renglones = [], onNuevoTicket }) {
   const { closeModal, getCliente } = useVentas();
-  const cliente = getCliente(venta.clienteId);
+  const { can } = usePermissions();
+  const clienteDeVenta = getCliente(venta.clienteId);
+  // Facturada a un CUIT (0125): se muestra a quién se facturó, no «Consumidor Final».
+  const cliente = venta.receptor ? { nombre: venta.receptor.nombre } : clienteDeVenta;
+  const preguntarCliente = !!venta.receptor && !!clienteDeVenta?.esConsumidorFinal && can('ventas.clientes');
 
   const nombreDe = (it) => {
     const r = renglones.find(
@@ -633,6 +702,8 @@ export function VentaEmitidaModal({ venta, vuelto = 0, renglones = [], onNuevoTi
           <span className={p.vueltoValor}>{money(vuelto)}</span>
         </div>
       )}
+
+      {preguntarCliente && <AgregarComoCliente venta={venta} />}
 
       <div className={s['detalle-grid']}>
         <Di label="Comprobante"><VentaTag tipo={venta.tipo} /> <span className={s.mono}>{nroComprobante(venta)}</span></Di>
