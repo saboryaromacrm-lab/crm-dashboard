@@ -561,7 +561,7 @@ export const MANUAL = [
   {
     id: 'formato-venta',
     titulo: 'Formato de Venta',
-    resumen: 'Cómo SALE el producto: listas, markup y las cuatro puertas.',
+    resumen: 'Cómo SALE el producto: listas, markup y las puertas al precio mayorista.',
     temas: [
       {
         id: 'modelo',
@@ -644,23 +644,35 @@ export const MANUAL = [
       },
       {
         id: 'puertas',
-        actualizado: '2026-08-01',
-        titulo: 'Las cuatro puertas',
+        actualizado: '2026-10-01',
+        titulo: 'Las puertas al precio mayorista',
         bloques: [
           {
             t: 'p',
-            texto: 'Son un **OR**: con que se abra una alcanza. Entre todas las que se habilitan gana la de menor orden. Si no se abre ninguna, queda el piso (la lista base): el precio de mostrador.',
+            texto: '**La caja cobra minorista por defecto** (1/10/2026, pedido del dueño: muchas veces llevan cantidades en forma minorista). Cuando el ticket cumple alguna puerta, **aparece un aviso** con los renglones que cumplen, el motivo de cada uno y cuánto ahorra el cliente; el cajero lo aplica con un clic. Son un **OR**: con que se abra una alcanza, y entre las abiertas gana la de menor orden. Una lista más cara que el mostrador nunca se ofrece.',
           },
           {
             t: 'tabla',
-            cols: ['Puerta', 'Se mide sobre', 'Alcanza a', 'Se aplica'],
+            cols: ['Puerta', 'Se mide sobre', 'Alcanza a'],
             filas: [
-              ['Cliente — la tiene asignada', 'contrato', 'ese renglón', 'Sola'],
-              ['Producto — mínimo de unidades', 'cantidades', 'ese renglón', 'Sola'],
-              ['Marca — mínimo de unidades de la marca', 'cantidades', 'los renglones de esa marca', 'Sola'],
-              ['Monto — total del ticket', 'pesos', 'todo el ticket', 'Avisa; se aplica con un clic'],
+              ['Cliente — la tiene asignada en su ficha', 'contrato', 'ese renglón'],
+              ['Producto — mínimo de unidades del artículo', 'cantidades', 'ese renglón'],
+              ['Marca — mínimo de unidades surtidas de la marca', 'cantidades', 'los renglones de esa marca'],
+              ['Bulto cerrado — lleva la caja entera (12 de un bulto de 12, o más)', 'cantidades', 'ese renglón, en su PRIMERA lista mayorista'],
+              ['Monto — total a precio de mostrador, con IVA', 'pesos', 'todo el ticket'],
             ],
           },
+          {
+            t: 'lista',
+            items: [
+              '**Aceptado el aviso, el ticket queda en mayorista**: lo que se agregue y cumpla entra solo, y el renglón que deje de cumplir (sacaron unidades del bulto) vuelve solo a minorista y la caja lo avisa.',
+              '**Con 15 de un bulto de 12, las 15 van a mayorista** (decisión del dueño).',
+              '**El bulto sale de la ficha** («Unidades por bulto», el del DUN) o, si no está, de la **caja del proveedor** que define el costo. Los que no tienen ninguno se ven en Compras › Productos › «Enteros sin bulto».',
+              '**El precio mayorista se paga solo con los medios configurados** (efectivo y transferencia), y al contado — llegue por la puerta que llegue, o elegido a mano. El cobro ofrece solo esos; si el cliente quiere pagar con otro, el botón **«volver a precio minorista»** recalcula el total. El servidor lo controla igual.',
+              '**El QR de Mercado Pago no vale para mayorista**: se rechaza antes de mandar el monto al QR.',
+            ],
+          },
+          { t: 'ruta', texto: 'Ventas › Configuración › Precios y descuentos › Precio mayorista' },
         ],
       },
       {
@@ -670,7 +682,7 @@ export const MANUAL = [
         bloques: [
           {
             t: 'p',
-            texto: 'Las condiciones que se miden sobre **cantidades** son estables: doce unidades siguen siendo doce aunque cambie el precio. Aplicar la lista no altera la condición, así que se pueden aplicar solas.',
+            texto: 'Las condiciones que se miden sobre **cantidades** son estables: doce unidades siguen siendo doce aunque cambie el precio. Aplicar la lista no altera la condición. Desde el 1/10/2026 igual se AVISAN y no se aplican solas: es una decisión comercial (el cliente puede estar comprando minorista), no una limitación técnica.',
           },
           {
             t: 'p',
@@ -683,7 +695,7 @@ export const MANUAL = [
           {
             t: 'nota',
             tono: 'warn',
-            texto: 'Por eso el monto **nunca entra en el automático**: la caja avisa y el cajero lo aplica con un clic. No es una limitación, es lo único que evita un ciclo infinito.',
+            texto: 'Por eso el monto se mide sobre el total a **precio de mostrador** (con IVA), que no cambia al aplicar el mayorista: así no hay ciclo. Hasta el 1/10/2026 el servidor sumaba el neto sin IVA y rechazaba tickets que la caja había sugerido; ahora los dos miden lo mismo.',
           },
         ],
       },
@@ -694,7 +706,7 @@ export const MANUAL = [
         bloques: [
           {
             t: 'p',
-            texto: 'Se acumulan las unidades de toda la marca en el ticket, sumando sus productos. Al llegar al mínimo, pasan a la modalidad **solo los renglones de esa marca**.',
+            texto: 'Se acumulan las unidades de toda la marca en el ticket, sumando sus productos (surtido). Al llegar al mínimo, la caja avisa y, si se aplica, pasan a la modalidad **solo los renglones de esa marca**.',
           },
           {
             t: 'ejemplo',
@@ -728,17 +740,18 @@ export const MANUAL = [
         bloques: [
           {
             t: 'p',
-            texto: 'Se configura un monto mínimo, qué modalidad desbloquea y —opcionalmente— con qué medios de pago vale ("solo efectivo").',
+            texto: 'Se configura un monto mínimo y qué modalidad es la mayorista. Los medios de pago ("efectivo y transferencia") ya no son solo del monto: valen para todo precio mayorista.',
           },
           {
             t: 'lista',
             items: [
               'Alcanza a todo el ticket, porque habla de la compra entera.',
               'Solo cambia los productos que tengan una lista cargada en esa modalidad.',
-              'Los renglones que entran por esta vía quedan marcados, y al confirmar se valida el medio de pago.',
+              'Se mide sobre el total a precio de mostrador, con IVA.',
+              'Los renglones que entran por esta vía quedan marcados («monto»), y al confirmar se valida el medio de pago.',
             ],
           },
-          { t: 'ruta', texto: 'Ventas › Configuración › Precios' },
+          { t: 'ruta', texto: 'Ventas › Configuración › Precios y descuentos › Precio mayorista' },
         ],
       },
       {
@@ -3183,6 +3196,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**1/10/2026**', '**MAYORISTA POR AVISO, POR BULTO CERRADO Y SOLO EN EFECTIVO O TRANSFERENCIA** (pedido del dueño; migración 0127). **Por defecto la caja cobra minorista**: ninguna condición se aplica sola. Cuando el ticket cumple alguna —**bulto cerrado** (nuevo: 12 Coca-Cola de un bulto de 12 abren la primera lista mayorista aunque el ticket no llegue al monto; con 15, las 15), **marca surtida** (20 unidades de la marca), mínimo del artículo, lista del cliente o monto— aparece un **aviso** con los renglones que cumplen, el motivo de cada uno y cuánto ahorra el cliente, y el botón **«Aplicar mayorista a esos renglones»**. Aceptado, lo que se agregue y cumpla entra solo y lo que deje de cumplir vuelve solo a minorista (con aviso). Cerca de un bulto o de una marca, la caja dice cuánto falta. **El precio mayorista se paga solo con efectivo o transferencia, al contado**: el cobro ofrece solo esos medios, tiene el botón **«volver a precio minorista»** si el cliente quiere pagar con otro, y el servidor lo controla llegue el precio como llegue (también elegido a mano o escaneando la caja). El QR de Mercado Pago no vale para mayorista y se rechaza antes de mandar el monto. El bulto sale de la ficha o de la caja del proveedor; los enteros sin bulto se ven en Compras › Productos › «Enteros sin bulto». Arreglos de paso: el **monto se medía sin IVA** en el servidor (rechazaba tickets que la caja sugería); el renglón habilitado solo por el permiso de pisar precios quedaba anotado como «auto» y ahora dice «manual»; y abrir en la caja una venta de un presupuesto ya no le recotiza el precio prometido. Se configura en **Ventas › Configuración › Precios y descuentos › Precio mayorista**.'],
               ['**30/9/2026**', '**COBRO CON QR DE MERCADO PAGO** (pedido del dueño; migración 0126). Cada computadora que cobra tiene su **caja de Mercado Pago con un QR fijo** impreso en el mostrador (se crea e imprime en **Ventas › Configuración › Mercado Pago**; el equipo tiene que estar registrado en Sistema › Este equipo). En el cobro aparece el medio **«QR Mercado Pago»** (solo o combinado con efectivo, débito o transferencia): al tocar Facturar o Liquidar, el monto va al QR de esa caja y la pantalla queda **esperando el pago**. El cliente escanea, ve el monto y paga; **la venta se cierra sola** (stock, caja, factura o ticket) y sale el papel. El ERP no le cree al aviso: le pregunta a Mercado Pago y controla monto y referencia. Mientras espera, el ticket no se edita, no se cobra por otro lado y la caja no cierra. **Cancelar** anula el cobro; si nadie paga, vence a los 15 minutos. Si pagó justo al cancelar, la venta se registra igual. Si el cliente pagó pero la venta no pudo cerrarse (por ejemplo sin stock), queda a la vista con el número de operación: se corrige y **«Reintentar»**; un administrador puede marcarlo **resuelto a mano**. El pago queda como «QR / billetera» con el número de operación de Mercado Pago. Devolver la plata por Mercado Pago desde una nota de crédito queda para más adelante.'],
               ['**30/9/2026**', '**VENTAS: POR LISTA DE PRECIOS Y FACTURADO / LIQUIDADO** (pedido del dueño). En Ventas › Ventas, dos tarjetas nuevas con el mismo filtro de la pantalla: **Facturado y liquidado** (lo cobrado con Facturar F8 y con Liquidar F10, con su % del total y cuántos comprobantes; de lo facturado, cuánto quedó sin CAE) y **Por lista de precios** (la mercadería con IVA vendida con cada lista y su %). Las anuladas no cuentan y las notas de crédito restan en su lado.'],
               ['**30/9/2026**', '**ELIMINAR LISTAS DE PRECIOS VACÍAS** (pedido del dueño). En Compras › Listas de precios, cada lista sin artículos tiene **Eliminar**, y arriba **«Eliminar las N vacías»** (con confirmación). Solo sin filtros puestos y nunca la lista base. El servidor vuelve a verificar: con artículos (también archivados) no se borra; si la usan clientes, descuentos u ofertas vigentes, se frena y dice cuántos; si tiene ventas viejas, se da de baja en vez de borrarse. De paso, borrar una lista desde Ventas › Configuración ya no se lleva en silencio a los clientes que la tenían asignada.'],

@@ -1,18 +1,26 @@
 /**
  * El motor del formato de venta: con qué lista se cotiza cada renglón.
- * Las cuatro puertas (cliente, producto, marca, monto) y el piso.
+ * Desde el 1/10/2026 la caja cobra MINORISTA por defecto: las cinco puertas
+ * (cliente, producto, marca, bulto, monto) solo CALIFICAN, se avisa, y se
+ * aplican cuando el cajero acepta el aviso.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { agregadosTicket, contextoResolucion, reglasDeMarcaCumplidas, resolverRenglon } from './listas.js';
+import {
+  agregadosTicket, calificacion, contextoResolucion, faltantesMayorista, reglasDeMarcaCumplidas,
+  resolverRenglon, restriccionMayorista, sugerenciaMayorista, totalPiso,
+} from './listas.js';
 
 const catalogo = {
   listas: [
-    { listaId: 1, modalidadId: 10, esBase: true, nombre: 'Minorista' },
-    { listaId: 2, modalidadId: 20, esBase: false, nombre: 'Mayorista' },
-    { listaId: 3, modalidadId: 30, esBase: false, nombre: 'Distribuidor' },
+    { listaId: 1, modalidadId: 10, esBase: true, nombre: 'Minorista', etiqueta: 'Minorista 1', modalidad: 'Minorista' },
+    { listaId: 2, modalidadId: 20, esBase: false, nombre: 'Mayorista', etiqueta: 'Mayorista 1', modalidad: 'Mayorista' },
+    { listaId: 3, modalidadId: 30, esBase: false, nombre: 'Distribuidor', etiqueta: 'Distribuidor 1', modalidad: 'Distribuidor' },
+    { listaId: 4, modalidadId: 20, esBase: false, nombre: 'Mayorista 2', etiqueta: 'Mayorista 2', modalidad: 'Mayorista' },
   ],
-  reglasMarca: [{ marcaId: 7, modalidadId: 20, unidadesMinimas: 12, marca: 'Coca-Cola' }],
+  reglasMarca: [{ marcaId: 7, modalidadId: 20, unidadesMinimas: 20, marca: 'Coca-Cola' }],
+  mayorista: { modalidadId: 20, modalidad: 'Mayorista', mediosPago: ['efectivo', 'transferencia'], porBulto: true },
+  montoMayorista: { monto: 100000, modalidadId: 20, modalidad: 'Mayorista' },
 };
 // Precios del artículo, ya ordenados por preferencia (la mejor primero).
 const precios = [
@@ -20,9 +28,10 @@ const precios = [
   { listaId: 2, precio: 90, unidadesMinimas: 6 },
   { listaId: 1, precio: 100, unidadesMinimas: 0 },
 ];
+const sinMinimo = [{ listaId: 2, precio: 90, unidadesMinimas: 0 }, { listaId: 1, precio: 100, unidadesMinimas: 0 }];
 
-const ctxDe = (renglones, cliente = null, modalidadesExtra = []) =>
-  contextoResolucion({ catalogo, cliente, renglones, modalidadesExtra });
+const ctxDe = (renglones, { cliente = null, aplicado = true, idx = null } = {}) =>
+  contextoResolucion({ catalogo, cliente, renglones, aplicado, precios: idx });
 
 test('agregadosTicket: cuenta por producto y por marca, ignorando cantidades no positivas', () => {
   const a = agregadosTicket([
@@ -38,10 +47,18 @@ test('agregadosTicket: cuenta por producto y por marca, ignorando cantidades no 
 });
 
 test('reglasDeMarcaCumplidas: solo las marcas que llegaron al mínimo', () => {
-  const cumplidas = reglasDeMarcaCumplidas(catalogo.reglasMarca, agregadosTicket([{ productoId: 1, marcaId: 7, cantidad: 12 }]));
-  assert.equal(cumplidas.get(7)?.get(20)?.llevadas, 12);
-  const noCumplidas = reglasDeMarcaCumplidas(catalogo.reglasMarca, agregadosTicket([{ productoId: 1, marcaId: 7, cantidad: 11 }]));
+  const cumplidas = reglasDeMarcaCumplidas(catalogo.reglasMarca, agregadosTicket([{ productoId: 1, marcaId: 7, cantidad: 20 }]));
+  assert.equal(cumplidas.get(7)?.get(20)?.llevadas, 20);
+  const noCumplidas = reglasDeMarcaCumplidas(catalogo.reglasMarca, agregadosTicket([{ productoId: 1, marcaId: 7, cantidad: 19 }]));
   assert.equal(noCumplidas.has(7), false);
+});
+
+test('POR DEFECTO MINORISTA: con una puerta abierta, sin aceptar el aviso queda el mostrador', () => {
+  const r = { productoId: 1, marcaId: 7, cantidad: 6 };
+  const res = resolverRenglon(r, precios, ctxDe([r], { aplicado: false }));
+  assert.equal(res.lista.listaId, 1);
+  assert.equal(res.origen, 'base');
+  assert.equal(calificacion(r, precios, ctxDe([r], { aplicado: false })).lista.listaId, 2, 'pero califica: el aviso lo ofrece');
 });
 
 test('resolverRenglon: sin puertas abiertas queda el piso (mostrador)', () => {
@@ -52,14 +69,15 @@ test('resolverRenglon: sin puertas abiertas queda el piso (mostrador)', () => {
   assert.equal(res.origen, 'base');
 });
 
-test('resolverRenglon: puerta 1 — el cliente tiene la lista por contrato', () => {
+test('puerta 1 — el cliente tiene la lista asignada (también por aviso)', () => {
   const r = { productoId: 1, marcaId: 7, cantidad: 1 };
-  const res = resolverRenglon(r, precios, ctxDe([r], { listas: [2] }));
+  assert.equal(resolverRenglon(r, precios, ctxDe([r], { cliente: { listas: [2] }, aplicado: false })).origen, 'base');
+  const res = resolverRenglon(r, precios, ctxDe([r], { cliente: { listas: [2] } }));
   assert.equal(res.lista.listaId, 2);
   assert.equal(res.origen, 'cliente');
 });
 
-test('resolverRenglon: puerta 2 — el mínimo de unidades del producto', () => {
+test('puerta 2 — el mínimo de unidades del producto', () => {
   const r = { productoId: 1, marcaId: 7, cantidad: 6 };
   const res = resolverRenglon(r, precios, ctxDe([r]));
   assert.equal(res.lista.listaId, 2, '6 unidades abren Mayorista');
@@ -68,24 +86,55 @@ test('resolverRenglon: puerta 2 — el mínimo de unidades del producto', () => 
   assert.equal(resolverRenglon(r50, precios, ctxDe([r50])).lista.listaId, 3, '50 abren Distribuidor, que va primero');
 });
 
-test('resolverRenglon: puerta 3 — la regla de marca alcanza SOLO a esa marca', () => {
-  // 12 unidades de la marca 7 repartidas en dos productos: cada uno por
-  // separado no llega al mínimo del producto (6), pero la marca sí.
-  const a = { productoId: 1, marcaId: 7, cantidad: 5 };
-  const b = { productoId: 2, marcaId: 7, cantidad: 7 };
+test('puerta 3 — la regla de marca: surtido, y alcanza SOLO a esa marca', () => {
+  const a = { productoId: 1, marcaId: 7, cantidad: 8 };
+  const b = { productoId: 2, marcaId: 7, cantidad: 12 };
   const otro = { productoId: 3, marcaId: 9, cantidad: 1 };
   const ctx = ctxDe([a, b, otro]);
-  const preciosSinMinimo = [{ listaId: 2, precio: 90, unidadesMinimas: 0 }, { listaId: 1, precio: 100, unidadesMinimas: 0 }];
-  assert.equal(resolverRenglon(a, preciosSinMinimo, ctx).origen, 'marca');
-  assert.equal(resolverRenglon(otro, preciosSinMinimo, ctx).origen, 'base', 'la otra marca no se beneficia');
+  assert.equal(resolverRenglon(a, sinMinimo, ctx).origen, 'marca', '8 + 12 surtidas de la marca = 20');
+  assert.equal(resolverRenglon(otro, sinMinimo, ctx).origen, 'base', 'la otra marca no se beneficia');
 });
 
-test('resolverRenglon: puerta 4 — el monto alcanza a todo el ticket', () => {
-  const r = { productoId: 3, marcaId: 9, cantidad: 1 };
-  const preciosSinMinimo = [{ listaId: 2, precio: 90, unidadesMinimas: 0 }, { listaId: 1, precio: 100, unidadesMinimas: 0 }];
-  const res = resolverRenglon(r, preciosSinMinimo, ctxDe([r], null, [20]));
+test('puerta 4 — bulto cerrado del producto: abre la PRIMERA lista mayorista', () => {
+  const conDos = [{ listaId: 4, precio: 85, unidadesMinimas: 0 }, { listaId: 2, precio: 90, unidadesMinimas: 0 }, { listaId: 1, precio: 100, unidadesMinimas: 0 }];
+  const r = { productoId: 5, marcaId: 9, cantidad: 12, unidadesPorBulto: 12 };
+  const res = resolverRenglon(r, conDos, ctxDe([r]));
+  assert.equal(res.origen, 'bulto');
+  assert.equal(res.lista.listaId, 4, 'la primera mayorista del artículo');
+  const r15 = { ...r, cantidad: 15 };
+  assert.equal(resolverRenglon(r15, conDos, ctxDe([r15])).origen, 'bulto', '15 de un bulto de 12: las 15 a mayorista');
+  const r11 = { ...r, cantidad: 11 };
+  assert.equal(resolverRenglon(r11, conDos, ctxDe([r11])).origen, 'base', 'bulto incompleto no');
+});
+
+test('puerta 4 — bulto: la lista que vende de a N, el interruptor y el granel', () => {
+  const deA12 = [{ listaId: 3, precio: 80, unidadesMinimas: 0, unidades: 12 }, { listaId: 1, precio: 100, unidadesMinimas: 0 }];
+  const r = { productoId: 6, marcaId: 9, cantidad: 12 };
+  assert.equal(resolverRenglon(r, deA12, ctxDe([r])).origen, 'bulto', 'la caja x12 de la lista, sin bulto en la ficha');
+
+  const apagado = contextoResolucion({ catalogo: { ...catalogo, mayorista: { ...catalogo.mayorista, porBulto: false } }, renglones: [], aplicado: true });
+  const rb = { productoId: 5, marcaId: 9, cantidad: 12, unidadesPorBulto: 12 };
+  assert.equal(calificacion(rb, sinMinimo, { ...apagado, agregados: agregadosTicket([rb]) }), null, 'con el interruptor apagado no');
+
+  const granel = { productoId: 8, marcaId: 9, cantidad: 25, unidadesPorBulto: 25, fraccionable: true };
+  assert.equal(calificacion(granel, sinMinimo, ctxDe([granel])), null, 'el granel se vende por kg');
+});
+
+test('puerta 5 — el monto se mide a precio de MOSTRADOR con IVA', () => {
+  const r = { key: 'p1', productoId: 1, marcaId: 9, cantidad: 900, iva: 21 };
+  const idx = new Map([['p1', sinMinimo]]);
+  assert.equal(totalPiso([r], idx, new Map(catalogo.listas.map((l) => [l.listaId, l]))), 108900, '900 × $100 × 1,21');
+  const res = resolverRenglon(r, sinMinimo, ctxDe([r], { idx }));
   assert.equal(res.origen, 'monto');
   assert.equal(res.precio, 90);
+  const chico = { ...r, cantidad: 800 };   // $96.800
+  assert.equal(calificacion(chico, sinMinimo, ctxDe([chico], { idx })), null, 'no llega');
+});
+
+test('una lista más cara que el mostrador nunca califica', () => {
+  const cara = [{ listaId: 2, precio: 120, unidadesMinimas: 1 }, { listaId: 1, precio: 100, unidadesMinimas: 0 }];
+  const r = { productoId: 1, marcaId: 7, cantidad: 5 };
+  assert.equal(calificacion(r, cara, ctxDe([r])), null);
 });
 
 test('resolverRenglon: sin precios no hay lista; sin piso cargado, la última que tenga', () => {
@@ -95,4 +144,37 @@ test('resolverRenglon: sin precios no hay lista; sin piso cargado, la última qu
   const res = resolverRenglon(r, soloMayorista, ctxDe([r]));
   assert.equal(res.lista.listaId, 2, 'vendible igual');
   assert.equal(res.origen, 'base');
+});
+
+test('sugerenciaMayorista: los renglones que cumplen, con el motivo y el ahorro con IVA', () => {
+  const renglones = [
+    { uid: 1, key: 'a', productoId: 5, marcaId: 9, cantidad: 12, unidadesPorBulto: 12, iva: 21, precioLista: 100, listaId: 1, nombre: 'Coca 2L' },
+    { uid: 2, key: 'b', productoId: 6, marcaId: 9, cantidad: 2, unidadesPorBulto: 12, iva: 21, precioLista: 100, listaId: 1, nombre: 'Fanta' },
+    { uid: 3, key: 'c', productoId: 7, marcaId: 9, cantidad: 12, unidadesPorBulto: 12, iva: 21, precioLista: 100, listaId: 1, nombre: 'Sprite', listaManual: true },
+  ];
+  const preciosDe = () => sinMinimo;
+  const s = sugerenciaMayorista(renglones, preciosDe, ctxDe(renglones, { aplicado: false }));
+  assert.equal(s.renglones.length, 1, 'solo el bulto completo; el fijado a mano no se ofrece');
+  assert.equal(s.renglones[0].origen, 'bulto');
+  assert.equal(s.ahorro, 145.2, '12 × $10 × 1,21');
+  assert.equal(s.modalidad, 'Mayorista');
+  assert.equal(sugerenciaMayorista(renglones, preciosDe, ctxDe(renglones, { aplicado: true })), null, 'aceptado: ya no se ofrece');
+});
+
+test('faltantesMayorista: bultos y marcas pasada la mitad, los más cercanos primero', () => {
+  const renglones = [
+    { key: 'a', productoId: 5, marcaId: 7, cantidad: 9, unidadesPorBulto: 12, nombre: 'Coca 2L' },
+    { key: 'b', productoId: 6, marcaId: 9, cantidad: 3, unidadesPorBulto: 12, nombre: 'Agua' },
+  ];
+  const f = faltantesMayorista(renglones, () => sinMinimo, ctxDe(renglones, { aplicado: false }));
+  assert.deepEqual(f, ['Coca 2L: faltan 3 para el bulto de 12']);
+  const surtido = [{ key: 'a', productoId: 5, marcaId: 7, cantidad: 15, nombre: 'Coca 2L' }];
+  assert.deepEqual(faltantesMayorista(surtido, () => sinMinimo, ctxDe(surtido, { aplicado: false })), ['Coca-Cola: faltan 5 unidades de la marca']);
+});
+
+test('restriccionMayorista: por la MODALIDAD de la lista puesta, llegue como llegue', () => {
+  assert.equal(restriccionMayorista([{ listaId: 1 }], catalogo), null, 'todo minorista: cualquier medio');
+  assert.deepEqual(restriccionMayorista([{ listaId: 1 }, { listaId: 4 }, { listaId: 3 }], catalogo),
+    { medios: ['efectivo', 'transferencia'], articulos: 1, modalidad: 'Mayorista' });
+  assert.equal(restriccionMayorista([{ listaId: 2 }], { ...catalogo, mayorista: { ...catalogo.mayorista, mediosPago: [] } }), null, 'sin medios configurados no restringe');
 });

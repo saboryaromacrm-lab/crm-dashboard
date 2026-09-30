@@ -496,7 +496,7 @@ PRODUCTO › FORMATO DE VENTA   ← acá vive el markup
           <strong>Por monto:</strong> pasando {money(config.montoMinimoMayorista)} de ticket, la caja
           ofrece <strong>{modMonto.nombre}</strong>
           {(config.mediosPagoMonto ?? []).length > 0 && (
-            <> — solo válido pagando con{' '}
+            <> — el precio mayorista se paga solo con{' '}
               <strong>{(config.mediosPagoMonto ?? []).map((m) => MEDIOS_PAGO[m] || m).join(' o ')}</strong>,
               y se verifica al confirmar la venta</>
           )}

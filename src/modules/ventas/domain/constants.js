@@ -196,27 +196,35 @@ export function docLegible(cliente) {
  */
 export const ORIGEN_LISTA = {
   base: {
-    label: 'Mostrador', corto: 'Piso', auto: true, pill: 'est-pendiente',
-    ayuda: 'El precio de siempre: no se habilitó ninguna otra lista.',
+    label: 'Mostrador', corto: 'Piso', pill: 'est-pendiente',
+    ayuda: 'El precio de siempre: la caja cobra minorista hasta que se acepte el aviso de mayorista.',
   },
   cliente: {
-    label: 'Lista del cliente', corto: 'Cliente', auto: true, pill: 'est-recibida',
-    ayuda: 'El cliente tiene esta lista asignada. No hay nada que cumplir.',
+    label: 'Lista del cliente', corto: 'Cliente', pill: 'est-recibida',
+    ayuda: 'El cliente tiene esta lista asignada. Se aplicó al aceptar el aviso.',
   },
   auto: {
-    label: 'Por cantidad del producto', corto: 'Cantidad', auto: true, pill: 'est-recibida',
+    label: 'Por cantidad del producto', corto: 'Cantidad', pill: 'est-recibida',
     ayuda: 'El ticket llegó al mínimo de unidades que ese producto pide para esta lista.',
   },
   marca: {
-    label: 'Por regla de marca', corto: 'Marca', auto: true, pill: 'est-recibida',
-    ayuda: 'Se juntaron las unidades que pide la regla de esa marca y quedó abierta la modalidad entera.',
+    label: 'Por regla de marca', corto: 'Marca', pill: 'est-recibida',
+    ayuda: 'Se juntaron las unidades surtidas que pide la regla de esa marca.',
+  },
+  bulto: {
+    label: 'Por bulto cerrado', corto: 'Bulto', pill: 'est-recibida',
+    ayuda: 'El ticket lleva la caja cerrada del producto: abre su primera lista mayorista aunque no llegue al monto.',
   },
   monto: {
-    label: 'Por monto de compra', corto: 'Monto', auto: false, pill: 'est-revision',
-    ayuda: 'El ticket superó el umbral configurado. Se aplica con un clic y puede exigir un medio de pago.',
+    label: 'Por monto de compra', corto: 'Monto', pill: 'est-revision',
+    ayuda: 'El total a precio de mostrador superó el mínimo de compra mayorista.',
   },
   manual: {
-    label: 'Elegida a mano', corto: 'Manual', auto: false, pill: 'est-revision',
+    label: 'Elegida a mano', corto: 'Manual', pill: 'est-revision',
     ayuda: 'La eligió una persona. El automático no se la pisa.',
+  },
+  presupuesto: {
+    label: 'Precio del presupuesto', corto: 'Presupuesto', pill: 'est-recibida',
+    ayuda: 'El precio con el que se cotizó en el presupuesto confirmado.',
   },
 };

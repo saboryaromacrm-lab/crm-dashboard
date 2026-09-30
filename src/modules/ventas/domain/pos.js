@@ -10,6 +10,9 @@
  */
 import { norm } from './constants.js';
 import { contextoResolucion, resolverRenglon } from './listas.js';
+
+/** Los orígenes que dicen "el cajero aceptó el aviso": al retomar un ticket, el mayorista sigue aceptado. */
+const ORIGENES_ACEPTADOS = new Set(['cliente', 'auto', 'marca', 'bulto', 'monto']);
 import { resolverOfertas } from './ofertas.js';
 
 export const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -109,6 +112,8 @@ function comoBulto(item, f) {
  * configurado, si el ticket está vacío, o fuera de esa ventana.
  */
 export function empujonMayorista(total, catalogo, umbral = 0.5) {
+  // `total` es el del ticket a precio de MOSTRADOR con IVA (`totalPiso`): el
+  // mismo número contra el que el servidor mide el monto (1/10/2026).
   const cfg = catalogo?.montoMayorista;
   const monto = Number(cfg?.monto) || 0;
   const t = Number(total) || 0;
@@ -312,11 +317,12 @@ export function totalesTicket(renglones, extras = []) {
  * el estado (y no se lee de afuera) para que el reducer siga siendo **puro** y
  * pueda recalcular las listas de forma síncrona, sin efectos.
  *
- * `montoAplicado` es lo único de esto que es del TICKET y no del puesto: la
- * modalidad que el vendedor desbloqueó al aceptar la sugerencia por monto.
+ * `mayoristaAplicado` es lo único de esto que es del TICKET y no del puesto:
+ * el cajero aceptó el aviso de precio mayorista (1/10/2026 — antes solo el
+ * monto se sugería; ahora ninguna puerta se aplica sola).
  */
 export const ticketInicial = {
-  renglones: [], extras: [], uid: 1, montoAplicado: null,
+  renglones: [], extras: [], uid: 1, mayoristaAplicado: false,
   /** Oferta de ticket ("10% desde $30.000") que el cajero aceptó. Id o null. */
   ofertaTicket: null,
   /**
@@ -337,8 +343,9 @@ export const ticketInicial = {
  * Reasigna la lista de cada renglón que NO fue elegido a mano.
  *
  * Se corre después de toda acción que cambie cantidades, porque las puertas de
- * acceso se miden sobre cantidades: agregar la 12ª unidad de una marca habilita
- * el precio mayorista de TODOS sus renglones, y sacarla lo revierte.
+ * acceso se miden sobre cantidades. Sin el aviso aceptado todo va a mostrador;
+ * aceptado, agregar la 20ª unidad de una marca pasa a mayorista TODOS sus
+ * renglones, y sacarla los devuelve a minorista.
  *
  * El contexto se arma UNA vez por recálculo (los agregados y las reglas de
  * marca son del ticket entero, no de cada renglón) y después cada renglón sale
@@ -355,7 +362,8 @@ function recalcular(estado) {
     catalogo,
     cliente,
     renglones: estado.renglones,
-    modalidadesExtra: estado.montoAplicado ? [estado.montoAplicado] : [],
+    aplicado: estado.mayoristaAplicado,
+    precios,
   });
   let cambio = false;
 
@@ -609,14 +617,25 @@ export function ticketReducer(estado, accion) {
       });
 
     /**
-     * El vendedor aceptó (o retiró) la sugerencia por MONTO. No se toca ningún
-     * renglón a mano: se desbloquea la MODALIDAD y el motor hace el resto. Así,
-     * un producto sin lista en esa modalidad se queda con su precio de siempre
-     * —sin excluirlo de ninguna lista— y quitar la sugerencia revierte todo
-     * solo, sin tener que acordarse de qué precio tenía cada uno.
+     * El cajero aceptó (o quitó) el aviso de PRECIO MAYORISTA (1/10/2026). No se
+     * toca ningún renglón a mano: se anota la decisión y el motor reparte, así
+     * solo cambian los renglones que califican y quitar lo revierte todo solo.
+     *
+     * Quitar es "volver a minorista" de verdad: también suelta los renglones
+     * fijados a mano en una lista mayorista (la caja escaneada), que si no
+     * seguirían exigiendo efectivo o transferencia en el cobro.
      */
-    case 'monto':
-      return recalcular({ ...estado, montoAplicado: accion.modalidadId ?? null });
+    case 'mayorista': {
+      if (accion.aplicar) return recalcular({ ...estado, mayoristaAplicado: true });
+      const modalidadDe = new Map((estado.ctx.catalogo?.listas ?? []).map((l) => [l.listaId, l.modalidadId]));
+      const may = estado.ctx.catalogo?.mayorista?.modalidadId ?? null;
+      return recalcular({
+        ...estado,
+        mayoristaAplicado: false,
+        renglones: estado.renglones.map((r) => (r.listaManual && may != null && modalidadDe.get(r.listaId) === may
+          ? { ...r, listaManual: false } : r)),
+      });
+    }
 
     /**
      * El cajero aceptó (o retiró) una OFERTA DE TICKET. Igual que el monto: no
@@ -664,7 +683,7 @@ export function ticketReducer(estado, accion) {
     case 'quitar':
       return recalcular({ ...estado, renglones: estado.renglones.filter((r) => r.uid !== accion.uid) });
     case 'limpiar':
-      return { ...estado, renglones: [], extras: [], montoAplicado: null, ofertaTicket: null, descuentos: [] };
+      return { ...estado, renglones: [], extras: [], mayoristaAplicado: false, ofertaTicket: null, descuentos: [] };
 
     /* ---- Cargos que no son mercadería (envío, packaging) ---- */
     case 'extraAgregar':
@@ -687,12 +706,10 @@ export function ticketReducer(estado, accion) {
       // cambiar de venta. Y se recotiza, porque las puertas dependen de las
       // cantidades que acaban de cargarse.
       //
-      // La sugerencia por monto no se guarda como bandera: se deduce de los
-      // renglones que quedaron con ese origen. Una verdad sola, la que ya viaja.
-      const conMonto = accion.renglones.find((r) => r.listaOrigen === 'monto');
-      const modalidadId = conMonto
-        ? estado.ctx.catalogo?.listas?.find((l) => l.listaId === conMonto.listaId)?.modalidadId ?? null
-        : null;
+      // El aviso aceptado no se guarda como bandera: se deduce de los renglones
+      // que quedaron con el origen de una puerta (el servidor lo escribe). Una
+      // verdad sola, la que ya viaja.
+      const aceptado = accion.renglones.some((r) => ORIGENES_ACEPTADOS.has(r.listaOrigen));
       // La oferta de ticket aceptada se deduce igual: del renglón que la lleva.
       const conOfertaTicket = accion.renglones.find((r) => r.ofertaId
         && estado.ctx.catalogo?.ofertas?.find((o) => o.id === r.ofertaId)?.tipo === 'ticket');
@@ -710,7 +727,7 @@ export function ticketReducer(estado, accion) {
       return recalcular({
         ...estado,
         renglones: accion.renglones, extras: accion.extras, uid: accion.uid,
-        montoAplicado: modalidadId,
+        mayoristaAplicado: aceptado,
         ofertaTicket: conOfertaTicket?.ofertaId ?? null,
         descuentos: idsDescuento,
       });
@@ -910,8 +927,11 @@ export function ticketDesdeBorrador(borrador, catalogo) {
       listaId: it.listaId ?? null,
       lista: it.lista || '',
       listaOrigen: it.listaOrigen || 'base',
-      // Al retomar una venta se respeta lo que se había decidido a mano.
-      listaManual: it.listaOrigen === 'manual',
+      // Al retomar una venta se respeta lo que se había decidido a mano, y el
+      // precio COTIZADO de un presupuesto (1/10/2026): si el motor lo
+      // recotizara, la venta que cierra el presupuesto perdería el precio que
+      // la casa prometió por escrito.
+      listaManual: it.listaOrigen === 'manual' || it.listaOrigen === 'presupuesto',
       precioLista: it.precioLista,
       precioUnitario: it.precioUnitario,
       descuento: it.descuento,

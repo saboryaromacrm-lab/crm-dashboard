@@ -266,3 +266,60 @@ test('el − va al bulto redondo de abajo y nunca borra la cantidad', () => {
   assert.equal(bultoAbajo(16, 16), 16);
   assert.equal(bultoAbajo(3, 16), 16);
 });
+
+/* ------------------------------------------------------------------ *
+ * Mayorista por aviso (1/10/2026): el ticket arranca minorista, el
+ * cajero acepta, el que deja de cumplir vuelve solo, y "volver a
+ * minorista" suelta también lo fijado a mano.
+ * ------------------------------------------------------------------ */
+test('mayorista por aviso: minorista por defecto → aceptar → deja de cumplir → vuelve', () => {
+  const catalogo = {
+    listas: [
+      { listaId: 1, modalidadId: 10, esBase: true, etiqueta: 'Minorista 1' },
+      { listaId: 2, modalidadId: 20, esBase: false, etiqueta: 'Mayorista 1' },
+    ],
+    reglasMarca: [],
+    mayorista: { modalidadId: 20, modalidad: 'Mayorista', mediosPago: ['efectivo', 'transferencia'], porBulto: true },
+  };
+  const precios = new Map([['p5', [{ listaId: 2, precio: 90 }, { listaId: 1, precio: 100 }]]]);
+  const item = { key: 'p5', productoId: 5, nombre: 'Coca 2L', unidadesPorBulto: 12, iva: 21, precio: 100, stock: 50 };
+  let e = ticketReducer({ ...ticketInicial, ctx: { ...ticketInicial.ctx, catalogo, precios } }, { tipo: 'agregar', item, cantidad: 12 });
+  assert.equal(e.renglones[0].listaId, 1, 'un bulto cerrado, pero arranca minorista');
+
+  e = ticketReducer(e, { tipo: 'mayorista', aplicar: true });
+  assert.equal(e.renglones[0].listaId, 2);
+  assert.equal(e.renglones[0].listaOrigen, 'bulto');
+
+  e = ticketReducer(e, { tipo: 'cantidad', uid: e.renglones[0].uid, valor: 10 });
+  assert.equal(e.renglones[0].listaId, 1, 'sacaron 2: vuelve solo a minorista');
+  e = ticketReducer(e, { tipo: 'cantidad', uid: e.renglones[0].uid, valor: 12 });
+  assert.equal(e.renglones[0].listaId, 2, 'el aviso sigue aceptado: vuelve a entrar');
+
+  e = ticketReducer(e, { tipo: 'lista', uid: e.renglones[0].uid, lista: { listaId: 2, etiqueta: 'Mayorista 1' }, precio: 90 });
+  assert.equal(e.renglones[0].listaManual, true);
+  e = ticketReducer(e, { tipo: 'mayorista', aplicar: false });
+  assert.equal(e.renglones[0].listaId, 1, 'volver a minorista suelta también lo fijado a mano');
+  assert.equal(e.mayoristaAplicado, false);
+});
+
+test('mayorista por aviso: al retomar un ticket, el origen de una puerta lo deja aceptado', () => {
+  const e = ticketReducer(ticketInicial, {
+    tipo: 'cargar', renglones: [{ uid: 1, key: 'x', productoId: 1, cantidad: 12, listaOrigen: 'bulto' }], extras: [], uid: 2,
+  });
+  assert.equal(e.mayoristaAplicado, true);
+  const m = ticketReducer(ticketInicial, {
+    tipo: 'cargar', renglones: [{ uid: 1, key: 'x', productoId: 1, cantidad: 1, listaOrigen: 'manual' }], extras: [], uid: 2,
+  });
+  assert.equal(m.mayoristaAplicado, false, 'lo elegido a mano no es aceptar el aviso');
+});
+
+test('ticketDesdeBorrador: el renglón de un presupuesto queda fijo con su precio cotizado', () => {
+  const { renglones } = ticketDesdeBorrador({
+    items: [
+      { id: 1, productoId: 1, cantidad: 3, listaId: 2, listaOrigen: 'presupuesto', precioLista: 80, precioUnitario: 80, iva: 21, descuento: 0 },
+      { id: 2, productoId: 2, cantidad: 1, listaId: 1, listaOrigen: 'base', precioLista: 100, precioUnitario: 100, iva: 21, descuento: 0 },
+    ],
+  }, []);
+  assert.equal(renglones[0].listaManual, true, 'el motor no lo recotiza');
+  assert.equal(renglones[1].listaManual, false);
+});

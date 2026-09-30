@@ -7,26 +7,34 @@
  * las listas en las que se vende, con su precio y su mínimo de unidades propio.
  * Lo que la lista aporta es identidad y `orden` de preferencia.
  *
- * Hay CUATRO puertas de acceso a una lista, y son un OR — con una alcanza:
+ * POR DEFECTO, MINORISTA (1/10/2026, pedido del dueño: "muchas veces llevan
+ * cantidades en forma minorista"). Hay CINCO puertas a otra lista, y son un OR
+ * — con una alcanza —, pero NINGUNA se aplica sola: el motor dice qué renglones
+ * CALIFICAN y por qué, la caja lo muestra en un aviso, y recién cuando el
+ * cajero lo acepta (`aplicado`) se cotizan con esa lista.
  *
- *   1. CLIENTE   la tiene asignada por contrato. No hay nada que cumplir.
+ *   1. CLIENTE   la tiene asignada en su ficha.
  *   2. PRODUCTO  el ticket llegó al mínimo de unidades de ESE producto.
- *   3. MARCA     el ticket llegó al mínimo de unidades de una MARCA. Alcanza
- *                solo a los renglones DE ESA MARCA; el resto no se toca.
- *   4. MONTO     el ticket pasó el umbral configurado. Alcanza a todo el ticket,
- *                se SUGIERE (no se aplica sola) y puede exigir un medio de pago.
+ *   3. MARCA     el ticket llegó al mínimo de unidades de una MARCA (surtido).
+ *                Alcanza solo a los renglones DE ESA MARCA.
+ *   4. BULTO     el ticket lleva la caja cerrada: la de la lista que vende "de
+ *                a N", o el bulto del producto para su PRIMERA lista mayorista.
+ *   5. MONTO     el total a precio de mostrador pasó el umbral. Todo el ticket.
  *
- * Entre todas las que se habilitan gana la de `orden` menor. Si no se habilita
- * ninguna, queda el PISO (la lista base): el precio de mostrador.
+ * Una vez aceptado el aviso, el ticket queda "en mayorista": lo que se agregue
+ * y califique entra solo, y el renglón que deje de calificar (sacaron
+ * unidades) vuelve solo a minorista. El precio mayorista se paga con los
+ * medios que diga la configuración (`restriccionMayorista`), y eso lo vuelve a
+ * validar el servidor.
  *
- * LA REGLA DE ORO: las puertas 1-3 se miden sobre CANTIDADES, que no cambian al
- * aplicar un precio, así que el resultado es estable y se aplican solas. La 4 se
- * mide sobre PESOS: aplicar el beneficio baja el total y podría dejar el ticket
- * por debajo del umbral, revertirse, volver a superarlo… un ciclo infinito. Por
- * eso el monto nunca entra en el automático.
+ * Entre las puertas abiertas gana la lista de `orden` menor. Una lista MÁS CARA
+ * que el mostrador nunca califica: no sería un beneficio. Sin ninguna, queda el
+ * PISO (la lista base).
  *
- * Todo se resuelve en memoria con lo que ya trajo el catálogo: cambiar de lista
- * no cuesta una sola llamada a la red.
+ * Todas las puertas se miden sobre CANTIDADES —o, el monto, sobre el precio de
+ * MOSTRADOR, que no cambia al aplicar—, así que aplicar no altera la
+ * calificación y el resultado no depende del orden en que se cargó el ticket.
+ * Todo se resuelve en memoria con lo que ya trajo el catálogo.
  */
 
 /**
@@ -81,119 +89,203 @@ export function reglasDeMarcaCumplidas(reglas, agregados) {
   return porMarca;
 }
 
+/** El precio de MOSTRADOR de un artículo: el de la lista base o, sin ella, el último. */
+function pisoDe(precios, porLista) {
+  if (!precios?.length) return null;
+  return precios.find((p) => porLista.get(p.listaId)?.esBase) ?? precios[precios.length - 1];
+}
+
+/**
+ * El total del ticket a precio de MOSTRADOR, con IVA. Contra esto se mide el
+ * monto: es lo que suma el servidor (`resolverRenglones`) y no cambia al
+ * aplicar el mayorista, así que no hay ciclo.
+ */
+export function totalPiso(renglones, precios, porLista) {
+  let t = 0;
+  for (const r of renglones) {
+    const piso = pisoDe(precios?.get(r.key), porLista);
+    if (!piso) continue;
+    t += (Number(r.cantidad) || 0) * (Number(piso.precio) || 0) * (1 + (Number(r.iva) || 0) / 100);
+  }
+  return Math.round(t * 100) / 100;
+}
+
 /**
  * Contexto de resolución: todo lo que no cambia renglón a renglón. Se arma una
- * vez por recálculo y se pasa a `resolverRenglon`, que así queda O(listas del
+ * vez por recálculo y se pasa a `calificacion`, que así queda O(listas del
  * producto) y sin cerrar sobre nada.
+ *
+ * `precios` (key → formato de venta) hace falta para el monto; `aplicado` es la
+ * decisión del cajero de aceptar el aviso.
  */
-export function contextoResolucion({ catalogo, cliente, renglones, modalidadesExtra }) {
+export function contextoResolucion({ catalogo, cliente, renglones, aplicado = false, precios = null }) {
   const listas = catalogo?.listas ?? [];
+  const porLista = new Map(listas.map((l) => [l.listaId, l]));
   const agregados = agregadosTicket(renglones);
-
+  const may = catalogo?.mayorista ?? null;
+  const monto = catalogo?.montoMayorista ?? null;
+  const umbral = Number(monto?.monto) || 0;
+  const total = precios ? totalPiso(renglones, precios, porLista) : 0;
   return {
     agregados,
+    reglasMarca: catalogo?.reglasMarca ?? [],
     /** Por MARCA: alcanza solo a los renglones de esa marca. */
     porMarca: reglasDeMarcaCumplidas(catalogo?.reglasMarca, agregados),
-    /**
-     * Por MONTO: alcanza a TODO el ticket. La diferencia con la regla de marca
-     * no es un descuido — el monto es una condición del ticket entero ("gastá
-     * $40.000"), mientras que la de marca habla de una marca puntual.
-     */
-    porMonto: new Set(modalidadesExtra || []),
-    porLista: new Map(listas.map((l) => [l.listaId, l])),
+    porLista,
     delCliente: new Set(cliente?.listas ?? []),
     base: listas.find((l) => l.esBase) ?? null,
+    /** La modalidad mayorista: la que abre el bulto del producto y la que se paga con sus medios. */
+    modalidadMayorista: may?.modalidadId ?? monto?.modalidadId ?? null,
+    porBulto: !!may && may.porBulto !== false,
+    /** Por MONTO: la modalidad que abre, si el ticket llegó. Alcanza a TODO el ticket. */
+    montoCumplido: monto?.modalidadId && umbral > 0 && total + 1e-9 >= umbral ? monto.modalidadId : null,
+    totalPiso: total,
+    aplicado: !!aplicado,
   };
 }
 
 /**
- * Lista que le corresponde a un renglón, con el motivo.
+ * ¿A qué lista CALIFICA el renglón, y por qué? Solo la calificación: no aplica
+ * nada. Devuelve `{ lista, precio, origen, detalle }` o null (solo mostrador).
  *
  * `precios` es el formato de venta del artículo tal como vino del catálogo:
- * `[{listaId, precio, unidadesMinimas}]`. Ya llega ordenado por preferencia,
- * así que la PRIMERA que abra alguna puerta es la que gana — no hace falta
- * recorrerlas todas ni ordenar de nuevo.
+ * `[{listaId, precio, unidadesMinimas, unidades}]`, ya ordenado por
+ * preferencia, así que la PRIMERA que abra alguna puerta es la que gana.
  */
-export function resolverRenglon(renglon, precios, ctx) {
+export function calificacion(renglon, precios, ctx) {
   if (!precios?.length) return null;
+  const piso = pisoDe(precios, ctx.porLista);
   const llevadas = ctx.agregados.porProducto.get(renglon.productoId) ?? 0;
   // Las reglas de marca que cumplió ESTE renglón. Un renglón de otra marca ve
-  // un Map vacío aunque el ticket tenga 12 Coca-Cola, que es justamente el
-  // punto: el beneficio no se derrama al resto del ticket.
+  // un Map vacío aunque el ticket tenga 20 Coca-Cola: el beneficio no se
+  // derrama al resto del ticket.
   const misReglas = ctx.porMarca.get(renglon.marcaId);
-  let piso = null;
+  // El bulto del producto abre solo la PRIMERA lista mayorista del artículo.
+  const bultoProd = ctx.porBulto && !renglon.presentacionId && !renglon.fraccionable
+    ? Number(renglon.unidadesPorBulto) || 0 : 0;
+  let vioMayorista = false;
 
   for (const p of precios) {
     const lista = ctx.porLista.get(p.listaId);
-    if (!lista) continue;
+    if (!lista || p === piso) continue;
+    const esMayorista = lista.modalidadId === ctx.modalidadMayorista;
+    const primeraMayorista = esMayorista && !vioMayorista;
+    if (esMayorista) vioMayorista = true;
+    // Más cara que el mostrador no es un beneficio: no se ofrece.
+    if (Number(p.precio) > Number(piso.precio) + 1e-6) continue;
+    const con = (origen, detalle) => ({ lista, precio: p.precio, origen, detalle });
 
-    // El piso no compite: es la red de contención si no se abre ninguna puerta.
-    if (lista.esBase) { piso = { lista, precio: p.precio, origen: 'base' }; continue; }
-
-    // 1 — Derecho del cliente.
-    if (ctx.delCliente.has(p.listaId)) return { lista, precio: p.precio, origen: 'cliente' };
+    // 1 — La lista del cliente.
+    if (ctx.delCliente.has(p.listaId)) return con('cliente', 'lista del cliente');
 
     // 2 — Mínimo de unidades de este producto.
     const min = Number(p.unidadesMinimas) || 0;
-    if (min > 0 && llevadas + 1e-9 >= min) {
-      return { lista, precio: p.precio, origen: 'auto', detalle: `${llevadas} u. ≥ ${min}` };
-    }
+    if (min > 0 && llevadas + 1e-9 >= min) return con('auto', `${llevadas} u. ≥ ${min}`);
 
     // 3 — Regla de marca. Solo si la regla es de LA MARCA DE ESTE RENGLÓN.
     const regla = misReglas?.get(lista.modalidadId);
-    if (regla) {
-      return {
-        lista,
-        precio: p.precio,
-        origen: 'marca',
-        detalle: `${regla.marca}: ${regla.llevadas} u. ≥ ${regla.unidadesMinimas}`,
-      };
-    }
+    if (regla) return con('marca', `${regla.marca}: ${regla.llevadas} u. ≥ ${regla.unidadesMinimas}`);
 
-    // 4 — Monto del ticket: esta sí alcanza a todos los renglones.
-    if (ctx.porMonto.has(lista.modalidadId)) {
-      return { lista, precio: p.precio, origen: 'monto' };
-    }
+    // 4 — Bulto cerrado: el de la lista ("vende de a N") o el del producto.
+    const bulto = (Number(p.unidades) || 1) > 1 ? Number(p.unidades) : (primeraMayorista ? bultoProd : 0);
+    if (bulto > 1 && llevadas + 1e-9 >= bulto) return con('bulto', `bulto cerrado de ${bulto}`);
+
+    // 5 — Monto del ticket: alcanza a todos los renglones.
+    if (ctx.montoCumplido != null && lista.modalidadId === ctx.montoCumplido) return con('monto', 'monto de compra');
   }
-
-  // Nada se abrió: precio de mostrador. Si el producto ni siquiera tiene el
-  // piso cargado, se cae a la última que tenga para que igual sea vendible.
-  if (piso) return piso;
-  const ult = precios[precios.length - 1];
-  const lista = ctx.porLista.get(ult.listaId);
-  return lista ? { lista, precio: ult.precio, origen: 'base' } : null;
+  return null;
 }
 
 /**
- * ¿El ticket habilita el precio por monto, y cambiaría algo aplicarlo?
- *
- * Devuelve la sugerencia para mostrarla al cajero, o null. No se aplica sola
- * (ver la regla de oro arriba) y solo alcanza a los productos que tengan una
- * lista cargada en esa modalidad — el resto sigue con su precio, que es
- * exactamente lo pedido: "si no tiene ninguna lista mayorista, no se le asigna
- * nada".
+ * Lista que le corresponde a un renglón, con el motivo. Sin aceptar el aviso,
+ * siempre el mostrador; aceptado, la que califique.
  */
-export function sugerenciaPorMonto(renglones, total, catalogo, preciosDe, yaAplicada) {
-  const cfg = catalogo?.montoMayorista;
-  if (!cfg || yaAplicada) return null;
-  if (total + 1e-9 < (Number(cfg.monto) || 0)) return null;
+export function resolverRenglon(renglon, precios, ctx) {
+  if (!precios?.length) return null;
+  if (ctx.aplicado) {
+    const c = calificacion(renglon, precios, ctx);
+    if (c) return c;
+  }
+  // Precio de mostrador. Si el producto ni siquiera tiene el piso cargado, se
+  // cae a la última que tenga para que igual sea vendible.
+  const piso = pisoDe(precios, ctx.porLista);
+  const lista = ctx.porLista.get(piso.listaId);
+  return lista ? { lista, precio: piso.precio, origen: 'base' } : null;
+}
 
-  const dela = new Set(
-    (catalogo.listas ?? []).filter((l) => l.modalidadId === cfg.modalidadId).map((l) => l.listaId),
-  );
-  // Ofrecer algo que no cambia ningún precio solo ensucia la pantalla.
-  const alcanzados = renglones.filter(
-    (r) => !dela.has(r.listaId) && (preciosDe(r.key) ?? []).some((p) => dela.has(p.listaId)),
-  );
-  if (!alcanzados.length) return null;
-
+/**
+ * EL AVISO: qué renglones calificarían para otra lista y cuánto ahorra el
+ * cliente. Null si ya se aceptó o si no hay nada que ofrecer. Los renglones
+ * fijados a mano no se ofrecen: la decisión de una persona manda.
+ */
+export function sugerenciaMayorista(renglones, preciosDe, ctx) {
+  if (ctx.aplicado) return null;
+  const items = [];
+  for (const r of renglones) {
+    if (r.listaManual) continue;
+    const c = calificacion(r, preciosDe(r.key), ctx);
+    if (!c || c.lista.listaId === r.listaId) continue;
+    const ahorro = ((Number(r.precioLista) || 0) - (Number(c.precio) || 0))
+      * (Number(r.cantidad) || 0) * (1 + (Number(r.iva) || 0) / 100);
+    if (!(ahorro > 0.005)) continue;
+    items.push({
+      uid: r.uid, nombre: r.nombre, detalle: r.detalle, cantidad: r.cantidad,
+      lista: c.lista.etiqueta || c.lista.nombre, modalidad: c.lista.modalidad || '',
+      origen: c.origen, motivo: c.detalle, ahorro: Math.round(ahorro * 100) / 100,
+    });
+  }
+  if (!items.length) return null;
   return {
-    modalidadId: cfg.modalidadId,
-    modalidad: cfg.modalidad,
-    monto: cfg.monto,
-    mediosPago: cfg.mediosPago ?? [],
-    renglones: alcanzados.length,
+    renglones: items,
+    ahorro: Math.round(items.reduce((a, i) => a + i.ahorro, 0) * 100) / 100,
+    modalidad: [...new Set(items.map((i) => i.modalidad).filter(Boolean))].join(' / ') || 'otra lista',
   };
+}
+
+/**
+ * EL EMPUJÓN POR UNIDADES: bultos y marcas a los que les falta poco (pasada la
+ * mitad, como el del monto). "Faltan 3 para el bulto de 12". Solo lo que
+ * todavía no califica, los más cercanos primero.
+ */
+export function faltantesMayorista(renglones, preciosDe, ctx, max = 3) {
+  const out = [];
+  const vistos = new Set();
+  for (const r of renglones) {
+    if (vistos.has(r.productoId)) continue;
+    vistos.add(r.productoId);
+    const precios = preciosDe(r.key) ?? [];
+    if (calificacion(r, precios, ctx)) continue;
+    const may = precios.find((p) => ctx.porLista.get(p.listaId)?.modalidadId === ctx.modalidadMayorista);
+    if (!may) continue;
+    const bulto = (Number(may.unidades) || 1) > 1 ? Number(may.unidades)
+      : (ctx.porBulto && !r.presentacionId && !r.fraccionable ? Number(r.unidadesPorBulto) || 0 : 0);
+    const llevadas = ctx.agregados.porProducto.get(r.productoId) ?? 0;
+    if (bulto > 1 && llevadas + 1e-9 >= bulto / 2 && llevadas < bulto) {
+      out.push({ texto: `${r.nombre}: faltan ${bulto - llevadas} para el bulto de ${bulto}`, falta: (bulto - llevadas) / bulto });
+    }
+  }
+  for (const regla of ctx.reglasMarca) {
+    const llevadas = ctx.agregados.porMarca.get(regla.marcaId) ?? 0;
+    const min = Number(regla.unidadesMinimas) || 0;
+    if (!(min > 0) || llevadas + 1e-9 < min / 2 || llevadas >= min) continue;
+    out.push({ texto: `${regla.marca}: faltan ${min - llevadas} unidades de la marca`, falta: (min - llevadas) / min });
+  }
+  return out.sort((a, b) => a.falta - b.falta).slice(0, max).map((x) => x.texto);
+}
+
+/**
+ * CON QUÉ SE PUEDE PAGAR (1/10/2026): si el ticket tiene renglones a precio
+ * mayorista y la configuración fija sus medios ("efectivo y transferencia"),
+ * el cobro ofrece solo esos. Null = sin restricción. Mide la MODALIDAD de la
+ * lista puesta, no por qué llegó: aplicar a mano o escanear la caja también
+ * cuenta — es la misma regla que valida el servidor (`validarMediosMayorista`).
+ */
+export function restriccionMayorista(renglones, catalogo) {
+  const may = catalogo?.mayorista;
+  if (!may?.modalidadId || !may.mediosPago?.length) return null;
+  const modalidadDe = new Map((catalogo.listas ?? []).map((l) => [l.listaId, l.modalidadId]));
+  const articulos = renglones.filter((r) => modalidadDe.get(r.listaId) === may.modalidadId).length;
+  return articulos ? { medios: may.mediosPago, articulos, modalidad: may.modalidad || 'mayorista' } : null;
 }
 
 /** Índice `key → [{listaId, precio, unidadesMinimas}]`, ya ordenado por preferencia. */

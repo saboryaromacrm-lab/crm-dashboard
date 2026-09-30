@@ -133,10 +133,11 @@ export function ListasPanel() {
           <div>
             <h2 style={{ fontSize: 16 }}>Reglas de marca</h2>
             <div className={s.desc}>
-              Se acumulan las unidades de toda la marca en el ticket. Al llegar al mínimo, pasan a
-              la modalidad <strong>solo los renglones de esa marca</strong>: el resto del ticket no
-              se toca. Cada producto de la marca entra con la lista que tenga cargada de esa
-              modalidad, y el que no tenga ninguna sigue igual.
+              Se acumulan las unidades surtidas de toda la marca en el ticket. Al llegar al mínimo,
+              la caja <strong>avisa</strong> y, si el cajero lo aplica, pasan a la modalidad{' '}
+              <strong>solo los renglones de esa marca</strong>: el resto del ticket no se toca. Cada
+              producto de la marca entra con la lista que tenga cargada de esa modalidad, y el que no
+              tenga ninguna sigue igual.
             </div>
           </div>
           <div className={s['panel-actions']}>
@@ -187,10 +188,10 @@ export function ListasPanel() {
       <div className={cx(s.card, s.cardPad)}>
         <h2 style={{ fontSize: 16 }}>Acceso por monto de compra</h2>
         <div className={s.desc} style={{ marginBottom: 'var(--crm-space-3)' }}>
-          Se configura en <strong>Ventas › Configuración</strong>. A diferencia de las de cantidad,
-          esta NO se aplica sola: se mide sobre pesos, y aplicar el beneficio baja el total, así que
-          automatizarla podría dejar el ticket por debajo del umbral y revertirse en un ciclo. La
-          caja lo sugiere y el vendedor lo aplica con un clic.
+          Se configura en <strong>Ventas › Configuración › Precio mayorista</strong>, junto con el
+          bulto cerrado y los medios de pago. Como todas las condiciones, no se aplica sola: se mide
+          sobre el total a precio de mostrador con IVA, la caja lo sugiere y el vendedor lo aplica
+          con un clic.
         </div>
         {config.montoMinimoMayorista > 0 && modalidadMonto ? (
           <div className={cx(s.callout, s.ok)} style={{ margin: 0 }}>

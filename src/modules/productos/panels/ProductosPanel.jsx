@@ -24,6 +24,24 @@ const faltanFraccionados = (p) => p.tipo === 'granel' && !p.soloCafeteria
   && (p.estado || 'activo') !== 'archivado' && !(p.presentaciones || []).length;
 
 /**
+ * ENTEROS SIN BULTO (1/10/2026): la caja sugiere precio mayorista cuando el
+ * ticket lleva la caja cerrada de un producto. El bulto sale de la ficha (el
+ * del DUN) o, si no está, de la caja del proveedor que define el costo — la
+ * misma cuenta que `bultoCerrado` en el servidor. Sin ninguno de los dos, ese
+ * producto no entra por bulto: esta lista dice cuáles son para cargarlos.
+ */
+function bultoDe(p) {
+  if (p.tipo === 'granel') return 0;
+  if ((Number(p.unidadesPorBulto) || 0) > 1) return Number(p.unidadesPorBulto);
+  const arr = p.formatosCompra || [];
+  const activo = arr.find((e) => e.usarParaPrecio) || [...arr].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))[0];
+  const c = Number(activo?.cantidad) || 0;
+  return c > 1 && Number.isInteger(c) ? c : 0;
+}
+const faltaBulto = (p) => p.tipo !== 'granel' && !p.soloCafeteria && !p.origenCafeteria
+  && (p.estado || 'activo') !== 'archivado' && bultoDe(p) === 0;
+
+/**
  * Los kg sueltos disponibles de cada madre (todas las sucursales), en UNA
  * pasada por el stock: `store.suma` por producto recorrería el stock entero
  * cientos de veces.
@@ -144,6 +162,7 @@ function CatalogoProductos() {
 
   const kgDe = useMemo(() => kgPorMadre(store.state.stock), [store.state.stock]);
   const sinHijos = tipo === 'sin-hijos';
+  const sinBulto = tipo === 'sin-bulto';
 
   const productos = useMemo(() => {
     const ql = norm(q);
@@ -152,7 +171,7 @@ function CatalogoProductos() {
       const est = p.estado || 'activo';
       if (estadoF === 'vigentes' && est === 'archivado') return false;
       if (estadoF !== 'vigentes' && estadoF !== '' && est !== estadoF) return false;
-      if (sinHijos ? !faltanFraccionados(p) : tipo && p.tipo !== tipo) return false;
+      if (sinHijos ? !faltanFraccionados(p) : sinBulto ? !faltaBulto(p) : tipo && p.tipo !== tipo) return false;
       if (marca && p.marca !== marca) return false;
       if (categoria && p.categoria !== categoria) return false;
       if (provId && !(p.formatosCompra || []).some((e) => e.proveedorId === provId)) return false;
@@ -167,7 +186,7 @@ function CatalogoProductos() {
     return sinHijos
       ? lista.sort((a, b) => (kgDe.get(b.id) || 0) - (kgDe.get(a.id) || 0) || a.nombre.localeCompare(b.nombre, 'es'))
       : lista;
-  }, [store.state.productos, q, tipo, sinHijos, kgDe, marca, categoria, proveedorId, estadoF]);
+  }, [store.state.productos, q, tipo, sinHijos, sinBulto, kgDe, marca, categoria, proveedorId, estadoF]);
 
   /*
    * CADA FRACCIONADO ES UNA FILA PROPIA (decisión del dueño, 9/8/2026): el
@@ -338,6 +357,7 @@ function CatalogoProductos() {
           <option value="granel">A granel</option>
           <option value="entero">Enteros</option>
           <option value="sin-hijos">A granel sin fraccionados</option>
+          <option value="sin-bulto">Enteros sin bulto (no entran al mayorista por bulto)</option>
         </select>
         {/* `estadoF` también se limpia: `hayFiltro` lo cuenta, así que el botón
             APARECÍA cuando lo único cambiado era el estado — y al hacer clic no
@@ -359,6 +379,7 @@ function CatalogoProductos() {
         <div className={s.hint} style={{ margin: 0 }}>
           {productos.length} de {store.state.productos.length} productos.
           {sinHijos && ' Primero los que más kg tienen en stock esperando. Al guardar sus fraccionados, salen solos de esta lista.'}
+          {sinBulto && ' Sin bulto la caja no les sugiere precio mayorista por caja cerrada. Se carga en la ficha («Unidades por bulto») o en la caja del proveedor; al guardar, salen solos de esta lista.'}
           {isAdmin && ' «Actualizar márgenes» y «Exportar CSV» alcanzan solo a los filtrados.'}
         </div>
       )}

@@ -11,7 +11,12 @@ import {
   bultoAbajo, bultoArriba, bultoDeFila, desgloseBulto, empujonMayorista, textoBulto,
   totalesTicket, ultimoArticulo, unidadesDeLista,
 } from '../domain/pos.js';
-import { indicePrecios, sugerenciaPorMonto } from '../domain/listas.js';
+import {
+  contextoResolucion, faltantesMayorista, indicePrecios, restriccionMayorista, sugerenciaMayorista,
+} from '../domain/listas.js';
+
+/** Los orígenes de una puerta al mayorista: para avisar cuando un renglón vuelve a minorista. */
+const ORIGENES_PUERTA = new Set(['cliente', 'auto', 'marca', 'bulto', 'monto']);
 import { sugerenciasOfertaTicket } from '../domain/ofertas.js';
 import {
   Table, PanelHead, Btn, ModalShell, Paginador, usePaginado, money, num, fmtFechaHora, s,
@@ -905,31 +910,73 @@ export function PosPanel() {
   }, [ticket.descuentos, catalogoDescuentos, toast]);
 
   /**
-   * La sugerencia por MONTO: lo único que se ofrece en vez de aplicarse solo.
-   * Como el beneficio baja el total, auto-aplicarlo podría dejar el ticket por
-   * debajo del umbral y revertirse en un ciclo. Las puertas por cantidad no
-   * tienen ese problema y ya se aplicaron solas.
+   * EL AVISO DE PRECIO MAYORISTA (1/10/2026, pedido del dueño). Por defecto la
+   * caja cobra minorista; cuando algún renglón califica (bulto cerrado, marca,
+   * cantidad, lista del cliente o monto) se AVISA qué renglones y por qué, y el
+   * cajero lo aplica con un clic. Mismo contexto que usa el reducer, así lo que
+   * se ofrece es exactamente lo que después se aplica.
    */
+  const ctxMayorista = useMemo(() => contextoResolucion({
+    catalogo: catalogoRaw, cliente: clienteActual, renglones: ticket.renglones,
+    aplicado: ticket.mayoristaAplicado, precios: idxPrecios,
+  }), [catalogoRaw, clienteActual, ticket.renglones, ticket.mayoristaAplicado, idxPrecios]);
+
   const sugerencia = useMemo(
-    () => sugerenciaPorMonto(ticket.renglones, totales.total, catalogoRaw, preciosDe, !!ticket.montoAplicado),
-    [ticket.renglones, ticket.montoAplicado, totales.total, catalogoRaw, preciosDe],
+    () => sugerenciaMayorista(ticket.renglones, preciosDe, ctxMayorista),
+    [ticket.renglones, preciosDe, ctxMayorista],
+  );
+
+  /** Con qué se paga el mayorista, para anunciarlo ANTES de cobrar. */
+  const mediosMayorista = useMemo(
+    () => (catalogoRaw?.mayorista?.mediosPago ?? []).map((m) => MEDIOS_PAGO[m] || m).join(' o '),
+    [catalogoRaw],
+  );
+
+  /** Si el ticket tiene renglones a precio mayorista, el cobro ofrece solo sus medios. */
+  const restriccion = useMemo(
+    () => restriccionMayorista(ticket.renglones, catalogoRaw),
+    [ticket.renglones, catalogoRaw],
   );
 
   /**
    * El EMPUJÓN: cuánto le falta para el mayorista, mientras todavía se puede
-   * hacer algo. Mismo insumo que la sugerencia de arriba, ventana distinta:
-   * aquella se enciende cuando ya llegó, ésta mientras está en camino.
+   * hacer algo. Por monto se mide sobre el total a precio de MOSTRADOR (el mismo
+   * número que mide el servidor); por unidades, los bultos y marcas a los que
+   * les falta poco.
    */
   const empujon = useMemo(
-    () => empujonMayorista(totales.total, catalogoRaw),
-    [totales.total, catalogoRaw],
+    () => empujonMayorista(ctxMayorista.totalPiso, catalogoRaw),
+    [ctxMayorista.totalPiso, catalogoRaw],
+  );
+  const faltantes = useMemo(
+    () => faltantesMayorista(ticket.renglones, preciosDe, ctxMayorista),
+    [ticket.renglones, preciosDe, ctxMayorista],
   );
 
-  /** Desbloquea (o retira) la modalidad por monto. El motor reasigna el resto. */
-  const aplicarMonto = useCallback((modalidadId) => {
-    dispatch({ tipo: 'monto', modalidadId });
-    toast(modalidadId ? 'Precio por monto de compra aplicado.' : 'Se retiró el precio por monto.', 'ok');
+  /** Aplica (o quita) el precio mayorista. El motor reasigna los renglones. */
+  const aplicarMayorista = useCallback((aplicar) => {
+    dispatch({ tipo: 'mayorista', aplicar });
+    toast(aplicar ? 'Precio mayorista aplicado a los renglones que cumplen.' : 'Volvió a precio minorista.', 'ok');
   }, [toast]);
+
+  /*
+   * EL RENGLÓN QUE DEJA DE CUMPLIR VUELVE SOLO A MINORISTA, Y SE AVISA: si
+   * sacaron unidades de un bulto, el cajero tiene que saber por qué subió el
+   * precio. Se compara contra el render anterior DEL MISMO ticket (los uid
+   * se repiten entre tickets).
+   */
+  const enMayoristaRef = useRef({ ventaId: null, uids: new Map() });
+  useEffect(() => {
+    const antes = enMayoristaRef.current;
+    const ahora = new Map(ticket.renglones.filter((r) => ORIGENES_PUERTA.has(r.listaOrigen)).map((r) => [r.uid, r.nombre]));
+    if (antes.ventaId === activaId && ticket.mayoristaAplicado) {
+      const volvieron = ticket.renglones.filter((r) => antes.uids.has(r.uid) && !ahora.has(r.uid) && r.listaOrigen === 'base');
+      if (volvieron.length) {
+        toast(`${volvieron.map((r) => r.nombre).join(', ')}: volvió a precio minorista, ya no cumple la condición.`, 'ok');
+      }
+    }
+    enMayoristaRef.current = { ventaId: activaId, uids: ahora };
+  }, [ticket.renglones, ticket.mayoristaAplicado, activaId, toast]);
 
   /**
    * QUÉ ESTÁ APLICADO AHORA, para que el selector lo diga en vez de volver
@@ -1304,6 +1351,15 @@ export function PosPanel() {
         facturaInterna: !!config.arcaHabilitado
           && !(sucursales.find((x) => x.id === sucursalId)?.facturaElectronica
             && sucursales.find((x) => x.id === sucursalId)?.puntoVenta),
+        /* Precio mayorista en el ticket: solo sus medios (1/10/2026). Si el
+         * cliente paga con otro, vuelve a minorista y se cobra de nuevo con
+         * el total nuevo a la vista. */
+        mayorista: restriccion,
+        onVolverMinorista: () => {
+          closeModal();
+          dispatch({ tipo: 'mayorista', aplicar: false });
+          toast('Volvió a precio minorista. Revisá el total nuevo y cobrá otra vez (F2).', 'ok');
+        },
         onCobrado: (venta, vuelto) => {
           closeModal();
           openModal('ventaEmitida', {
@@ -1313,7 +1369,7 @@ export function PosPanel() {
         },
       });
     });
-  }, [puedeCobrar, problemas, activaId, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast]);
+  }, [puedeCobrar, problemas, activaId, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast, restriccion]);
 
   const cambiarCliente = (id) => {
     const anterior = clienteActual?.descuento || 0;
@@ -1488,6 +1544,17 @@ export function PosPanel() {
                 </span>
               </div>
             )}
+            {/* Lo mismo por UNIDADES: el bulto o la marca a los que les falta poco. */}
+            {faltantes.length > 0 && (
+              <div className={p.empujon}>
+                <span className={p.empujonTexto}>
+                  Cerca del precio <strong>mayorista</strong>:
+                </span>
+                {faltantes.map((f) => (
+                  <span key={f} className={p.empujonTexto}>· {f}</span>
+                ))}
+              </div>
+            )}
 
             <div className={p.regTicketScroll} ref={ticketScrollRef}>
               <Ticket
@@ -1601,32 +1668,45 @@ export function PosPanel() {
             </div>
 
             {/*
-              Sugerencia por monto. Se avisa POR ADELANTADO qué medio de pago
-              exige: el precio se arma antes de cobrar, y descubrirlo recién al
-              confirmar sería descubrirlo con el cliente enfrente.
+              EL AVISO DE PRECIO MAYORISTA. Dice qué renglones cumplen y por
+              qué, cuánto ahorra el cliente y —POR ADELANTADO— con qué medio se
+              paga: descubrirlo al cobrar sería descubrirlo con el cliente
+              enfrente.
             */}
             {sugerencia && (
               <div className={cx(s.callout, s.ok)} style={{ margin: 0 }}>
-                Supera <strong>{money(sugerencia.monto)}</strong>: califica para{' '}
-                <strong>{sugerencia.modalidad}</strong> en {sugerencia.renglones} artículo(s).
-                {sugerencia.mediosPago.length > 0 && (
+                <strong>Califica para precio {sugerencia.modalidad}</strong> en{' '}
+                {sugerencia.renglones.length} artículo{sugerencia.renglones.length === 1 ? '' : 's'}: el
+                cliente ahorra <strong>{money(sugerencia.ahorro)}</strong>.
+                <ul className={p.avisoMayorista}>
+                  {sugerencia.renglones.slice(0, 4).map((r) => (
+                    <li key={r.uid}>
+                      {r.nombre} × {num(r.cantidad)} → {r.lista}
+                      <span className={s.muted}> · {ORIGEN_LISTA[r.origen]?.label?.toLowerCase() || r.motivo}</span>
+                    </li>
+                  ))}
+                  {sugerencia.renglones.length > 4 && <li className={s.muted}>y {sugerencia.renglones.length - 4} más</li>}
+                </ul>
+                {mediosMayorista && (
                   <div className={s.hint} style={{ margin: '4px 0 0' }}>
-                    Solo pagando con {sugerencia.mediosPago.map((m) => MEDIOS_PAGO[m] || m).join(' o ')}.
+                    Solo pagando con {mediosMayorista}.
                   </div>
                 )}
                 <div style={{ marginTop: 8 }}>
-                  <Btn variant="btn-primary" small onClick={() => aplicarMonto(sugerencia.modalidadId)}>
-                    Aplicar {sugerencia.modalidad}
+                  <Btn variant="btn-primary" small onClick={() => aplicarMayorista(true)}>
+                    Aplicar {sugerencia.modalidad} a esos renglones
                   </Btn>
                 </div>
               </div>
             )}
 
-            {ticket.montoAplicado && (
+            {(ticket.mayoristaAplicado || restriccion) && (
               <div className={cx(s.callout, s.info)} style={{ margin: 0 }}>
-                Precio por <strong>monto de compra</strong> aplicado.
+                {restriccion
+                  ? <>Precio <strong>{restriccion.modalidad}</strong> en {restriccion.articulos} artículo{restriccion.articulos === 1 ? '' : 's'}: se cobra solo con <strong>{mediosMayorista}</strong>.</>
+                  : <>Precio <strong>mayorista</strong> aceptado: los renglones que cumplan pasan solos.</>}
                 <div style={{ marginTop: 8 }}>
-                  <Btn small onClick={() => aplicarMonto(null)}>Quitar</Btn>
+                  <Btn small onClick={() => aplicarMayorista(false)}>Volver a minorista</Btn>
                 </div>
               </div>
             )}

@@ -477,40 +477,23 @@ export function ConfiguracionPanel() {
         </Seccion>
 
         {/*
-          Acceso mayorista por monto. Es la única puerta que se mide en pesos, y
-          por eso vive en la configuración y no en una lista: no es una propiedad
-          de ninguna lista puntual, es una política del negocio.
+          EL PRECIO MAYORISTA (1/10/2026, pedido del dueño). La caja cobra
+          minorista por defecto y AVISA cuando el ticket cumple alguna puerta;
+          acá se define qué modalidad es "mayorista", con qué se paga (vale para
+          todo renglón a ese precio, llegue como llegue), si el bulto cerrado la
+          sugiere y el monto mínimo. Las reglas por marca y los mínimos por
+          artículo viven en Listas de precios.
         */}
-        <Seccion titulo="Acceso mayorista por monto de compra">
-          <div className={cx(s.callout, s.warn)}>
-            A diferencia de las condiciones por cantidad, esta <strong>no se aplica sola</strong>: se
-            mide sobre pesos, y aplicar el beneficio baja el total, así que automatizarla podría
-            dejar el ticket bajo el umbral y revertirse en un ciclo. La caja lo <strong>sugiere</strong>{' '}
-            y el vendedor lo aplica con un clic.
+        <Seccion titulo="Precio mayorista">
+          <div className={cx(s.callout, s.info)}>
+            La caja cobra <strong>minorista por defecto</strong>. Cuando el ticket cumple alguna
+            condición —bulto cerrado, regla de marca, mínimo del artículo, lista del cliente o monto
+            de compra— aparece un <strong>aviso</strong> con los renglones que cumplen y el cajero lo
+            aplica con un clic.
           </div>
           <Campo
-            label="Monto mínimo del ticket"
-            hint="0 = desactivado. Se mide sobre el total con IVA."
-          >
-            <input
-              type="number" min="0" step="100"
-              value={draft.montoMinimoMayorista ?? 0}
-              onChange={setNum('montoMinimoMayorista')}
-            />
-          </Campo>
-          <Campo
-            label="Mínimo p/ envío con camioneta (sitio web)"
-            hint="Piso EXTRA del pedido online si el cliente elige la camioneta de la empresa: el viaje tiene que valer la pena. 0 = sin piso."
-          >
-            <input
-              type="number" min="0" step="1000"
-              value={draft.montoMinimoCamioneta ?? 0}
-              onChange={setNum('montoMinimoCamioneta')}
-            />
-          </Campo>
-          <Campo
-            label="Modalidad que desbloquea"
-            hint="Alcanza SOLO a los artículos del ticket que tengan una lista cargada en esa modalidad. El que no tenga ninguna se queda con su precio de siempre."
+            label="Modalidad mayorista"
+            hint="La que sugieren el bulto cerrado y el monto, y la que se cobra solo con los medios de abajo."
           >
             <select value={draft.modalidadMontoId ?? 0} onChange={setNum('modalidadMontoId')}>
               <option value={0}>— Ninguna (desactivado) —</option>
@@ -520,8 +503,8 @@ export function ConfiguracionPanel() {
             </select>
           </Campo>
           <Campo
-            label="Medios de pago con los que vale"
-            hint="Sin ninguno tildado, vale con cualquiera. Se verifica AL CONFIRMAR la venta: el medio se elige al cobrar, cuando el precio ya se armó."
+            label="Medios de pago del precio mayorista"
+            hint="Valen para TODO renglón a precio mayorista (bulto, marca, monto, cliente o elegido a mano), y siempre al contado. Sin ninguno tildado, vale con cualquiera. El cobro ofrece solo estos y el servidor lo vuelve a controlar."
           >
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               {Object.entries(MEDIOS_PAGO).map(([k, label]) => {
@@ -543,6 +526,32 @@ export function ConfiguracionPanel() {
                 );
               })}
             </div>
+          </Campo>
+          <Interruptor
+            label="El bulto cerrado sugiere mayorista"
+            hint="Si el ticket lleva la caja entera de un producto (12 Coca-Cola de un bulto de 12), se sugiere su primera lista mayorista aunque no llegue al monto. El bulto sale de la ficha (DUN) o, si no está, de la caja del proveedor que define el costo."
+            checked={draft.mayoristaPorBulto !== false}
+            onChange={(v) => setDraft((d) => ({ ...d, mayoristaPorBulto: v }))}
+          />
+          <Campo
+            label="Monto mínimo de compra"
+            hint="0 = desactivado. Se mide sobre el total a precio de mostrador, con IVA. Alcanza a todo el ticket."
+          >
+            <input
+              type="number" min="0" step="100"
+              value={draft.montoMinimoMayorista ?? 0}
+              onChange={setNum('montoMinimoMayorista')}
+            />
+          </Campo>
+          <Campo
+            label="Mínimo p/ envío con camioneta (sitio web)"
+            hint="Piso EXTRA del pedido online si el cliente elige la camioneta de la empresa: el viaje tiene que valer la pena. 0 = sin piso."
+          >
+            <input
+              type="number" min="0" step="1000"
+              value={draft.montoMinimoCamioneta ?? 0}
+              onChange={setNum('montoMinimoCamioneta')}
+            />
           </Campo>
         </Seccion>
 

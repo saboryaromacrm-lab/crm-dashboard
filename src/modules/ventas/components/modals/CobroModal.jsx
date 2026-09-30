@@ -49,12 +49,23 @@ const CREDITO = 'tarjeta_credito';
  * dejaría cobrar "en 4" sin tener % cargado para 4, y el recargo saldría 0. */
 const PLANES = [1, 3, 6];
 
-export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrado, facturaInterna = false }) {
+export function CobroModal({
+  ventaId, totales, clienteId, cajaSesionId, onCobrado, facturaInterna = false, mayorista = null, onVolverMinorista = null,
+}) {
   const { getCliente, config, ctx, closeModal, toast, operadorId } = useVentas();
   const cliente = getCliente(clienteId);
+  /*
+   * PRECIO MAYORISTA EN EL TICKET (1/10/2026): se cobra solo con sus medios
+   * ("efectivo y transferencia") y al contado. `mayorista` = { medios,
+   * articulos, modalidad } o null. El servidor lo vuelve a validar.
+   */
+  const soloMayorista = mayorista?.medios?.length ? mayorista.medios : null;
 
   const [condicionPago, setCondicionPago] = useState('contado');
-  const [pagos, setPagos] = useState(() => [{ medio: 'efectivo', importe: String(totales.total), cuentaDisponibleId: null }]);
+  const [pagos, setPagos] = useState(() => [{
+    medio: soloMayorista && !soloMayorista.includes('efectivo') ? soloMayorista[0] : 'efectivo',
+    importe: String(totales.total), cuentaDisponibleId: null,
+  }]);
   const [entregado, setEntregado] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -127,9 +138,14 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
 
   const medios = useMemo(() => {
     const habilitados = (config.mediosPago ?? []).filter((m) => MEDIOS_PAGO[m]);
-    const base = habilitados.length ? habilitados : Object.keys(MEDIOS_PAGO);
-    return cajaMp ? [...base, QR_MP] : base;
-  }, [config.mediosPago, cajaMp]);
+    let base = habilitados.length ? habilitados : Object.keys(MEDIOS_PAGO);
+    if (soloMayorista) {
+      const permitidos = base.filter((m) => soloMayorista.includes(m));
+      base = permitidos.length ? permitidos : soloMayorista.filter((m) => MEDIOS_PAGO[m]);
+    }
+    // El QR de Mercado Pago se guarda como «QR / billetera»: con mayorista, solo si ese medio vale.
+    return cajaMp && (!soloMayorista || soloMayorista.includes('qr')) ? [...base, QR_MP] : base;
+  }, [config.mediosPago, cajaMp, soloMayorista]);
 
   /*
    * EL RECARGO POR CUOTAS (0100). El total que se cobra deja de ser el de la
@@ -622,8 +638,22 @@ export function CobroModal({ ventaId, totales, clienteId, cajaSesionId, onCobrad
       )}
 
 
-      {/* El selector solo existe cuando hay algo que elegir: cliente con cta. cte. */}
-      {ctaCteDisponible && (
+      {/* Precio mayorista: con qué se paga y la salida si el cliente quiere otro medio. */}
+      {soloMayorista && (
+        <div className={cx(s.callout, s.info)} style={{ margin: '0 0 var(--crm-space-3)' }}>
+          Precio <strong>{mayorista.modalidad}</strong> en {mayorista.articulos} artículo{mayorista.articulos === 1 ? '' : 's'}:
+          se cobra solo con <strong>{soloMayorista.map((m) => MEDIOS_PAGO[m] || m).join(' o ')}</strong>, al contado.
+          {onVolverMinorista && (
+            <div style={{ marginTop: 8 }}>
+              <Btn small onClick={onVolverMinorista}>Paga con otro medio: volver a precio minorista</Btn>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* El selector solo existe cuando hay algo que elegir: cliente con cta. cte.
+          Con precio mayorista no: se paga al contado. */}
+      {ctaCteDisponible && !soloMayorista && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 'var(--crm-space-3)' }}>
           <Btn
             variant={condicionPago === 'contado' ? 'btn-primary' : 'btn-ghost'}
