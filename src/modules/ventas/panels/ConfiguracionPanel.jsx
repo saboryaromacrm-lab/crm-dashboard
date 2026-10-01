@@ -638,6 +638,12 @@ export function ConfiguracionPanel() {
             onChange={set('cajaObligatoria')}
           />
           <Interruptor
+            label="El cajero ve lo que tiene que haber en caja"
+            hint="Prendido: durante el turno y al cerrar, el cajero ve el detalle (fondo con el que abrió + efectivo cobrado + ingresos − egresos = lo que tiene que haber) y, al contar, la diferencia; el comprobante del envío la imprime. Apagado: cuenta y envía a ciegas, sin ver lo esperado ni la diferencia — tampoco administración al cerrar; la diferencia la revisa administración después, en el historial. En los dos casos el cierre es contando los billetes y enviando, y el papel lleva los billetes contados."
+            checked={!!draft.cajaVeEsperado}
+            onChange={set('cajaVeEsperado')}
+          />
+          <Interruptor
             label="Permitir vender sin stock"
             hint="Prendido, la caja no se frena: vende igual y cada renglón que se va a negativo deja una incidencia en Almacén › Incidencias › Ventas sin stock, con el comprobante y el cajero, para ir a contar la góndola. Apagado, el cajero no puede cobrar hasta que alguien cargue el stock."
             checked={draft.permitirStockNegativo}

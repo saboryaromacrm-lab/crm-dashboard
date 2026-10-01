@@ -954,6 +954,13 @@ export function cuerpoArqueoCaja(arqueo, { moneda, fechaHora, hora, sucursal, ca
   const dif = n(ses.diferencia);
   const hayDif = Math.abs(dif) > 0.009;
   const ctaCte = a.ctaCte ?? {};
+  /* Los billetes que se contaron al cerrar (cierre por envío): van en el papel. */
+  const filasBilletes = Object.entries(ses.billetes ?? {})
+    .map(([den, cant]) => [Number(den), n(cant)])
+    .filter(([, c]) => c > 0)
+    .sort((x, y) => y[0] - x[0])
+    .map(([den, c]) => `<tr><td>$ ${esc(den.toLocaleString('es-AR'))}</td><td class="n">${esc(String(c))}</td><td class="n">${esc(moneda(den * c))}</td></tr>`)
+    .join('');
 
   return `
     <div class="arqueo">
@@ -1016,6 +1023,19 @@ export function cuerpoArqueoCaja(arqueo, { moneda, fechaHora, hora, sucursal, ca
     </tbody></table>
     ${cerrado ? '' : '<div class="nota">Turno TODAVIA ABIERTO: el conteo y la diferencia se completan al cerrarlo.</div>'}
 
+    ${filasBilletes ? `
+      <div class="secArqueo">Billetes contados al cerrar</div>
+      <table>
+        <thead><tr><th>Billete</th><th class="n">Cantidad</th><th class="n">Importe</th></tr></thead>
+        <tbody>${filasBilletes}
+          <tr class="fuerte"><td>TOTAL CONTADO</td><td></td><td class="n">${esc(moneda(contado))}</td></tr>
+        </tbody>
+      </table>
+      ${ses.envioEfectivo != null ? `<table><tbody>
+        <tr><td>Queda de fondo en la caja</td><td class="n">${esc(moneda(n(ses.fondoQueda)))}</td></tr>
+        <tr class="remarcada"><td>ENVIADO</td><td class="n">${esc(moneda(n(ses.envioEfectivo)))}</td></tr>
+      </tbody></table>` : ''}` : ''}
+
     ${n(ctaCte.cantidad) ? `
       <div class="nota">
         Ademas ${esc(String(n(ctaCte.cantidad)))} venta(s) en CUENTA CORRIENTE por
@@ -1051,8 +1071,8 @@ export function imprimirArqueoCaja(arqueo, opts) {
 /**
  * EL COMPROBANTE DEL CIERRE POR ENVÍO (0111): lo que se lleva el cajero y lo
  * que acompaña la plata. Billete por billete, lo contado, lo que queda de
- * fondo y lo que se envía — y NADA del sistema: ni esperado ni diferencia,
- * que el cajero no ve en ningún momento.
+ * fondo y lo que se envía. El esperado y la diferencia van SOLO si quien cierra
+ * los puede ver (`cajaVeEsperado`, 1/10/2026); a ciegas, nada del sistema.
  */
 export function imprimirEnvioCaja(d, { moneda, fechaHora, sucursal, cajero, usuario, reimpresion = false }) {
   const n = (x) => Number(x) || 0;
@@ -1084,6 +1104,13 @@ export function imprimirEnvioCaja(d, { moneda, fechaHora, sucursal, cajero, usua
     </tbody></table>
     <div class="nota">Quedan ${esc(moneda(n(d.fondoQueda)))} de fondo en la caja para el próximo turno${n(d.fondo) ? ` (fondo fijo ${esc(moneda(n(d.fondo)))})` : ''}.</div>
     ${incompleto ? `<div class="nota"><strong>FONDO INCOMPLETO:</strong> faltan ${esc(moneda(n(d.faltaFondo)))} para el fondo fijo. No se envía nada; queda avisado al administrador.</div>` : ''}
+    ${d.esperadoEfectivo != null ? `
+    <div class="secArqueo">Control</div>
+    <table><tbody>
+      <tr><td>Tenía que haber</td><td class="n">${esc(moneda(n(d.esperadoEfectivo)))}</td></tr>
+      <tr><td>Contado</td><td class="n">${esc(moneda(n(d.contado)))}</td></tr>
+      <tr class="remarcada"><td>${Math.abs(n(d.diferencia)) > 0.009 ? (n(d.diferencia) > 0 ? 'SOBRANTE' : 'FALTANTE') : 'SIN DIFERENCIA'}</td><td class="n">${esc(moneda(Math.abs(n(d.diferencia))))}</td></tr>
+    </tbody></table>` : ''}
     <div class="firmasArqueo">
       <div>Envía (cajero)<br />${esc(cajero || '')}</div>
       <div>Recibe conforme</div>

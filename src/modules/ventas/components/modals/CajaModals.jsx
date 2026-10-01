@@ -1109,13 +1109,46 @@ function sacarComprobanteArqueo(arqueo, { sucursales, usuarios, ctx, reimpresion
 }
 
 /*
- * CERRAR CAJA (0111): el administrador y el superadmin cierran como siempre
- * (conteo a ciegas, "Ver resultado", confirmación). Todos los demás cierran
- * CONTANDO Y ENVIANDO, sin ver en ningún momento lo que el sistema espera.
+ * CERRAR CAJA: UN SOLO CIERRE PARA TODOS (1/10/2026, pedido del dueño). Se
+ * cuenta billete por billete, queda el fondo y se envía el resto — también
+ * administración. El «Ver resultado» con monto se dio de baja. Si el que
+ * cierra ve lo que tiene que haber lo decide la configuración
+ * (`cajaVeEsperado`, Ventas › Configuración › Caja y cobro).
  */
 export function CerrarCajaModal(props) {
-  const { esJefe } = useVentas();
-  return esJefe ? <CerrarCajaJefeModal {...props} /> : <CerrarCajaEnvioModal {...props} />;
+  return <CerrarCajaEnvioModal {...props} />;
+}
+
+/**
+ * LO QUE TIENE QUE HABER EN LA CAJA, detallado (con `cajaVeEsperado`): fondo
+ * con el que abrió, efectivo cobrado (ventas y cobranzas), ingresos y egresos
+ * del turno, y lo que da. Con lo contado, la diferencia en vivo.
+ */
+function LoQueTieneQueHaber({ turno, contado, conto }) {
+  const ef = turno?.medios?.efectivo ?? {};
+  const esperado = Number(turno?.esperadoEfectivo) || 0;
+  const dif = r2(contado - esperado);
+  const fila = (txt, v, fuerte) => (
+    <><span style={fuerte ? { fontWeight: 700 } : undefined}>{txt}</span><strong className={s.mono} style={fuerte ? { fontSize: 18 } : undefined}>{v}</strong></>
+  );
+  return (
+    <div className={cx(s.callout, s.info)}>
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>Lo que tiene que haber en la caja</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '3px 16px', justifyContent: 'start', alignItems: 'baseline' }}>
+        {fila('Fondo con el que abrió', money(turno?.montoInicial))}
+        {fila('+ Cobrado en efectivo (ventas)', money(ef.ventas ?? ef.total))}
+        {Number(ef.cobranzas) ? fila('+ Cobrado en efectivo (cuentas corrientes)', money(ef.cobranzas)) : null}
+        {fila('+ Ingresos de caja', money(turno?.ingresos))}
+        {fila('− Egresos de caja', money(turno?.egresos))}
+        {fila('= Tiene que haber', money(esperado), true)}
+      </div>
+      {conto && (
+        <div style={{ marginTop: 8, fontWeight: 700, color: Math.abs(dif) < 0.01 ? 'var(--crm-color-success)' : 'var(--crm-color-danger)' }}>
+          Contaste {money(contado)}: {Math.abs(dif) < 0.01 ? 'sin diferencia' : `${dif > 0 ? 'sobran' : 'faltan'} ${money(Math.abs(dif))}`}.
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -1128,7 +1161,7 @@ export function CerrarCajaModal(props) {
  * El servidor recibe los billetes y suma él: tampoco por la API se tipea.
  */
 function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
-  const { ctx, closeModal, toast, setOperador, sucursales, usuarios, operadorId } = useVentas();
+  const { ctx, closeModal, toast, setOperador, sucursales, usuarios, operadorId, config } = useVentas();
   const [billetes, setBilletes] = useState({});
   const [paso, setPaso] = useState('contar');
   const [enviando, setEnviando] = useState(false);
@@ -1146,6 +1179,10 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
   const envio = r2(contado - queda);
   const faltaFondo = r2(fondo - queda);
   const conto = Object.values(billetes).some((c) => Number(c) > 0);
+  /* A ciegas salvo que la configuración deje ver lo que tiene que haber: ahí el
+   * servidor manda el arqueo completo y se muestra el detalle. Apagada, ni
+   * administración lo ve al cerrar («que hagan envíos a ciegas»). */
+  const ve = !!config?.cajaVeEsperado && turno?.esperadoEfectivo != null;
 
   const aConfirmar = () => {
     if (!conto) { toast('Contá los billetes del cajón antes de enviar.', 'err'); return; }
@@ -1165,7 +1202,7 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
       });
       const nombreDe = (id) => usuarios?.find((u) => u.id === id)?.nombre || '';
       const salio = await imprimirEnvioCaja(
-        { ...r, sesionId: r.sesion?.id, cierre: r.sesion?.cierre },
+        { ...r, sesionId: r.sesion?.id, cierre: r.sesion?.cierre, esperadoEfectivo: ve ? r.esperadoEfectivo : null, diferencia: ve ? r.diferencia : null },
         { moneda: money, fechaHora: fmtFechaHora, sucursal: sucursal?.nombre || '', cajero: nombreDe(r.sesion?.usuarioId) },
       );
       toast(`Caja cerrada. Enviaste ${money(r.envio)}; quedan ${money(r.fondoQueda)} de fondo en la caja.`, 'ok');
@@ -1233,6 +1270,7 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
           ))}
         </Table>
         {resumen}
+        {ve && <LoQueTieneQueHaber turno={turno} contado={contado} conto={conto} />}
       </ModalShell>
     );
   }
@@ -1253,197 +1291,7 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
       </div>
       <ConteoBilletes cant={billetes} setCant={setBilletes} />
       {conto && resumen}
-    </ModalShell>
-  );
-}
-
-function CerrarCajaJefeModal({ cajaSesionId, onChange }) {
-  const { ctx, act, closeModal, toast, setOperador, sucursales, usuarios, operadorId } = useVentas();
-  const [declarado, setDeclarado] = useState('');
-  const [observaciones, setObservaciones] = useState('');
-  const contador = useContadorBilletes(setDeclarado);
-
-  const { data: arqueo, loading, error } = useResource(`arqueo:${cajaSesionId}`, () => ventasApi.cajaArqueo(cajaSesionId));
-
-  /*
-   * EL CIERRE ES A CIEGAS (25/9/2026, pedido del dueño), para todos: se cuenta
-   * sin ver el esperado. "Ver resultado" manda el conteo al servidor, que
-   * devuelve el arqueo completo — y si el conteo NO coincide, lo deja
-   * registrado como control ANTES de mostrar el esperado. Así "volver a contar"
-   * sigue siendo posible (un billete pegado pasa) pero el primer número queda.
-   *
-   * El resultado es además la confirmación del cierre: el turno cerrado no se
-   * reabre, así que recién "Sí, cerrar el turno" lo cierra. Con diferencia, la
-   * explicación es obligatoria (el servidor también la exige).
-   */
-  const [resultado, setResultado] = useState(null);
-  const [enviando, setEnviando] = useState(false);
-  const candado = useRef(false);
-  const conDiferencia = !!resultado && Math.abs(resultado.diferencia) > 0.009;
-
-  const verResultado = async () => {
-    /* El campo vacío NO es "cero contado": era un `r2('')` = 0 que cerraba el
-     * turno con una diferencia inventada del tamaño de todo el efectivo del día,
-     * firmada y sin poder reabrirse. */
-    if (declarado === '') { toast('Contá el efectivo del cajón e ingresá el monto.', 'err'); return; }
-    if (!(Number(declarado) >= 0)) { toast('El efectivo contado no puede ser negativo.', 'err'); return; }
-    if (candado.current) return;
-    candado.current = true;
-    setEnviando(true);
-    try {
-      setResultado(await ventasApi.conteoCierre(cajaSesionId, {
-        contadoEfectivo: r2(declarado),
-        usuarioId: ctx.usuarioId ?? undefined,
-        // El relevo (0088): el conteo lo firma quien está en la caja.
-        operadorId: operadorId ?? undefined,
-      }));
-    } catch (e) {
-      toast(errorMsg(e), 'err');
-    } finally {
-      candado.current = false;
-      setEnviando(false);
-    }
-  };
-
-  const cerrar = async () => {
-    if (!resultado || candado.current) return;
-    if (conDiferencia && !observaciones.trim()) { toast('Hay diferencia: escribí por qué antes de cerrar.', 'err'); return; }
-    candado.current = true;
-    setEnviando(true);
-    try {
-      await guardarCierre();
-    } finally {
-      candado.current = false;
-      setEnviando(false);
-    }
-  };
-
-  const guardarCierre = async () => {
-    const ok = await act(
-      ventasApi.cerrarCaja(cajaSesionId, { declaradoEfectivo: resultado.contado, observaciones: observaciones.trim() }),
-      'Turno cerrado.',
-      { recargar: false },
-    );
-    if (ok) {
-      /*
-       * EL PAPEL SALE SOLO, y sale ANTES de cerrar el modal.
-       *
-       * Con este comprobante se rinde la plata, asi que pedirlo con un boton
-       * aparte lo volveria opcional: el turno que se cierra sin papel deja al
-       * cajero entregando efectivo contra nada. Se imprime con la sesion YA
-       * cerrada (`sesionCerrada`) y con el arqueo COMPLETO que devolvio el
-       * conteo (el de la pantalla, a ciegas, no tiene el esperado).
-       *
-       * Si el navegador bloquea la ventana emergente se avisa: siempre se puede
-       * reimprimir desde el historial del turno.
-       */
-      const completo = resultado.arqueo;
-      const sesionCerrada = ok?.id ? ok : {
-        ...completo.sesion, estado: 'cerrada', cierre: new Date(),
-        declaradoEfectivo: resultado.contado, diferencia: resultado.diferencia,
-      };
-      const salio = sacarComprobanteArqueo(
-        { ...completo, sesion: sesionCerrada },
-        { sucursales, usuarios, ctx },
-      );
-      if (!salio) toast('El turno se cerro, pero el navegador bloqueo la impresion. Reimprimilo desde el historial.', 'err');
-      /* El relevo muere con el turno (0088): el próximo arranca con el titular
-       * de la sesión — un relevo que sobrevive al cierre es un olvido servido. */
-      setOperador(null);
-      onChange?.();
-    }
-  };
-
-  if (loading) {
-    return (
-      <ModalShell title="Cerrar caja" onClose={closeModal} footer={[{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }]}>
-        <div className={s['empty-state']}>Preparando el arqueo…</div>
-      </ModalShell>
-    );
-  }
-  if (error || !arqueo) {
-    return (
-      <ModalShell title="Cerrar caja" onClose={closeModal} footer={[{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }]}>
-        <div className={cx(s.callout, s.warn)}>{error || 'No se pudo calcular el arqueo.'}</div>
-      </ModalShell>
-    );
-  }
-
-  /* ---------------- Paso 1: contar a ciegas ---------------- */
-  if (!resultado) {
-    return (
-      <ModalShell
-        title="Cerrar caja — conteo a ciegas"
-        wide
-        onClose={closeModal}
-        footer={[
-          { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-          { texto: enviando ? 'Verificando…' : 'Ver resultado', clase: 'btn-primary', onClick: verResultado, disabled: enviando },
-        ]}
-      >
-        <div className={s.callout}>
-          Contá el efectivo del cajón <strong>sin mirar el sistema</strong> y escribí lo que contaste.
-          El esperado aparece después. Si no coincide, ese primer conteo <strong>queda registrado</strong>{' '}
-          aunque vuelvas a contar.
-        </div>
-
-        <div className={s['form-grid']}>
-          <div className={s.field}>
-            <label>Efectivo contado <span className={s.req}>*</span></label>
-            <input
-              type="number" min="0" step="any" autoFocus
-              placeholder="Lo que hay en el cajón"
-              value={declarado}
-              onChange={(e) => setDeclarado(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); verResultado(); } }}
-            />
-            {contador.boton}
-          </div>
-        </div>
-        {contador.modal}
-
-        <DetalleArqueo arqueo={arqueo} ciego />
-      </ModalShell>
-    );
-  }
-
-  /* ---------------- Paso 2: resultado y confirmación ---------------- */
-  return (
-    <ModalShell
-      title="Cerrar caja — resultado"
-      wide
-      onClose={closeModal}
-      footer={[
-        /* Volver a contar NO borra nada: si hubo diferencia, el primer conteo
-         * ya está en los controles del turno. */
-        { texto: 'Volver a contar', clase: 'btn-ghost', onClick: () => { setResultado(null); setObservaciones(''); }, disabled: enviando },
-        { texto: enviando ? 'Cerrando…' : 'Sí, cerrar el turno', clase: 'btn-delete', onClick: cerrar, disabled: enviando },
-      ]}
-    >
-      <ResultadoConteo esperado={resultado.arqueo.esperadoEfectivo} contado={resultado.contado} diferencia={resultado.diferencia} />
-      {resultado.control && (
-        <div className={s.hint}>
-          Como no coincidió, este conteo quedó registrado en los controles del turno. Si volvés a
-          contar, los dos conteos quedan a la vista de quien revise.
-        </div>
-      )}
-
-      <div className={s.field}>
-        <label>Observaciones {conDiferencia && <span className={s.req}>*</span>}</label>
-        <input
-          autoFocus={conDiferencia}
-          value={observaciones}
-          placeholder={conDiferencia ? 'Explicá por qué hay diferencia' : 'Opcional'}
-          onChange={(e) => setObservaciones(e.target.value)}
-        />
-      </div>
-
-      <div className={s.hint}>
-        El turno cerrado <strong>no se puede reabrir</strong>. Si el contado tiene un cero de más o de
-        menos, volvé a contar. La diferencia se guarda tal cual, incluso negativa: es el control.
-      </div>
-
-      <DetalleArqueo arqueo={resultado.arqueo} />
+      {ve && <LoQueTieneQueHaber turno={turno} contado={contado} conto={conto} />}
     </ModalShell>
   );
 }
@@ -1459,8 +1307,9 @@ export function ArqueoTurnoModal({ cajaSesionId }) {
      * papel sale sin conteo y avisandolo, que es justo lo que se necesita para
      * un control a mitad del dia. Salvo A CIEGAS: el papel del turno abierto
      * lleva el esperado, y el que cuenta no lo tiene que ver. */
-    /* A ciegas, lo que se reimprime es el ENVÍO: billetes, fondo y enviado. */
-    arqueo?.ciego && arqueo?.sesion?.envioEfectivo != null && {
+    /* El ENVÍO (billetes, fondo y enviado) se reimprime para todos; quien ve
+     * el arqueo completo lo saca además con lo que tenía que haber. */
+    arqueo?.sesion?.envioEfectivo != null && {
       texto: 'Reimprimir envío',
       clase: 'btn-primary',
       onClick: async () => {
@@ -1471,6 +1320,7 @@ export function ArqueoTurnoModal({ cajaSesionId }) {
         const salio = await imprimirEnvioCaja({
           sesionId: ses.id, cierre: ses.cierre, billetes: ses.billetes, contado: ses.declaradoEfectivo,
           envio: ses.envioEfectivo, fondoQueda: ses.fondoQueda, fondo: fondoSuc,
+          esperadoEfectivo: arqueo.ciego ? null : arqueo.esperadoEfectivo, diferencia: arqueo.ciego ? null : ses.diferencia,
           faltaFondo: fondoSuc != null ? Math.max(0, fondoSuc - (Number(ses.fondoQueda) || 0)) : 0,
         }, {
           moneda: money, fechaHora: fmtFechaHora, sucursal: suc?.nombre || '',
