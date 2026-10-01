@@ -63,11 +63,30 @@ export function comprobanteNro(c) {
 /* ==================================================================== *
  * Buscador de producto del renglón
  * ==================================================================== *
- * Reemplaza al <select>: busca por nombre, código interno o código de barras
- * SOLO entre los productos del proveedor de la factura. La compra siempre
+ * Reemplaza al <select>: busca por nombre, código interno, código de barras o
+ * CÓDIGO DEL PROVEEDOR (el de su Formato de Compra, 1/10/2026: es el que trae
+ * la factura en papel) SOLO entre los productos del proveedor de la factura. La compra siempre
  * ingresa el producto BASE (granel en kg, entero en unidades): las
  * presentaciones son producción propia del fraccionamiento y acá no existen.
  */
+/** ¿El código del proveedor coincide? Exacto, o que lo contenga (con 3+ caracteres). */
+function coincideCodigoProveedor(c, ql, soloExacto = false) {
+  return (c.codigos ?? []).some((cod) => {
+    const n = norm(cod);
+    return n === ql || (!soloExacto && ql.length >= 3 && n.includes(ql));
+  });
+}
+
+/** La búsqueda de un artículo del proveedor: nombre, código interno, barras o código del proveedor. */
+function coincideBusqueda(c, texto) {
+  const ql = norm(texto);
+  const digitos = texto.replace(/\D/g, '');
+  return norm(c.prod.nombre).includes(ql)
+    || (c.prod.codigoPropio && norm(c.prod.codigoPropio).includes(ql))
+    || (digitos.length >= 4 && c.prod.codigoBarras && c.prod.codigoBarras.includes(digitos))
+    || coincideCodigoProveedor(c, ql);
+}
+
 function BuscadorProducto({ candidatos, proveedorNombre, onElegir, autoFocus }) {
   const [texto, setTexto] = useState('');
   const [abierto, setAbierto] = useState(false);
@@ -75,13 +94,12 @@ function BuscadorProducto({ candidatos, proveedorNombre, onElegir, autoFocus }) 
 
   const matches = useMemo(() => {
     const ql = norm(texto);
-    const digitos = texto.replace(/\D/g, '');
     if (!ql) return candidatos.slice(0, 12);
-    return candidatos.filter((c) =>
-      norm(c.prod.nombre).includes(ql)
-      || (c.prod.codigoPropio && norm(c.prod.codigoPropio).includes(ql))
-      || (digitos.length >= 4 && c.prod.codigoBarras && c.prod.codigoBarras.includes(digitos)),
-    ).slice(0, 12);
+    /* El código exacto del proveedor va PRIMERO: tipear el 610039 del papel
+     * tiene que dejar arriba ese artículo, para elegirlo con Enter. */
+    const exactos = candidatos.filter((c) => coincideCodigoProveedor(c, ql, true));
+    const resto = candidatos.filter((c) => !exactos.includes(c) && coincideBusqueda(c, texto));
+    return [...exactos, ...resto].slice(0, 12);
   }, [candidatos, texto]);
 
   const elegir = (c) => {
@@ -142,6 +160,7 @@ function BuscadorProducto({ candidatos, proveedorNombre, onElegir, autoFocus }) 
                 {c.prod.nombre}
                 <span className={s.hint} style={{ margin: 0, display: 'block' }}>
                   {c.prod.codigoPropio ? `#${c.prod.codigoPropio}` : ''}
+                  {c.codigos?.length ? ` · cód. prov. ${c.codigos.join(' / ')}` : ''}
                   {c.entry?.costo > 0
                     ? ` · bulto ${num(c.entry.cantidad || 1, 3)} ${unidadDe(c.prod)} · ${money(c.entry.costo)} (${money(c.entry.costo / (c.entry.cantidad || 1))}/${unidadDe(c.prod)})`
                     : ' · sin costo cargado'}
@@ -523,6 +542,10 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         return {
           prod: p,
           entry: (p.formatosCompra || []).find((e) => e.proveedorId === pid),
+          /** Los códigos con que ESTE proveedor identifica al producto (uno por formato). */
+          codigos: [...new Set((p.formatosCompra || [])
+            .filter((e) => e.proveedorId === pid && String(e.codigoProveedor ?? '').trim())
+            .map((e) => String(e.codigoProveedor).trim()))],
           esActivo: activo?.proveedorId === pid,
           activoNombre: store.getProveedor(activo?.proveedorId)?.nombre || '—',
         };
@@ -2940,14 +2963,11 @@ function BusquedaLoteModal({ candidatos, proveedorNombre, yaCargados, onAgregar,
 
   const resultados = useMemo(() => {
     const ql = norm(texto);
-    const digitos = texto.replace(/\D/g, '');
     return candidatos.filter((c) => {
       if (marca && c.prod.marca !== marca) return false;
       if (categoria && c.prod.categoria !== categoria) return false;
       if (!ql) return true;
-      return norm(c.prod.nombre).includes(ql)
-        || (c.prod.codigoPropio && norm(c.prod.codigoPropio).includes(ql))
-        || (digitos.length >= 4 && c.prod.codigoBarras && c.prod.codigoBarras.includes(digitos));
+      return coincideBusqueda(c, texto);
     }).slice(0, 200);
   }, [candidatos, texto, marca, categoria]);
 
