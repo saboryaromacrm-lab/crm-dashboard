@@ -1704,7 +1704,7 @@ export function PosPanel() {
             {(ticket.mayoristaAplicado || restriccion) && (
               <div className={cx(s.callout, s.info)} style={{ margin: 0 }}>
                 {restriccion
-                  ? <>Precio <strong>{restriccion.modalidad}</strong> en {restriccion.articulos} artículo{restriccion.articulos === 1 ? '' : 's'}: se cobra solo con <strong>{mediosMayorista}</strong>.</>
+                  ? <>Precio <strong>{restriccion.modalidad}</strong> en {restriccion.articulos} artículo{restriccion.articulos === 1 ? '' : 's'} (<strong>{money(restriccion.monto)}</strong>): esa parte se cobra con <strong>{mediosMayorista}</strong>; el resto, con cualquier medio. También se puede pasar a cuenta corriente.</>
                   : <>Precio <strong>mayorista</strong> aceptado: los renglones que cumplan pasan solos.</>}
                 <div style={{ marginTop: 8 }}>
                   <Btn small onClick={() => aplicarMayorista(false)}>Volver a minorista</Btn>

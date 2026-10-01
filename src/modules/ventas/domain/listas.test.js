@@ -174,7 +174,10 @@ test('faltantesMayorista: bultos y marcas pasada la mitad, los más cercanos pri
 
 test('restriccionMayorista: por la MODALIDAD de la lista puesta, llegue como llegue', () => {
   assert.equal(restriccionMayorista([{ listaId: 1 }], catalogo), null, 'todo minorista: cualquier medio');
-  assert.deepEqual(restriccionMayorista([{ listaId: 1 }, { listaId: 4 }, { listaId: 3 }], catalogo),
-    { medios: ['efectivo', 'transferencia'], articulos: 1, modalidad: 'Mayorista' });
+  assert.deepEqual(restriccionMayorista([
+    { listaId: 1, cantidad: 2, precioUnitario: 100, iva: 21 },
+    { listaId: 4, cantidad: 3, precioUnitario: 100, descuento: 10, iva: 21 },
+    { listaId: 3, cantidad: 1, precioUnitario: 50, iva: 21 },
+  ], catalogo), { medios: ['efectivo', 'transferencia'], articulos: 1, monto: 326.7, modalidad: 'Mayorista' }, 'monto = la parte mayorista con IVA: 3 × 100 − 10% = 270 + IVA');
   assert.equal(restriccionMayorista([{ listaId: 2 }], { ...catalogo, mayorista: { ...catalogo.mayorista, mediosPago: [] } }), null, 'sin medios configurados no restringe');
 });

@@ -60,6 +60,10 @@ export function CobroModal({
    * articulos, modalidad } o null. El servidor lo vuelve a validar.
    */
   const soloMayorista = mayorista?.medios?.length ? mayorista.medios : null;
+  /** La parte del ticket a precio mayorista (con IVA): esa va con sus medios; el resto, con cualquiera. */
+  const parteMayorista = soloMayorista ? Math.min(Number(mayorista.monto) || 0, Number(totales.total) || 0) : 0;
+  /** Todo el ticket es mayorista: no hay parte minorista que se pueda pagar con otro medio. */
+  const todoMayorista = !!soloMayorista && r2(Number(totales.total) - parteMayorista) <= 0.02;
 
   const [condicionPago, setCondicionPago] = useState('contado');
   const [pagos, setPagos] = useState(() => [{
@@ -139,13 +143,14 @@ export function CobroModal({
   const medios = useMemo(() => {
     const habilitados = (config.mediosPago ?? []).filter((m) => MEDIOS_PAGO[m]);
     let base = habilitados.length ? habilitados : Object.keys(MEDIOS_PAGO);
-    if (soloMayorista) {
+    // Todo mayorista: solo sus medios. Con parte minorista, todos (la regla la mide `faltaMayorista`).
+    if (todoMayorista) {
       const permitidos = base.filter((m) => soloMayorista.includes(m));
       base = permitidos.length ? permitidos : soloMayorista.filter((m) => MEDIOS_PAGO[m]);
     }
-    // El QR de Mercado Pago se guarda como «QR / billetera»: con mayorista, solo si ese medio vale.
-    return cajaMp && (!soloMayorista || soloMayorista.includes('qr')) ? [...base, QR_MP] : base;
-  }, [config.mediosPago, cajaMp, soloMayorista]);
+    // El QR de Mercado Pago se guarda como «QR / billetera».
+    return cajaMp && (!todoMayorista || soloMayorista.includes('qr')) ? [...base, QR_MP] : base;
+  }, [config.mediosPago, cajaMp, soloMayorista, todoMayorista]);
 
   /*
    * EL RECARGO POR CUOTAS (0100). El total que se cobra deja de ser el de la
@@ -174,6 +179,18 @@ export function CobroModal({
 
   const pagado = r2(pagosReales.reduce((a, x) => a + (Number(x.importe) || 0), 0));
   const faltante = r2(totalFinal - pagado);
+  /*
+   * LA PARTE MAYORISTA, CUBIERTA CON SUS MEDIOS (1/10/2026). Lo cargado con
+   * efectivo o transferencia tiene que llegar a la parte mayorista; con
+   * tarjeta o QR se puede cobrar, como mucho, el resto. Al contado: a cuenta
+   * corriente la regla se aplica al cobrar la factura.
+   */
+  const conMediosMayorista = soloMayorista
+    ? r2(pagosReales.filter((x) => soloMayorista.includes(x.medio === QR_MP ? 'qr' : x.medio)).reduce((a, x) => a + (Number(x.importe) || 0), 0))
+    : 0;
+  // Lo exigido nunca supera lo pagado: pagar TODO con efectivo siempre cumple (mismo criterio que el servidor).
+  const faltaMayorista = soloMayorista && condicionPago === 'contado' ? r2(Math.min(parteMayorista, pagado) - conMediosMayorista) : 0;
+  const legiblesMayorista = soloMayorista ? soloMayorista.map((m) => MEDIOS_PAGO[m] || m).join(' o ') : '';
 
   /*
    * TRANSFERENCIA A CUENTA DE PROVEEDOR: las cuentas abiertas se piden recién
@@ -411,6 +428,10 @@ export function CobroModal({
       return;
     }
     if (avisoTerc) { toast(avisoTerc, 'err'); return; }
+    if (faltaMayorista > 0.01) {
+      toast(`Faltan ${money(faltaMayorista)} en ${legiblesMayorista} para cubrir la parte mayorista.`, 'err');
+      return;
+    }
     if (excedeCredito && config.ctaCteBloquearSuperado) {
       toast('Supera el límite de crédito del cliente.', 'err');
       return;
@@ -516,7 +537,7 @@ export function CobroModal({
 
   const pagosOk = condicionPago === 'cuenta_corriente'
     ? !(excedeCredito && config.ctaCteBloquearSuperado)
-    : Math.abs(faltante) <= 0.01 && !avisoTerc;
+    : Math.abs(faltante) <= 0.01 && !avisoTerc && !(faltaMayorista > 0.01);
   const puedeLiquidar = pagosOk && condicionPago === 'contado' && !medioExigeFactura && !enviando && !aCuit;
   const puedeFacturar = pagosOk && !enviando && (!aCuit || aCuit.listo);
 
@@ -638,22 +659,43 @@ export function CobroModal({
       )}
 
 
-      {/* Precio mayorista: con qué se paga y la salida si el cliente quiere otro medio. */}
+      {/*
+        PRECIO MAYORISTA: el detalle por partes, en la misma operación. La parte
+        mayorista va con sus medios; la minorista (y envíos, recargo) con
+        cualquiera. A cuenta corriente se puede: la regla se aplica al cobrar.
+      */}
       {soloMayorista && (
-        <div className={cx(s.callout, s.info)} style={{ margin: '0 0 var(--crm-space-3)' }}>
-          Precio <strong>{mayorista.modalidad}</strong> en {mayorista.articulos} artículo{mayorista.articulos === 1 ? '' : 's'}:
-          se cobra solo con <strong>{soloMayorista.map((m) => MEDIOS_PAGO[m] || m).join(' o ')}</strong>, al contado.
-          {onVolverMinorista && (
-            <div style={{ marginTop: 8 }}>
-              <Btn small onClick={onVolverMinorista}>Paga con otro medio: volver a precio minorista</Btn>
+        <div className={cx(s.callout, faltaMayorista > 0.01 ? s.warn : s.info)} style={{ margin: '0 0 var(--crm-space-3)', display: 'grid', gap: 4 }}>
+          <div>
+            <strong>Parte {mayorista.modalidad}</strong> ({mayorista.articulos} artículo{mayorista.articulos === 1 ? '' : 's'}):{' '}
+            <strong>{money(parteMayorista)}</strong> → con <strong>{legiblesMayorista}</strong>
+            {condicionPago === 'contado' && <> · cargado {money(Math.min(conMediosMayorista, parteMayorista))}</>}
+          </div>
+          {!todoMayorista && (
+            <div>
+              <strong>Parte minorista</strong> y cargos: <strong>{money(r2(totalFinal - parteMayorista))}</strong> → con cualquier medio
+            </div>
+          )}
+          {condicionPago === 'contado' && faltaMayorista > 0.01 && (
+            <div style={{ color: 'var(--crm-color-danger)' }}>
+              Faltan <strong>{money(faltaMayorista)}</strong> en {legiblesMayorista} para cubrir la parte mayorista
+              {!todoMayorista && <>: con otros medios se puede cobrar hasta {money(r2(totalFinal - parteMayorista))}</>}.
+            </div>
+          )}
+          {condicionPago === 'cuenta_corriente' && (
+            <div>Va a la cuenta corriente: cuando la cobres, esta factura se cobra solo con {legiblesMayorista}.</div>
+          )}
+          {onVolverMinorista && condicionPago === 'contado' && (
+            <div style={{ marginTop: 4 }}>
+              <Btn small onClick={onVolverMinorista}>Paga todo con otro medio: volver a precio minorista</Btn>
             </div>
           )}
         </div>
       )}
 
       {/* El selector solo existe cuando hay algo que elegir: cliente con cta. cte.
-          Con precio mayorista no: se paga al contado. */}
-      {ctaCteDisponible && !soloMayorista && (
+          Con precio mayorista también (1/10/2026): se fía y se cobra con sus medios. */}
+      {ctaCteDisponible && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 'var(--crm-space-3)' }}>
           <Btn
             variant={condicionPago === 'contado' ? 'btn-primary' : 'btn-ghost'}

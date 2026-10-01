@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
@@ -46,7 +46,7 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
     return habilitados.length ? habilitados : Object.keys(MEDIOS_PAGO);
   }, [config.mediosPago]);
 
-  const comprobantes = cuenta?.comprobantes ?? [];
+  const comprobantes = useMemo(() => cuenta?.comprobantes ?? [], [cuenta]);
 
   /* Transferencia a cuenta de proveedor: mismas reglas y mismo selector que
    * el cobro del POS. Las cuentas se piden al elegir el medio. */
@@ -69,6 +69,36 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
   const aCuenta = r2(totalPagos - totalImputado);
   const excedido = totalImputado > totalPagos + EPS;
 
+  /*
+   * LAS FACTURAS MAYORISTAS SE COBRAN CON SUS MEDIOS (1/10/2026, pedido del
+   * dueño). La venta mayorista se fía; al cobrarla, el recibo que la toca va
+   * entero con efectivo o transferencia (si el cliente quiere pagar otras con
+   * tarjeta, son dos recibos). Y mientras deba facturas mayoristas, lo cobrado
+   * con otro medio no puede quedar «a cuenta». La misma regla la valida el
+   * servidor al registrar.
+   */
+  const mediosMayorista = cuenta?.mediosMayorista ?? [];
+  const legiblesMayorista = mediosMayorista.map((m) => MEDIOS_PAGO[m] || m).join(' o ');
+  const mayoristas = useMemo(
+    () => new Set(mediosMayorista.length ? comprobantes.filter((c) => c.mayorista).map((c) => c.id) : []),
+    [comprobantes, mediosMayorista.length],
+  );
+  const tocaMayorista = Object.entries(imputado).some(([id, v]) => mayoristas.has(Number(id)) && Number(v) > 0);
+  const fueraDeRegla = mediosMayorista.length
+    ? [...new Set(pagos.filter((p) => Number(p.importe) > 0 && !mediosMayorista.includes(p.medio)).map((p) => p.medio))]
+    : [];
+  const legiblesFuera = fueraDeRegla.map((m) => MEDIOS_PAGO[m] || m).join(', ');
+  const errorMayorista = !fueraDeRegla.length ? null
+    : tocaMayorista
+      ? `Este recibo cancela facturas a precio mayorista: se cobran solo con ${legiblesMayorista}, y lleva ${legiblesFuera}. Cobrá las mayoristas en un recibo aparte, o cambiá el medio.`
+      : aCuenta > EPS
+        ? `Lo cobrado con ${legiblesFuera} no puede quedar a cuenta (${money(aCuenta)}): bajaría también deudas a precio mayorista, que se cobran solo con ${legiblesMayorista}. Imputalo entero a facturas que no sean mayoristas, o cobrá lo que sobra con ${legiblesMayorista}.`
+        : null;
+  /** Los medios que se ofrecen: si el recibo toca una mayorista, solo los suyos. */
+  const mediosDe = (actual) => (tocaMayorista
+    ? [...new Set([...medios.filter((m) => mediosMayorista.includes(m)), actual])]
+    : medios);
+
   /* ---------------------------- Pagos ---------------------------- */
   const setPago = (i, campo, valor) =>
     setPagos((ps) => ps.map((p, j) => (j === i
@@ -90,28 +120,39 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
       return next;
     });
 
-  /** Reparte el total cobrado sobre los comprobantes más viejos primero. */
+  /**
+   * Reparte el total cobrado sobre los comprobantes más viejos primero. Si el
+   * recibo lleva un medio fuera de los del mayorista, saltea las facturas
+   * mayoristas (esas se cobran con sus medios) y lo dice.
+   */
   const imputarAuto = () => {
     if (totalPagos <= 0) { toast('Cargá primero el importe cobrado.', 'err'); return; }
     let resto = totalPagos;
+    let salteadas = 0;
     const next = {};
     for (const c of comprobantes) {
       if (resto <= EPS) break;
+      if (fueraDeRegla.length && mayoristas.has(c.id)) { salteadas += 1; continue; }
       const aplica = r2(Math.min(resto, c.saldo));
       if (aplica > 0) { next[c.id] = String(aplica); resto = r2(resto - aplica); }
     }
     setImputado(next);
-    if (resto > EPS) toast(`Quedan ${money(resto)} sin imputar: se registran a cuenta.`, 'ok');
+    if (salteadas) toast(`Se saltearon ${salteadas} factura${salteadas === 1 ? '' : 's'} a precio mayorista: se cobran solo con ${legiblesMayorista}.`, 'ok');
+    else if (resto > EPS) toast(`Quedan ${money(resto)} sin imputar: se registran a cuenta.`, 'ok');
   };
 
   const cancelarTodo = () => setImputado({});
 
   /* ---------------------------- Guardar ---------------------------- */
+  /* Candado de doble clic: es plata (useRef, el estado llega un render tarde). */
+  const enVuelo = useRef(false);
   const guardar = async () => {
+    if (enVuelo.current) return;
     if (!clienteId) { toast('Elegí el cliente.', 'err'); return; }
     if (totalPagos <= 0) { toast('Cargá al menos un medio de pago con importe.', 'err'); return; }
     if (excedido) { toast('Estás imputando más de lo cobrado.', 'err'); return; }
     if (avisoTerc) { toast(avisoTerc, 'err'); return; }
+    if (errorMayorista) { toast(errorMayorista, 'err'); return; }
 
     for (const c of comprobantes) {
       const v = Number(imputado[c.id]) || 0;
@@ -140,9 +181,11 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
         .filter((i) => i.importe > 0),
     };
 
+    enVuelo.current = true;
     setEnviando(true);
     const ok = await act(ventasApi.crearCobranza(payload), 'Cobranza registrada.');
     setEnviando(false);
+    enVuelo.current = false;
     if (ok) onChange?.();
   };
 
@@ -153,7 +196,7 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: enviando ? 'Registrando…' : 'Registrar cobranza', clase: 'btn-primary', onClick: guardar },
+        { texto: enviando ? 'Registrando…' : 'Registrar cobranza', clase: 'btn-primary', onClick: guardar, disabled: enviando || !!errorMayorista },
       ]}
     >
       <div className={s['form-grid']}>
@@ -185,7 +228,11 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
           <div className={s.field} style={{ marginBottom: 0 }}>
             {i === 0 && <label>Medio</label>}
             <select value={p.medio} onChange={(e) => setPago(i, 'medio', e.target.value)}>
-              {medios.map((m) => <option key={m} value={m}>{MEDIOS_PAGO[m]}</option>)}
+              {mediosDe(p.medio).map((m) => (
+                <option key={m} value={m}>
+                  {MEDIOS_PAGO[m]}{tocaMayorista && !mediosMayorista.includes(m) ? ' (no vale para mayorista)' : ''}
+                </option>
+              ))}
             </select>
           </div>
           <div className={s.field} style={{ marginBottom: 0 }}>
@@ -242,7 +289,14 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
               const invalido = Number(valor) > c.saldo + EPS;
               return (
                 <tr key={c.id}>
-                  <td><VentaTag tipo={c.tipo} /> <span className={s.mono}>{nroComprobante(c)}</span></td>
+                  <td>
+                    <VentaTag tipo={c.tipo} /> <span className={s.mono}>{nroComprobante(c)}</span>
+                    {mayoristas.has(c.id) && (
+                      <div className={s.hint} style={{ margin: 0 }} title="Tiene renglones a precio mayorista">
+                        Mayorista · solo {legiblesMayorista}
+                      </div>
+                    )}
+                  </td>
                   <td>{fmtFecha(c.fecha)}</td>
                   <td>{c.vencimientoPago ? fmtFecha(c.vencimientoPago) : <span className={s.muted}>—</span>}</td>
                   <td className={s.num}>{money(c.saldo)}</td>
@@ -287,6 +341,14 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
       {excedido && (
         <div className={cx(s.callout, s.warn)}>
           Estás imputando <strong>{money(totalImputado)}</strong> y la cobranza es de <strong>{money(totalPagos)}</strong>.
+        </div>
+      )}
+      {errorMayorista && (
+        <div className={cx(s.callout, s.warn)}>{errorMayorista}</div>
+      )}
+      {!errorMayorista && tocaMayorista && (
+        <div className={cx(s.callout, s.info)}>
+          Este recibo cancela facturas a precio mayorista: se cobra solo con <strong>{legiblesMayorista}</strong>.
         </div>
       )}
       {!excedido && aCuenta > EPS && (

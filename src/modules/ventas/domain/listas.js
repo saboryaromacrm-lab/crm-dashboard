@@ -274,18 +274,36 @@ export function faltantesMayorista(renglones, preciosDe, ctx, max = 3) {
 }
 
 /**
+ * El total con IVA de un renglón, sumado COMO SUMA EL TICKET: neto redondeado +
+ * IVA redondeado (los dos campos de `calcularRenglon` en pos.js), igual que
+ * `calcularTotales` del servidor. Redondear neto+IVA juntos daba centavos de
+ * más y un ticket todo mayorista no cerraba.
+ */
+function totalRenglon(r) {
+  const r2 = (n) => Math.round(n * 100) / 100;
+  const sinOferta = (Number(r.cantidad) || 0) * (Number(r.precioUnitario) || 0) * (1 - (Number(r.descuento) || 0) / 100);
+  // La oferta, redondeada como la guarda el servidor (es con lo que valida al cobrar).
+  const neto = sinOferta - r2(Math.min(Math.max(0, Number(r.ofertaDescuento) || 0), sinOferta));
+  return r2(neto) + r2((neto * (Number(r.iva) || 0)) / 100);
+}
+
+/**
  * CON QUÉ SE PUEDE PAGAR (1/10/2026): si el ticket tiene renglones a precio
  * mayorista y la configuración fija sus medios ("efectivo y transferencia"),
- * el cobro ofrece solo esos. Null = sin restricción. Mide la MODALIDAD de la
- * lista puesta, no por qué llegó: aplicar a mano o escanear la caja también
- * cuenta — es la misma regla que valida el servidor (`validarMediosMayorista`).
+ * `monto` es la PARTE MAYORISTA del ticket (con IVA): lo pagado con esos medios
+ * tiene que cubrirla, y el resto —la parte minorista— se paga con cualquier
+ * medio, en la misma operación. Null = sin restricción. Mide la MODALIDAD de
+ * la lista puesta, no por qué llegó: es la misma regla que valida el servidor
+ * (`validarMediosMayorista`).
  */
 export function restriccionMayorista(renglones, catalogo) {
   const may = catalogo?.mayorista;
   if (!may?.modalidadId || !may.mediosPago?.length) return null;
   const modalidadDe = new Map((catalogo.listas ?? []).map((l) => [l.listaId, l.modalidadId]));
-  const articulos = renglones.filter((r) => modalidadDe.get(r.listaId) === may.modalidadId).length;
-  return articulos ? { medios: may.mediosPago, articulos, modalidad: may.modalidad || 'mayorista' } : null;
+  const suyos = renglones.filter((r) => modalidadDe.get(r.listaId) === may.modalidadId);
+  if (!suyos.length) return null;
+  const monto = Math.round(suyos.reduce((a, r) => a + totalRenglon(r), 0) * 100) / 100;
+  return { medios: may.mediosPago, articulos: suyos.length, monto, modalidad: may.modalidad || 'mayorista' };
 }
 
 /** Índice `key → [{listaId, precio, unidadesMinimas}]`, ya ordenado por preferencia. */
