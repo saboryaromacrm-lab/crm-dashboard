@@ -613,9 +613,10 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
         presentacion: pres ? store.presLabel(prod, pres.id) : (esGranel ? 'Suelto' : ''),
         cantidad: store.fmtCant(prod, presNum, cant),
         kg: esGranel ? pide : null,
-        corto: pide > hay + 1e-9,
+        corto: pide > hay + 1e-9 && !store.stockLibre(prod),
       });
-      if (pide > hay + 1e-9) {
+      // Granel sin control de stock: viaja aunque no alcance, no es un faltante.
+      if (pide > hay + 1e-9 && !store.stockLibre(prod)) {
         cortos.push({
           nombre: prod.nombre,
           detalle: esGranel

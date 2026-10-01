@@ -503,6 +503,8 @@ export function ticketReducer(estado, accion) {
         fraccionable: item.fraccionable,
         /** El bulto de la ficha, para el botón de bultos (0 = no tiene). */
         unidadesPorBulto: item.unidadesPorBulto ?? 0,
+        /** Granel sin control de stock: no se frena por stock (lo decide el servidor). */
+        stockLibre: !!item.stockLibre,
         iva: item.iva,
         stock: item.stock,
         listaId: listaFija?.listaId ?? null,
@@ -918,6 +920,7 @@ export function ticketDesdeBorrador(borrador, catalogo) {
       fraccionable: cat?.fraccionable ?? false,
       /** El bulto de la ficha, para el botón de bultos en mostrador (0 = no tiene). */
       unidadesPorBulto: cat?.unidadesPorBulto ?? 0,
+      stockLibre: !!cat?.stockLibre,
       iva: it.iva,
       stock: cat?.stock ?? 0,
       marca: cat?.marca ?? '',
@@ -990,7 +993,7 @@ export function problemasDelTicket(renglones, { permitirStockNegativo, descuento
     const etiqueta = `${r.nombre} (${r.detalle})`;
     if (r.cantidad <= 0) problemas.push(`${etiqueta}: la cantidad tiene que ser mayor a 0.`);
     if (r.precioUnitario <= 0) problemas.push(`${etiqueta}: no tiene precio cargado.`);
-    if (!permitirStockNegativo && r.cantidad > r.stock + 1e-9) {
+    if (!permitirStockNegativo && !r.stockLibre && r.cantidad > r.stock + 1e-9) {
       problemas.push(`${etiqueta}: hay ${r.stock} ${r.unidad} y estás vendiendo ${r.cantidad}.`);
     }
     if (!puedePisarPrecio && r.descuento > descuentoMax + 1e-9) {

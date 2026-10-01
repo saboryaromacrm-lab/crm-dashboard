@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
@@ -34,7 +34,7 @@ const TAB_KEY = 'crm.ventas.configuracion.tab';
 const tabDeCampo = (k) => {
   if (['puntoVenta', 'condicionIvaEmpresa', 'arcaHabilitado', 'topeSinIdentificar'].includes(k)) return 'facturacion';
   if (/^(ctaCte|presupuesto)/.test(k)) return 'clientes';
-  if (/^(caja|permitirStock|mediosPago$|mediosFacturar|recargoCuotas|lector|balanza)/.test(k)) return 'caja';
+  if (/^(caja|permitirStock|controlStock|mediosPago$|mediosFacturar|recargoCuotas|lector|balanza)/.test(k)) return 'caja';
   return 'precios';
 };
 
@@ -341,6 +341,50 @@ function MediosPagoEditor({ habilitados, exigenFactura, onChange }) {
   );
 }
 
+/**
+ * EL AVISO DEL CONTROL DE STOCK A GRANEL (1/10/2026). Con el control apagado
+ * el granel se vende sin mirar y el número puede quedar en negativo; al
+ * prenderlo, esos negativos frenan la caja. Se dice cuántos hay ANTES de
+ * guardar, para contarlos primero. `prendido` = cómo queda en el borrador;
+ * `antes` = cómo está guardado.
+ */
+function AvisoGranel({ prendido, antes }) {
+  const [neg, setNeg] = useState(null);
+  const mirar = !antes || prendido !== antes;
+  useEffect(() => {
+    if (!mirar) return undefined;
+    let vivo = true;
+    ventasApi.granelNegativo().then((r) => { if (vivo) setNeg(r); }).catch(() => { if (vivo) setNeg(null); });
+    return () => { vivo = false; };
+  }, [mirar]);
+
+  if (prendido && antes) return null;
+  if (!prendido && antes) {
+    return (
+      <div className={cx(s.callout, s.warn)}>
+        Al guardar, <strong>todo lo que es a granel</strong> (la madre en kg y sus paquetes) se vende, se
+        fracciona, se transfiere y se da de baja <strong>sin mirar el stock</strong>. El stock se sigue registrando
+        y puede quedar en negativo; no se generan incidencias de venta sin stock para el granel.
+      </div>
+    );
+  }
+  const n = neg?.productos ?? 0;
+  return (
+    <div className={cx(s.callout, n > 0 ? s.warn : s.info)}>
+      {prendido ? 'Al guardar vuelve el control: lo que no hay deja de venderse y moverse.' : 'El control está apagado: el granel se opera sin mirar el stock.'}
+      {neg && (n > 0 ? (
+        <div style={{ marginTop: 6 }}>
+          Hoy hay <strong>{n} producto{n === 1 ? '' : 's'} a granel con stock en negativo</strong>
+          {neg.ejemplos?.length > 0 && <> (por ejemplo: {neg.ejemplos.slice(0, 3).map((e) => `${e.nombre} en ${e.sucursal}`).join('; ')})</>}.
+          {' '}Contalos en <strong>Almacén › Control de inventario</strong> antes de prenderlo: si no, la caja va a frenar esas ventas.
+        </div>
+      ) : (
+        <div style={{ marginTop: 6 }}>Ningún producto a granel quedó en negativo.</div>
+      ))}
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 
 export function ConfiguracionPanel() {
@@ -373,7 +417,23 @@ export function ConfiguracionPanel() {
   }, [draft, config]);
   const sucio = Object.keys(cambios).length > 0;
 
+  /* El control de stock a granel cambia cómo se mueve el stock de todo el
+   * granel: se guarda con una segunda confirmación y con candado de doble clic. */
+  const tocaGranel = 'controlStockGranel' in cambios;
+  const [confirmaGranel, setConfirmaGranel] = useState(false);
+  useEffect(() => { setConfirmaGranel(false); }, [cambios]);
+  const enVuelo = useRef(false);
+
   const guardar = async () => {
+    if (tocaGranel && !confirmaGranel) {
+      setConfirmaGranel(true);
+      toast(draft.controlStockGranel === false
+        ? 'Vas a APAGAR el control de stock a granel. Tocá «Sí, guardar» para confirmar.'
+        : 'Vas a PRENDER el control de stock a granel. Tocá «Sí, guardar» para confirmar.', 'ok');
+      return;
+    }
+    if (enVuelo.current) return;
+    enVuelo.current = true;
     setGuardando(true);
     try {
       await ventasApi.guardarConfig(cambios);
@@ -382,11 +442,10 @@ export function ConfiguracionPanel() {
     } catch (e) {
       toast(e?.data?.message || 'No se pudo guardar la configuración.', 'err');
     } finally {
+      enVuelo.current = false;
       setGuardando(false);
     }
   };
-
-
 
   const tabsVisibles = PESTANAS.filter((t) => can(t.permiso));
   const tabActiva = tabsVisibles.some((t) => t.id === tab) ? tab : tabsVisibles[0]?.id;
@@ -405,7 +464,7 @@ export function ConfiguracionPanel() {
           <div style={{ display: 'flex', gap: 8 }}>
             <Btn onClick={() => setDraft(config)} disabled={!sucio || guardando}>Descartar</Btn>
             <Btn variant="btn-primary" onClick={guardar} disabled={!sucio || guardando}>
-              {guardando ? 'Guardando…' : 'Guardar cambios'}
+              {guardando ? 'Guardando…' : tocaGranel && confirmaGranel ? 'Sí, guardar' : 'Guardar cambios'}
             </Btn>
           </div>
         ) : null}
@@ -580,6 +639,13 @@ export function ConfiguracionPanel() {
             checked={draft.permitirStockNegativo}
             onChange={set('permitirStockNegativo')}
           />
+          <Interruptor
+            label="Controlar el stock a granel"
+            hint="Prendido (como siempre): no se vende, fracciona, transfiere ni da de baja granel que no hay. Apagado: todo lo que es a granel —la madre en kg y sus paquetes— se vende, se fracciona, se mueve y se carga sin mirar el stock. Los movimientos se siguen registrando, así que el stock puede quedar en negativo. Los productos enteros no cambian: siguen con el control de siempre."
+            checked={draft.controlStockGranel !== false}
+            onChange={set('controlStockGranel')}
+          />
+          <AvisoGranel prendido={draft.controlStockGranel !== false} antes={config.controlStockGranel !== false} />
           <Campo
             label="Medios de pago"
             hint="Exige factura: un peso cobrado con ese medio bloquea Liquidar — la venta sale facturada sí o sí (típico: lo bancarizado, que deja rastro)."

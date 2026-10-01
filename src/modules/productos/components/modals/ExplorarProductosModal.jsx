@@ -82,7 +82,7 @@ export function ExplorarProductosModal({ grupo, origenId, destinoId, yaEnPedido,
       // El filtro de stock mira el ORIGEN: es lo que decide si el pedido tiene
       // con qué cumplirse. (Lo que ME falta a mí lo cubre el otro tilde, el del
       // buscador de la pestaña.)
-      if (soloConStock && !(puedeMandar(store, p, origenId) > 1e-9)) continue;
+      if (soloConStock && !store.stockLibre(p) && !(puedeMandar(store, p, origenId) > 1e-9)) continue;
 
       if (p.tipo !== 'granel') {
         out.push({ clave: `p${p.id}`, p, pres: null });

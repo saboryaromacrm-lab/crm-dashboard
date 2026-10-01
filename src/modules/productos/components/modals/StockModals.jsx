@@ -67,7 +67,7 @@ export function CorregirFraccionadoModal({ prodId, presId, sucId: sucInit }) {
   const valido = real !== '' && Number.isFinite(n) && n >= 0;
   const delta = valido ? n - Math.round(actual) : 0;
   const kg = Math.abs(delta) * (pres.tamKg || 0);
-  const faltaGranel = delta > 0 && kg > granel + 1e-9;
+  const faltaGranel = delta > 0 && kg > granel + 1e-9 && !store.stockLibre(prod);
   const baja = delta < 0;
   const esMerma = baja && causa === 'faltante';
   /* Subir es fraccionar más: el operador se pide igual que al registrar. */
@@ -225,7 +225,7 @@ export function DescartarEstadoModal({ stockId }) {
   const descartar = () => {
     if (!(c > 0)) { toast('Poné la cantidad que se tiró.', 'err'); return; }
     if (unidad !== 'kg' && !Number.isInteger(c)) { toast(`${prod.nombre} se cuenta entero: ${c} no es posible.`, 'err'); return; }
-    if (c > st.cantidad + 1e-9) { toast(`Como ${etiqueta} hay ${store.fmtCant(prod, st.presentacionId, st.cantidad)}.`, 'err'); return; }
+    if (c > st.cantidad + 1e-9 && !store.stockLibre(prod)) { toast(`Como ${etiqueta} hay ${store.fmtCant(prod, st.presentacionId, st.cantidad)}.`, 'err'); return; }
     if (!confirmando) { setConfirmando(true); return; }
     if (enVuelo.current) return;
     enVuelo.current = true;
@@ -304,7 +304,7 @@ export function MovimientoModal({ prodId, sucId: sucInit, pre = {} }) {
   const disp = store.cant(prod.id, parseInt(sucId, 10), presNum, 'disponible');
   const c = Number(cant) || 0;
   const resultante = disp + signo * c;
-  const bad = resultante < -1e-9 && signo < 0;
+  const bad = resultante < -1e-9 && signo < 0 && !store.stockLibre(prod);
 
   const registrar = () => {
     /* El ajuste EXIGE el motivo (la API también lo rechaza sin él): un número
@@ -399,7 +399,7 @@ export function MovimientoModal({ prodId, sucId: sucInit, pre = {} }) {
       <div className={cx(s.callout, bad ? s.warn : c > 0 ? s.ok : undefined)}>
         {bad
           ? `⚠ Stock disponible insuficiente (${store.fmtCant(prod, presNum, disp)}).`
-          : <>Disponible: <strong>{store.fmtCant(prod, presNum, disp)}</strong>{c > 0 && <> → resultante <strong>{store.fmtCant(prod, presNum, Math.max(0, resultante))}</strong></>}</>}
+          : <>Disponible: <strong>{store.fmtCant(prod, presNum, disp)}</strong>{c > 0 && <> → resultante <strong>{store.fmtCant(prod, presNum, store.stockLibre(prod) ? resultante : Math.max(0, resultante))}</strong></>}</>}
       </div>
     </ModalShell>
   );

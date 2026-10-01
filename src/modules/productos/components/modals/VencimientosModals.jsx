@@ -75,7 +75,7 @@ export function VencimientoProcesarModal({ registro }) {
 
   const v = Number(vendidas) || 0;
   const perdidas = Math.max(0, Math.round((registro.cantidad - v) * 100) / 100);
-  const alcanza = disponible + 1e-9 >= perdidas;
+  const alcanza = disponible + 1e-9 >= perdidas || store.stockLibre(store.getProducto(registro.productoId));
   const excede = v > registro.cantidad + 1e-9;
   /* La baja de lo perdido es OBLIGATORIA (27/9/2026, la API también): con la
    * opción de destildarla, la pérdida podía contarse dos veces. Y como mueve

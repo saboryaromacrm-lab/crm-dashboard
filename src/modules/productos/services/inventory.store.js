@@ -98,6 +98,16 @@ function cant(productoId, sucursalId, presId, estado) {
     s.productoId === productoId && s.sucursalId === sucursalId && (s.presentacionId || null) === presId && s.estado === estado);
   return e ? e.cantidad : 0;
 }
+/**
+ * STOCK A GRANEL SIN CONTROL (1/10/2026, Ventas › Configuración › Caja y cobro).
+ * Con el control apagado, lo que es a granel —la madre y sus paquetes— se vende,
+ * fracciona, transfiere y da de baja sin mirar si alcanza: las pantallas no
+ * frenan ni avisan «no alcanza». Es la MISMA regla que aplica el servidor
+ * (`granelLibre` en inventario.service), que es el que manda.
+ */
+function granelLibre() { return state.configVentas?.controlStockGranel === false; }
+function stockLibre(prod) { return !!prod && prod.tipo === 'granel' && granelLibre(); }
+
 function suma(f) {
   return state.stock.reduce((acc, s) => {
     if (f.productoId != null && s.productoId !== f.productoId) return acc;
@@ -1399,7 +1409,7 @@ export const inventoryStore = {
   subscribe, getVersion,
   init, reset, refetch, revalidar, cargarSeccion, movimientosPorFechas,
   getProducto, getSucursal, getProveedor, getUsuario, presDe, distribuidora,
-  unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry,
+  unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry, granelLibre, stockLibre,
   rolActual, can, tiposMovPermitidos, setCtx,
   opFraccionarRegistro, opCorregirFraccionado, opSimple, descartarEstado,
   avanzarTransferencia, cancelarTransferencia,

@@ -109,7 +109,9 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
     return m;
   }, [items, store]);
 
-  const excedidos = [...kgCargados].filter(([pid, kg]) => kg > (granelDe.get(pid) || 0) + 1e-9).map(([pid]) => pid);
+  /* Granel sin control de stock: se fracciona aunque no alcance (la madre queda en negativo). */
+  const libre = store.granelLibre();
+  const excedidos = libre ? [] : [...kgCargados].filter(([pid, kg]) => kg > (granelDe.get(pid) || 0) + 1e-9).map(([pid]) => pid);
   const totalPaquetes = items.reduce((a, it) => a + Math.max(0, Math.round(Number(it.cant) || 0)), 0);
   const totalKg = [...kgCargados.values()].reduce((a, x) => a + x, 0);
   const faltaOperador = ops.disponibles.length > 0 && !operadorId;
@@ -124,7 +126,7 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
   const sel = prodSel ? store.getProducto(prodSel.id) : null;
   const kgNuevo = sel ? sel.presentaciones.reduce((a, pr) => a + Math.max(0, Math.round(Number(cants[pr.id]) || 0)) * pr.tamKg, 0) : 0;
   const quedaGranel = sel ? (granelDe.get(sel.id) || 0) - (kgCargados.get(sel.id) || 0) : 0;
-  const excedeNuevo = kgNuevo > quedaGranel + 1e-9;
+  const excedeNuevo = !libre && kgNuevo > quedaGranel + 1e-9;
   const decimalesNuevo = !!sel && sel.presentaciones.some((pr) => noEntero(cants[pr.id]));
 
   const agregar = () => {

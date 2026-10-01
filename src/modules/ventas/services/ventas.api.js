@@ -46,6 +46,8 @@ export const ventasApi = {
   agregarCompradorCliente: (ventaId) => httpClient.post(`/ventas/${ventaId}/agregar-cliente`, {}),
 
   /* Cobro con QR de Mercado Pago (0126). */
+  /** El granel que quedó en negativo (para prender el control de stock a granel). */
+  granelNegativo: () => httpClient.get('/stock/granel-negativo'),
   mpEstado: () => httpClient.get('/mercadopago/estado'),
   mpCrearCaja: (terminalId) => httpClient.post('/mercadopago/cajas', { terminalId }),
   mpMiCaja: (token) => httpClient.post('/mercadopago/mi-caja', { token }),

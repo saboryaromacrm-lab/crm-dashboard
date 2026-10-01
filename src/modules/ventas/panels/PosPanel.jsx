@@ -240,7 +240,7 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
                     {' · '}{bulto ? <strong>Bulto × {num(bulto.unidades)}</strong> : item.detalle}
                     {item.marca ? ` · ${item.marca}` : ''}
                     {' · '}
-                    <span className={item.stock <= 0 ? p.sinStock : undefined}>
+                    <span className={item.stock <= 0 && !item.stockLibre ? p.sinStock : undefined}>
                       {num(item.stock)} {item.unidad}
                     </span>
                     {/* La marca del 0089 a la vista: el cajero ve el porqué ANTES
@@ -372,7 +372,8 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
         <tbody>
           {renglones.map((r) => {
             const calc = calcularRenglon(r);
-            const faltaStock = r.cantidad > r.stock + 1e-9;
+            /* Granel sin control de stock (1/10/2026): ni frena ni avisa. */
+            const faltaStock = !r.stockLibre && r.cantidad > r.stock + 1e-9;
             const sinStock = !permitirStockNegativo && faltaStock;
             /* Con "vender sin stock" prendido la caja no frena, pero el cajero
              * tiene que saber que ese renglón deja una incidencia (26/9/2026). */

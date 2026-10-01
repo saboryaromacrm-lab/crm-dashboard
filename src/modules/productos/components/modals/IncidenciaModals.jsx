@@ -49,7 +49,7 @@ export function IncidenciaModal({ pre = {} }) {
       toast('Poné cuánta mercadería queda comprometida.', 'err');
       return undefined;
     }
-    if (c > disp + 1e-9) {
+    if (c > disp + 1e-9 && !store.stockLibre(prod)) {
       toast(`No hay tanto disponible en esta sucursal: hay ${store.fmtCant(prod, presNum, disp)}.`, 'err');
       return undefined;
     }
