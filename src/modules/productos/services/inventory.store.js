@@ -106,7 +106,9 @@ function cant(productoId, sucursalId, presId, estado) {
  * (`granelLibre` en inventario.service), que es el que manda.
  */
 function granelLibre() { return state.configVentas?.controlStockGranel === false; }
-function stockLibre(prod) { return !!prod && prod.tipo === 'granel' && granelLibre(); }
+/** Lo mismo para los enteros (1/10/2026), con su propio interruptor. */
+function enterosLibre() { return state.configVentas?.controlStockEnteros === false; }
+function stockLibre(prod) { return !!prod && (prod.tipo === 'granel' ? granelLibre() : enterosLibre()); }
 
 function suma(f) {
   return state.stock.reduce((acc, s) => {
@@ -1409,7 +1411,7 @@ export const inventoryStore = {
   subscribe, getVersion,
   init, reset, refetch, revalidar, cargarSeccion, movimientosPorFechas,
   getProducto, getSucursal, getProveedor, getUsuario, presDe, distribuidora,
-  unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry, granelLibre, stockLibre,
+  unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry, granelLibre, enterosLibre, stockLibre,
   rolActual, can, tiposMovPermitidos, setCtx,
   opFraccionarRegistro, opCorregirFraccionado, opSimple, descartarEstado,
   avanzarTransferencia, cancelarTransferencia,

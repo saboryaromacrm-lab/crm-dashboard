@@ -348,38 +348,40 @@ function MediosPagoEditor({ habilitados, exigenFactura, onChange }) {
  * guardar, para contarlos primero. `prendido` = cómo queda en el borrador;
  * `antes` = cómo está guardado.
  */
-function AvisoGranel({ prendido, antes }) {
+function AvisoGranel({ prendido, antes, tipo = 'granel' }) {
   const [neg, setNeg] = useState(null);
   const mirar = !antes || prendido !== antes;
+  const esGranel = tipo === 'granel';
   useEffect(() => {
     if (!mirar) return undefined;
     let vivo = true;
-    ventasApi.granelNegativo().then((r) => { if (vivo) setNeg(r); }).catch(() => { if (vivo) setNeg(null); });
+    (esGranel ? ventasApi.granelNegativo() : ventasApi.enterosNegativo())
+      .then((r) => { if (vivo) setNeg(r); }).catch(() => { if (vivo) setNeg(null); });
     return () => { vivo = false; };
-  }, [mirar]);
+  }, [mirar, esGranel]);
 
   if (prendido && antes) return null;
   if (!prendido && antes) {
     return (
       <div className={cx(s.callout, s.warn)}>
-        Al guardar, <strong>todo lo que es a granel</strong> (la madre en kg y sus paquetes) se vende, se
-        fracciona, se transfiere y se da de baja <strong>sin mirar el stock</strong>. El stock se sigue registrando
-        y puede quedar en negativo; no se generan incidencias de venta sin stock para el granel.
+        Al guardar, <strong>{esGranel ? 'todo lo que es a granel (la madre en kg y sus paquetes)' : 'todos los productos enteros'}</strong> se
+        vende{esGranel ? ', se fracciona' : ''}, se transfiere y se da de baja <strong>sin mirar el stock</strong>. El stock se sigue
+        registrando y puede quedar en negativo; no se generan incidencias de venta sin stock para {esGranel ? 'el granel' : 'los enteros'}.
       </div>
     );
   }
   const n = neg?.productos ?? 0;
   return (
     <div className={cx(s.callout, n > 0 ? s.warn : s.info)}>
-      {prendido ? 'Al guardar vuelve el control: lo que no hay deja de venderse y moverse.' : 'El control está apagado: el granel se opera sin mirar el stock.'}
+      {prendido ? 'Al guardar vuelve el control: lo que no hay deja de venderse y moverse.' : `El control está apagado: ${esGranel ? 'el granel' : 'los enteros'} se opera${esGranel ? '' : 'n'} sin mirar el stock.`}
       {neg && (n > 0 ? (
         <div style={{ marginTop: 6 }}>
-          Hoy hay <strong>{n} producto{n === 1 ? '' : 's'} a granel con stock en negativo</strong>
+          Hoy hay <strong>{n} producto{n === 1 ? '' : 's'} {esGranel ? 'a granel' : 'enteros'} con stock en negativo</strong>
           {neg.ejemplos?.length > 0 && <> (por ejemplo: {neg.ejemplos.slice(0, 3).map((e) => `${e.nombre} en ${e.sucursal}`).join('; ')})</>}.
           {' '}Contalos en <strong>Almacén › Control de inventario</strong> antes de prenderlo: si no, la caja va a frenar esas ventas.
         </div>
       ) : (
-        <div style={{ marginTop: 6 }}>Ningún producto a granel quedó en negativo.</div>
+        <div style={{ marginTop: 6 }}>Ningún producto {esGranel ? 'a granel' : 'entero'} quedó en negativo.</div>
       ))}
     </div>
   );
@@ -419,7 +421,7 @@ export function ConfiguracionPanel() {
 
   /* El control de stock a granel cambia cómo se mueve el stock de todo el
    * granel: se guarda con una segunda confirmación y con candado de doble clic. */
-  const tocaGranel = 'controlStockGranel' in cambios;
+  const tocaGranel = 'controlStockGranel' in cambios || 'controlStockEnteros' in cambios;
   const [confirmaGranel, setConfirmaGranel] = useState(false);
   useEffect(() => { setConfirmaGranel(false); }, [cambios]);
   const enVuelo = useRef(false);
@@ -427,9 +429,11 @@ export function ConfiguracionPanel() {
   const guardar = async () => {
     if (tocaGranel && !confirmaGranel) {
       setConfirmaGranel(true);
-      toast(draft.controlStockGranel === false
-        ? 'Vas a APAGAR el control de stock a granel. Tocá «Sí, guardar» para confirmar.'
-        : 'Vas a PRENDER el control de stock a granel. Tocá «Sí, guardar» para confirmar.', 'ok');
+      const que = [
+        'controlStockGranel' in cambios && `${draft.controlStockGranel === false ? 'APAGAR' : 'PRENDER'} el control de stock a granel`,
+        'controlStockEnteros' in cambios && `${draft.controlStockEnteros === false ? 'APAGAR' : 'PRENDER'} el control de stock de los enteros`,
+      ].filter(Boolean).join(' y ');
+      toast(`Vas a ${que}. Tocá «Sí, guardar» para confirmar.`, 'ok');
       return;
     }
     if (enVuelo.current) return;
@@ -646,6 +650,13 @@ export function ConfiguracionPanel() {
             onChange={set('controlStockGranel')}
           />
           <AvisoGranel prendido={draft.controlStockGranel !== false} antes={config.controlStockGranel !== false} />
+          <Interruptor
+            label="Controlar el stock de los enteros"
+            hint="Lo mismo que el de arriba, para los productos enteros (por unidad). Prendido (como siempre): no se vende, transfiere ni da de baja lo que no hay. Apagado: se venden, se mueven y se cargan sin mirar el stock; los movimientos se siguen registrando y el stock puede quedar en negativo. Es independiente del granel."
+            checked={draft.controlStockEnteros !== false}
+            onChange={set('controlStockEnteros')}
+          />
+          <AvisoGranel tipo="entero" prendido={draft.controlStockEnteros !== false} antes={config.controlStockEnteros !== false} />
           <Campo
             label="Medios de pago"
             hint="Exige factura: un peso cobrado con ese medio bloquea Liquidar — la venta sale facturada sí o sí (típico: lo bancarizado, que deja rastro)."
