@@ -1367,6 +1367,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       if (!tipo) { toast('Elegí el tipo de comprobante.', 'err'); return; }
       if (!parseInt(provId, 10)) { toast('Elegí el proveedor del comprobante.', 'err'); return; }
       if (pideNumero && !(parseInt(numero, 10) > 0)) { toast('Poné el número del comprobante, el que figura en el papel.', 'err'); return; }
+      // Hasta 8 cifras, como ARCA: con el punto de venta pegado la base lo rechazaba sin explicar (1/10/2026).
+      if (String(numero).trim() && Number(numero) > 99999999) { toast('El número tiene hasta 8 cifras, sin el punto de venta: en 0885-18518519 el punto de venta es 0885 y el número 18518519.', 'err'); return; }
       if (esPapelFiscal && provSel && !letrasPermitidas.includes(letra)) {
         toast(`${provSel.nombre} figura como ${CONDICION_TEXTO[provSel.condicionIva] ?? 'otra condición'}: emite factura ${letrasPermitidas.join(' o ')}, no ${letra}. Si el papel dice ${letra}, corregí su condición frente al IVA en la ficha del proveedor.`, 'err');
         return;
@@ -1519,7 +1521,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         </div>
         <div className={s.field}>
           <label>Número {pideNumero && <span className={s.req}>*</span>}</label>
-          <input type="number" min="1" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder={pideNumero ? 'El del papel' : 'Opcional'} />
+          <input type="number" min="1" max="99999999" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder={pideNumero ? 'El del papel, sin el punto de venta' : 'Opcional'} />
+          {String(numero).length > 8 && <div className={s.hint} style={{ margin: '4px 0 0', color: 'var(--crm-color-danger)' }}>Hasta 8 cifras: el punto de venta va en su campo.</div>}
         </div>
         <div className={s.field}>
           <label>Fecha del comprobante</label>
