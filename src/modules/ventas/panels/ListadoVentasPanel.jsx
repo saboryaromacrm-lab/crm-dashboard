@@ -64,6 +64,22 @@ function FilaReparto({ color, nombre, importe, pct, detalle }) {
   );
 }
 
+/** Un color fijo por medio de pago: el color sigue al medio, no a su puesto en el ranking. */
+const COLOR_MEDIO = {
+  efectivo: '#16a34a', transferencia: '#2563eb', tarjeta_debito: '#7c3aed', tarjeta_credito: '#db2777',
+  qr: '#0891b2', cheque: '#a16207', transferencia_proveedor: '#4f46e5', otro: '#64748b',
+};
+
+/** Un dato de la rentabilidad: nombre arriba, número abajo. */
+function DatoRenta({ nombre, valor, color }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div className={s.hint} style={{ margin: 0 }}>{nombre}</div>
+      <div style={{ fontSize: 16, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color }}>{valor}</div>
+    </div>
+  );
+}
+
 /** `isoDate` es LOCAL (no UTC): a las 22 h de acá "hoy" sigue siendo hoy. */
 const hoyIso = () => isoDate(new Date());
 const diasAtras = (n) => {
@@ -298,29 +314,49 @@ export function ListadoVentasPanel() {
         />
       </div>
 
-      {/* Lo que el mostrador pregunta después del total: con qué se pagó, cuánto
-          costaron las promos y si hubo algo anulado. */}
+      {/* Lo que se pregunta después del total: con qué se pagó (con su %),
+          cuánto se ganó y si hubo algo anulado. La tarjeta de ofertas se sacó
+          el 1/10/2026 a pedido del dueño; la rentabilidad ocupa su lugar. */}
       {t && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <div className={s.card} style={{ padding: '10px 14px', flex: '2 1 300px' }}>
+          <div className={s.card} style={{ padding: '10px 14px', flex: '2 1 320px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span className={s['mini-label']}>CÓMO SE PAGÓ</span>
             {t.porMedio.length ? (
-              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 4 }}>
-                {t.porMedio.map((m) => (
-                  <span key={m.medio}>
-                    {MEDIOS_PAGO[m.medio] || m.medio}: <strong>{money(m.importe)}</strong>
-                  </span>
-                ))}
-              </div>
+              <>
+                <Reparto partes={t.porMedio.map((m) => ({ clave: m.medio, valor: m.importe, color: COLOR_MEDIO[m.medio] || COLOR_MEDIO.otro }))} />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '4px 16px' }}>
+                  {t.porMedio.map((m) => (
+                    <FilaReparto
+                      key={m.medio} color={COLOR_MEDIO[m.medio] || COLOR_MEDIO.otro}
+                      nombre={MEDIOS_PAGO[m.medio] || m.medio} importe={m.importe} pct={m.pct}
+                    />
+                  ))}
+                </div>
+              </>
             ) : <div className={s.hint}>Sin cobros en el período.</div>}
           </div>
-          <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 180px' }}>
-            <span className={s['mini-label']}>LO QUE COSTARON LAS OFERTAS</span>
-            <div style={{ fontSize: 17, fontWeight: 700 }}>{money(t.ofertas.plata)}</div>
-            <div className={s.hint}>
-              en {t.ofertas.ventas} {t.ofertas.ventas === 1 ? 'ticket' : 'tickets'} · neto, ya incluido en descuentos
+          {/* RENTABILIDAD (1/10/2026): solo llega a quien puede ver costos. */}
+          {t.rentabilidad && (
+            <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <span className={s['mini-label']}>RENTABILIDAD</span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: t.rentabilidad.margen < 0 ? 'var(--crm-color-danger)' : 'var(--crm-color-success, #16a34a)' }}>
+                  {money(t.rentabilidad.margen)}
+                </span>
+                <span className={s.hint} style={{ margin: 0 }}>de ganancia</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
+                <DatoRenta nombre="Venta sin IVA" valor={money(t.rentabilidad.ventaCosteada)} />
+                <DatoRenta nombre="Costo" valor={money(t.rentabilidad.costo)} />
+                <DatoRenta nombre="Margen s/ venta" valor={t.rentabilidad.margenPct == null ? '—' : `${num(t.rentabilidad.margenPct, 1)}%`} />
+                <DatoRenta nombre="Markup s/ costo" valor={t.rentabilidad.markupPct == null ? '—' : `${num(t.rentabilidad.markupPct, 1)}%`} />
+              </div>
+              <div className={s.hint} style={{ margin: 0 }}>
+                Mercadería sin IVA contra el costo que tenía cada producto el día que se vendió. Las notas de crédito restan.
+                {t.rentabilidad.sinCosto > 0 && ` ${num(t.rentabilidad.sinCosto, 0)} de ${num(t.rentabilidad.renglones, 0)} renglones no tienen costo guardado y no entran en el margen.`}
+              </div>
             </div>
-          </div>
+          )}
           {t.anuladas > 0 && (
             <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 180px' }}>
               <span className={s['mini-label']}>ANULADAS</span>
