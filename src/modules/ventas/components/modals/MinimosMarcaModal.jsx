@@ -16,6 +16,8 @@ import { ModalShell, Table, num, s } from '../ui.jsx';
  * se lee acá es exactamente lo que después se aplica. Con una venta abierta,
  * cada fila dice cuántas lleva el ticket y cuántas faltan.
  */
+const centro = { display: 'block', textAlign: 'center' };
+
 export function MinimosMarcaModal({ reglas = [], listas = [], llevadas = {}, conVenta = false }) {
   const { closeModal } = useVentas();
   const [q, setQ] = useState('');
@@ -41,15 +43,13 @@ export function MinimosMarcaModal({ reglas = [], listas = [], llevadas = {}, con
   return (
     <ModalShell
       title="Mínimos de compra por marca"
-      subtitle="Cuántas unidades de una marca hay que llevar para desbloquear su lista"
-      wide
+      subtitle="Unidades de la marca para desbloquear su lista"
       onClose={closeModal}
       footer={[{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }]}
     >
-      <div className={s.hint}>
-        Se suman las unidades de <strong>todos los productos de la marca</strong> que lleva el ticket.
-        Al llegar al mínimo, el sistema avisa y con «Aplicar» esos renglones pasan a la lista
-        desbloqueada (solo los de esa marca). Se cargan en Ventas › Configuración › Formato de venta.
+      <div className={s.hint} style={{ marginTop: 0 }}>
+        Se suman <strong>todos los productos de la marca</strong> del ticket. Al llegar al mínimo,
+        la caja avisa y con «Aplicar» pasan a la lista desbloqueada.
       </div>
 
       {reglas.length === 0 ? (
@@ -58,31 +58,37 @@ export function MinimosMarcaModal({ reglas = [], listas = [], llevadas = {}, con
         </div>
       ) : (
         <>
-          <div className={s.field}>
-            <label htmlFor="minimos-marca-buscar">Buscar marca</label>
-            <input
-              id="minimos-marca-buscar"
-              autoFocus
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Ej.: Coca-Cola"
-            />
-          </div>
+          {reglas.length > 6 && (
+            <div className={s.field}>
+              <input
+                id="minimos-marca-buscar"
+                aria-label="Buscar marca"
+                autoFocus
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar marca…"
+              />
+            </div>
+          )}
 
+          {/* Las columnas de números van CENTRADAS, título y valor igual: el
+              `num` de la tabla alinea el valor a la derecha pero no el título. */}
           <Table cols={[
-            { h: 'Marca' }, { h: 'Mínimo', num: true }, { h: 'Desbloquea' },
-            ...(conVenta ? [{ h: 'En esta venta', num: true }] : []),
+            { h: 'Marca' }, { h: <span style={centro}>Mínimo</span> }, { h: 'Desbloquea' },
+            ...(conVenta ? [{ h: <span style={centro}>En esta venta</span> }] : []),
           ]}
           >
             {filas.map((r) => {
               const min = Number(r.unidadesMinimas) || 0;
               const lleva = Number(llevadas[r.marcaId]) || 0;
               const llego = lleva + 1e-9 >= min;
-              const nombres = listasDe.get(r.modalidadId) ?? [];
+              /* Las listas de la modalidad, solo si dicen algo más que su nombre. */
+              const nombres = (listasDe.get(r.modalidadId) ?? [])
+                .filter((n) => norm(n) !== norm(r.modalidad ?? ''));
               return (
                 <tr key={`${r.marcaId}:${r.modalidadId}`}>
                   <td><strong>{r.marca}</strong></td>
-                  <td className={s.num}><strong>{num(min)}</strong> u.</td>
+                  <td style={{ textAlign: 'center' }}><strong>{num(min)}</strong> u.</td>
                   <td>
                     {r.modalidad || '—'}
                     {nombres.length > 0 && (
@@ -90,7 +96,7 @@ export function MinimosMarcaModal({ reglas = [], listas = [], llevadas = {}, con
                     )}
                   </td>
                   {conVenta && (
-                    <td className={s.num}>
+                    <td style={{ textAlign: 'center' }}>
                       {lleva <= 0 ? <span className={s.muted}>—</span> : llego ? (
                         <strong style={{ color: 'var(--crm-color-success)' }}>{num(lleva)} · alcanzado</strong>
                       ) : (
