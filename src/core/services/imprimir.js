@@ -1230,6 +1230,40 @@ async function qrSvg(url) {
   }
 }
 
+/** Los medios como los lee el cliente en el papel (con acentos: la factura ya los lleva). */
+const MEDIO_PAPEL = {
+  efectivo: 'Efectivo',
+  transferencia: 'Transferencia',
+  transferencia_proveedor: 'Transferencia',
+  tarjeta_debito: 'Tarjeta de débito',
+  tarjeta_credito: 'Tarjeta de crédito',
+  cheque: 'Cheque',
+  qr: 'QR / billetera',
+  otro: 'Otro',
+};
+
+/**
+ * LA FORMA DE PAGO, para la factura y el ticket (2/10/2026, pedido del dueño:
+ * la factura no decía cómo se pagó). Un renglón por medio, con las cuotas de
+ * la tarjeta si las hubo, y lo que quedó a CUENTA CORRIENTE —lo que no se
+ * pagó en el momento— para que el papel cierre con el total.
+ */
+function bloqueFormaPago(venta, moneda) {
+  const pagos = (venta.pagos ?? []).filter((p) => Number(p.importe) > 0);
+  const filas = pagos.map((p) => {
+    const cuotas = Number(p.cuotas) > 1 ? ` (${Number(p.cuotas)} cuotas)` : '';
+    return `<tr><td>${esc((MEDIO_PAPEL[p.medio] || p.medio) + cuotas)}</td><td class="n">${moneda(p.importe)}</td></tr>`;
+  });
+  if (venta.condicionPago === 'cuenta_corriente') {
+    const pagado = pagos.reduce((s, p) => s + (Number(p.importe) || 0), 0);
+    const resto = Math.round(((Number(venta.total) || 0) - pagado) * 100) / 100;
+    if (resto > 0.009) filas.push(`<tr><td>Cuenta corriente</td><td class="n">${moneda(resto)}</td></tr>`);
+  }
+  if (!filas.length) return '';
+  return `<div class="sub" style="margin-top:6px"><strong>Forma de pago</strong></div>
+    <table><tbody>${filas.join('')}</tbody></table>`;
+}
+
 /**
  * LA FACTURA COMO CUERPO DE DOCUMENTO.
  *
@@ -1391,6 +1425,8 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
 
     ${esNota && motivo ? `<div class="sub"><strong>Motivo:</strong> ${esc(motivo)}</div>` : ''}
 
+    ${esNota ? '' : bloqueFormaPago(venta, moneda)}
+
     ${transparencia}
 
     ${venta.cae ? `<div class="cajaCae">
@@ -1508,7 +1544,9 @@ export function cuerpoTicket(venta, {
       <td class="n">${moneda(final)}</td>
     </tr>`;
   }).join('');
-  const pagos = (venta.pagos ?? []).map((p) => `<tr><td>${esc(p.medio)}</td><td class="n">${moneda(p.importe)}</td></tr>`).join('');
+  /* En la devolución no: los pagos son los de la venta original y el papel
+   * diría que se cobró lo que en realidad se devuelve. */
+  const pagos = etiquetaTotal === 'TOTAL' ? bloqueFormaPago(venta, moneda) : '';
   const nro = venta.numero != null ? `${esc(venta.puntoVenta)}-${String(venta.numero).padStart(8, '0')}` : '';
   /*
    * ARCA CAÍDO (0073): el ticket provisorio LO DICE, siempre — esta leyenda no
@@ -1534,7 +1572,7 @@ export function cuerpoTicket(venta, {
     <table><tbody>${filas}${extras}</tbody></table>
     <div class="tot"><strong>${esc(etiquetaTotal)} ${moneda(venta.total)}</strong></div>
     ${motivo ? `<div class="sub"><strong>Motivo:</strong> ${esc(motivo)}</div>` : ''}
-    ${pagos ? `<table><tbody>${pagos}</tbody></table>` : ''}
+    ${pagos}
     ${leyendaNoFiscal ? '<div class="fiscal">DOCUMENTO NO FISCAL</div>' : ''}
     ${provisorio}
   `;
