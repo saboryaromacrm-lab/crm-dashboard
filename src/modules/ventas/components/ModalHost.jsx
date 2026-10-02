@@ -20,6 +20,7 @@ import {
 import { OfertaFormModal, BorrarOfertaModal } from './modals/OfertaModals.jsx';
 import { DetalleVentaModal, AnularVentaModal, NotaCreditoModal } from './modals/VentaModals.jsx';
 import { RelevoModal } from './modals/RelevoModal.jsx';
+import { MinimosMarcaModal } from './modals/MinimosMarcaModal.jsx';
 
 /** Un solo modal a la vez: el contexto guarda `{ type, props }`. */
 const REGISTRY = {
@@ -51,6 +52,8 @@ const REGISTRY = {
   ventaEmitida: VentaEmitidaModal,
   // El relevo de caja (0088): quién está físicamente en la registradora.
   relevo: RelevoModal,
+  // Consulta del cajero: qué marcas abren lista y desde cuántas unidades.
+  minimosMarca: MinimosMarcaModal,
   cargaRapida: CargaRapidaModal,
   busquedaMasiva: BusquedaMasivaModal,
   cargaExtra: CargaExtraModal,

@@ -922,6 +922,16 @@ export function PosPanel() {
     aplicado: ticket.mayoristaAplicado, precios: idxPrecios,
   }), [catalogoRaw, clienteActual, ticket.renglones, ticket.mayoristaAplicado, idxPrecios]);
 
+  /** Abre la consulta de mínimos por marca con lo que ya lleva el ticket de cada una. */
+  const verMinimosMarca = useCallback(() => {
+    openModal('minimosMarca', {
+      reglas: catalogoRaw?.reglasMarca ?? [],
+      listas: listasCatalogo,
+      llevadas: Object.fromEntries(ctxMayorista.agregados.porMarca),
+      conVenta: ticket.renglones.length > 0,
+    });
+  }, [openModal, catalogoRaw, listasCatalogo, ctxMayorista, ticket.renglones.length]);
+
   const sugerencia = useMemo(
     () => sugerenciaMayorista(ticket.renglones, preciosDe, ctxMayorista),
     [ticket.renglones, preciosDe, ctxMayorista],
@@ -1478,6 +1488,9 @@ export function PosPanel() {
                 un clic. Cuando no es el de la sesión, el BANNER de abajo lo
                 canta en grande — el modo real de falla del relevo es olvidarse
                 de volver, y contra eso lo único que sirve es que se vea. */}
+            {/* Los mínimos por marca, a mano del cajero: cuántas unidades
+                abren la lista y cuántas lleva este ticket. */}
+            <Btn small onClick={verMinimosMarca}>Ver mínimos por marca</Btn>
             <Btn small onClick={() => openModal('relevo', { cajaSesionId: caja?.id })}>
               {operador ? `Cobrando: ${operador.nombre}` : 'Relevo'}
             </Btn>
