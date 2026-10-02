@@ -251,8 +251,17 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
       margin-top: ${f.rollo ? '8px' : '14px'}; border-top: 1px solid #000; padding-top: 6px;
       ${f.rollo ? 'text-align: center;' : 'display: flex; align-items: center; gap: 14px;'}
     }
-    .cajaCae .qr { width: ${f.rollo ? '26mm' : '32mm'}; height: ${f.rollo ? '26mm' : '32mm'}; flex: 0 0 auto; }
-    .cajaCae .qr svg { width: 100%; height: 100%; display: block; }
+    /* EL QR TIENE QUE PODER LEERSE CON UN CELULAR (2/10/2026: la primera
+       factura de Fontana no escaneaba). La URL de ARCA da un QR de 69×69
+       módulos: a 26 mm cada uno medía 3 puntos de la térmica (203 dpi) y el
+       calor los empastaba. A 42 mm son ~4,4 puntos por módulo. En el rollo va
+       CENTRADO y solo en su renglón —antes quedaba pegado al borde izquierdo—,
+       con margen blanco alrededor, que el lector necesita para encontrarlo. */
+    .cajaCae .qr {
+      width: ${f.rollo ? '42mm' : '34mm'}; height: ${f.rollo ? '42mm' : '34mm'}; flex: 0 0 auto;
+      ${f.rollo ? 'margin: 2mm auto 3mm;' : ''}
+    }
+    .cajaCae .qr svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
     /* ---- Cierre de caja (el papel de la rendicion) ---- */
     /*
      * EL ANCHO MANDA. Un rollo de 80 mm son ~48 caracteres: una tabla de cuatro
@@ -1144,11 +1153,14 @@ export function abrirVentanaImpresion() {
  * impresión fallaba en silencio y quedaba la duda de si el ticket salió. Quien
  * llama avisa (es lo único que se puede hacer: el permiso lo da el usuario).
  */
-export async function imprimirDocumento(tipoDoc, { titulo, cuerpo, pie, esTicket = false, ventana = null }) {
+export async function imprimirDocumento(tipoDoc, { titulo, cuerpo, pie, esTicket = false, ventana = null, direccion = '' }) {
   const { empresa, impresion } = await configImpresion();
   const formato = impresion[tipoDoc] || formatoPorDefecto(tipoDoc);
   const html = htmlDocumento({
-    empresa, formato, titulo, cuerpo, esTicket,
+    /* `direccion`: la del LOCAL que emite (ticket y factura). El membrete no
+     * puede decir otro domicilio que el impreso como del emisor (2/10/2026: la
+     * factura de Fontana decía Sarmiento 1314 arriba y Pringles 808 abajo). */
+    empresa: direccion ? { ...empresa, direccion } : empresa, formato, titulo, cuerpo, esTicket,
     pie: pie ?? (esTicket ? impresion.pieTicket : ''),
   });
   const w = ventana && !ventana.closed ? ventana : window.open('', '_blank', 'width=760,height=900');
@@ -1205,7 +1217,10 @@ async function qrSvg(url) {
   try {
     return await QRCode.toString(url, {
       type: 'svg',
-      margin: 0,
+      // Zona blanca de 4 módulos dentro del dibujo (la que pide la norma del
+      // QR): sin ella, el texto pegado le roba al lector el borde que usa
+      // para ubicar el código. A 42 mm cada módulo mide ~0,55 mm.
+      margin: 4,
       // 'M' tolera ~15% de daño: es el nivel que ARCA usa en sus ejemplos y
       // aguanta que la térmica imprima flojo o que el papel se manche.
       errorCorrectionLevel: 'M',
@@ -1426,6 +1441,7 @@ export async function imprimirVenta(venta, { moneda, fechaHora }) {
     return imprimirDocumento('ticketPos', {
       titulo: `Devolución ${nro}`,
       esTicket: true,
+      direccion: venta.sucursalDireccion || '',
       cuerpo: cuerpoTicket(venta, {
         moneda,
         fechaHora,
@@ -1442,11 +1458,13 @@ export async function imprimirVenta(venta, { moneda, fechaHora }) {
       titulo: `${esNota ? 'Nota de crédito' : 'Factura'} ${nro}`,
       cuerpo: await cuerpoFactura(venta, { moneda, fecha: fechaHora, empresa }),
       pie: '',
+      direccion: venta.sucursalDireccion || '',
     });
   }
   return imprimirDocumento('ticketPos', {
     titulo: `Ticket ${nro}`,
     esTicket: true,
+    direccion: venta.sucursalDireccion || '',
     cuerpo: cuerpoTicket(venta, { moneda, fechaHora, leyendaNoFiscal: impresion.leyendaNoFiscal }),
   });
 }
