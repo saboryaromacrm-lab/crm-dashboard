@@ -355,6 +355,40 @@ export function CobroModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cobroQr?.estado]);
 
+  /*
+   * «EL CLIENTE YA PAGÓ» (3/10/2026): el primer cobro real quedó esperando con
+   * la plata acreditada. Si el aviso no aparece, la caja busca los pagos
+   * aprobados por el monto, elige el del cliente y confirma; el servidor lo
+   * verifica en Mercado Pago antes de cerrar. Mientras, la consulta de cada
+   * 2 s sigue: si el pago aparece solo, la venta se cierra igual.
+   */
+  const [rescate, setRescate] = useState(null); // null | { cargando, pagos, desde, error, elegido }
+  const vinculandoRef = useRef(false);
+  const [vinculando, setVinculando] = useState(false);
+  const buscarPagosQr = async () => {
+    setRescate({ cargando: true, pagos: [], desde: null, error: '', elegido: null });
+    try {
+      const r = await ventasApi.mpPagosCandidatos(cobroQr.id);
+      setRescate({ cargando: false, pagos: r?.pagos ?? [], desde: r?.desde ?? null, error: '', elegido: null });
+    } catch (e) {
+      setRescate({ cargando: false, pagos: [], desde: null, error: e?.data?.message || 'No se pudieron consultar los pagos.', elegido: null });
+    }
+  };
+  const vincularPagoQr = async () => {
+    if (vinculandoRef.current || !rescate?.elegido) return;
+    vinculandoRef.current = true; setVinculando(true);
+    try {
+      const c = await ventasApi.mpVincular(cobroQr.id, rescate.elegido.id);
+      setRescate(null);
+      setCobroQr(c);
+    } catch (e) {
+      toast(e?.data?.message || 'No se pudo vincular el pago.', 'err');
+    } finally {
+      vinculandoRef.current = false; setVinculando(false);
+    }
+  };
+  const horaDe = (iso) => (iso ? new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '');
+
   const accionQr = async (fn) => {
     if (ocupadoQrRef.current) return;
     ocupadoQrRef.current = true; setOcupadoQr(true);
@@ -567,8 +601,11 @@ export function CobroModal({
             ? accionQr(() => ventasApi.mpResolver(cobroQr.id, motivoResuelto))
             : toast('Escribí qué se hizo con ese pago.', 'err')) }] : []),
           { texto: ocupadoQr ? 'Reintentando…' : 'Reintentar cerrar la venta', clase: 'btn-primary', onClick: () => accionQr(() => ventasApi.mpReintentar(cobroQr.id)) },
+        ] : rescate && cobroQr.estado === 'esperando' ? [
+          { texto: 'Volver a esperar', clase: 'btn-ghost', onClick: () => !vinculandoRef.current && setRescate(null) },
         ] : [
           { texto: ocupadoQr ? 'Cancelando…' : 'Cancelar cobro', clase: 'btn-ghost', onClick: () => cobroQr.estado === 'esperando' && accionQr(() => ventasApi.mpCancelar(cobroQr.id)) },
+          ...(cobroQr.estado === 'esperando' ? [{ texto: 'El cliente ya pagó: buscar el pago', clase: 'btn-primary', onClick: buscarPagosQr }] : []),
         ]}
       >
         {cobroQr.estado === 'error' ? (
@@ -582,6 +619,56 @@ export function CobroModal({
                 <label htmlFor="mp-resuelto">Si no se va a cerrar (se le devolvió la plata desde Mercado Pago, o se hizo la venta de otra forma):</label>
                 <input id="mp-resuelto" value={motivoResuelto} maxLength={300} placeholder="Qué se hizo con ese pago" onChange={(e) => setMotivoResuelto(e.target.value)} />
               </div>
+            )}
+          </div>
+        ) : rescate && cobroQr.estado === 'esperando' ? (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {rescate.cargando && <div className={s.hint} style={{ margin: 0 }}>Buscando en Mercado Pago los pagos de {money(cobroQr.monto)}…</div>}
+            {rescate.error && <div className={cx(s.callout, s.warn)}>{rescate.error}</div>}
+            {!rescate.cargando && !rescate.error && !rescate.elegido && (rescate.pagos.length ? (
+              <>
+                <div className={s.hint} style={{ margin: 0 }}>
+                  Pagos <strong>aprobados</strong> de <strong>{money(cobroQr.monto)}</strong> recibidos desde las {horaDe(rescate.desde)}. Tocá el del cliente
+                  (mirá la hora y el nombre en su comprobante).
+                </div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {rescate.pagos.map((x) => (
+                    <button
+                      key={x.id} type="button" className="btn-ghost"
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', border: '1px solid var(--crm-border, #d0d5dd)', borderRadius: 8 }}
+                      onClick={() => setRescate((r) => ({ ...r, elegido: x }))}
+                    >
+                      <span>
+                        <strong>{money(x.monto)}</strong> · {horaDe(x.fecha)} · {x.pagador || 'sin nombre'}
+                        <span style={{ display: 'block', fontSize: 12, opacity: 0.75 }}>Pago N° {x.id}{x.medio ? ` · ${x.medio}` : ''}</span>
+                      </span>
+                      {x.deEsteCobro && <strong style={{ whiteSpace: 'nowrap' }}>✓ Es el de este QR</strong>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={cx(s.callout, s.info)}>
+                  No hay pagos aprobados de {money(cobroQr.monto)} desde las {horaDe(rescate.desde)} que no estén usados en otra venta.
+                  Si el cliente te muestra el comprobante, esperá unos segundos y buscá de nuevo.
+                </div>
+                <div><Btn onClick={buscarPagosQr}>Buscar de nuevo</Btn></div>
+              </>
+            ))}
+            {rescate.error && <div><Btn onClick={buscarPagosQr}>Buscar de nuevo</Btn></div>}
+            {rescate.elegido && (
+              <>
+                <div className={cx(s.callout, s.warn)}>
+                  <strong>¿Confirmás que este pago es de este ticket?</strong> Se cierra la venta con el pago N° {rescate.elegido.id}
+                  {rescate.elegido.pagador ? ` de ${rescate.elegido.pagador}` : ''} por <strong>{money(rescate.elegido.monto)}</strong> ({horaDe(rescate.elegido.fecha)}).
+                  Un pago se usa una sola vez.
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <Btn variant="btn-primary" onClick={vincularPagoQr} disabled={vinculando}>{vinculando ? 'Cerrando la venta…' : 'Sí, cerrar la venta con este pago'}</Btn>
+                  <Btn onClick={() => !vinculandoRef.current && setRescate((r) => ({ ...r, elegido: null }))} disabled={vinculando}>Elegir otro</Btn>
+                </div>
+              </>
             )}
           </div>
         ) : (
@@ -598,6 +685,10 @@ export function CobroModal({
               El cliente escanea el QR del mostrador con Mercado Pago y le aparece el monto. Cuando pague, la venta se cierra sola y sale el papel.
               Si no paga en 15 minutos, el cobro vence solo.
             </div>
+            {/* Lo último que contestó Mercado Pago: si el cliente pagó y esto no cambia, se ve por qué. */}
+            {cobroQr.estado === 'esperando' && cobroQr.detalle && (
+              <div style={{ fontSize: 12, opacity: 0.75 }}>{cobroQr.detalle}</div>
+            )}
           </div>
         )}
       </ModalShell>

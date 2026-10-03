@@ -58,6 +58,9 @@ export const ventasApi = {
   mpCancelar: (id) => httpClient.post(`/mercadopago/cobros/${id}/cancelar`, {}),
   mpReintentar: (id) => httpClient.post(`/mercadopago/cobros/${id}/reintentar`, {}),
   mpResolver: (id, motivo) => httpClient.post(`/mercadopago/cobros/${id}/resolver`, { motivo }),
+  /* «El cliente ya pagó» (3/10/2026): pagos aprobados por el monto, y vincular uno (se verifica en Mercado Pago). */
+  mpPagosCandidatos: (id) => httpClient.get(`/mercadopago/cobros/${id}/pagos`),
+  mpVincular: (id, paymentId) => httpClient.post(`/mercadopago/cobros/${id}/vincular`, { paymentId }),
 
   /* Clientes */
   crearCliente: (data) => httpClient.post('/clientes', data),
