@@ -24,13 +24,14 @@ import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles } from './piezas.jsx';
 import { PestanaGranel } from './PestanaGranel.jsx';
 import { PestanaComparar } from './PestanaComparar.jsx';
 import { PestanaProductos } from './PestanaProductos.jsx';
+import { PestanaIva } from './PestanaIva.jsx';
 
 /* ============================================================================
  * EL PANEL
  * ========================================================================== */
 const PESTANAS = [
   ['ventas', 'Ventas'], ['productos', 'Productos y categorías'], ['comparar', 'Comparar fechas'], ['granel', 'Granel y enteros'], ['rentabilidad', 'Rentabilidad'],
-  ['proveedores', 'Proveedores y listas'], ['stock', 'Stock'],
+  ['proveedores', 'Proveedores y listas'], ['stock', 'Stock'], ['iva', 'Resultados IVA'],
 ];
 
 export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
@@ -142,6 +143,8 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
       {pestana === 'rentabilidad' && <PestanaRentabilidad qs={qs} paso={paso} version={version} tipo={tipoRent} setTipo={setTipoRent} />}
       {pestana === 'proveedores' && <PestanaProveedores qs={qs} version={version} />}
       {pestana === 'stock' && <PestanaStock sucursalId={sucursalId} version={version} />}
+      {/* Resultados IVA (3/10/2026): con y sin factura, y la posición de IVA mes a mes. */}
+      {pestana === 'iva' && <PestanaIva qs={qs} version={version} />}
     </div>
   );
 }

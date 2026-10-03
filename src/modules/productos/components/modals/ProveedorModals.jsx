@@ -152,6 +152,17 @@ export function DetalleProveedorModal({ provId }) {
  * solas. No son IVA — son pago a cuenta de otro impuesto y al cierre hay que
  * declarar cada una por separado, así que cada una lleva su nombre.
  */
+/* De qué impuesto es cada percepción (0132): manda la marca; sin marca se
+ * deduce del nombre con la MISMA regla del servidor (crm-api common/iva.ts),
+ * que es la que usa Gerencia › Métricas › Resultados IVA. */
+const NOMBRE_TIPO_PERC = { iva: 'IVA', iibb: 'Ingresos Brutos', otro: 'Otro impuesto' };
+function tipoSegunNombre(nombre) {
+  const n = String(nombre ?? '').toLowerCase();
+  if (/(^|[^a-z])iva([^a-z]|$)|rg\s*(2408|3337|5329)/.test(n)) return 'iva';
+  if (/iibb|ingresos\s*brutos|(^|[^a-z])dgr([^a-z]|$)|(^|[^a-z])ib([^a-z]|$)/.test(n)) return 'iibb';
+  return 'otro';
+}
+
 function PercepcionesTab({ prov }) {
   const { store, isAdmin, toast } = useProductos();
   const [filas, setFilas] = useState(null);
@@ -167,12 +178,12 @@ function PercepcionesTab({ prov }) {
 
   const set = (i, patch) => setFilas((r) => r.map((f, j) => (j === i ? { ...f, ...patch } : f)));
   const quitar = (i) => setFilas((r) => r.filter((_, j) => j !== i));
-  const agregar = () => setFilas((r) => [...r, { nombre: '', alicuota: '', base: 'neto', activa: true }]);
+  const agregar = () => setFilas((r) => [...r, { nombre: '', alicuota: '', base: 'neto', activa: true, tipo: '' }]);
 
   const guardar = async () => {
     setGuardando(true);
     const res = await store.guardarPercepcionesProveedor(prov.id, filas.map((f) => ({
-      nombre: f.nombre, alicuota: Number(f.alicuota) || 0, base: f.base, activa: f.activa !== false,
+      nombre: f.nombre, alicuota: Number(f.alicuota) || 0, base: f.base, activa: f.activa !== false, tipo: f.tipo || '',
     })));
     setGuardando(false);
     if (!res.ok) { toast(res.error || 'No se pudo guardar.', 'err'); return; }
@@ -191,13 +202,13 @@ function PercepcionesTab({ prov }) {
         porque el mismo proveedor a veces las trae y a veces no.
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr .7fr 1fr .6fr auto', gap: 8, marginBottom: 6 }}>
-        {['Nombre (como figura en la factura)', 'Alícuota %', 'Se calcula sobre', 'Activa', ''].map((h, i) => (
+      <div style={{ display: 'grid', gridTemplateColumns: '1.8fr .6fr 1fr 1.1fr .5fr auto', gap: 8, marginBottom: 6 }}>
+        {['Nombre (como figura en la factura)', 'Alícuota %', 'Se calcula sobre', 'De qué impuesto es', 'Activa', ''].map((h, i) => (
           <div key={i} className={s['mini-label']}>{h}</div>
         ))}
       </div>
       {filas.map((f, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr .7fr 1fr .6fr auto', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.8fr .6fr 1fr 1.1fr .5fr auto', gap: 8, marginBottom: 8, alignItems: 'center' }}>
           <input
             value={f.nombre}
             placeholder="Perc. IVA RG 5329"
@@ -214,6 +225,17 @@ function PercepcionesTab({ prov }) {
           <select value={f.base} disabled={!isAdmin} onChange={(e) => set(i, { base: e.target.value })}>
             <option value="neto">El neto gravado</option>
             <option value="total">El total con IVA</option>
+          </select>
+          <select
+            value={f.tipo || ''}
+            disabled={!isAdmin}
+            title="Lo usa Resultados IVA: solo la de IVA se descuenta del impuesto a pagar"
+            onChange={(e) => set(i, { tipo: e.target.value })}
+          >
+            <option value="">Según el nombre: {NOMBRE_TIPO_PERC[tipoSegunNombre(f.nombre)]}</option>
+            <option value="iva">IVA</option>
+            <option value="iibb">Ingresos Brutos</option>
+            <option value="otro">Otro impuesto</option>
           </select>
           <input
             type="checkbox"

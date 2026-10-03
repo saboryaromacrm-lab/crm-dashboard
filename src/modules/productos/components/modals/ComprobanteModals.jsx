@@ -1295,7 +1295,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         bonificacionImporte: bonifImporte,
         percepciones: percCalculadas
           .filter((p) => p.aplicar && p.importe > 0.009)
-          .map((p) => ({ nombre: p.nombre, alicuota: Number(p.alicuota) || 0, base: p.base, importe: r2(p.importe) })),
+          .map((p) => ({ nombre: p.nombre, alicuota: Number(p.alicuota) || 0, base: p.base, importe: r2(p.importe), tipo: p.tipo || '' })),
         actualizarCostos: payloadCostos,
         activarProveedor: aActivar.map((d) => d.productoId),
         confirmarSaltos,
@@ -1344,7 +1344,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       bonificacionImporte: bonifImporte,
       percepciones: percCalculadas
         .filter((p) => p.aplicar && p.importe > 0.009)
-        .map((p) => ({ nombre: p.nombre, alicuota: Number(p.alicuota) || 0, base: p.base, importe: r2(p.importe) })),
+        .map((p) => ({ nombre: p.nombre, alicuota: Number(p.alicuota) || 0, base: p.base, importe: r2(p.importe), tipo: p.tipo || '' })),
       // Costo del bulto y tamaño del bulto viajan JUNTOS: son un solo hecho
       // ("la bolsa de 20 kg sale $40.000") y por separado el $/kg mentiría.
       actualizarCostos: payloadCostos,
