@@ -208,7 +208,8 @@ export const ventasApi = {
   crearPresupuesto: (data) => httpClient.post('/presupuestos', data),
   enviarPresupuesto: (id) => httpClient.post(`/presupuestos/${id}/enviar`, {}),
   reabrirPresupuesto: (id) => httpClient.post(`/presupuestos/${id}/reabrir`, {}),
-  confirmarPresupuesto: (id, usuarioId) => httpClient.post(`/presupuestos/${id}/confirmar`, { usuarioId }),
+  /** `operadorId`: quién fracciona los paquetes que falten armar (3/10/2026). */
+  confirmarPresupuesto: (id, usuarioId, operadorId) => httpClient.post(`/presupuestos/${id}/confirmar`, { usuarioId, operadorId: operadorId || undefined }),
   armarPresupuesto: (id, items) => httpClient.post(`/presupuestos/${id}/armar`, { items }),
   delegarPresupuesto: (id, vendedorId) => httpClient.post(`/presupuestos/${id}/delegar`, { vendedorId }),
   cancelarPresupuesto: (id, usuarioId, motivo) => httpClient.post(`/presupuestos/${id}/cancelar`, { usuarioId, motivo }),

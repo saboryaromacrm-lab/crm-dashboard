@@ -10,7 +10,7 @@
  * WhatsApp") y el de ARMADO (sin precios, columna en blanco para el lápiz).
  * "Vencido" se calcula acá mismo: enviado con la fecha pasada.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { configImpresion, esc, imprimirDocumento } from '@core/services/imprimir.js';
 import { useVentas } from '../context/VentasContext.jsx';
@@ -128,6 +128,69 @@ function textoWhatsApp(p, cliente, empresaNombre) {
 
 /* ------------------------------ Modales ------------------------------ */
 
+/**
+ * CONFIRMAR UN PEDIDO QUE NECESITA FRACCIONAR (3/10/2026). Dice qué paquetes
+ * se van a armar con el granel y cuántos kilos salen, y pide quién fracciona
+ * si hay operadores cargados (queda en el historial de fraccionamiento, igual
+ * que un fraccionado a mano). Toca stock: dos pasos y candado contra el doble clic.
+ */
+function ConfirmarFraccionandoModal({ p, orden, onConfirmar, onCerrar }) {
+  const operadores = orden.operadores ?? [];
+  const [operadorId, setOperadorId] = useState(operadores.length === 1 ? String(operadores[0].id) : '');
+  const [guardando, setGuardando] = useState(false);
+  const enVuelo = useRef(false);
+  const faltaOperador = operadores.length > 0 && !operadorId;
+  const kg = orden.fraccionar.reduce((a, f) => a + f.kg, 0);
+  const cortos = orden.items.filter((it) => !it.alcanza);
+
+  const confirmar = async () => {
+    if (enVuelo.current || faltaOperador) return;
+    enVuelo.current = true; setGuardando(true);
+    try { await onConfirmar(operadorId ? Number(operadorId) : null); } finally { enVuelo.current = false; setGuardando(false); }
+  };
+
+  return (
+    <ModalShell
+      title={`Confirmar ${p.codigo}`}
+      onClose={onCerrar}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: onCerrar },
+        { texto: guardando ? 'Confirmando…' : 'Sí, fraccionar y confirmar', clase: 'btn-primary', onClick: confirmar, disabled: guardando || faltaOperador },
+      ]}
+    >
+      <div className={s.hint} style={{ marginTop: 0 }}>
+        Faltan paquetes armados. Al confirmar, el ERP los <strong>fracciona con el granel</strong> de la sucursal
+        y después reserva el pedido. Queda registrado en el historial de fraccionamiento.
+      </div>
+      <Table cols={[{ h: 'Se arma' }, { h: 'Paquetes', num: true }, { h: 'Granel que usa', num: true }]}>
+        {orden.fraccionar.map((f) => (
+          <tr key={`${f.nombre}-${f.tam}`}>
+            <td>{f.nombre} · <strong>{f.tam}</strong></td>
+            <td className={s.num}>{num(f.paquetes, 0)}</td>
+            <td className={s.num}>{num(f.kg, 3)} kg</td>
+          </tr>
+        ))}
+      </Table>
+      <div className={s.hint}>En total salen <strong>{num(kg, 3)} kg</strong> de granel. Hay que llenar esos paquetes antes de preparar el pedido.</div>
+      {operadores.length > 0 && (
+        <div className={s.field}>
+          <label htmlFor="confirmar-operador">¿Quién fracciona? <span className={s.req}>*</span></label>
+          <select id="confirmar-operador" value={operadorId} onChange={(e) => setOperadorId(e.target.value)}>
+            <option value="">Elegí quién fracciona…</option>
+            {operadores.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+          </select>
+        </div>
+      )}
+      {cortos.length > 0 && (
+        <div className={cx(s.callout, s.warn)}>
+          Aun fraccionando, {cortos.length} renglón(es) no alcanzan: {cortos.map((it) => it.nombre + (it.detalle ? ` (${it.detalle})` : '')).join(', ')}.
+          Si el control de stock está prendido para esos productos, la confirmación va a frenar.
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
 function ArmadoModal({ p, onGuardar, onCerrar }) {
   const [edits, setEdits] = useState({});
   const [guardando, setGuardando] = useState(false);
@@ -190,7 +253,7 @@ function ArmadoModal({ p, onGuardar, onCerrar }) {
 /* ------------------------------ Panel ------------------------------ */
 
 export function PresupuestosPanel() {
-  const { clientes, usuarios, ctx, goPanel, toast } = useVentas();
+  const { clientes, usuarios, ctx, goPanel, toast, config } = useVentas();
   const [filtroEstado, setFiltroEstado] = useState('');
   const [q, setQ] = useState('');
   const [modal, setModal] = useState(null); // { tipo: 'armado', p }
@@ -221,6 +284,25 @@ export function PresupuestosPanel() {
   }, [lista, filtroEstado, q, clienteDe]);
 
   const pag = usePaginado(filtrados, 'presupuestos', `${filtroEstado}|${q}`);
+
+  /**
+   * CONFIRMAR (reserva el stock). Si el pedido lleva paquetes de un granel que
+   * no están todos armados, al confirmar el ERP los FRACCIONA con el granel
+   * (3/10/2026, decisión del dueño): antes se muestra qué se va a armar y quién
+   * lo fracciona, y se confirma en un segundo paso. Sin nada para armar —o sin
+   * reserva de stock en la configuración— confirma directo, como siempre.
+   */
+  const confirmar = async (p) => {
+    if (ocupado) return;
+    if (config?.presupuestoReservaStock !== false) {
+      setOcupado(true);
+      let orden = null;
+      try { orden = await ventasApi.orden(p.id); } catch (e) { toast(errorMsg(e), 'err'); setOcupado(false); return; }
+      setOcupado(false);
+      if (orden?.fraccionar?.length) { setModal({ tipo: 'fraccionar', p, orden }); return; }
+    }
+    await accion(() => ventasApi.confirmarPresupuesto(p.id, ctx.usuarioId), 'Confirmado: stock reservado para armar el pedido.');
+  };
 
   /** Corre una acción de la API y recarga; los errores van al toast de arriba. */
   const accion = async (fn, okMsg) => {
@@ -309,7 +391,7 @@ export function PresupuestosPanel() {
       acciones.push(<Btn key="w" small onClick={() => enviarWhatsApp(p)}>WhatsApp</Btn>);
     }
     if (puedeCotizar && est === 'enviado') {
-      acciones.push(<Btn key="c" variant="btn-primary" small disabled={ocupado} onClick={() => accion(() => ventasApi.confirmarPresupuesto(p.id, ctx.usuarioId), 'Confirmado: stock reservado para armar el pedido.')}>Confirmar</Btn>);
+      acciones.push(<Btn key="c" variant="btn-primary" small disabled={ocupado} onClick={() => confirmar(p)}>Confirmar</Btn>);
     }
     if (puedeCotizar && (est === 'enviado' || est === 'vencido')) {
       acciones.push(<Btn key="r" small disabled={ocupado} onClick={() => accion(() => ventasApi.reabrirPresupuesto(p.id), 'Reabierto como borrador.')}>Reabrir</Btn>);
@@ -408,6 +490,25 @@ export function PresupuestosPanel() {
         al despachar y la plata que trae el chofer se registra como cobranza.
       </div>
 
+      {modal?.tipo === 'fraccionar' && (
+        <ConfirmarFraccionandoModal
+          p={modal.p}
+          orden={modal.orden}
+          onCerrar={() => setModal(null)}
+          onConfirmar={async (operadorId) => {
+            let armados = [];
+            const ok = await accion(async () => {
+              const r = await ventasApi.confirmarPresupuesto(modal.p.id, ctx.usuarioId, operadorId);
+              armados = r?.armados ?? [];
+            });
+            if (ok) {
+              toast(`Confirmado: se fraccionó ${armados.join(' · ') || 'lo que faltaba'} y quedó reservado.`, 'ok');
+              setModal(null);
+            }
+            return ok;
+          }}
+        />
+      )}
       {modal?.tipo === 'armado' && (
         <ArmadoModal
           p={modal.p}
