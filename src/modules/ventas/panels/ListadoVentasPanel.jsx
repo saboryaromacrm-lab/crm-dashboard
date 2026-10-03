@@ -109,15 +109,65 @@ const RANGOS = [
   { id: 'todo', label: 'Todo', calc: () => ({ desde: '', hasta: '' }) },
 ];
 
+/*
+ * CON QUÉ PAGÓ EL CLIENTE POR EL QR (0131, 3/10/2026, pedido del dueño): el
+ * mismo QR de la caja se paga con dinero en cuenta, débito o crédito, y a la
+ * casa no le cuesta lo mismo. El servidor trae el tipo, las cuotas y —solo a
+ * administración— lo que descontó Mercado Pago y lo que quedó.
+ */
+const TIPO_PAGO_MP = {
+  account_money: 'Dinero en cuenta', debit_card: 'Débito', credit_card: 'Crédito', prepaid_card: 'Prepaga',
+  ticket: 'Efectivo (cupón)', bank_transfer: 'Transferencia', sin_datos: 'Sin datos todavía',
+};
+const textoPagoMp = (mp) => (mp
+  ? `${TIPO_PAGO_MP[mp.tipo] || mp.tipo || 'Sin datos'}${mp.cuotas > 1 ? ` · ${mp.cuotas} cuotas` : ''}`
+  : '');
+const ayudaPagoMp = (mp) => [
+  textoPagoMp(mp),
+  mp?.comision != null && `Mercado Pago descontó ${money(mp.comision)}`,
+  mp?.interesCliente > 0 && `el cliente pagó ${money(mp.interesCliente)} de interés`,
+  mp?.neto != null && `te quedaron ${money(mp.neto)}`,
+].filter(Boolean).join(' · ');
+
 /** Los medios de pago de un ticket, cortitos: «Efectivo» o «Efectivo +1». */
 function Medios({ medios }) {
   if (!medios?.length) return <span className={s.muted}>—</span>;
   const label = NOMBRE_MEDIO[medios[0].medio] || medios[0].medio;
-  if (medios.length === 1) return <span>{label}</span>;
+  const mp = medios.find((m) => m.mp)?.mp;
+  const sub = mp ? <div className={s.muted} style={{ fontSize: 12 }} title={ayudaPagoMp(mp)}>{textoPagoMp(mp)}</div> : null;
+  if (medios.length === 1) return <span title={mp ? ayudaPagoMp(mp) : undefined}>{label}{sub}</span>;
   return (
-    <span title={medios.map((m) => `${NOMBRE_MEDIO[m.medio] || m.medio}: ${money(m.importe)}`).join(' · ')}>
-      {label} <span className={s.muted}>+{medios.length - 1}</span>
+    <span title={medios.map((m) => `${NOMBRE_MEDIO[m.medio] || m.medio}: ${money(m.importe)}${m.mp ? ` (${ayudaPagoMp(m.mp)})` : ''}`).join(' · ')}>
+      {label} <span className={s.muted}>+{medios.length - 1}</span>{sub}
     </span>
+  );
+}
+
+/** El QR de Mercado Pago del filtro, por cómo pagó el cliente (solo administración). */
+function ResumenMercadoPago({ mp }) {
+  if (!mp) return null;
+  return (
+    <div style={{ borderTop: '1px solid var(--crm-color-border, #e5e7eb)', paddingTop: 8, marginTop: 4, display: 'grid', gap: 4 }}>
+      <div style={{ fontSize: 13 }}>
+        <strong>Cobrado por QR de Mercado Pago: {money(mp.importe)}</strong> en {mp.cobros} cobro{mp.cobros === 1 ? '' : 's'}
+        {' · '}Mercado Pago descontó <strong>{money(mp.comision)}</strong>{' · '}te quedaron <strong>{money(mp.neto)}</strong>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 18px', fontSize: 12.5 }}>
+        {mp.porTipo.map((t) => (
+          <span key={t.tipo}>
+            {TIPO_PAGO_MP[t.tipo] || t.tipo}: <strong>{money(t.importe)}</strong>
+            <span className={s.muted}>
+              {' '}({t.cobros}{t.enCuotas ? `, ${t.enCuotas} en cuotas` : ''}{t.comision > 0 ? ` · descontó ${money(t.comision)}` : ''})
+            </span>
+          </span>
+        ))}
+      </div>
+      {mp.sinComision > 0 && (
+        <div className={s.hint} style={{ margin: 0 }}>
+          {mp.sinComision} cobro{mp.sinComision === 1 ? '' : 's'} todavía sin el detalle de Mercado Pago: se completa{mp.sinComision === 1 ? '' : 'n'} solo{mp.sinComision === 1 ? '' : 's'} en unos minutos.
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -347,6 +397,7 @@ export function ListadoVentasPanel() {
                 </div>
               </>
             ) : <div className={s.hint}>Sin cobros en el período.</div>}
+            <ResumenMercadoPago mp={t.mercadoPago} />
           </div>
           {/* RENTABILIDAD (1/10/2026): solo llega a quien puede ver costos. */}
           {t.rentabilidad && (
