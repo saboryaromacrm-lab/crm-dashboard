@@ -1083,6 +1083,17 @@ export function imprimirArqueoCaja(arqueo, opts) {
  * fondo y lo que se envía. El esperado y la diferencia van SOLO si quien cierra
  * los puede ver (`cajaVeEsperado`, 1/10/2026); a ciegas, nada del sistema.
  */
+/**
+ * LA SUCURSAL Y LA FECHA, GRANDES (3/10/2026, pedido del dueño): son los dos
+ * datos con los que se identifica el sobre al recibirlo. El cajero va abajo, chico.
+ */
+function encabezadoEnvio(sucursal, cuando, cajero) {
+  return `
+    <div style="font-size:1.7em;font-weight:800;text-transform:uppercase;line-height:1.15;margin:6px 0 2px">${esc(sucursal || 'Sin sucursal')}</div>
+    <div style="font-size:1.35em;font-weight:800;line-height:1.2;margin:0 0 4px">${esc(cuando)}</div>
+    ${cajero ? `<div class="sub">Cajero: ${esc(cajero)}</div>` : ''}`;
+}
+
 export function imprimirEnvioCaja(d, { moneda, fechaHora, sucursal, cajero, usuario, reimpresion = false }) {
   const n = (x) => Number(x) || 0;
   const filas = Object.entries(d.billetes ?? {})
@@ -1116,10 +1127,7 @@ export function imprimirEnvioCaja(d, { moneda, fechaHora, sucursal, cajero, usua
     const cuerpoNuevo = `
     <div class="arqueo">
     <h1>Envío de caja - Turno #${esc(String(d.sesionId ?? ''))}</h1>
-    <div class="sub">
-      ${esc(sucursal || '')}${cajero ? ` &middot; Cajero: ${esc(cajero)}` : ''}<br />
-      Cierre: ${esc(fechaHora(d.cierre || new Date()))}
-    </div>
+    ${encabezadoEnvio(sucursal, fechaHora(d.cierre || new Date()), cajero)}
     <table><tbody><tr class="remarcada"><td>DEJAR EN CAJA</td><td class="n">${esc(moneda(n(d.fondoQueda)))}</td></tr></tbody></table>
     <div class="nota">Es lo que tiene que quedar en la caja para el próximo turno${n(d.fondo) ? ` (fondo fijo ${esc(moneda(n(d.fondo)))})` : ''}. No va en el sobre.</div>
     ${tabla(queda, 'No queda nada en la caja.')}
@@ -1146,10 +1154,7 @@ export function imprimirEnvioCaja(d, { moneda, fechaHora, sucursal, cajero, usua
   const cuerpo = `
     <div class="arqueo">
     <h1>Envío de caja - Turno #${esc(String(d.sesionId ?? ''))}</h1>
-    <div class="sub">
-      ${esc(sucursal || '')}${cajero ? ` &middot; Cajero: ${esc(cajero)}` : ''}<br />
-      Cierre: ${esc(fechaHora(d.cierre || new Date()))}
-    </div>
+    ${encabezadoEnvio(sucursal, fechaHora(d.cierre || new Date()), cajero)}
     <div class="secArqueo">Billetes contados</div>
     <table>
       <thead><tr><th>Billete</th><th class="n">Cantidad</th><th class="n">Importe</th></tr></thead>
