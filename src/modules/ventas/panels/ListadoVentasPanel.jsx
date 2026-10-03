@@ -303,6 +303,10 @@ export function ListadoVentasPanel() {
         actions={<Btn small onClick={reload} disabled={loading}>{loading ? 'Cargando…' : 'Actualizar'}</Btn>}
       />
 
+      {/* LAS ESTADÍSTICAS SON DE ADMINISTRACIÓN (3/10/2026, pedido del dueño):
+          el cajero ve la lista de sus ventas, no las tarjetas de totales. El
+          servidor tampoco se los manda (`totales: null`). */}
+      {esJefe && (
       <div className={s.stats}>
         <Stat label="Tickets" value={t ? num(t.tickets, 0) : '—'} />
         <Stat label="Vendido" value={t ? money(t.plata) : '—'} accent="accent-green" />
@@ -313,11 +317,12 @@ export function ListadoVentasPanel() {
           accent={t && t.descuentos > 0 ? 'accent-amber' : undefined}
         />
       </div>
+      )}
 
       {/* Lo que se pregunta después del total: con qué se pagó (con su %),
           cuánto se ganó y si hubo algo anulado. La tarjeta de ofertas se sacó
           el 1/10/2026 a pedido del dueño; la rentabilidad ocupa su lugar. */}
-      {t && (
+      {esJefe && t && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <div className={s.card} style={{ padding: '10px 14px', flex: '2 1 320px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span className={s['mini-label']}>CÓMO SE PAGÓ</span>
@@ -385,7 +390,7 @@ export function ListadoVentasPanel() {
       {/* FACTURADO vs LIQUIDADO y POR LISTA DE PRECIOS (30/9/2026, pedido del
           dueño): qué parte de lo vendido es de cada una. Mismo filtro que el
           resto de la pantalla; las anuladas no cuentan y las NC restan. */}
-      {t?.facturacion && (
+      {esJefe && t?.facturacion && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span className={s['mini-label']}>FACTURADO Y LIQUIDADO</span>

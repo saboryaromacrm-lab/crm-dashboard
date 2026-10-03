@@ -31,13 +31,14 @@ import SettingsIcon from '@mui/icons-material/Settings';
  */
 export const VENTAS_PANELS = [
   { id: 'pos', label: 'Punto de venta', icon: PointOfSaleIcon, permiso: 'ventas.pos' },
-  /* Se vende, se mira lo vendido, se cierra el turno: el listado va entre el
-     mostrador y la caja porque es la pregunta del medio ("¿qué se vendió?"). */
+  /* ORDEN DEL DUEÑO (3/10/2026): Punto de venta, Caja, Ventas, Clientes,
+     Cobranzas y Carteles — la caja pegada al mostrador, que es donde se abre
+     y se cierra el turno. Caídas por ARCA sigue al listado (son ventas). */
+  { id: 'caja', label: 'Caja', icon: AccountBalanceWalletIcon, permiso: 'ventas.caja' },
   { id: 'listado', label: 'Ventas', icon: ReceiptLongIcon, permiso: 'ventas.listado' },
   /* Las cobradas que ARCA no pudo facturar (26/9/2026): misma llave que el
      listado, porque el que vende es el que tiene que dejarlas en regla. */
   { id: 'arca', label: 'Caídas por ARCA', icon: CloudOffIcon, permiso: 'ventas.listado', badge: 'arca' },
-  { id: 'caja', label: 'Caja', icon: AccountBalanceWalletIcon, permiso: 'ventas.caja' },
   { id: 'ordenes', label: 'Órdenes web', icon: PublicIcon, permiso: 'ventas.ordenes', badge: 'ordenes' },
   { id: 'presupuestos', label: 'Presupuestos', icon: RequestQuoteIcon, permiso: 'ventas.presupuestos' },
   { id: 'clientes', label: 'Clientes', icon: PeopleAltIcon, permiso: 'ventas.clientes' },
