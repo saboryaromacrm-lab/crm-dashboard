@@ -164,6 +164,9 @@ export function unidadesDeLista(precios, listaId) {
  * tiene bulto: se vende por kg.
  */
 export function bultoDeFila(renglon, porLista) {
+  /* El granel madre se vende como su formato (3/10/2026): de a una BOLSA de
+   * N kg, y es regla — no se vende suelto. Va antes que el «se vende por kg». */
+  if (Number(renglon?.bolsaKg) > 0) return { unidades: Number(renglon.bolsaKg), exigido: true, bolsa: true };
   if (renglon?.fraccionable) return { unidades: 0, exigido: false };
   if (porLista > 1) return { unidades: porLista, exigido: true };
   const ficha = Number(renglon?.unidadesPorBulto) || 0;
@@ -204,11 +207,30 @@ export function bultoAbajo(cantidad, unidades) {
 }
 
 /** "2 bultos + 5 u" — cómo se lee esa cantidad en la caja. */
-export function textoBulto(cantidad, unidades) {
+export function textoBulto(cantidad, unidades, bolsa = false) {
   const { bultos, sueltas, exacto } = desgloseBulto(cantidad, unidades);
+  if (bolsa) {
+    const kg = (n) => `${String(Math.round(Number(n) * 1000) / 1000).replace('.', ',')} kg`;
+    if (exacto) return `${ent(bultos)} × bolsa de ${kg(unidades)}`;
+    if (!bultos) return `${kg(sueltas)} sueltos · bolsa de ${kg(unidades)}`;
+    return `${ent(bultos)} bolsa${bultos === 1 ? '' : 's'} + ${kg(sueltas)} sueltos`;
+  }
   if (exacto) return `${ent(bultos)} × bulto de ${ent(unidades)}`;
   if (!bultos) return `${ent(sueltas)} u · bulto de ${ent(unidades)}`;
   return `${ent(bultos)} bulto${bultos === 1 ? '' : 's'} + ${ent(sueltas)} u`;
+}
+
+/**
+ * CUÁNTO CARGA UN ARTÍCULO CUANDO NADIE DIJO CUÁNTO (3/10/2026): la caja
+ * escaneada trae sus N; el granel madre, UNA BOLSA de su formato (no se vende
+ * suelto); lo demás, 1. Lo usan todos los caminos de carga (buscador, carga
+ * rápida, búsqueda masiva): antes la carga rápida cargaba 1 aunque se
+ * escaneara el código de una caja.
+ */
+export function cantidadInicial(item) {
+  if (Number(item?._escaneoUnidades) > 0) return Number(item._escaneoUnidades);
+  if (Number(item?.bolsaKg) > 0) return Number(item.bolsaKg);
+  return 1;
 }
 
 /**
@@ -503,6 +525,8 @@ export function ticketReducer(estado, accion) {
         fraccionable: item.fraccionable,
         /** El bulto de la ficha, para el botón de bultos (0 = no tiene). */
         unidadesPorBulto: item.unidadesPorBulto ?? 0,
+        /** Granel madre: los kg de la bolsa de su formato (se vende de a esto). */
+        bolsaKg: item.bolsaKg ?? 0,
         /** Granel sin control de stock: no se frena por stock (lo decide el servidor). */
         stockLibre: !!item.stockLibre,
         iva: item.iva,
@@ -920,6 +944,7 @@ export function ticketDesdeBorrador(borrador, catalogo) {
       fraccionable: cat?.fraccionable ?? false,
       /** El bulto de la ficha, para el botón de bultos en mostrador (0 = no tiene). */
       unidadesPorBulto: cat?.unidadesPorBulto ?? 0,
+      bolsaKg: cat?.bolsaKg ?? 0,
       stockLibre: !!cat?.stockLibre,
       iva: it.iva,
       stock: cat?.stock ?? 0,

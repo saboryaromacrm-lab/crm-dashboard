@@ -1223,7 +1223,9 @@ function VentaTab({ prod: p, pres = null }) {
   const quitar = (i) => setRows((r) => r.filter((_, j) => j !== i));
 
   /** Las que todavía no están cargadas: agregar una es agregar una fila. */
-  const disponibles = activas.filter((l) => !rows.some((r) => r.listaId === l.id));
+  /* El madre a granel se vende con UNA sola lista: su formato, la bolsa de N kg (3/10/2026). */
+  const granelMadre = !esPaquete && p.tipo === 'granel';
+  const disponibles = granelMadre && rows.length >= 1 ? [] : activas.filter((l) => !rows.some((r) => r.listaId === l.id));
   const agregar = (id) => {
     const l = activas.find((x) => x.id === Number(id));
     if (l) {
@@ -1459,6 +1461,15 @@ function VentaTab({ prod: p, pres = null }) {
           </div>
         )}
       </div>
+
+      {granelMadre && (
+        <div className={cx(s.callout, s.info)} style={{ marginTop: 10 }}>
+          <strong>Un producto a granel no se vende suelto:</strong> se vende como dice su formato, con <strong>una sola
+          lista</strong>. <strong>Vende por</strong> = los kilos de la bolsa: con 10 la caja y la tienda lo ofrecen como
+          «Bolsa de 10 kg» y se vende de a bolsas enteras.
+          {rows.length > 1 && <> Este tiene {rows.length} listas: dejá una sola para poder guardar.</>}
+        </div>
+      )}
 
       <div className={s.hint} style={{ marginTop: 10 }}>
         <strong>Vende por</strong>: 1 = {esPaquete ? 'un paquete' : 'suelto'}; 12 = caja de 12

@@ -3,7 +3,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { ventasApi } from '../../services/ventas.api.js';
 import { norm } from '../../domain/constants.js';
-import { buscarEnCatalogo, motivoBloqueo, parseEtiquetaBalanza, r2 } from '../../domain/pos.js';
+import { buscarEnCatalogo, cantidadInicial, motivoBloqueo, parseEtiquetaBalanza, r2 } from '../../domain/pos.js';
 import { Btn, ModalShell, money, num, s } from '../ui.jsx';
 import p from '../../styles/Pos.module.css';
 
@@ -25,7 +25,9 @@ export function CargaRapidaModal({ catalogo, config, onAgregar }) {
 
   const resultados = useMemo(() => buscarEnCatalogo(catalogo, q, 6), [catalogo, q]);
 
-  const agregar = (item, cantidad = 1) => {
+  const agregar = (item, cantidadPedida) => {
+    /* Sin cantidad dicha: la caja escaneada trae sus N y el granel madre una bolsa. */
+    const cantidad = cantidadPedida ?? cantidadInicial(item);
     // El "solo Cafetería" primero: su mensaje explica el porqué; el de
     // "sin precio" mandaría al cajero a cargar un precio que no va a existir.
     const bloqueo = motivoBloqueo(item);
@@ -196,7 +198,7 @@ export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
     const bloqueo = motivoBloqueo(item);
     if (bloqueo) { toast(bloqueo, 'err'); return; }
     if (item.precio <= 0) { toast(`${item.nombre} no tiene precio cargado.`, 'err'); return; }
-    onAgregar(item, 1);
+    onAgregar(item, cantidadInicial(item));
     toast(`${item.nombre} · ${item.detalle} agregado.`, 'ok');
   };
 

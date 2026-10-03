@@ -1399,8 +1399,8 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
     const unit = Number(it.cantidad) ? importe / Number(it.cantidad) : importe;
     return `<tr>
       <td>${esc(it.nombre ?? `#${it.productoId}`)}</td>
-      <td class="chica n">${Number(it.cantidad)}</td>
-      <td class="chica n">${moneda(unit)}</td>
+      <td class="chica n">${Number(it.cantidad)}${it.unidad === 'kg' ? ' kg' : ''}</td>
+      <td class="chica n">${moneda(unit)}${it.unidad === 'kg' ? '/kg' : ''}</td>
       ${discrimina ? `<td class="chica n">${Number(alic)}%</td>` : ''}
       <td class="chica n">${moneda(importe)}</td>
     </tr>`;
@@ -1606,7 +1606,7 @@ export function cuerpoTicket(venta, {
     const neto = it.cantidad * it.precioUnitario * (1 - (it.descuento || 0) / 100);
     const final = neto * (1 + (it.iva ?? 21) / 100);
     return `<tr>
-      <td>${esc(it.nombre ?? `#${it.productoId}`)}<br /><span class="det">${Number(it.cantidad)} x ${moneda(it.precioUnitario * (1 + (it.iva ?? 21) / 100))}</span></td>
+      <td>${esc(it.nombre ?? `#${it.productoId}`)}<br /><span class="det">${Number(it.cantidad)}${it.unidad === 'kg' ? ' kg' : ''} x ${moneda(it.precioUnitario * (1 + (it.iva ?? 21) / 100))}${it.unidad === 'kg' ? '/kg' : ''}</span></td>
       <td class="n">${moneda(final)}</td>
     </tr>`;
   }).join('');

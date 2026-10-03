@@ -8,7 +8,7 @@ import {
   buscarEnCatalogo, calcularRenglon, descuentosDisponibles, descuentosParaApi,
   extrasParaApi, itemsParaApi, motivoBloqueo, parseEtiquetaBalanza,
   problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
-  bultoAbajo, bultoArriba, bultoDeFila, desgloseBulto, empujonMayorista, textoBulto,
+  bultoAbajo, bultoArriba, bultoDeFila, cantidadInicial, desgloseBulto, empujonMayorista, textoBulto,
   totalesTicket, ultimoArticulo, unidadesDeLista,
 } from '../domain/pos.js';
 import {
@@ -172,7 +172,7 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
 
   const elegir = useCallback((item, cantidad) => {
     // El escaneo de una CAJA trae sus unidades: cargarla es cargar las N.
-    onElegir(item, cantidad ?? item._escaneoUnidades ?? 1);
+    onElegir(item, cantidad ?? cantidadInicial(item));
     setQ('');
     setActivo(0);
   }, [onElegir]);
@@ -237,11 +237,12 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
                 <span>
                   <span className={p.resultadoNombre}>{item.nombre}</span>
                   <span className={p.resultadoMeta}>
-                    {' · '}{bulto ? <strong>Bulto × {num(bulto.unidades)}</strong> : item.detalle}
+                    {' · '}{bulto ? <strong>Bulto × {num(bulto.unidades)}</strong> : (item.bolsaKg > 0 ? <strong>{item.detalle}</strong> : item.detalle)}
                     {item.marca ? ` · ${item.marca}` : ''}
                     {' · '}
                     <span className={item.stock <= 0 && !item.stockLibre ? p.sinStock : undefined}>
                       {num(item.stock)} {item.unidad}
+                      {item.bolsaKg > 0 && ` (${num(Math.floor((Number(item.stock) || 0) / item.bolsaKg + 1e-9))} bolsas)`}
                     </span>
                     {/* La marca del 0089 a la vista: el cajero ve el porqué ANTES
                         de intentar agregarlo y comerse el rechazo. */}
@@ -254,7 +255,9 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
                       Escaneando una caja, el número es el del BULTO CERRADO. */}
                   {bulto && bulto.precioFormato > 0
                     ? money(bulto.precioFormato)
-                    : (item.precioFinal > 0
+                    : item.bolsaKg > 0 && item.precioBolsa > 0
+                      ? money(item.precioBolsa)
+                      : (item.precioFinal > 0
                       ? money(item.precioFinal)
                       : <span className={p.sinStock}>sin precio</span>)}
                 </span>
@@ -444,7 +447,7 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                       <div className={p.cantCampo}>
                         <div className={p.bultoStep}>
                           <button
-                            type="button" className={p.bultoBtn} title={`Bajar al bulto de abajo (${num(bulto.unidades)} u)`}
+                            type="button" className={p.bultoBtn} title={bulto.bolsa ? `Una bolsa menos (${num(bulto.unidades)} kg)` : `Bajar al bulto de abajo (${num(bulto.unidades)} u)`}
                             disabled={r.cantidad <= bulto.unidades} onClick={() => irBulto(bultoAbajo)}
                           >
                             −
@@ -452,13 +455,13 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                           <input
                             className={p.inputBulto}
                             type="number" min="0" step="1" value={partes.bultos}
-                            title={`Bultos de ${num(bulto.unidades)} ${r.unidad}`}
+                            title={bulto.bolsa ? `Bolsas de ${num(bulto.unidades)} kg` : `Bultos de ${num(bulto.unidades)} ${r.unidad}`}
                             onChange={(e) => dispatch({
                               tipo: 'bultos', uid: r.uid, unidades: bulto.unidades, bultos: e.target.value,
                             })}
                           />
                           <button
-                            type="button" className={p.bultoBtn} title={`Subir al bulto de arriba (${num(bulto.unidades)} u)`}
+                            type="button" className={p.bultoBtn} title={bulto.bolsa ? `Una bolsa más (${num(bulto.unidades)} kg)` : `Subir al bulto de arriba (${num(bulto.unidades)} u)`}
                             onClick={() => irBulto(bultoArriba)}
                           >
                             +
@@ -466,7 +469,7 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                         </div>
                         {/* De a cuántas viene el bulto, bajo el control que lo mueve:
                             sin eso "2" no dice si son 24 o 32. */}
-                        <span className={p.cantNombre}>bultos de {num(bulto.unidades)}</span>
+                        <span className={p.cantNombre}>{bulto.bolsa ? `bolsas de ${num(bulto.unidades)} kg` : `bultos de ${num(bulto.unidades)}`}</span>
                       </div>
                     )}
                     <div className={p.cantCampo}>
@@ -493,9 +496,9 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                   {bulto.unidades > 1 && (
                     <div
                       className={cx(p.detalleCol, incumple && p.sinStock)}
-                      title={incumple ? `Esta lista se vende de a ${num(bulto.unidades)}` : ''}
+                      title={incumple ? (bulto.bolsa ? `No se vende suelto: va de a bolsas de ${num(bulto.unidades)} kg` : `Esta lista se vende de a ${num(bulto.unidades)}`) : ''}
                     >
-                      {textoBulto(r.cantidad, bulto.unidades)}
+                      {textoBulto(r.cantidad, bulto.unidades, !!bulto.bolsa)}
                     </div>
                   )}
                 </td>
@@ -1288,7 +1291,9 @@ export function PosPanel() {
 
   /* ------------------------------ Acciones ------------------------------ */
 
-  const agregar = useCallback((item, cantidad = 1) => {
+  const agregar = useCallback((item, cantidadPedida) => {
+    /* Sin cantidad dicha: la caja escaneada trae sus N y el granel madre una bolsa (ver `cantidadInicial`). */
+    const cantidad = cantidadPedida ?? cantidadInicial(item);
     /* El candado de pantalla del "uso exclusivo de Cafetería" (0089). Va acá,
      * en el embudo por el que pasan TODOS los caminos (buscador, escáner,
      * carga rápida, búsqueda masiva); la API lo revalida en el confirm. */
