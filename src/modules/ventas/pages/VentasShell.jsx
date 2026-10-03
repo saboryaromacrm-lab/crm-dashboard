@@ -22,6 +22,7 @@ import { OfertasPanel } from '../panels/OfertasPanel.jsx';
 import { CambiosPrecioPanel } from '../panels/CambiosPrecioPanel.jsx';
 import { CartelesPanel } from '../panels/CartelesPanel.jsx';
 import { ConfiguracionPanel } from '../panels/ConfiguracionPanel.jsx';
+import { ListasPreciosPanel } from '../panels/ListasPreciosPanel.jsx';
 
 /** Los `id` coinciden con `VENTAS_PANELS` (config/ventas.config.js). */
 const PANEL_COMPONENTS = {
@@ -35,6 +36,7 @@ const PANEL_COMPONENTS = {
   caja: CajaPanel,
   ofertas: OfertasPanel,
   cambiosPrecio: CambiosPrecioPanel,
+  listasPrecios: ListasPreciosPanel,
   carteles: CartelesPanel,
   configuracion: ConfiguracionPanel,
 };

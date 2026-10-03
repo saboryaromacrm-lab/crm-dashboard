@@ -21,6 +21,7 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import SettingsIcon from '@mui/icons-material/Settings';
+import PercentIcon from '@mui/icons-material/Percent';
 
 /**
  * `permiso`: clave de sección del catálogo — sin ella, el panel no existe para
@@ -45,6 +46,9 @@ export const VENTAS_PANELS = [
   { id: 'cobranzas', label: 'Cobranzas', icon: PaymentsIcon, permiso: 'ventas.cobranzas' },
   { id: 'ofertas', label: 'Ofertas', icon: LocalOfferIcon, permiso: 'ventas.ofertas' },
   { id: 'cambiosPrecio', label: 'Cambios de precio', icon: TrendingUpIcon, permiso: 'ventas.cambios' },
+  /* LISTAS DE PRECIOS (3/10/2026, pedido del dueño: estaba en Compras). Mismo
+     permiso que allá —`compras.productos`— porque muestra costos. */
+  { id: 'listasPrecios', label: 'Listas de precios', icon: PercentIcon, permiso: 'compras.productos' },
   /* `ventas.carteles` es de fábrica para todos los roles (ver `permisos-base.ts`
      en la API): rehacer el cartel de un estante es trabajo de mostrador. Pedía
      `ventas.cambios`, que es la llave de los CAMBIOS DE PRECIO — usarla para

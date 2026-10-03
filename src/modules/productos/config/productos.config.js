@@ -10,7 +10,6 @@
  * Incidencias viven en Almacén.
  */
 import Inventory2Icon from '@mui/icons-material/Inventory2';
-import PercentIcon from '@mui/icons-material/Percent';
 import SellIcon from '@mui/icons-material/Sell';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import DocumentScannerIcon from '@mui/icons-material/DocumentScanner';
@@ -23,6 +22,7 @@ import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import LocalCafeIcon from '@mui/icons-material/LocalCafe';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 /**
  * Menú interno del módulo COMPRAS.
@@ -50,7 +50,8 @@ export const COMPRAS_PANELS = [
    * revés —del valor hacia los productos, y no del producto hacia su valor— y
    * lleva su mismo permiso: muestra costos.
    */
-  { id: 'margenes',       label: 'Listas de precios', icon: PercentIcon,        permiso: 'compras.productos' },
+  /* LISTAS DE PRECIOS se mudó a VENTAS el 3/10/2026 (pedido del dueño): ver
+     `ventas.config.js` y `ventas/panels/ListasPreciosPanel.jsx`. */
   { id: 'catalogos',      label: 'Catálogos',      icon: SellIcon,           permiso: 'compras.catalogos' },
   /*
    * El ABM de la ficha se mudó al MÓDULO Proveedores (0068). Acá queda solo lo
@@ -97,6 +98,11 @@ export const ALMACEN_PANELS = [
      "Coffit" es su propio nombre — el otro lado del puente se llama
      "Sabor y Aroma". Ver `domain/cafeteria.voz.js`. */
   { id: 'cafeteria',      label: 'Coffit',      labelCafe: 'Sabor y Aroma',      icon: LocalCafeIcon,      permiso: ['almacen.cafeteria', 'almacen.cafeteria-entradas', 'almacen.cafeteria-pedidos'], badge: 'pedidosCafe' },
+  /* CONFIGURACIÓN (3/10/2026, pedido del dueño): controlar el stock a granel y
+     de los enteros, y permitir vender sin stock — se mudaron desde Ventas ›
+     Configuración. Abre con la llave propia o con la de ventas (quien las
+     manejaba antes las sigue manejando). */
+  { id: 'configuracion',  label: 'Configuración', icon: SettingsIcon,      permiso: ['almacen.configuracion', 'ventas.configuracion'] },
   /*
    * La pantalla DE la cafetería: armar el pedido a la distribuidora. Es la
    * única sección del rol Cafetería — ese usuario entra al ERP y ve SOLO esto.
