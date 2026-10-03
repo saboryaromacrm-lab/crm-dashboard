@@ -21,7 +21,7 @@
  * Todo lo demás del producto (nombre, precio, stock, etiquetas) se maneja en
  * Compras › Productos — a propósito: una sola fuente de verdad por dato.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
 import { appConfig } from '@core/config/app.config.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
@@ -891,7 +891,102 @@ function ConfiguracionSitioPanel({ catalogo, recargar, avisar }) {
           {guardando ? 'Guardando…' : 'Guardar datos del sitio'}
         </Btn>
       </div>
+
+      <CartelBienvenida web={web} setWeb={setWeb} recargar={recargar} avisar={avisar} />
     </div>
+  );
+}
+
+/** Los topes del cartel: los mismos que aplica el servidor (configuracion.module, `web.popup*`). */
+const TOPE_POPUP = { popupEtiqueta: 40, popupTitulo: 90, popupTexto: 400 };
+
+/**
+ * EL CARTEL DE BIENVENIDA DE LA TIENDA (3/10/2026, pedido del dueño: «hacelo
+ * editable desde el ERP»). Es el que aparece al entrar al sitio y el que abre
+ * el botón «Info de compra». Se guarda aparte de los datos de contacto: cada
+ * botón guarda SOLO lo suyo, así un cambio a medio hacer en uno no viaja con
+ * el otro. La vista previa usa los mismos textos que se van a guardar.
+ */
+function CartelBienvenida({ web, setWeb, recargar, avisar }) {
+  const [guardando, setGuardando] = useState(false);
+  const enVuelo = useRef(false);
+  const activo = web.popupActivo !== false;
+  const etiqueta = web.popupEtiqueta ?? '';
+  const titulo = web.popupTitulo ?? '';
+  const texto = web.popupTexto ?? '';
+  const set = (k) => (e) => setWeb((w) => ({ ...w, [k]: e.target.value.slice(0, TOPE_POPUP[k]) }));
+
+  const guardar = async () => {
+    if (enVuelo.current) return;
+    if (!titulo.trim()) { avisar('err', 'El cartel necesita un título.'); return; }
+    enVuelo.current = true; setGuardando(true);
+    try {
+      const r = await httpClient.put('/configuracion/web', {
+        popupActivo: activo, popupEtiqueta: etiqueta, popupTitulo: titulo, popupTexto: texto,
+      });
+      // Lo que quedó guardado de verdad (el servidor recorta y limpia espacios).
+      if (r && typeof r === 'object') {
+        setWeb((w) => ({ ...w, popupActivo: r.popupActivo, popupEtiqueta: r.popupEtiqueta, popupTitulo: r.popupTitulo, popupTexto: r.popupTexto }));
+      }
+      avisar('ok', `Cartel de bienvenida guardado${activo ? '' : ' (apagado: solo se ve con «Info de compra»)'}: se ve al recargar el sitio.`);
+      await recargar();
+    } catch (e) {
+      avisar('err', e?.data?.message || 'No se pudo guardar el cartel.');
+    } finally {
+      enVuelo.current = false; setGuardando(false);
+    }
+  };
+
+  const contador = (k, v) => <span className={s.hint} style={{ margin: 0, float: 'right' }}>{v.length}/{TOPE_POPUP[k]}</span>;
+
+  return (
+    <>
+      <div className={s['section-title']}>Cartel de bienvenida</div>
+      <div className={s.hint} style={{ margin: 0 }}>
+        El cartel que aparece al entrar a la tienda (una vez por visita) y el que abre el botón «Info de compra».
+        Los botones «Ver catálogo» y «Consultar por WhatsApp» quedan siempre.
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, cursor: 'pointer' }}>
+        <input type="checkbox" checked={activo} onChange={(e) => setWeb((w) => ({ ...w, popupActivo: e.target.checked }))} />
+        Mostrarlo al entrar a la tienda
+      </label>
+      {!activo && <div className={s.hint} style={{ margin: 0 }}>Apagado no aparece solo, pero el botón «Info de compra» lo sigue abriendo.</div>}
+      <div className={s['form-grid']}>
+        <div className={s.field}>
+          <label htmlFor="popup-etiqueta">Etiqueta (opcional) {contador('popupEtiqueta', etiqueta)}</label>
+          <input id="popup-etiqueta" value={etiqueta} placeholder="Ej: 🍃 Bienvenido" onChange={set('popupEtiqueta')} />
+        </div>
+        <div className={s.field}>
+          <label htmlFor="popup-titulo">Título {contador('popupTitulo', titulo)}</label>
+          <input id="popup-titulo" value={titulo} onChange={set('popupTitulo')} />
+        </div>
+      </div>
+      <div className={s.field}>
+        <label htmlFor="popup-texto">Texto (opcional) {contador('popupTexto', texto)}</label>
+        <textarea id="popup-texto" rows={3} value={texto} onChange={set('popupTexto')} style={{ resize: 'vertical' }} />
+        <div className={s.hint} style={{ margin: '6px 0 0' }}>Con Enter se hace un salto de línea. Vacío, el cartel queda solo con el título y los botones.</div>
+      </div>
+
+      {/* Vista previa: los mismos colores y el mismo orden que el cartel del sitio. */}
+      <div className={s.hint} style={{ margin: 0 }}>Así se va a ver:</div>
+      <div style={{ display: 'flex', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,.45)', borderRadius: 10 }}>
+        <div style={{ background: '#fff', borderRadius: 14, padding: '24px 22px', width: 'min(420px, 100%)', textAlign: 'center', boxSizing: 'border-box' }}>
+          {etiqueta.trim() && (
+            <span style={{ display: 'inline-block', background: '#e8f7ee', color: '#086633', fontWeight: 700, fontSize: 12, borderRadius: 999, padding: '4px 12px', marginBottom: 10 }}>{etiqueta}</span>
+          )}
+          <div style={{ fontSize: 19, fontWeight: 800, color: '#1a1a1a', margin: '0 0 8px', overflowWrap: 'anywhere' }}>{titulo.trim() || <span style={{ color: 'var(--crm-color-danger)' }}>Falta el título</span>}</div>
+          {texto.trim() && <div style={{ fontSize: 13, color: '#555', lineHeight: 1.6, whiteSpace: 'pre-line', overflowWrap: 'anywhere', marginBottom: 14 }}>{texto}</div>}
+          <div style={{ background: '#086633', color: '#fff', fontWeight: 700, borderRadius: 8, padding: '9px 0', fontSize: 13, marginBottom: 6 }}>Ver catálogo</div>
+          <div style={{ border: '1px solid #ddd', color: '#333', fontWeight: 600, borderRadius: 8, padding: '8px 0', fontSize: 13 }}>Consultar por WhatsApp</div>
+        </div>
+      </div>
+
+      <div>
+        <Btn variant="btn-primary" onClick={guardar} disabled={guardando || !titulo.trim()}>
+          {guardando ? 'Guardando…' : 'Guardar cartel de bienvenida'}
+        </Btn>
+      </div>
+    </>
   );
 }
 
