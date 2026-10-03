@@ -67,8 +67,16 @@ function FilaReparto({ color, nombre, importe, pct, detalle }) {
 /** Un color fijo por medio de pago: el color sigue al medio, no a su puesto en el ranking. */
 const COLOR_MEDIO = {
   efectivo: '#16a34a', transferencia: '#2563eb', tarjeta_debito: '#7c3aed', tarjeta_credito: '#db2777',
-  qr: '#0891b2', cheque: '#a16207', transferencia_proveedor: '#4f46e5', otro: '#64748b',
+  qr: '#0891b2', qr_mp: '#f97316', cheque: '#a16207', transferencia_proveedor: '#4f46e5', otro: '#64748b',
 };
+
+/*
+ * LOS NOMBRES DE LOS MEDIOS EN EL LISTADO, con el QR de Mercado Pago APARTE
+ * (3/10/2026, pedido del dueño). El servidor marca `qr_mp` los cobros del QR de
+ * la caja (referencia «MP …»); «QR / billetera» queda para los QR cobrados por
+ * fuera. No va en `MEDIOS_PAGO`: esa lista arma también los medios de la caja.
+ */
+const NOMBRE_MEDIO = Object.fromEntries(Object.entries(MEDIOS_PAGO).flatMap(([k, v]) => (k === 'qr' ? [[k, v], ['qr_mp', 'QR Mercado Pago']] : [[k, v]])));
 
 /** Un dato de la rentabilidad: nombre arriba, número abajo. */
 function DatoRenta({ nombre, valor, color }) {
@@ -104,10 +112,10 @@ const RANGOS = [
 /** Los medios de pago de un ticket, cortitos: «Efectivo» o «Efectivo +1». */
 function Medios({ medios }) {
   if (!medios?.length) return <span className={s.muted}>—</span>;
-  const label = MEDIOS_PAGO[medios[0].medio] || medios[0].medio;
+  const label = NOMBRE_MEDIO[medios[0].medio] || medios[0].medio;
   if (medios.length === 1) return <span>{label}</span>;
   return (
-    <span title={medios.map((m) => `${MEDIOS_PAGO[m.medio] || m.medio}: ${money(m.importe)}`).join(' · ')}>
+    <span title={medios.map((m) => `${NOMBRE_MEDIO[m.medio] || m.medio}: ${money(m.importe)}`).join(' · ')}>
       {label} <span className={s.muted}>+{medios.length - 1}</span>
     </span>
   );
@@ -242,7 +250,7 @@ export function ListadoVentasPanel() {
       nroComprobante(v), TIPOS_VENTA[v.tipo]?.label ?? v.tipo, fmtFechaHora(v.fecha),
       v.sucursalNombre, v.cajeroNombre, v.clienteNombre, v.cajaSesionId ? `#${v.cajaSesionId}` : '',
       v.renglones, csvNum(v.unidades),
-      (v.medios || []).map((m) => `${MEDIOS_PAGO[m.medio] || m.medio} ${csvNum(m.importe)}`).join(' + '),
+      (v.medios || []).map((m) => `${NOMBRE_MEDIO[m.medio] || m.medio} ${csvNum(m.importe)}`).join(' + '),
       csvNum(v.descuentoTotal), csvNum(v.ofertaDescuento), csvNum(v.subtotalNeto), csvNum(v.ivaTotal),
       csvNum(v.total), ESTADOS_VENTA[v.estado]?.label ?? v.estado,
       v.origen === 'pos' ? 'Mostrador' : 'Pedido',
@@ -333,7 +341,7 @@ export function ListadoVentasPanel() {
                   {t.porMedio.map((m) => (
                     <FilaReparto
                       key={m.medio} color={COLOR_MEDIO[m.medio] || COLOR_MEDIO.otro}
-                      nombre={MEDIOS_PAGO[m.medio] || m.medio} importe={m.importe} pct={m.pct}
+                      nombre={NOMBRE_MEDIO[m.medio] || m.medio} importe={m.importe} pct={m.pct}
                     />
                   ))}
                 </div>
@@ -497,7 +505,7 @@ export function ListadoVentasPanel() {
         </select>
         <select className={s['select-inline']} value={medioPago} onChange={(e) => setMedioPago(e.target.value)}>
           <option value="">Cualquier medio de pago</option>
-          {Object.entries(MEDIOS_PAGO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          {Object.entries(NOMBRE_MEDIO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <select className={s['select-inline']} value={estado} onChange={(e) => setEstado(e.target.value)}>
           <option value="">Confirmadas y anuladas</option>
