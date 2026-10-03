@@ -1092,6 +1092,57 @@ export function imprimirEnvioCaja(d, { moneda, fechaHora, sucursal, cajero, usua
     .map(([den, c]) => `<tr><td>$ ${esc(den.toLocaleString('es-AR'))}</td><td class="n">${esc(String(c))}</td><td class="n">${esc(moneda(den * c))}</td></tr>`)
     .join('') || '<tr><td>No se contaron billetes.</td><td></td><td class="n">-</td></tr>';
   const incompleto = n(d.faltaFondo) > 0.009;
+  /*
+   * DEJAR EN CAJA Y EL SOBRE, APARTE (0130, pedido del dueño): «que diga dejar
+   * en caja $tanto y aparte el envío con su contador, así al controlar lo que
+   * me mandan corroboro las cantidades». Lo que queda = contados − sobre.
+   * Los turnos cerrados antes (sin `billetesEnvio`) salen como siempre.
+   */
+  if (d.billetesEnvio) {
+    const contados = d.billetes ?? {};
+    const sobre = d.billetesEnvio ?? {};
+    const dens = [...new Set([...Object.keys(contados), ...Object.keys(sobre)].map(Number))].sort((x, y) => y - x);
+    const tabla = (pares, vacio) => {
+      const con = pares.filter(([, c]) => c > 0);
+      const total = con.reduce((acc, [den, c]) => acc + den * c, 0);
+      const filasT = con.map(([den, c]) => `<tr><td>$ ${esc(den.toLocaleString('es-AR'))}</td><td class="n">${esc(String(c))}</td><td class="n">${esc(moneda(den * c))}</td></tr>`).join('');
+      return con.length
+        ? `<table><thead><tr><th>Billete</th><th class="n">Cantidad</th><th class="n">Importe</th></tr></thead>
+            <tbody>${filasT}<tr class="fuerte"><td>TOTAL</td><td class="n">${esc(String(con.reduce((acc, [, c]) => acc + c, 0)))}</td><td class="n">${esc(moneda(total))}</td></tr></tbody></table>`
+        : `<div class="nota">${vacio}</div>`;
+    };
+    const queda = dens.map((den) => [den, Math.max(0, n(contados[den]) - n(sobre[den]))]);
+    const envia = dens.map((den) => [den, n(sobre[den])]);
+    const cuerpoNuevo = `
+    <div class="arqueo">
+    <h1>Envío de caja - Turno #${esc(String(d.sesionId ?? ''))}</h1>
+    <div class="sub">
+      ${esc(sucursal || '')}${cajero ? ` &middot; Cajero: ${esc(cajero)}` : ''}<br />
+      Cierre: ${esc(fechaHora(d.cierre || new Date()))}
+    </div>
+    <table><tbody><tr class="remarcada"><td>DEJAR EN CAJA</td><td class="n">${esc(moneda(n(d.fondoQueda)))}</td></tr></tbody></table>
+    <div class="nota">Es lo que tiene que quedar en la caja para el próximo turno${n(d.fondo) ? ` (fondo fijo ${esc(moneda(n(d.fondo)))})` : ''}. No va en el sobre.</div>
+    ${tabla(queda, 'No queda nada en la caja.')}
+    <table><tbody><tr class="remarcada"><td>ENVÍO (EN EL SOBRE)</td><td class="n">${esc(moneda(n(d.envio)))}</td></tr></tbody></table>
+    <div class="nota">Al recibir el sobre, contalo contra estos billetes.</div>
+    ${tabla(envia, 'El sobre va vacío.')}
+    <div class="nota">Contado en el cajón al cerrar: ${esc(moneda(n(d.contado)))} = ${esc(moneda(n(d.fondoQueda)))} en la caja + ${esc(moneda(n(d.envio)))} en el sobre.</div>
+    ${incompleto ? `<div class="nota"><strong>FONDO INCOMPLETO:</strong> faltan ${esc(moneda(n(d.faltaFondo)))} para el fondo fijo. No se envía nada; queda avisado al administrador.</div>` : ''}
+    ${d.esperadoEfectivo != null ? `
+    <div class="secArqueo">Control</div>
+    <table><tbody>
+      <tr><td>Tenía que haber</td><td class="n">${esc(moneda(n(d.esperadoEfectivo)))}</td></tr>
+      <tr><td>Contado</td><td class="n">${esc(moneda(n(d.contado)))}</td></tr>
+      <tr class="remarcada"><td>${Math.abs(n(d.diferencia)) > 0.009 ? (n(d.diferencia) > 0 ? 'SOBRANTE' : 'FALTANTE') : 'SIN DIFERENCIA'}</td><td class="n">${esc(moneda(Math.abs(n(d.diferencia))))}</td></tr>
+    </tbody></table>` : ''}
+    <div class="firmasArqueo">
+      <div>Envía (cajero)<br />${esc(cajero || '')}</div>
+      <div>Recibe conforme</div>
+    </div>
+    ${reimpresion ? selloReimpresion(usuario, new Date()) : ''}
+    </div>`;
+    return imprimirDocumento('cierreCaja', { titulo: `Envío de caja - Turno ${d.sesionId ?? ''}`, cuerpo: cuerpoNuevo });
+  }
   const cuerpo = `
     <div class="arqueo">
     <h1>Envío de caja - Turno #${esc(String(d.sesionId ?? ''))}</h1>

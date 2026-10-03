@@ -6,6 +6,7 @@ import { errorMsg, ventasApi } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
 import { imprimirArqueoCaja, imprimirEnvioCaja } from '@core/services/imprimir.js';
+import { separarEnvio, sumaBilletes } from '../../domain/separarEnvio.js';
 import { Table, Di, Btn, ModalShell, money, fmtFechaHora, s } from '../ui.jsx';
 
 /* ==================================================================== *
@@ -1163,6 +1164,8 @@ function LoQueTieneQueHaber({ turno, contado, conto }) {
 function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
   const { ctx, closeModal, toast, setOperador, sucursales, usuarios, operadorId, config } = useVentas();
   const [billetes, setBilletes] = useState({});
+  /* Los billetes que van al SOBRE (0130): los propone el sistema al pasar a «Separar» y se pueden ajustar. */
+  const [envioB, setEnvioB] = useState({});
   const [paso, setPaso] = useState('contar');
   const [enviando, setEnviando] = useState(false);
   const candado = useRef(false);
@@ -1175,17 +1178,34 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
   const sucursal = sucursales.find((x) => x.id === sucursalId);
   const fondo = ap?.fondoFijo != null ? Number(ap.fondoFijo) : Number(turno?.montoInicial) || 0;
   const contado = totalBilletes(billetes);
-  const queda = Math.min(contado, fondo);
-  const envio = r2(contado - queda);
-  const faltaFondo = r2(fondo - queda);
   const conto = Object.values(billetes).some((c) => Number(c) > 0);
+  const debeQuedar = Math.min(contado, fondo);
+  /* Antes de separar: la cuenta de siempre. Separando: lo que dicen los billetes del sobre. */
+  const separando = paso !== 'contar';
+  const envio = separando ? r2(sumaBilletes(envioB)) : r2(contado - debeQuedar);
+  const queda = r2(contado - envio);
+  const faltaFondo = r2(Math.max(0, fondo - queda));
+  const quedaPoco = separando && queda + 0.009 < debeQuedar;
+  const cantDe = (b, d) => Math.floor(Number(b[d])) || 0;
+  const proponer = () => setEnvioB(separarEnvio(billetesLimpios(billetes), debeQuedar).envio);
+  const ajustarSobre = (d, delta) => setEnvioB((e) => {
+    const n = Math.max(0, Math.min(cantDe(billetes, d), cantDe(e, d) + delta));
+    const o = { ...e };
+    if (n > 0) o[d] = n; else delete o[d];
+    return o;
+  });
   /* A ciegas salvo que la configuración deje ver lo que tiene que haber: ahí el
    * servidor manda el arqueo completo y se muestra el detalle. Apagada, ni
    * administración lo ve al cerrar («que hagan envíos a ciegas»). */
   const ve = !!config?.cajaVeEsperado && turno?.esperadoEfectivo != null;
 
-  const aConfirmar = () => {
+  const aSeparar = () => {
     if (!conto) { toast('Contá los billetes del cajón antes de enviar.', 'err'); return; }
+    proponer();
+    setPaso('separar');
+  };
+  const aConfirmar = () => {
+    if (quedaPoco) { toast(`Tienen que quedar por lo menos ${money(debeQuedar)} en la caja: sacá billetes del sobre.`, 'err'); return; }
     setPaso('confirmar');
   };
 
@@ -1196,6 +1216,7 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
     try {
       const r = await ventasApi.enviarCierreCaja(cajaSesionId, {
         billetes: billetesLimpios(billetes),
+        billetesEnvio: billetesLimpios(envioB),
         confirmado: true,
         usuarioId: ctx.usuarioId ?? undefined,
         operadorId: operadorId ?? undefined,
@@ -1205,7 +1226,7 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
         { ...r, sesionId: r.sesion?.id, cierre: r.sesion?.cierre, esperadoEfectivo: ve ? r.esperadoEfectivo : null, diferencia: ve ? r.diferencia : null },
         { moneda: money, fechaHora: fmtFechaHora, sucursal: sucursal?.nombre || '', cajero: nombreDe(r.sesion?.usuarioId) },
       );
-      toast(`Caja cerrada. Enviaste ${money(r.envio)}; quedan ${money(r.fondoQueda)} de fondo en la caja.`, 'ok');
+      toast(`Caja cerrada. Quedan ${money(r.fondoQueda)} en la caja y va el sobre de ${money(r.envio)}.`, 'ok');
       if (!salio) toast('La caja se cerró, pero el navegador bloqueó la impresión. Reimprimila desde el historial.', 'err');
       setOperador(null);
       onChange?.();
@@ -1229,13 +1250,19 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
   const resumen = (
     <div className={s.callout}>
       <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '4px 16px', justifyContent: 'start', alignItems: 'baseline' }}>
-        <span>Contaste</span><strong className={s.mono} style={{ fontSize: 18 }}>{money(contado)}</strong>
-        <span>Queda de fondo en la caja</span><strong className={s.mono} style={{ fontSize: 18 }}>{money(queda)}</strong>
-        <span>Enviás</span><strong className={s.mono} style={{ fontSize: 22, color: 'var(--crm-color-accent)' }}>{money(envio)}</strong>
+        <span>Contaste en el cajón</span><strong className={s.mono} style={{ fontSize: 18 }}>{money(contado)}</strong>
+        <span>Dejar en caja</span><strong className={s.mono} style={{ fontSize: 18 }}>{money(queda)}</strong>
+        <span>Va en el sobre</span><strong className={s.mono} style={{ fontSize: 22, color: 'var(--crm-color-accent)' }}>{money(envio)}</strong>
       </div>
       <div className={s.hint} style={{ margin: '8px 0 0' }}>
         Dejá <strong>{money(queda)}</strong> en la caja: es el fondo para el próximo turno{fondo ? ` (fondo fijo ${money(fondo)})` : ''}.
+        {separando && queda > debeQuedar + 0.009 && ` Con estos billetes no se llega justo al fondo: quedan ${money(r2(queda - debeQuedar))} de más en la caja.`}
       </div>
+      {quedaPoco && (
+        <div className={cx(s.callout, s.warn)} style={{ margin: '8px 0 0' }}>
+          Así quedarían {money(queda)} en la caja y tienen que quedar {money(debeQuedar)}: sacá billetes del sobre.
+        </div>
+      )}
       {conto && faltaFondo > 0.009 && (
         <div className={cx(s.callout, s.warn)} style={{ margin: '8px 0 0' }}>
           Contaste menos que el fondo fijo: <strong>no se envía nada</strong>, todo queda como fondo y
@@ -1251,24 +1278,64 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
         title="Cerrar caja — confirmar envío"
         onClose={closeModal}
         footer={[
-          { texto: 'Volver a contar', clase: 'btn-ghost', onClick: () => setPaso('contar'), disabled: enviando },
+          { texto: 'Volver a separar', clase: 'btn-ghost', onClick: () => setPaso('separar'), disabled: enviando },
           { texto: enviando ? 'Enviando…' : `Sí, enviar ${money(envio)} y cerrar`, clase: 'btn-delete', onClick: enviar, disabled: enviando },
         ]}
       >
         <div className={cx(s.callout, s.warn)}>
-          ¿Confirmás? Se envían <strong>{money(envio)}</strong> detallados en billetes, quedan{' '}
-          <strong>{money(queda)}</strong> de fondo en la caja y <strong>el turno se cierra</strong>: no se
-          puede reabrir.
+          ¿Confirmás? <strong>Dejás {money(queda)} en la caja</strong> y va el <strong>sobre de {money(envio)}</strong>{' '}
+          con los billetes de abajo. <strong>El turno se cierra</strong>: no se puede reabrir.
         </div>
-        <Table cols={[{ h: 'Billete' }, { h: 'Cantidad', num: true }, { h: 'Importe', num: true }]}>
-          {DENOMINACIONES.filter((d) => Math.floor(Number(billetes[d])) > 0).map((d) => (
-            <tr key={d}>
-              <td className={s.mono}>$ {d.toLocaleString('es-AR')}</td>
-              <td className={s.num}>{Math.floor(Number(billetes[d]))}</td>
-              <td className={s.num}>{money(d * Math.floor(Number(billetes[d])))}</td>
-            </tr>
-          ))}
+        <TablaBilletes titulo={`Dejar en caja · ${money(queda)}`} filas={DENOMINACIONES.map((d) => [d, cantDe(billetes, d) - cantDe(envioB, d)])} />
+        <TablaBilletes titulo={`Va en el sobre · ${money(envio)}`} filas={DENOMINACIONES.map((d) => [d, cantDe(envioB, d)])} vacio="El sobre va vacío." />
+        {resumen}
+        {ve && <LoQueTieneQueHaber turno={turno} contado={contado} conto={conto} />}
+      </ModalShell>
+    );
+  }
+
+  if (paso === 'separar') {
+    const filas = DENOMINACIONES.filter((d) => cantDe(billetes, d) > 0);
+    return (
+      <ModalShell
+        title="Cerrar caja — separar el sobre"
+        wide
+        onClose={closeModal}
+        footer={[
+          { texto: 'Volver a contar', clase: 'btn-ghost', onClick: () => setPaso('contar') },
+          { texto: `Continuar: sobre de ${money(envio)}`, clase: 'btn-primary', onClick: aConfirmar, disabled: quedaPoco },
+        ]}
+      >
+        <div className={s.hint}>
+          Separá los billetes así: <strong>lo que queda en la caja</strong> (el fondo, con los billetes más chicos para
+          el cambio) y <strong>lo que va en el sobre</strong>. Si querés cambiar qué billetes van, usá − y +.
+        </div>
+        <Table cols={[{ h: 'Billete' }, { h: 'Contaste', num: true }, { h: 'Queda en caja', num: true }, { h: 'Va en el sobre', num: true }]}>
+          {filas.map((d) => {
+            const sobre = cantDe(envioB, d);
+            return (
+              <tr key={d}>
+                <td className={s.mono}>$ {d.toLocaleString('es-AR')}</td>
+                <td className={s.num}>{cantDe(billetes, d)}</td>
+                <td className={s.num}><strong>{cantDe(billetes, d) - sobre}</strong></td>
+                <td className={s.num}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Btn small onClick={() => ajustarSobre(d, -1)} disabled={sobre <= 0} aria-label={`Uno menos de $${d} en el sobre`}>−</Btn>
+                    <strong className={s.mono} style={{ minWidth: 28, textAlign: 'center' }}>{sobre}</strong>
+                    <Btn small onClick={() => ajustarSobre(d, 1)} disabled={sobre >= cantDe(billetes, d)} aria-label={`Uno más de $${d} en el sobre`}>+</Btn>
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+          <tr>
+            <td><strong>Total</strong></td>
+            <td className={s.num}><strong>{money(contado)}</strong></td>
+            <td className={s.num}><strong>{money(queda)}</strong></td>
+            <td className={s.num}><strong>{money(envio)}</strong></td>
+          </tr>
         </Table>
+        <div><Btn small onClick={proponer}>Volver a la separación propuesta</Btn></div>
         {resumen}
         {ve && <LoQueTieneQueHaber turno={turno} contado={contado} conto={conto} />}
       </ModalShell>
@@ -1282,17 +1349,38 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: `Enviar ${money(envio)}`, clase: 'btn-primary', onClick: aConfirmar, disabled: !conto },
+        { texto: 'Separar el sobre', clase: 'btn-primary', onClick: aSeparar, disabled: !conto },
       ]}
     >
       <div className={s.hint}>
-        Contá <strong>todo el efectivo del cajón</strong>, billete por billete. El sistema aparta el
-        fondo para mañana y te dice cuánto enviar.
+        Contá <strong>todo el efectivo del cajón</strong>, billete por billete. Después el sistema te dice
+        qué billetes dejar en la caja (el fondo para mañana) y cuáles van en el sobre.
       </div>
       <ConteoBilletes cant={billetes} setCant={setBilletes} />
       {conto && resumen}
       {ve && <LoQueTieneQueHaber turno={turno} contado={contado} conto={conto} />}
     </ModalShell>
+  );
+}
+
+/** Una tabla de billetes con título y total (dejar en caja / va en el sobre). */
+function TablaBilletes({ titulo, filas, vacio = 'Nada.' }) {
+  const con = filas.filter(([, n]) => n > 0);
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontWeight: 700, margin: '4px 0' }}>{titulo}</div>
+      {con.length ? (
+        <Table cols={[{ h: 'Billete' }, { h: 'Cantidad', num: true }, { h: 'Importe', num: true }]}>
+          {con.map(([d, n]) => (
+            <tr key={d}>
+              <td className={s.mono}>$ {d.toLocaleString('es-AR')}</td>
+              <td className={s.num}>{n}</td>
+              <td className={s.num}>{money(d * n)}</td>
+            </tr>
+          ))}
+        </Table>
+      ) : <div className={s.hint} style={{ margin: 0 }}>{vacio}</div>}
+    </div>
   );
 }
 
@@ -1318,7 +1406,7 @@ export function ArqueoTurnoModal({ cajaSesionId }) {
         const suc = sucursales.find((x) => x.id === ses.sucursalId);
         const fondoSuc = suc?.fondoCaja != null ? Number(suc.fondoCaja) : null;
         const salio = await imprimirEnvioCaja({
-          sesionId: ses.id, cierre: ses.cierre, billetes: ses.billetes, contado: ses.declaradoEfectivo,
+          sesionId: ses.id, cierre: ses.cierre, billetes: ses.billetes, billetesEnvio: ses.billetesEnvio, contado: ses.declaradoEfectivo,
           envio: ses.envioEfectivo, fondoQueda: ses.fondoQueda, fondo: fondoSuc,
           esperadoEfectivo: arqueo.ciego ? null : arqueo.esperadoEfectivo, diferencia: arqueo.ciego ? null : ses.diferencia,
           faltaFondo: fondoSuc != null ? Math.max(0, fondoSuc - (Number(ses.fondoQueda) || 0)) : 0,
