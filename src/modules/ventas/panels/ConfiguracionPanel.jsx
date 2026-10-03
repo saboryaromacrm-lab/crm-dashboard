@@ -350,23 +350,35 @@ function MediosPagoEditor({ habilitados, exigenFactura, onChange }) {
  */
 function AvisoGranel({ prendido, antes, tipo = 'granel' }) {
   const [neg, setNeg] = useState(null);
-  const mirar = !antes || prendido !== antes;
   const esGranel = tipo === 'granel';
+  /* Se consulta siempre: además de los negativos trae cuántos productos tienen
+   * control PROPIO (0129), que esta llave no mueve — y eso se dice siempre. */
   useEffect(() => {
-    if (!mirar) return undefined;
     let vivo = true;
     (esGranel ? ventasApi.granelNegativo() : ventasApi.enterosNegativo())
       .then((r) => { if (vivo) setNeg(r); }).catch(() => { if (vivo) setNeg(null); });
     return () => { vivo = false; };
-  }, [mirar, esGranel]);
+  }, [esGranel]);
 
-  if (prendido && antes) return null;
+  const propios = neg?.propios ?? { controlan: 0, libres: 0 };
+  const nPropios = propios.controlan + propios.libres;
+  const quienes = esGranel ? 'a granel' : 'enteros';
+  const lineaPropios = nPropios > 0 ? (
+    <div style={{ marginTop: 6 }}>
+      <strong>{nPropios} producto{nPropios === 1 ? '' : 's'} {quienes} tiene{nPropios === 1 ? '' : 'n'} control propio</strong>
+      {' '}({[propios.controlan && `${propios.controlan} se controla${propios.controlan === 1 ? '' : 'n'} siempre`, propios.libres && `${propios.libres} sin control`].filter(Boolean).join(', ')}):
+      esta llave no los mueve. Se ven en Compras › Productos, filtro «Con control propio».
+    </div>
+  ) : null;
+
+  if (prendido && antes) return lineaPropios ? <div className={cx(s.callout, s.info)}>{lineaPropios}</div> : null;
   if (!prendido && antes) {
     return (
       <div className={cx(s.callout, s.warn)}>
-        Al guardar, <strong>{esGranel ? 'todo lo que es a granel (la madre en kg y sus paquetes)' : 'todos los productos enteros'}</strong> se
+        Al guardar, <strong>{esGranel ? 'todo lo que es a granel (la madre en kg y sus paquetes)' : 'todos los productos enteros'}</strong>{nPropios > 0 ? ' que siguen la configuración general' : ''} se
         vende{esGranel ? ', se fracciona' : ''}, se transfiere y se da de baja <strong>sin mirar el stock</strong>. El stock se sigue
         registrando y puede quedar en negativo; no se generan incidencias de venta sin stock para {esGranel ? 'el granel' : 'los enteros'}.
+        {lineaPropios}
       </div>
     );
   }
@@ -376,13 +388,14 @@ function AvisoGranel({ prendido, antes, tipo = 'granel' }) {
       {prendido ? 'Al guardar vuelve el control: lo que no hay deja de venderse y moverse.' : `El control está apagado: ${esGranel ? 'el granel' : 'los enteros'} se opera${esGranel ? '' : 'n'} sin mirar el stock.`}
       {neg && (n > 0 ? (
         <div style={{ marginTop: 6 }}>
-          Hoy hay <strong>{n} producto{n === 1 ? '' : 's'} {esGranel ? 'a granel' : 'enteros'} con stock en negativo</strong>
+          Hoy hay <strong>{n} producto{n === 1 ? '' : 's'} {quienes} con stock en negativo</strong>
           {neg.ejemplos?.length > 0 && <> (por ejemplo: {neg.ejemplos.slice(0, 3).map((e) => `${e.nombre} en ${e.sucursal}`).join('; ')})</>}.
           {' '}Contalos en <strong>Almacén › Control de inventario</strong> antes de prenderlo: si no, la caja va a frenar esas ventas.
         </div>
       ) : (
-        <div style={{ marginTop: 6 }}>Ningún producto {esGranel ? 'a granel' : 'entero'} quedó en negativo.</div>
+        <div style={{ marginTop: 6 }}>Ningún producto {esGranel ? 'a granel' : 'entero'} que siga esta llave quedó en negativo.</div>
       ))}
+      {lineaPropios}
     </div>
   );
 }

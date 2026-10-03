@@ -148,6 +148,12 @@ function CatalogoProductos() {
    * eligiéndolo en el filtro — que es también el camino para reactivarlo.
    */
   const [estadoF, setEstadoF] = useState('vigentes');
+  /**
+   * CONTROL DE STOCK (0129): 'con' / 'sin' miran el control EFECTIVO —el
+   * propio del producto o, si no tiene, la llave general de su tipo—, el mismo
+   * que aplica la caja. 'propio' = los que tienen uno elegido a mano.
+   */
+  const [controlF, setControlF] = useState('');
 
   /** Opciones de los filtros, derivadas del catálogo ya cargado (sin red). */
   const opciones = useMemo(() => {
@@ -175,6 +181,12 @@ function CatalogoProductos() {
       if (marca && p.marca !== marca) return false;
       if (categoria && p.categoria !== categoria) return false;
       if (provId && !(p.formatosCompra || []).some((e) => e.proveedorId === provId)) return false;
+      if (controlF) {
+        const c = store.controlDe(p);
+        if (controlF === 'con' && !c.controla) return false;
+        if (controlF === 'sin' && c.controla) return false;
+        if (controlF === 'propio' && c.propio == null) return false;
+      }
       if (!ql) return true;
       return norm(p.nombre).includes(ql) || norm(p.marca).includes(ql)
         || norm(p.categoria).includes(ql) || (p.codigoBarras || '').includes(q.trim())
@@ -186,7 +198,9 @@ function CatalogoProductos() {
     return sinHijos
       ? lista.sort((a, b) => (kgDe.get(b.id) || 0) - (kgDe.get(a.id) || 0) || a.nombre.localeCompare(b.nombre, 'es'))
       : lista;
-  }, [store.state.productos, q, tipo, sinHijos, sinBulto, kgDe, marca, categoria, proveedorId, estadoF]);
+    // `configVentas`: el control efectivo depende de las llaves generales.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.state.productos, store.state.configVentas, q, tipo, sinHijos, sinBulto, kgDe, marca, categoria, proveedorId, estadoF, controlF]);
 
   /*
    * CADA FRACCIONADO ES UNA FILA PROPIA (decisión del dueño, 9/8/2026): el
@@ -204,7 +218,7 @@ function CatalogoProductos() {
     return out;
   }, [productos]);
 
-  const hayFiltro = !!(q || tipo || marca || categoria || proveedorId || estadoF !== 'vigentes');
+  const hayFiltro = !!(q || tipo || marca || categoria || proveedorId || controlF || estadoF !== 'vigentes');
   const stop = (e) => e.stopPropagation();
 
   /**
@@ -229,6 +243,7 @@ function CatalogoProductos() {
     [
       'Código interno', 'Código de barras', 'Producto', 'Marca', 'Categoría', 'Subcategoría',
       'Etiquetas', 'Tipo', 'Estado', 'IVA %', 'Costo neto', 'Precio de venta', 'Disponible', 'Unidad', 'Publicado',
+      'Control de stock',
     ],
     productos.map((p) => {
       const esGranel = p.tipo === 'granel';
@@ -241,11 +256,12 @@ function CatalogoProductos() {
         ESTADOS_PRODUCTO[p.estado]?.label || 'Activo', csvNum(p.iva ?? 21, 1),
         csvNum(p.costoNeto, 2), csvNum(store.precioGondola(p), 2),
         csvNum(disponible, 2), esGranel ? 'kg' : 'u.', p.publicado ? 'Sí' : 'No',
+        textoControl(store.controlDe(p)),
       ];
     }),
   );
 
-  const pag = usePaginado(filasLista, 'productos', `${q}|${tipo}|${marca}|${categoria}|${proveedorId}|${estadoF}`);
+  const pag = usePaginado(filasLista, 'productos', `${q}|${tipo}|${marca}|${categoria}|${proveedorId}|${estadoF}|${controlF}`);
 
   const filas = pag.visibles.map(({ clave, p, pr }) => {
     if (pr) {
@@ -260,7 +276,10 @@ function CatalogoProductos() {
           <td><span className={cx(s.badge, s['badge-granel'])}>Fraccionado</span></td>
           <td>{p.categoria}</td>
           <td className={s.num}>{num(p.iva ?? 21, 1)}%</td>
-          <td className={s.num}>{num(disp, 0)} paq.</td>
+          <td className={s.num}>
+            {num(disp, 0)} paq.
+            <NotaSinControl c={store.controlDe(p)} />
+          </td>
           <td className={s['actions-col']}><span className={s.muted}>—</span></td>
         </tr>
       );
@@ -275,12 +294,16 @@ function CatalogoProductos() {
           {p.nombre}
           <EstadoProductoBadge estado={p.estado} />
           {faltanFraccionados(p) && <span style={{ marginLeft: 6 }} title="No tiene paquetes para vender: no se puede fraccionar ni vender"><Pill pill="st-defectuoso" label="Sin fraccionados" /></span>}
+          <ControlPropioBadge c={store.controlDe(p)} />
         </td>
         <td>{p.marca || '—'}</td>
         <td><TipoBadge prod={p} /></td>
         <td>{p.categoria}</td>
         <td className={s.num}>{num(p.iva ?? 21, 1)}%</td>
-        <td className={s.num}>{num(base, 2)}{p.tipo === 'granel' ? ' kg' : ' u.'}</td>
+        <td className={s.num}>
+          {num(base, 2)}{p.tipo === 'granel' ? ' kg' : ' u.'}
+          <NotaSinControl c={store.controlDe(p)} />
+        </td>
         <td className={s['actions-col']}>
           <div className={s['row-actions']} onClick={stop}>
             {isAdmin ? (
@@ -352,6 +375,12 @@ function CatalogoProductos() {
           <option value="archivado">Solo archivados</option>
           <option value="">Todos, incluso archivados</option>
         </select>
+        <select className={s['select-inline']} value={controlF} onChange={(e) => setControlF(e.target.value)} aria-label="Control de stock">
+          <option value="">Con y sin control de stock</option>
+          <option value="con">Con control de stock</option>
+          <option value="sin">Sin control de stock</option>
+          <option value="propio">Con control propio (elegido a mano)</option>
+        </select>
         <select className={s['select-inline']} value={tipo} onChange={(e) => setTipo(e.target.value)}>
           <option value="">Todos los tipos</option>
           <option value="granel">A granel</option>
@@ -368,7 +397,7 @@ function CatalogoProductos() {
             small
             onClick={() => {
               setQ(''); setTipo(''); setMarca(''); setCategoria(''); setProveedorId('');
-              setEstadoF('vigentes');
+              setControlF(''); setEstadoF('vigentes');
             }}
           >
             Limpiar
@@ -380,6 +409,10 @@ function CatalogoProductos() {
           {productos.length} de {store.state.productos.length} productos.
           {sinHijos && ' Primero los que más kg tienen en stock esperando. Al guardar sus fraccionados, salen solos de esta lista.'}
           {sinBulto && ' Sin bulto la caja no les sugiere precio mayorista por caja cerrada. Se carga en la ficha («Unidades por bulto») o en la caja del proveedor; al guardar, salen solos de esta lista.'}
+          {controlF === 'con' && ' Con control: la caja, el almacén y la tienda frenan si no alcanza el stock.'}
+          {controlF === 'sin' && ' Sin control: se venden, fraccionan y mueven aunque no haya stock (el stock se sigue registrando y puede quedar en negativo).'}
+          {controlF === 'propio' && ' Tienen el control elegido en su ficha: no siguen a las llaves generales de Ventas › Configuración.'}
+          {controlF && ' Se cambia en el detalle de cada producto (pestaña Resumen).'}
           {isAdmin && ' «Actualizar márgenes» y «Exportar CSV» alcanzan solo a los filtrados.'}
         </div>
       )}
@@ -404,6 +437,26 @@ function CatalogoProductos() {
  * proveedores, necesitaba una lista de control para no perderse.
  */
 const TAB_KEY = 'crm.productos.tab';
+
+/* ---- Control de stock en la lista (0129) ---- */
+/** El texto del control efectivo, para el CSV. */
+function textoControl(c) {
+  return `${c.controla ? 'Con control' : 'Sin control'} (${c.propio == null ? 'configuración general' : 'propio del producto'})`;
+}
+/** Solo cuando el producto tiene control PROPIO: si sigue a la llave general no hay nada que destacar. */
+function ControlPropioBadge({ c }) {
+  if (c.propio == null) return null;
+  return (
+    <span style={{ marginLeft: 6 }} title="Control de stock elegido en la ficha del producto: no sigue a la configuración general">
+      <Pill pill={c.propio ? 'st-disponible' : 'st-comprometido'} label={c.propio ? 'Controla stock' : 'Sin control de stock'} />
+    </span>
+  );
+}
+/** Debajo del disponible: avisa que ese número no frena nada. */
+function NotaSinControl({ c }) {
+  if (c.controla) return null;
+  return <div className={s.hint} style={{ margin: 0 }} title="Se vende aunque no alcance">sin control</div>;
+}
 
 export function ProductosPanel() {
   const { can } = useProductos();

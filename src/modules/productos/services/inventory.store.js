@@ -108,7 +108,21 @@ function cant(productoId, sucursalId, presId, estado) {
 function granelLibre() { return state.configVentas?.controlStockGranel === false; }
 /** Lo mismo para los enteros (1/10/2026), con su propio interruptor. */
 function enterosLibre() { return state.configVentas?.controlStockEnteros === false; }
-function stockLibre(prod) { return !!prod && (prod.tipo === 'granel' ? granelLibre() : enterosLibre()); }
+
+/**
+ * EL CONTROL DE STOCK DE UN PRODUCTO (0129, 3/10/2026). Espejo EXACTO de
+ * `stockSinControl` del servidor, que es el que manda:
+ *   1. el control PROPIO del producto (`controlStock`: true = siempre,
+ *      false = nunca) gana;
+ *   2. si no tiene (null), decide la llave general de su tipo.
+ * Devuelve también de dónde sale, para que la pantalla lo diga.
+ */
+function controlDe(prod) {
+  const general = !(prod?.tipo === 'granel' ? granelLibre() : enterosLibre());
+  const propio = prod?.controlStock === true || prod?.controlStock === false ? prod.controlStock : null;
+  return { controla: propio ?? general, propio, general };
+}
+function stockLibre(prod) { return !!prod && !controlDe(prod).controla; }
 
 function suma(f) {
   return state.stock.reduce((acc, s) => {
@@ -798,6 +812,23 @@ function _aplicarFotoProducto({ stock: filas, producto }) {
 const crearProducto = (o) => _mutate(() => httpClient.post('/productos', o));
 const editarProducto = (id, o) => _mutate(() => httpClient.patch('/productos/' + id, o));
 const eliminarProducto = (id) => _mutate(() => httpClient.delete('/productos/' + id));
+
+/**
+ * Cambia el control de stock de UN producto (0129): `true` controlar siempre,
+ * `false` no controlar, `null` como la configuración general. Sin el refresco
+ * completo (10 MB): se aplica lo que DEVUELVE el servidor, no lo que se pidió.
+ */
+async function cambiarControlStock(id, controlStock) {
+  try {
+    const r = await httpClient.patch(`/productos/${id}/control-stock`, { controlStock });
+    const valor = r?.controlStock === true || r?.controlStock === false ? r.controlStock : null;
+    state.productos = state.productos.map((p) => (p.id === id ? { ...p, controlStock: valor } : p));
+    emit();
+    return { ok: true, ...r };
+  } catch (e) {
+    return _fallo(e);
+  }
+}
 /**
  * Ciclo de vida: activo | discontinuado | archivado. Un solo endpoint para dar
  * de baja y para reactivar — es el mismo movimiento en las dos direcciones.
@@ -1411,7 +1442,7 @@ export const inventoryStore = {
   subscribe, getVersion,
   init, reset, refetch, revalidar, cargarSeccion, movimientosPorFechas,
   getProducto, getSucursal, getProveedor, getUsuario, presDe, distribuidora,
-  unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry, granelLibre, enterosLibre, stockLibre,
+  unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry, granelLibre, enterosLibre, stockLibre, controlDe,
   rolActual, can, tiposMovPermitidos, setCtx,
   opFraccionarRegistro, opCorregirFraccionado, opSimple, descartarEstado,
   avanzarTransferencia, cancelarTransferencia,
@@ -1422,7 +1453,7 @@ export const inventoryStore = {
   historialFraccionamientos, exportarFraccionamientos,
   operadoresFraccion, crearOperadorFraccion, editarOperadorFraccion,
   crearIncidencia, avanzarIncidencia, resolverIncidencia,
-  crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto,
+  crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto, cambiarControlStock,
   sugerenciasArchivado, archivarLote,
   guardarPresentaciones, importarCatalogo, importarCostos, importarFormatosVenta, importacionesPorProveedor, moverLista, usoLista, borrarListasVacias, importarCostosEnTanda, crearProveedorEnTanda, actualizarClasificacion,
   crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, siguienteCodigo, siguienteEan,

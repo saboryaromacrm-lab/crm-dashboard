@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 // La MISMA función que valida el código para dibujar la etiqueta: la fórmula
@@ -717,6 +717,8 @@ function ResumenTab({ prod: p }) {
         <Di label="Valor disp. (costo)">{money(valor)}</Di>
       </div>
 
+      <ControlStockProducto prod={p} />
+
       <h3 className={s['card-title']} style={{ marginTop: 12 }}>Stock por sucursal / estado</h3>
       <Table cols={[{ h: 'Sucursal' }, { h: 'Present.' }, { h: 'Estado' }, { h: 'Cant.', num: true }]} empty="Sin stock.">
         {rows}
@@ -726,6 +728,153 @@ function ResumenTab({ prod: p }) {
         {movs}
       </Table>
     </>
+  );
+}
+
+/**
+ * CONTROL DE STOCK DE ESTE PRODUCTO (0129, 3/10/2026, pedido del dueño).
+ * ============================================================================
+ * Un check: «Controlar el stock de este producto». Lo que muestra es el
+ * control EFECTIVO —el que aplica la caja—, y dice de dónde sale: elegido acá
+ * o heredado de la llave general de su tipo (Ventas › Configuración). Al
+ * tocarlo queda elegido para este producto, sin importar la llave general;
+ * «Volver a la configuración general» lo devuelve a seguirla.
+ *
+ * Toca lo que la caja deja vender, así que va con DOS pasos (tocar → leer qué
+ * cambia → confirmar) y con candado contra el doble clic. Antes de prender el
+ * control muestra el stock de cada sucursal: un negativo frena la venta ahí
+ * apenas se confirma, y eso se tiene que ver ANTES, no en la caja.
+ */
+function ControlStockProducto({ prod: p }) {
+  const { store, can, toast } = useProductos();
+  const c = store.controlDe(p);
+  const puede = can('compras.productos');
+  const [pendiente, setPendiente] = useState(null);   // { valor: true | false | null }
+  const [guardando, setGuardando] = useState(false);
+  const enVuelo = useRef(false);
+  const tipoNombre = p.tipo === 'granel' ? 'granel' : 'enteros';
+
+  /* El stock disponible de cada sucursal (suelto/unidad y cada paquete), con sus negativos. */
+  const filas = useMemo(() => store.state.stock
+    .filter((st) => st.productoId === p.id && st.estado === 'disponible' && Math.abs(st.cantidad) > 1e-9)
+    .map((st) => ({
+      clave: st.id, sucursal: store.getSucursal(st.sucursalId)?.nombre || '—',
+      pres: store.presLabel(p, st.presentacionId), cant: store.fmtCant(p, st.presentacionId, st.cantidad), negativo: st.cantidad < -1e-9,
+    }))
+    .sort((a, b) => Number(b.negativo) - Number(a.negativo) || a.sucursal.localeCompare(b.sucursal, 'es')),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [store.state.stock, p]);
+  const negativos = filas.filter((f) => f.negativo);
+
+  /** Cómo queda el control efectivo con cada valor posible. */
+  const controlaCon = (valor) => (valor === null ? c.general : valor);
+
+  const confirmar = async () => {
+    if (!pendiente || enVuelo.current) return;
+    enVuelo.current = true; setGuardando(true);
+    try {
+      const r = await store.cambiarControlStock(p.id, pendiente.valor);
+      if (!r.ok) { toast(r.error || 'No se pudo cambiar el control de stock.', 'err'); return; }
+      const ahora = controlaCon(r.controlStock ?? null);
+      toast(`${p.nombre}: ${ahora ? 'se controla el stock' : 'sin control de stock'}${r.controlStock == null ? ' (como la configuración general)' : ''}.`);
+      setPendiente(null);
+    } finally {
+      enVuelo.current = false; setGuardando(false);
+    }
+  };
+
+  const valorPendiente = pendiente?.valor;
+  const quedaControlado = pendiente ? controlaCon(valorPendiente) : null;
+  const cambiaElEfectivo = pendiente ? quedaControlado !== c.controla : false;
+
+  return (
+    <div className={cx(s.card, s.cardPad)} style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <h3 className={s['card-title']} style={{ margin: 0 }}>Control de stock</h3>
+        <span
+          className={s.badge}
+          style={{ color: c.controla ? 'var(--crm-color-success)' : 'var(--crm-color-warning, #b45309)', fontWeight: 700 }}
+        >
+          {c.controla ? '✔ Se controla' : 'Sin control'}
+        </span>
+        <span className={s.hint} style={{ margin: 0 }}>
+          {c.propio == null
+            ? `Sigue la configuración general de ${tipoNombre} (Ventas › Configuración), que hoy está ${c.general ? 'prendida' : 'apagada'}.`
+            : 'Elegido para este producto: no cambia aunque se mueva la configuración general.'}
+        </span>
+      </div>
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: puede && !guardando ? 'pointer' : 'default', fontWeight: 600 }}>
+        <input
+          type="checkbox"
+          checked={c.controla}
+          disabled={!puede || guardando || !!pendiente}
+          onChange={(e) => setPendiente({ valor: e.target.checked })}
+        />
+        Controlar el stock de este producto
+      </label>
+      <div className={s.hint} style={{ margin: 0 }}>
+        {c.controla
+          ? 'No se vende, fracciona, transfiere ni da de baja más de lo que hay; la tienda online ofrece hasta lo disponible.'
+          : 'Se vende, fracciona y mueve aunque no haya: el stock se sigue registrando y puede quedar en negativo. La tienda online lo ofrece sin tope.'}
+        {p.tipo === 'granel' && ' Vale también para sus paquetes fraccionados.'}
+        {!puede && ' Lo cambia quien edita productos.'}
+      </div>
+      {puede && c.propio != null && !pendiente && (
+        <div>
+          <Btn small onClick={() => setPendiente({ valor: null })} disabled={guardando}>
+            Volver a la configuración general ({c.general ? 'con' : 'sin'} control)
+          </Btn>
+        </div>
+      )}
+
+      {pendiente && (
+        <div className={cx(s.callout, quedaControlado && negativos.length ? s.warn : s.info)} style={{ margin: 0 }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>
+            {valorPendiente === null
+              ? `¿Volver a la configuración general? Queda ${quedaControlado ? 'CON' : 'SIN'} control de stock.`
+              : valorPendiente ? '¿Controlar el stock de este producto?' : '¿Dejar este producto SIN control de stock?'}
+          </div>
+          {!cambiaElEfectivo && (
+            <div>Hoy ya está {c.controla ? 'controlado' : 'sin control'}: no cambia nada en la caja. {valorPendiente === null
+              ? 'Solo que desde ahora va a seguir a la configuración general si alguien la mueve.'
+              : 'Solo queda fijo para este producto, aunque alguien mueva la configuración general.'}</div>
+          )}
+          {cambiaElEfectivo && quedaControlado && (
+            <>
+              <div>Desde que confirmes, en todas las sucursales: la caja no lo vende si no hay, y no se fracciona, transfiere ni da de baja más de lo que hay. La tienda online lo ofrece solo hasta lo disponible.</div>
+              {negativos.length > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  <strong>Tiene stock en negativo:</strong> ahí no se va a poder vender hasta contarlo o ajustarlo
+                  (Almacén › Control de inventario).
+                </div>
+              )}
+            </>
+          )}
+          {cambiaElEfectivo && !quedaControlado && (
+            <div>Desde que confirmes, en todas las sucursales: se vende, fracciona y mueve aunque no haya stock, sin aviso de «sin stock». El stock se sigue registrando y puede quedar en negativo. La tienda online lo ofrece sin tope.</div>
+          )}
+          {cambiaElEfectivo && (
+            <Table cols={[{ h: 'Sucursal' }, { h: 'Present.' }, { h: 'Disponible', num: true }]} empty="Sin stock cargado en ninguna sucursal.">
+              {filas.map((f) => (
+                <tr key={f.clave}>
+                  <td>{f.sucursal}</td>
+                  <td>{f.pres}</td>
+                  <td className={s.num} style={f.negativo ? { color: 'var(--crm-color-danger)', fontWeight: 700 } : undefined}>{f.cant}</td>
+                </tr>
+              ))}
+            </Table>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <Btn variant="btn-primary" small onClick={confirmar} disabled={guardando}>
+              {guardando ? 'Guardando…' : valorPendiente === null ? 'Sí, volver a la configuración general'
+                : valorPendiente ? 'Sí, controlar el stock' : 'Sí, dejarlo sin control'}
+            </Btn>
+            <Btn small onClick={() => setPendiente(null)} disabled={guardando}>Cancelar</Btn>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1443,6 +1592,11 @@ function FraccionadoResumen({ store, p, pr, costoPaquete }) {
             : <span style={{ color: 'var(--crm-color-danger)', fontWeight: 700 }}>sin precio</span>}
         </Di>
         <Di label="Disponible">{num(disponible, 0)} paq. ({num(disponible * (pr.tamKg || 0), 3)} kg)</Di>
+        {/* El paquete no tiene control propio: hereda el de su producto (0129), igual que en la caja. */}
+        <Di label="Control de stock">
+          {store.controlDe(p).controla ? 'Se controla' : 'Sin control'}
+          <div className={s.hint} style={{ margin: 0 }}>El del producto madre: se cambia en su detalle (Resumen).</div>
+        </Di>
       </div>
       <div className={s.hint} style={{ marginTop: 4 }}>
         El <strong>costo</strong> se deriva del producto madre (costo/kg × tamaño) y por eso es de solo
