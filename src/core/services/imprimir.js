@@ -1153,6 +1153,31 @@ export function abrirVentanaImpresion() {
  * impresión fallaba en silencio y quedaba la duda de si el ticket salió. Quien
  * llama avisa (es lo único que se puede hacer: el permiso lo da el usuario).
  */
+/**
+ * Imprime un documento desde un marco oculto de la página (sin ventana
+ * emergente). El marco tiene tamaño real fuera de la pantalla —no 0×0 ni
+ * oculto— para que el navegador lo arme igual que la ventana, y se retira
+ * un rato después (algunos navegadores siguen leyéndolo mientras imprimen).
+ */
+function imprimirEnMarco(html) {
+  if (typeof document === 'undefined') return false;
+  const marco = document.createElement('iframe');
+  marco.setAttribute('aria-hidden', 'true');
+  marco.tabIndex = -1;
+  marco.style.cssText = 'position:fixed;left:-10000px;top:0;width:760px;height:900px;border:0;';
+  document.body.appendChild(marco);
+  const w = marco.contentWindow;
+  if (!w) { marco.remove(); return false; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  setTimeout(() => {
+    try { w.focus(); w.print(); } catch { /* el navegador no dejó: queda «Imprimir» en la pantalla */ }
+    setTimeout(() => marco.remove(), 60_000);
+  }, 250);
+  return true;
+}
+
 export async function imprimirDocumento(tipoDoc, { titulo, cuerpo, pie, esTicket = false, ventana = null, direccion = '' }) {
   const { empresa, impresion } = await configImpresion();
   const formato = impresion[tipoDoc] || formatoPorDefecto(tipoDoc);
@@ -1163,8 +1188,18 @@ export async function imprimirDocumento(tipoDoc, { titulo, cuerpo, pie, esTicket
     empresa: direccion ? { ...empresa, direccion } : empresa, formato, titulo, cuerpo, esTicket,
     pie: pie ?? (esTicket ? impresion.pieTicket : ''),
   });
+  /*
+   * SIN CLIC NO HAY VENTANA (3/10/2026). El cobro por QR se cierra solo cuando
+   * entra el pago, minutos después del último clic: el navegador bloquea la
+   * ventana emergente y el ticket no salía (la cajera terminaba imprimiendo la
+   * pantalla del ERP). Sin un clic reciente —o si igual la bloquea— el
+   * documento se imprime desde un marco oculto en la misma página, que no
+   * necesita permiso de ventanas: mismo HTML, mismo formato, mismo papel.
+   */
+  const sinClic = typeof navigator !== 'undefined' && navigator.userActivation && !navigator.userActivation.isActive;
+  if (sinClic && !(ventana && !ventana.closed)) return imprimirEnMarco(html);
   const w = ventana && !ventana.closed ? ventana : window.open('', '_blank', 'width=760,height=900');
-  if (!w) return false;
+  if (!w) return imprimirEnMarco(html);
   // `open` explícito: una ventana abierta de antemano ya tiene el "Preparando…".
   w.document.open();
   w.document.write(html);
@@ -1252,7 +1287,11 @@ function bloqueFormaPago(venta, moneda) {
   const pagos = (venta.pagos ?? []).filter((p) => Number(p.importe) > 0);
   const filas = pagos.map((p) => {
     const cuotas = Number(p.cuotas) > 1 ? ` (${Number(p.cuotas)} cuotas)` : '';
-    return `<tr><td>${esc((MEDIO_PAPEL[p.medio] || p.medio) + cuotas)}</td><td class="n">${moneda(p.importe)}</td></tr>`;
+    /* El cobro con el QR de Mercado Pago deja la referencia «MP <operación>»:
+     * en el papel sale con su nombre y el número, que es lo que el cliente ve en su app. */
+    const op = p.medio === 'qr' ? /^MP (?:orden )?(\S+)$/.exec(String(p.referencia ?? '').trim()) : null;
+    const nombre = op ? `QR Mercado Pago (op. ${op[1]})` : (MEDIO_PAPEL[p.medio] || p.medio);
+    return `<tr><td>${esc(nombre + cuotas)}</td><td class="n">${moneda(p.importe)}</td></tr>`;
   });
   if (venta.condicionPago === 'cuenta_corriente') {
     const pagado = pagos.reduce((s, p) => s + (Number(p.importe) || 0), 0);

@@ -998,7 +998,7 @@ function AgregarComoCliente({ venta }) {
 }
 
 export function VentaEmitidaModal({ venta, vuelto = 0, renglones = [], onNuevoTicket }) {
-  const { closeModal, getCliente } = useVentas();
+  const { closeModal, getCliente, toast } = useVentas();
   const { can } = usePermissions();
   const clienteDeVenta = getCliente(venta.clienteId);
   // Facturada a un CUIT (0125): se muestra a quién se facturó, no «Consumidor Final».
@@ -1014,13 +1014,34 @@ export function VentaEmitidaModal({ venta, vuelto = 0, renglones = [], onNuevoTi
 
   const cerrar = () => { closeModal(); onNuevoTicket?.(); };
 
+  /*
+   * IMPRIMIR = EL COMPROBANTE, no la pantalla (3/10/2026). Era `window.print()`
+   * y sacaba esta ventana del ERP achicada al ancho del rollo («Venta
+   * registrada», columnas cortadas). Ahora sale el mismo papel que al cobrar:
+   * la factura con su QR si tiene CAE, el ticket si no.
+   */
+  const imprimiendoRef = useRef(false);
+  const [imprimiendo, setImprimiendo] = useState(false);
+  const imprimir = async () => {
+    if (imprimiendoRef.current) return;
+    imprimiendoRef.current = true; setImprimiendo(true);
+    try {
+      const salio = await imprimirVenta(venta, { moneda: money, fechaHora: fmtFechaHora });
+      if (!salio) toast('No se pudo abrir la impresión: reimprimila desde Ventas.', 'err');
+    } catch {
+      toast('No se pudo imprimir: reimprimila desde Ventas.', 'err');
+    } finally {
+      imprimiendoRef.current = false; setImprimiendo(false);
+    }
+  };
+
   return (
     <ModalShell
       title="Venta registrada"
       wide
       onClose={cerrar}
       footer={[
-        { texto: 'Imprimir', clase: 'btn-ghost', onClick: () => window.print() },
+        { texto: imprimiendo ? 'Imprimiendo…' : 'Imprimir', clase: 'btn-ghost', onClick: imprimir },
         { texto: 'Nuevo ticket', clase: 'btn-primary', onClick: cerrar },
       ]}
     >
