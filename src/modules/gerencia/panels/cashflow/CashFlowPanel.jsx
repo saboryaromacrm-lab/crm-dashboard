@@ -25,6 +25,15 @@ const fechaHora = (v) => (v ? new Date(v).toLocaleString('es-AR', { day: '2-digi
 const fechaCorta = (v) => (v ? new Date(v).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
 const fechaIso = (p) => (p ? `${p.slice(8, 10)}/${p.slice(5, 7)}/${p.slice(0, 4)}` : '—');
 const ORIGEN = { saldo_inicial: 'Saldo inicial', sobre: 'Sobre de caja', concepto: 'Concepto', pago_proveedor: 'Pago a proveedor', gasto: 'Gasto', conteo: 'Conteo' };
+const MEDIO = { efectivo: 'efectivo', deposito: 'depósito' };
+/** Qué es cada movimiento, en una línea. */
+const queEs = (m) => {
+  if (m.origen === 'concepto') return m.concepto;
+  if (m.origen === 'sobre') return `Sobre ${m.sucursal ?? ''}`;
+  if (m.origen === 'pago_proveedor') return `Pago a ${m.proveedor ?? 'proveedor'} (${MEDIO[m.medio] ?? m.medio ?? ''})`;
+  if (m.origen === 'gasto') return `Gasto: ${m.concepto ?? m.gastoDescripcion ?? ''}${m.gastoCategoria ? ` · ${m.gastoCategoria}` : ''}`;
+  return ORIGEN[m.origen] ?? m.origen;
+};
 /** La diferencia, con su color: rojo faltó, verde sobró, gris nada. */
 function Diferencia({ v }) {
   if (v == null) return <span className={s.muted}>—</span>;
@@ -342,7 +351,7 @@ function TablaMovimientos({ filas, compacta, onAnular }) {
     >
       {(filas ?? []).map((m) => {
         const anulado = !!m.anuladoEn;
-        const que = m.origen === 'concepto' ? m.concepto : m.origen === 'sobre' ? `Sobre ${m.sucursal ?? ''}` : ORIGEN[m.origen] ?? m.origen;
+        const que = queEs(m);
         return (
           <tr key={m.id} style={anulado ? { opacity: 0.55, textDecoration: 'line-through' } : undefined} title={anulado ? `Anulado por ${m.anuladoPor || '—'}: ${m.anuladoMotivo}` : undefined}>
             <td>{compacta ? fechaCorta(m.fecha) : fechaHora(m.fecha)}</td>
@@ -358,7 +367,7 @@ function TablaMovimientos({ filas, compacta, onAnular }) {
             </td>
             {onAnular && (
               <td className={s['actions-col']}>
-                {!anulado && m.origen === 'concepto' && <Btn small variant="btn-delete" onClick={() => onAnular(m)}>Anular</Btn>}
+                {!anulado && ['concepto', 'pago_proveedor', 'gasto'].includes(m.origen) && <Btn small variant="btn-delete" onClick={() => onAnular(m)}>Anular</Btn>}
               </td>
             )}
           </tr>
@@ -369,7 +378,7 @@ function TablaMovimientos({ filas, compacta, onAnular }) {
 }
 
 function MovimientoModal({ tipo, conceptos, onCerrar, onHecho, avisar }) {
-  const opciones = conceptos.filter((c) => c.tipo === tipo && c.activo && c.clase === 'movimiento');
+  const opciones = conceptos.filter((c) => c.tipo === tipo && c.activo && (c.clase !== 'gasto' || c.gastoCategoriaId));
   const [conceptoId, setConceptoId] = useState(opciones[0]?.id ?? '');
   const [importe, setImporte] = useState('');
   const [fecha, setFecha] = useState(hoy());
@@ -403,7 +412,7 @@ function MovimientoModal({ tipo, conceptos, onCerrar, onHecho, avisar }) {
       <div className={s['form-grid']}>
         <Campo label="Concepto *">
           <select value={conceptoId} onChange={(e) => setConceptoId(e.target.value)}>
-            {opciones.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            {opciones.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.clase === 'gasto' ? ` (gasto · ${c.gastoCategoria})` : ''}</option>)}
           </select>
         </Campo>
         <Campo label="Importe *"><input type="number" min="0" step="0.01" value={importe} onChange={(e) => setImporte(e.target.value)} autoFocus /></Campo>
@@ -414,6 +423,126 @@ function MovimientoModal({ tipo, conceptos, onCerrar, onHecho, avisar }) {
       </div>
       <AvisoSegundaConfirmacion {...sc}>
         {tipo === 'ingreso' ? 'Entra' : 'Sale'} <strong>{money(n || 0)}</strong> {tipo === 'ingreso' ? 'a' : 'de'} tu caja por <strong>{concepto?.nombre ?? '—'}</strong> el {fechaIso(fecha)}.
+        {concepto?.clase === 'gasto' && <> Se carga también como <strong>gasto pagado</strong> en Gastos ({concepto.gastoCategoria}).</>}
+      </AvisoSegundaConfirmacion>
+      {error && <Aviso tono="warn">{error}</Aviso>}
+    </ModalShell>
+  );
+}
+
+/**
+ * PAGO A PROVEEDOR DESDE LA CAJA (parte 2): se elige el proveedor, se tildan
+ * las facturas (o los gastos cargados) que se pagan y con qué (efectivo o
+ * depósito). Es el mismo pago de siempre: queda en la cuenta del proveedor.
+ */
+function PagoProveedorModal({ onCerrar, onHecho, avisar }) {
+  const { data: provs } = useResource('cashflow:proveedores', () => httpClient.get('/cashflow/proveedores'));
+  const [proveedorId, setProveedorId] = useState('');
+  const [destino, setDestino] = useState('mercaderia');
+  const [medio, setMedio] = useState('efectivo');
+  const [referencia, setReferencia] = useState('');
+  const [fecha, setFecha] = useState(hoy());
+  const [detalle, setDetalle] = useState('');
+  const [aCuenta, setACuenta] = useState('');
+  const [tildes, setTildes] = useState({}); // docId -> importe (string)
+  const [error, setError] = useState('');
+  const { data: docs, loading } = useResource(`cashflow:pend:${proveedorId}:${destino}`, () => httpClient.get(`/cashflow/proveedores/${proveedorId}/pendientes?destino=${destino}`), { enabled: !!proveedorId });
+  const prov = (provs ?? []).find((p) => p.id === Number(proveedorId));
+  const aplicado = Object.values(tildes).reduce((a, v) => a + (Number(v) || 0), 0);
+  const extra = Number(aCuenta) || 0;
+  const total = Math.round((aplicado + extra) * 100) / 100;
+  const tildar = (d, on) => setTildes((t) => { const n = { ...t }; if (on) n[d.docId] = String(d.saldo); else delete n[d.docId]; return n; });
+  const sc = useSegundaConfirmacion(`${proveedorId}|${destino}|${medio}|${referencia}|${fecha}|${detalle}|${aCuenta}|${JSON.stringify(tildes)}`);
+  const confirmar = () => sc.clic(
+    () => {
+      setError('');
+      if (!prov) { setError('Elegí el proveedor.'); return false; }
+      if (total <= 0) { setError('Tildá qué pagás o escribí un importe a cuenta.'); return false; }
+      for (const d of docs ?? []) {
+        const v = Number(tildes[d.docId]);
+        if (tildes[d.docId] != null && (!(v > 0) || v > d.saldo + 0.009)) { setError(`En ${d.etiqueta} el importe tiene que ser mayor a 0 y hasta ${money(d.saldo)}.`); return false; }
+      }
+      if (medio === 'deposito' && !referencia.trim()) { setError('Para un depósito escribí la referencia (número de depósito o comprobante del banco).'); return false; }
+      return true;
+    },
+    async () => {
+      try {
+        const imputaciones = (docs ?? []).filter((d) => tildes[d.docId] != null).map((d) => ({ [d.tipo === 'gasto' ? 'gastoId' : 'comprobanteId']: d.docId, importe: Number(tildes[d.docId]) }));
+        const r = await httpClient.post('/cashflow/pagos', { proveedorId: prov.id, destino, medio, importe: total, imputaciones, referencia: referencia.trim(), detalle: detalle.trim(), fecha, confirmado: true });
+        avisar('ok', `Pago a ${prov.nombre} por ${money(total)} registrado. Efectivo en mano: ${money(r.saldo)}.`);
+        onHecho();
+      } catch (e) { setError(errorMsg(e)); }
+    },
+  );
+  return (
+    <ModalShell title="Pagar a un proveedor desde tu caja" subtitle="Queda en la cuenta del proveedor, aplicado a lo que tildes." wide onClose={onCerrar} footer={[
+      { texto: 'Cancelar', onClick: onCerrar },
+      { texto: textoBoton(sc, `Pagar ${money(total)}`, 'Sí, confirmar el pago'), clase: 'btn-primary', onClick: confirmar, disabled: !prov },
+    ]}>
+      <div className={s['form-grid']}>
+        <Campo label="Proveedor *">
+          <select value={proveedorId} onChange={(e) => { setProveedorId(e.target.value); setTildes({}); }} autoFocus>
+            <option value="">— Elegí —</option>
+            {(provs ?? []).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          </select>
+        </Campo>
+        <Campo label="Qué pagás">
+          <select value={destino} onChange={(e) => { setDestino(e.target.value); setTildes({}); }}>
+            <option value="mercaderia">Facturas de mercadería</option>
+            <option value="gastos">Gastos cargados en Gastos</option>
+          </select>
+        </Campo>
+      </div>
+      <div className={s['form-grid']}>
+        <Campo label="Con qué">
+          <select value={medio} onChange={(e) => setMedio(e.target.value)}>
+            <option value="efectivo">Efectivo en mano</option>
+            <option value="deposito">Depósito en su cuenta (sale efectivo de tu caja)</option>
+          </select>
+        </Campo>
+        <Campo label={medio === 'deposito' ? 'Referencia del depósito *' : 'Referencia'}>
+          <input maxLength={200} value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder={medio === 'deposito' ? 'Nº de depósito / comprobante' : 'Opcional'} />
+        </Campo>
+      </div>
+      <div className={s['form-grid']}>
+        <Campo label="Fecha"><input type="date" value={fecha} max={hoy()} onChange={(e) => setFecha(e.target.value)} /></Campo>
+        <Campo label="Detalle"><input maxLength={300} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Opcional" /></Campo>
+      </div>
+      {prov && (
+        <div>
+          <div className={s['mini-label']}>{destino === 'gastos' ? 'Gastos que le debés' : 'Facturas que le debés'} — tildá las que pagás</div>
+          {loading && !docs ? <Cargando /> : !(docs ?? []).length ? <div className={s.hint} style={{ margin: 0 }}>No le debés nada {destino === 'gastos' ? 'en gastos' : 'en facturas'}. Podés pagar a cuenta igual.</div> : (
+            <Table cols={[{ h: '' }, { h: 'Documento' }, { h: 'Fecha' }, { h: 'Saldo', num: true }, { h: 'Pagás', num: true }]} empty="">
+              {(docs ?? []).map((d) => {
+                const on = tildes[d.docId] != null;
+                return (
+                  <tr key={`${d.tipo}${d.docId}`}>
+                    <td><input type="checkbox" checked={on} onChange={(e) => tildar(d, e.target.checked)} aria-label={`Pagar ${d.etiqueta}`} /></td>
+                    <td>{d.etiqueta}{d.detalle && <div className={s.hint} style={{ margin: 0 }}>{d.detalle}</div>}</td>
+                    <td>{fechaCorta(d.fecha)}</td>
+                    <td className={s.num}>{money(d.saldo)}</td>
+                    <td className={s.num}>
+                      {on && <input type="number" min="0" max={d.saldo} step="0.01" value={tildes[d.docId]} onChange={(e) => setTildes((t) => ({ ...t, [d.docId]: e.target.value }))} style={{ width: 120, textAlign: 'right' }} />}
+                    </td>
+                  </tr>
+                );
+              })}
+            </Table>
+          )}
+        </div>
+      )}
+      <div className={s['form-grid']}>
+        <Campo label="Además, a cuenta (sin aplicar a un documento)" hint="Queda como saldo a favor en la cuenta del proveedor; se aplica después desde Proveedores.">
+          <input type="number" min="0" step="0.01" value={aCuenta} onChange={(e) => setACuenta(e.target.value)} placeholder="0" />
+        </Campo>
+        <div>
+          <div className={s['mini-label']}>Total del pago</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>{money(total)}</div>
+          <div className={s.hint} style={{ margin: 0 }}>aplicado {money(aplicado)} · a cuenta {money(extra)}</div>
+        </div>
+      </div>
+      <AvisoSegundaConfirmacion {...sc}>
+        Sale <strong>{money(total)}</strong> de tu caja para <strong>{prov?.nombre ?? '—'}</strong> ({MEDIO[medio]}), aplicado a {Object.keys(tildes).length} documento{Object.keys(tildes).length === 1 ? '' : 's'}{extra > 0 ? ` y ${money(extra)} a cuenta` : ''}.
       </AvisoSegundaConfirmacion>
       {error && <Aviso tono="warn">{error}</Aviso>}
     </ModalShell>
@@ -444,6 +573,7 @@ function Movimientos({ version, bump, avisar, conceptos }) {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <Btn variant="btn-ingreso" small onClick={() => setModal({ tipo: 'ingreso' })}>+ Ingreso</Btn>
           <Btn variant="btn-delete" small onClick={() => setModal({ tipo: 'egreso' })}>− Egreso</Btn>
+          <Btn variant="btn-primary" small onClick={() => setModal({ tipo: 'pago' })}>Pagar a un proveedor</Btn>
         </div>
       </div>
       <div className={s.hint} style={{ margin: 0 }}>
@@ -455,10 +585,11 @@ function Movimientos({ version, bump, avisar, conceptos }) {
       {(modal?.tipo === 'ingreso' || modal?.tipo === 'egreso') && (
         <MovimientoModal tipo={modal.tipo} conceptos={conceptos} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar} />
       )}
+      {modal?.tipo === 'pago' && <PagoProveedorModal onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar} />}
       {modal?.tipo === 'anular' && (
         <AnularModal
           titulo={`Anular ${modal.m.tipo} de ${money(modal.m.importe)}`}
-          texto={`${modal.m.concepto} del ${fechaCorta(modal.m.fecha)}${modal.m.detalle ? ` (${modal.m.detalle})` : ''}.`}
+          texto={`${queEs(modal.m)} del ${fechaCorta(modal.m.fecha)}${modal.m.detalle ? ` (${modal.m.detalle})` : ''}.${modal.m.origen === 'pago_proveedor' ? ' El pago se desaplica de sus facturas y se anula en la cuenta del proveedor.' : modal.m.origen === 'gasto' ? ' El gasto y su pago se anulan también en Gastos.' : ''}`}
           ruta={`/cashflow/movimientos/${modal.m.id}/anular`}
           exito="Movimiento anulado."
           onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar}
@@ -472,8 +603,11 @@ function Movimientos({ version, bump, avisar, conceptos }) {
  * Conceptos
  * ==================================================================== */
 function Conceptos({ conceptos, bump, avisar }) {
+  const { data: rubros } = useResource('cashflow:rubros', () => httpClient.get('/cashflow/gasto-categorias'));
   const [nombre, setNombre] = useState('');
   const [tipo, setTipo] = useState('egreso');
+  const [clase, setClase] = useState('movimiento');
+  const [rubro, setRubro] = useState('');
   const [editando, setEditando] = useState(null); // { id, nombre }
   const [error, setError] = useState('');
   const guardar = async (fn, ok) => {
@@ -482,22 +616,36 @@ function Conceptos({ conceptos, bump, avisar }) {
   };
   const crear = () => {
     if (!nombre.trim()) { setError('Escribí el nombre del concepto.'); return; }
-    guardar(() => httpClient.post('/cashflow/conceptos', { nombre: nombre.trim(), tipo, clase: 'movimiento' }), `Concepto «${nombre.trim()}» creado.`).then(() => setNombre(''));
+    const esGasto = tipo === 'egreso' && clase === 'gasto';
+    if (esGasto && !rubro) { setError('Elegí el rubro de Gastos al que va este concepto.'); return; }
+    guardar(() => httpClient.post('/cashflow/conceptos', { nombre: nombre.trim(), tipo, clase: esGasto ? 'gasto' : 'movimiento', gastoCategoriaId: esGasto ? Number(rubro) : null }), `Concepto «${nombre.trim()}» creado.`).then(() => setNombre(''));
   };
   const grupos = [['egreso', 'Egresos (plata que sacás)'], ['ingreso', 'Ingresos (plata que entra, aparte de los sobres)']];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <Bloque titulo="Nuevo concepto" sub="Un concepto es el motivo del movimiento: retiro, depósito en el banco, préstamo… Los de tipo gasto (que crean el gasto en Gastos) llegan en la parte 2.">
+      <Bloque titulo="Nuevo concepto" sub="Un concepto es el motivo del movimiento. «Movimiento de plata» (retiro, depósito en el banco) no es un gasto del negocio; «Gasto» se carga también en Gastos, en su rubro, y entra en la rentabilidad.">
         <div className={s.toolbar}>
           <input value={nombre} maxLength={60} placeholder="Nombre del concepto" onChange={(e) => setNombre(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && crear()} />
           <select className={s['select-inline']} value={tipo} onChange={(e) => setTipo(e.target.value)}><option value="egreso">Egreso</option><option value="ingreso">Ingreso</option></select>
+          {tipo === 'egreso' && (
+            <select className={s['select-inline']} value={clase} onChange={(e) => setClase(e.target.value)} aria-label="Clase">
+              <option value="movimiento">Movimiento de plata (no es gasto)</option>
+              <option value="gasto">Gasto del negocio (se carga en Gastos)</option>
+            </select>
+          )}
+          {tipo === 'egreso' && clase === 'gasto' && (
+            <select className={s['select-inline']} value={rubro} onChange={(e) => setRubro(e.target.value)} aria-label="Rubro">
+              <option value="">— Rubro de Gastos —</option>
+              {(rubros ?? []).map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+            </select>
+          )}
           <Btn variant="btn-primary" small onClick={crear}>Agregar</Btn>
         </div>
         {error && <Aviso tono="warn">{error}</Aviso>}
       </Bloque>
       {grupos.map(([t, titulo]) => (
         <Bloque key={t} titulo={titulo}>
-          <Table cols={[{ h: 'Concepto' }, { h: 'Usos', num: true }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' }]} empty="Ninguno todavía.">
+          <Table cols={[{ h: 'Concepto' }, { h: 'Qué es' }, { h: 'Usos', num: true }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' }]} empty="Ninguno todavía.">
             {conceptos.filter((c) => c.tipo === t).map((c) => (
               <tr key={c.id} style={c.activo ? undefined : { opacity: 0.6 }}>
                 <td>
@@ -508,6 +656,17 @@ function Conceptos({ conceptos, bump, avisar }) {
                       <Btn small onClick={() => setEditando(null)}>Cancelar</Btn>
                     </span>
                   ) : c.nombre}
+                </td>
+                <td>
+                  {c.clase === 'gasto' ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      Gasto ·
+                      <select className={s['select-inline']} value={c.gastoCategoriaId ?? ''} onChange={(e) => guardar(() => httpClient.patch(`/cashflow/conceptos/${c.id}`, { gastoCategoriaId: e.target.value ? Number(e.target.value) : null }), 'Rubro cambiado.')} aria-label="Rubro">
+                        <option value="">— sin rubro —</option>
+                        {(rubros ?? []).map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+                      </select>
+                    </span>
+                  ) : c.tipo === 'egreso' ? 'Movimiento de plata' : 'Ingreso'}
                 </td>
                 <td className={s.num}>{num(c.usos, 0)}</td>
                 <td><Pill pill={c.activo ? 'st-disponible' : 'st-retenido'} label={c.activo ? 'Activo' : 'Desactivado'} /></td>
