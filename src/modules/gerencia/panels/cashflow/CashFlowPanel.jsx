@@ -17,8 +17,13 @@ import { money, num } from '@modules/productos/domain/format.js';
 import { Table, PanelHead, Btn, Pill, s } from '@modules/productos/components/ui.jsx';
 import { ModalShell } from '@modules/productos/components/Modal.jsx';
 import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@modules/gastos/components/segundaConfirmacion.jsx';
+import { descargarCsv, csvNum } from '@shared/utils/csv.js';
+import { imprimirDocumento, esc } from '@core/services/imprimir.js';
 import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles } from '../metricas/piezas.jsx';
-import { iso } from '../metricas/formato.js';
+import { ColumnasMulti } from '../metricas/graficos.jsx';
+import { iso, MESES } from '../metricas/formato.js';
+
+const DENOMINACIONES = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20];
 
 const hoy = () => iso(new Date());
 const fechaHora = (v) => (v ? new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
@@ -95,9 +100,14 @@ function Arranque({ caja, onHecho, avisar, onCancelar }) {
  * ==================================================================== */
 function Resumen({ d, irA, avisar, onHecho }) {
   const [cambiando, setCambiando] = useState(false);
+  const [contando, setContando] = useState(false);
   const negativo = d.saldo < -0.009;
   return (
     <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Btn variant="btn-primary" onClick={() => setContando(true)}>Contar mi caja</Btn>
+      </div>
+      {contando && <ConteoModal saldo={d.saldo} onCerrar={() => setContando(false)} onHecho={() => { setContando(false); onHecho(); }} avisar={avisar} />}
       <Tiles>
         <Tile label="Efectivo en mano" valor={money(d.saldo)} alerta={negativo} detalle={negativo ? 'El saldo quedó en negativo: revisá los movimientos' : 'Sobres controlados + ingresos − egresos'} />
         <Tile label="En tránsito" valor={money(d.enTransito.total)} marca="#2563eb" detalle={d.enTransito.sobres ? `${d.enTransito.sobres} sobre${d.enTransito.sobres === 1 ? '' : 's'} sin controlar` : 'Ningún sobre pendiente'} />
@@ -113,6 +123,19 @@ function Resumen({ d, irA, avisar, onHecho }) {
       <Grilla>
         <Bloque titulo="Últimos movimientos" acciones={<Btn small onClick={() => irA('movimientos')}>Ver todos</Btn>}>
           <TablaMovimientos filas={d.ultimos} compacta />
+        </Bloque>
+        <Bloque titulo="Últimos conteos" sub="Cada vez que contás tu caja queda registrado, con o sin ajuste.">
+          <Table cols={[{ h: 'Fecha' }, { h: 'Contado', num: true }, { h: 'Debía haber', num: true }, { h: 'Diferencia', num: true }, { h: 'Ajuste' }]} empty="Todavía no contaste tu caja.">
+            {(d.conteos ?? []).map((c) => (
+              <tr key={c.id} title={c.motivo || undefined}>
+                <td>{fechaHora(c.fecha)}</td>
+                <td className={s.num}>{money(c.contado)}</td>
+                <td className={s.num}>{money(c.esperado)}</td>
+                <td className={s.num}><Diferencia v={c.diferencia} /></td>
+                <td>{Math.abs(c.diferencia) < 0.009 ? <span className={s.muted}>no hizo falta</span> : c.ajustado ? 'Ajustado' : <span className={s.muted}>sin ajustar</span>}</td>
+              </tr>
+            ))}
+          </Table>
         </Bloque>
         <Bloque titulo="Arranque" sub={`Desde el ${fechaIso(d.caja.fechaInicio)} con ${money(d.caja.saldoInicial)} en mano.`}>
           {cambiando
@@ -688,9 +711,193 @@ function Conceptos({ conceptos, bump, avisar }) {
 }
 
 /* ==================================================================== *
+ * Contar mi caja
+ * ==================================================================== */
+function ConteoModal({ saldo, onCerrar, onHecho, avisar }) {
+  const [billetes, setBilletes] = useState({});
+  const [otros, setOtros] = useState('');
+  const [ajustar, setAjustar] = useState(true);
+  const [motivo, setMotivo] = useState('');
+  const [error, setError] = useState('');
+  const sumaBilletes = DENOMINACIONES.reduce((a, d) => a + d * (Number(billetes[d]) || 0), 0);
+  const contado = Math.round((sumaBilletes + (Number(otros) || 0)) * 100) / 100;
+  const diferencia = Math.round((contado - saldo) * 100) / 100;
+  const hayDif = Math.abs(diferencia) > 0.009;
+  const sc = useSegundaConfirmacion(`${JSON.stringify(billetes)}|${otros}|${ajustar}|${motivo}`);
+  const confirmar = () => sc.clic(
+    () => {
+      setError('');
+      if (hayDif && ajustar && !motivo.trim()) { setError('Para ajustar el saldo escribí el motivo de la diferencia.'); return false; }
+      return true;
+    },
+    async () => {
+      try {
+        const b = {};
+        for (const d of DENOMINACIONES) if (Number(billetes[d]) > 0) b[d] = Number(billetes[d]);
+        const r = await httpClient.post('/cashflow/conteos', { billetes: b, otros: Number(otros) || 0, ajustar: hayDif && ajustar, motivo: motivo.trim(), confirmado: true });
+        avisar('ok', r.ajustado ? `Conteo registrado y saldo ajustado: efectivo en mano ${money(r.saldo)}.` : hayDif ? `Conteo registrado sin ajustar: hay una diferencia de ${money(Math.abs(r.diferencia))}.` : 'Conteo registrado: coincide con el libro.');
+        onHecho();
+      } catch (e) { setError(errorMsg(e)); }
+    },
+  );
+  return (
+    <ModalShell title="Contar mi caja" subtitle={`El libro dice que tenés ${money(saldo)} en mano. Contá y comparemos.`} onClose={onCerrar} footer={[
+      { texto: 'Cancelar', onClick: onCerrar },
+      { texto: textoBoton(sc, 'Registrar el conteo', 'Sí, confirmar'), clase: 'btn-primary', onClick: confirmar },
+    ]}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto 90px 1fr', gap: '6px 12px', alignItems: 'center', fontVariantNumeric: 'tabular-nums' }}>
+        {DENOMINACIONES.map((d) => (
+          <span key={d} style={{ display: 'contents' }}>
+            <span>{money(d)}</span>
+            <input type="number" min="0" step="1" value={billetes[d] ?? ''} onChange={(e) => setBilletes((b) => ({ ...b, [d]: e.target.value }))} aria-label={`Billetes de ${money(d)}`} />
+            <strong style={{ textAlign: 'right' }}>{Number(billetes[d]) > 0 ? money(d * Number(billetes[d])) : ''}</strong>
+          </span>
+        ))}
+        <span>Monedas y otros</span>
+        <input type="number" min="0" step="0.01" value={otros} onChange={(e) => setOtros(e.target.value)} aria-label="Monedas y otros" />
+        <strong style={{ textAlign: 'right' }}>{Number(otros) > 0 ? money(Number(otros)) : ''}</strong>
+      </div>
+      <div className={cx(s.callout, hayDif ? s.warn : s.info)}>
+        Contaste <strong>{money(contado)}</strong> · el libro dice <strong>{money(saldo)}</strong> · <Diferencia v={diferencia} />
+        {hayDif && <div className={s.hint} style={{ margin: '4px 0 0' }}>{diferencia < 0 ? 'Falta plata respecto del libro.' : 'Hay más plata que en el libro.'}</div>}
+      </div>
+      {hayDif && (
+        <>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, cursor: 'pointer' }}>
+            <input type="checkbox" checked={ajustar} onChange={(e) => setAjustar(e.target.checked)} />
+            Ajustar el saldo a lo contado ({money(contado)})
+          </label>
+          <div className={s.hint} style={{ margin: 0 }}>Con el ajuste, el libro pasa a decir lo que hay en la mano y queda un movimiento de «ajuste por conteo» con el motivo. Sin ajuste, el conteo queda registrado y el saldo no cambia.</div>
+          {ajustar && <Campo label="Motivo de la diferencia *"><textarea rows={2} maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)} autoFocus /></Campo>}
+        </>
+      )}
+      <AvisoSegundaConfirmacion {...sc}>
+        Se registra el conteo de <strong>{money(contado)}</strong>{hayDif && ajustar ? <> y el saldo se ajusta: <Diferencia v={diferencia} /></> : hayDif ? ' sin ajustar el saldo' : ''}.
+      </AvisoSegundaConfirmacion>
+      {error && <Aviso tono="warn">{error}</Aviso>}
+    </ModalShell>
+  );
+}
+
+/* ==================================================================== *
+ * Reportes
+ * ==================================================================== */
+const etiquetaPeriodo = (p, paso) => (paso === 'mes' ? `${MESES[Number(p.slice(5, 7)) - 1]} ${p.slice(2, 4)}` : `${Number(p.slice(8, 10))}/${Number(p.slice(5, 7))}`);
+const tituloPeriodo = (p, paso) => (paso === 'mes' ? `${MESES[Number(p.slice(5, 7)) - 1]} ${p.slice(0, 4)}` : paso === 'semana' ? `Semana del ${fechaIso(p)}` : fechaIso(p));
+const primerDiaMes = (d = new Date()) => iso(new Date(d.getFullYear(), d.getMonth(), 1));
+
+function Reportes({ version }) {
+  const [desde, setDesde] = useState(primerDiaMes());
+  const [hasta, setHasta] = useState(hoy());
+  const qs = `desde=${desde}&hasta=${hasta}`;
+  const { data: d, loading, error } = useResource(`cashflow:reporte:${qs}:${version}`, () => httpClient.get(`/cashflow/reporte?${qs}`));
+  const { data: movs } = useResource(`cashflow:reporte-mov:${qs}:${version}`, () => httpClient.get(`/cashflow/movimientos?${qs}&limite=2000`));
+  const preset = (k) => {
+    const h = new Date();
+    if (k === 'mes') { setDesde(primerDiaMes()); setHasta(hoy()); }
+    if (k === 'mes-pasado') { setDesde(iso(new Date(h.getFullYear(), h.getMonth() - 1, 1))); setHasta(iso(new Date(h.getFullYear(), h.getMonth(), 0))); }
+    if (k === 'anio') { setDesde(iso(new Date(h.getFullYear(), 0, 1))); setHasta(hoy()); }
+  };
+  const exportar = () => descargarCsv(`cash-flow-${desde}-${hasta}.csv`,
+    ['Fecha', 'Tipo', 'Qué', 'Detalle', 'Quién', 'Ingreso', 'Egreso', 'Anulado', 'Motivo anulación'],
+    (movs ?? []).map((m) => [fechaHora(m.fecha), m.tipo, queEs(m), m.detalle || '', m.usuario || '', m.tipo === 'ingreso' ? csvNum(m.importe) : '', m.tipo === 'egreso' ? csvNum(m.importe) : '', m.anuladoEn ? 'Sí' : '', m.anuladoMotivo || '']));
+  const imprimir = () => {
+    if (!d) return;
+    const fila = (cols) => `<tr>${cols.map((c, i) => `<td style="padding:3px 6px;border-bottom:1px solid #ddd;${i > 0 ? 'text-align:right;white-space:nowrap' : ''}">${c}</td>`).join('')}</tr>`;
+    const tabla = (titulo, cab, filas) => `<h3 style="margin:14px 0 4px">${esc(titulo)}</h3><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>${cab.map((c, i) => `<th style="text-align:${i > 0 ? 'right' : 'left'};padding:3px 6px;border-bottom:2px solid #333">${esc(c)}</th>`).join('')}</tr></thead><tbody>${filas.join('')}</tbody></table>`;
+    const dif = (v) => (Math.abs(v) < 0.009 ? '—' : `${v > 0 ? '+' : '−'}${money(Math.abs(v))}`);
+    const cuerpo = `
+      <h2 style="margin:0 0 2px">Cash Flow · ${esc(fechaIso(d.desde))} al ${esc(fechaIso(d.hasta))}</h2>
+      <table style="font-size:13px;margin:8px 0"><tbody>
+        ${fila(['Efectivo al inicio del período', money(d.saldoInicio)])}${d.saldoInicial > 0 ? fila(['Saldo inicial (arranque)', money(d.saldoInicial)]) : ''}
+        ${fila(['Ingresos', money(d.ingresos)])}${fila(['Egresos', money(d.egresos)])}${fila(['<strong>Efectivo al fin del período</strong>', `<strong>${money(d.saldoFin)}</strong>`])}
+      </tbody></table>
+      ${tabla('Por concepto', ['Concepto', 'Cantidad', 'Importe'], d.porConcepto.map((c) => fila([`${esc(c.tipo === 'ingreso' ? 'Ingreso' : 'Egreso')} · ${esc(c.origen === 'concepto' || c.origen === 'gasto' ? c.concepto : ORIGEN[c.origen] ?? c.origen)}`, c.cantidad, money(c.importe)])))}
+      ${tabla('Sobres por sucursal', ['Sucursal', 'Sobres', 'Controlados', 'Enviado', 'Contado', 'Diferencia'], d.sobresPorSucursal.map((x) => fila([esc(x.sucursal), x.sobres, x.controlados, money(x.enviado), money(x.contado), dif(x.diferencia)])))}
+      ${tabla('Diferencias por cajero', ['Cajero', 'Sobres', 'Con diferencia', 'Faltantes', 'Sobrantes', 'Neto'], d.porCajero.map((x) => fila([esc(x.cajero), x.sobres, x.conDiferencia, dif(x.faltantes), dif(x.sobrantes), dif(x.diferencia)])))}
+      ${tabla('Movimientos', ['Fecha', 'Qué', 'Ingreso', 'Egreso'], (movs ?? []).filter((m) => !m.anuladoEn).map((m) => fila([`${esc(fechaHora(m.fecha))} · ${esc(queEs(m))}${m.detalle ? ` · ${esc(m.detalle)}` : ''}`, m.tipo === 'ingreso' ? money(m.importe) : '', m.tipo === 'egreso' ? money(m.importe) : ''])))}`;
+    imprimirDocumento('cashflow', { titulo: `Cash Flow ${d.desde} a ${d.hasta}`, cuerpo });
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className={s.toolbar}>
+        <Btn small onClick={() => preset('mes')}>Este mes</Btn>
+        <Btn small onClick={() => preset('mes-pasado')}>Mes pasado</Btn>
+        <Btn small onClick={() => preset('anio')}>Este año</Btn>
+        <input type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)} aria-label="Desde" />
+        <input type="date" value={hasta} min={desde} max={hoy()} onChange={(e) => setHasta(e.target.value)} aria-label="Hasta" />
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <Btn small onClick={exportar} disabled={!(movs ?? []).length}>Exportar CSV</Btn>
+          <Btn small onClick={imprimir} disabled={!d}>Imprimir</Btn>
+        </div>
+      </div>
+      {error && <Aviso tono="warn">{error}</Aviso>}
+      {loading && !d ? <Cargando /> : !d ? null : (
+        <>
+          <Tiles>
+            <Tile label="Efectivo al inicio" valor={money(d.saldoInicio)} detalle={`al ${fechaIso(d.desde)}, antes del primer movimiento`} />
+            <Tile label="Ingresos" valor={money(d.ingresos)} marca="var(--crm-color-primary)" detalle={d.saldoInicial > 0 ? `+ ${money(d.saldoInicial)} del arranque` : 'sobres y otros ingresos'} />
+            <Tile label="Egresos" valor={money(d.egresos)} marca="#dc2626" detalle={`${d.movimientos} movimiento${d.movimientos === 1 ? '' : 's'} en el período`} />
+            <Tile label="Efectivo al fin" valor={money(d.saldoFin)} alerta={d.saldoFin < -0.009} detalle={`al ${fechaIso(d.hasta)}`} />
+          </Tiles>
+          {d.serie.length > 1 && (
+            <ColumnasMulti
+              titulo={`Ingresos y egresos por ${d.paso}`}
+              series={[{ nombre: 'Ingresos', color: 'var(--crm-color-primary)' }, { nombre: 'Egresos', color: '#dc2626' }]}
+              datos={d.serie.map((x) => ({ etiqueta: etiquetaPeriodo(x.periodo, d.paso), titulo: tituloPeriodo(x.periodo, d.paso), valores: [x.ingresos, x.egresos] }))}
+              formato={money}
+            />
+          )}
+          <Grilla>
+            <Bloque titulo="Por concepto" sub="Qué entró y qué salió, agrupado.">
+              <Table cols={[{ h: 'Concepto' }, { h: 'Cant.', num: true }, { h: 'Importe', num: true }]} empty="Sin movimientos en el período.">
+                {d.porConcepto.map((c, i) => (
+                  <tr key={i}>
+                    <td><Pill pill={c.tipo === 'ingreso' ? 'st-disponible' : 'st-comprometido'} label={c.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} /> {c.origen === 'concepto' || c.origen === 'gasto' ? c.concepto : ORIGEN[c.origen] ?? c.origen}</td>
+                    <td className={s.num}>{c.cantidad}</td>
+                    <td className={s.num}><strong>{money(c.importe)}</strong></td>
+                  </tr>
+                ))}
+              </Table>
+            </Bloque>
+            <Bloque titulo="Sobres por sucursal" sub="Lo que mandó cada local y lo que contaste.">
+              <Table cols={[{ h: 'Sucursal' }, { h: 'Sobres', num: true }, { h: 'Enviado', num: true }, { h: 'Contado', num: true }, { h: 'Diferencia', num: true }]} empty="Sin sobres en el período.">
+                {d.sobresPorSucursal.map((x) => (
+                  <tr key={x.sucursalId}>
+                    <td>{x.sucursal}{x.controlados < x.sobres && <div className={s.hint} style={{ margin: 0 }}>{x.sobres - x.controlados} sin controlar</div>}</td>
+                    <td className={s.num}>{x.sobres}</td>
+                    <td className={s.num}>{money(x.enviado)}</td>
+                    <td className={s.num}>{money(x.contado)}</td>
+                    <td className={s.num}><Diferencia v={x.diferencia} /></td>
+                  </tr>
+                ))}
+              </Table>
+            </Bloque>
+          </Grilla>
+          <Bloque titulo="Diferencias por cajero" sub="De los sobres controlados en el período: a quién le falta o le sobra plata al armar el sobre.">
+            <Table cols={[{ h: 'Cajero' }, { h: 'Sobres', num: true }, { h: 'Con diferencia', num: true }, { h: 'Faltantes', num: true }, { h: 'Sobrantes', num: true }, { h: 'Neto', num: true }]} empty="Sin sobres controlados en el período.">
+              {d.porCajero.map((x) => (
+                <tr key={x.usuarioId ?? x.cajero}>
+                  <td>{x.cajero}</td>
+                  <td className={s.num}>{x.sobres}</td>
+                  <td className={s.num}>{x.conDiferencia}</td>
+                  <td className={s.num}><Diferencia v={x.faltantes} /></td>
+                  <td className={s.num}><Diferencia v={x.sobrantes} /></td>
+                  <td className={s.num}><Diferencia v={x.diferencia} /></td>
+                </tr>
+              ))}
+            </Table>
+          </Bloque>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ==================================================================== *
  * El panel
  * ==================================================================== */
-const PESTANAS = [['resumen', 'Resumen'], ['sobres', 'Sobres de caja'], ['movimientos', 'Movimientos'], ['conceptos', 'Conceptos']];
+const PESTANAS = [['resumen', 'Resumen'], ['sobres', 'Sobres de caja'], ['movimientos', 'Movimientos'], ['conceptos', 'Conceptos'], ['reportes', 'Reportes']];
 
 export function CashFlowPanel() {
   const [version, setVersion] = useState(0);
@@ -715,7 +922,7 @@ export function CashFlowPanel() {
         <Aviso tono="warn">
           <strong>Caja abierta hace más de 24 horas:</strong>{' '}
           {abiertas.map((c) => `${c.sucursal} (${c.usuario || 'sin usuario'}, desde el ${fechaHora(c.apertura)}, ${c.horas} h)`).join(' · ')}.
-          {' '}Puede ser un cierre olvidado: hasta que cierren, el sobre no llega.
+          {' '}Hasta que cierren, el sobre no llega. (Este aviso también se ve arriba, en cualquier pantalla.)
         </Aviso>
       )}
       {error && <Aviso tono="warn">{error}</Aviso>}
@@ -730,6 +937,7 @@ export function CashFlowPanel() {
           {pestana === 'sobres' && <Sobres version={version} bump={bump} avisar={avisar} />}
           {pestana === 'movimientos' && <Movimientos version={version} bump={bump} avisar={avisar} conceptos={conceptos ?? []} />}
           {pestana === 'conceptos' && <Conceptos conceptos={conceptos ?? []} bump={bump} avisar={avisar} />}
+          {pestana === 'reportes' && <Reportes version={version} />}
         </>
       )}
     </div>

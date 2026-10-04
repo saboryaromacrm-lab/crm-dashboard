@@ -382,7 +382,14 @@ export function GerenciaPage() {
   const { can } = usePermissions();
   // Solo las secciones del rol: lo no asignado no existe en el menú.
   const secciones = useMemo(() => GERENCIA_SECCIONES.filter((x) => can(x.permiso)), [can]);
-  const [seccion, setSeccion] = useState(secciones[0]?.id);
+  /* `?seccion=cashflow` abre directo esa sección (lo usa el banner de cajas abiertas, 4/10/2026). */
+  const [seccion, setSeccion] = useState(() => {
+    try {
+      const pedida = new URLSearchParams(window.location.search).get('seccion');
+      if (pedida && secciones.some((x) => x.id === pedida)) return pedida;
+    } catch { /* sin window */ }
+    return secciones[0]?.id;
+  });
   const [tab, setTab] = useState('usuarios');
   const [usuarios, setUsuarios] = useState(null);
   const [roles, setRoles] = useState([]);

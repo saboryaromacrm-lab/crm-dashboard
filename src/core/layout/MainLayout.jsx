@@ -6,6 +6,7 @@ import { MobileNavDrawer } from './components/Sidebar/MobileNavDrawer.jsx';
 import { OrdenesWebAlert } from './components/OrdenesWebAlert.jsx';
 import { PedidosCafeAlert } from './components/PedidosCafeAlert.jsx';
 import { PreciosAlert } from './components/PreciosAlert.jsx';
+import { CajasAbiertasBanner } from './components/CajasAbiertasBanner.jsx';
 import { ConsultasRapidas } from '@modules/consultas/ConsultasRapidas.jsx';
 import { useUI } from '@core/context/UIContext.jsx';
 import { useBreakpoint } from '@core/hooks/useBreakpoint.js';
@@ -49,6 +50,8 @@ export function MainLayout() {
         <header className={styles.topbar}>
           <Topbar />
         </header>
+        {/* Persistente (no se va solo): una caja de un local olvidada abierta. Solo el superadmin lo ve. */}
+        <CajasAbiertasBanner />
 
         <main className={styles.content} id="main-content">
           <div className={styles.contentInner}>
