@@ -15,6 +15,7 @@ import Inventory2Icon from '@mui/icons-material/Inventory2';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import SettingsIcon from '@mui/icons-material/Settings';
 import InsightsIcon from '@mui/icons-material/Insights';
+import PaymentsIcon from '@mui/icons-material/Payments';
 
 export const GERENCIA_SECCIONES = [
   { id: 'usuarios', label: 'Usuarios y roles', icon: GroupIcon, permiso: 'gerencia.usuarios' },
@@ -34,6 +35,13 @@ export const GERENCIA_SECCIONES = [
      * `gerencia.metricas` no se asigna a ningún rol: solo el superadmin. */
     id: 'metricas', label: 'Métricas', icon: InsightsIcon, permiso: 'gerencia.metricas',
     desc: 'Ventas, rentabilidad, proveedores, listas y stock, casi en vivo.',
+  },
+  {
+    /* 4/10/2026 (0133): la caja central de efectivo físico del dueño — los
+     * sobres de cada cierre de caja, controlados uno por uno, y lo que se saca.
+     * La llave `gerencia.cashflow` tampoco se asigna: solo el superadmin. */
+    id: 'cashflow', label: 'Cash Flow', icon: PaymentsIcon, permiso: 'gerencia.cashflow',
+    desc: 'El efectivo en mano: los sobres de los locales, controlados uno por uno, y cada peso que sale.',
   },
   {
     id: 'valorizacion', label: 'Valorización de stock', icon: Inventory2Icon, permiso: 'gerencia.valorizacion', pronto: true,
