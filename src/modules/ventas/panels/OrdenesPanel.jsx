@@ -23,7 +23,8 @@ import {
   Table, PanelHead, Btn, Di, ModalShell, money, num, fmtFechaHora, usePaginado, s,
 } from '../components/ui.jsx';
 
-const ENTREGAS = { retiro: 'Retiro en local', cadete: 'Cadete', camioneta: 'Camioneta' };
+/* `camioneta` es el id interno; se lee «Envío sin costo» como en la tienda (4/10/2026). */
+const ENTREGAS = { retiro: 'Retiro en local', cadete: 'Cadete', camioneta: 'Envío sin costo' };
 
 /** Nombre a mostrar: el cliente adjudicado o lo que escribió en el formulario. */
 function nombreOrden(p, getCliente) {

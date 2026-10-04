@@ -55,6 +55,7 @@ export const VENTAS_PANELS = [
      esto obligaba a abrir de más por la puerta de al lado. */
   { id: 'carteles', label: 'Carteles de góndola', icon: LocalOfferIcon, permiso: 'ventas.carteles' },
   /* El Formato de venta vive adentro, como primera pestaña (28/9/2026, pedido
-     del dueño): por eso la sección abre con cualquiera de las dos llaves. */
-  { id: 'configuracion', label: 'Configuración', icon: SettingsIcon, permiso: ['ventas.configuracion', 'ventas.listas'] },
+     del dueño), y la Tienda online también (4/10/2026, con los datos del sitio
+     que antes estaban en Web): por eso la sección abre con cualquiera de las llaves. */
+  { id: 'configuracion', label: 'Configuración', icon: SettingsIcon, permiso: ['ventas.configuracion', 'ventas.listas', 'web.configuracion'] },
 ];

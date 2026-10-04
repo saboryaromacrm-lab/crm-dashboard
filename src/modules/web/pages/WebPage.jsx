@@ -5,7 +5,7 @@
  * izquierda igual que Compras, Ventas, Almacén y Gastos: moverse entre módulos
  * no cambia de idioma visual.
  *
- * Cinco secciones, cinco responsabilidades:
+ * Cuatro secciones, cuatro responsabilidades:
  *
  *   - PRODUCTOS: lo que el sitio muestra. La lista ES la del sitio (mismo
  *     endpoint público `GET /tienda/catalogo`): un producto aparece si tiene
@@ -16,7 +16,8 @@
  *   - CONTENIDO: los slides de la portada, el banner y las imágenes de
  *     categorías y marcas.
  *   - ESTADÍSTICAS: visitas, qué se mira y qué se busca.
- *   - CONFIGURACIÓN: logo, favicon, contacto y redes del sitio.
+ *   - (CONFIGURACIÓN del sitio —logo, favicon, contacto, redes y cartel— se
+ *     mudó el 4/10/2026 a Ventas › Configuración › Tienda online: ver `SitioTienda`.)
  *
  * Todo lo demás del producto (nombre, precio, stock, etiquetas) se maneja en
  * Compras › Productos — a propósito: una sola fuente de verdad por dato.
@@ -840,8 +841,8 @@ function ConfiguracionSitioPanel({ catalogo, recargar, avisar }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
-        title="Configuración del sitio"
-        desc="La identidad y los datos de contacto que ve el cliente: logo, favicon, WhatsApp, correo, ubicación y redes."
+        title="Datos del sitio"
+        desc="La identidad y los datos de contacto que ve el cliente: logo, favicon, WhatsApp, correo, ubicación y redes. Se guardan con sus propios botones."
       />
 
       <div className={s['section-title']}>Identidad</div>
@@ -895,6 +896,21 @@ function ConfiguracionSitioPanel({ catalogo, recargar, avisar }) {
       <CartelBienvenida web={web} setWeb={setWeb} recargar={recargar} avisar={avisar} />
     </div>
   );
+}
+
+/**
+ * LOS DATOS DEL SITIO DENTRO DE «VENTAS › CONFIGURACIÓN › TIENDA ONLINE»
+ * (4/10/2026, pedido del dueño: «una pestaña exclusiva de todo lo que es la
+ * tienda online»). Es el mismo panel de siempre; se trae su propio catálogo
+ * (para el logo y el favicon) y avisa con el `avisar(tipo, texto)` de quien lo use.
+ */
+export function SitioTienda({ avisar }) {
+  const [catalogo, setCatalogo] = useState(null);
+  const recargar = useCallback(async () => {
+    try { setCatalogo(await httpClient.get('/tienda/catalogo')); } catch { setCatalogo((c) => c ?? { sitio: {} }); }
+  }, []);
+  useEffect(() => { recargar(); }, [recargar]);
+  return <ConfiguracionSitioPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />;
 }
 
 /** Los topes del cartel: los mismos que aplica el servidor (configuracion.module, `web.popup*`). */
@@ -1091,7 +1107,6 @@ export function WebPage() {
                 {activa === 'ofertas' && <OfertasWebPanel avisar={avisar} />}
                 {activa === 'contenido' && <ContenidoPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />}
                 {activa === 'estadisticas' && <EstadisticasPanel avisar={avisar} />}
-                {activa === 'configuracion' && <ConfiguracionSitioPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />}
               </>
             )}
         </div>

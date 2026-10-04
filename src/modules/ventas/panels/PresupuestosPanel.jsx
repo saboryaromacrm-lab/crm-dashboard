@@ -31,7 +31,8 @@ const ESTADOS = {
   cerrado: { label: 'Cerrado', pill: 'est-recibida' },
   cancelado: { label: 'Cancelado', pill: 'est-cancelada' },
 };
-const ENTREGAS = { retiro: 'Retiro en local', cadete: 'Cadete', camioneta: 'Camioneta' };
+/* `camioneta` es el id interno; se lee «Envío sin costo» como en la tienda (4/10/2026). */
+const ENTREGAS = { retiro: 'Retiro en local', cadete: 'Cadete', camioneta: 'Envío sin costo' };
 
 /** Estado EFECTIVO: un enviado con la fecha pasada se muestra vencido. */
 const estadoDe = (p) => (
