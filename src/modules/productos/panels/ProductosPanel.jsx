@@ -4,6 +4,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { FormatosPorProveedorPanel } from './FormatosPorProveedorPanel.jsx';
+import { ActualizarImportarPanel } from './ActualizarImportarPanel.jsx';
 import { num } from '../domain/format.js';
 import { ESTADOS_PRODUCTO } from '../domain/constants.js';
 import {
@@ -154,6 +155,8 @@ function CatalogoProductos() {
    * que aplica la caja. 'propio' = los que tienen uno elegido a mano.
    */
   const [controlF, setControlF] = useState('');
+  /** FOTO (4/10/2026): 'con' / 'sin' imagen cargada para la tienda (Web › Productos del sitio). */
+  const [imagenF, setImagenF] = useState('');
 
   /** Opciones de los filtros, derivadas del catálogo ya cargado (sin red). */
   const opciones = useMemo(() => {
@@ -181,6 +184,8 @@ function CatalogoProductos() {
       if (marca && p.marca !== marca) return false;
       if (categoria && p.categoria !== categoria) return false;
       if (provId && !(p.formatosCompra || []).some((e) => e.proveedorId === provId)) return false;
+      if (imagenF === 'con' && !p.tieneImagen) return false;
+      if (imagenF === 'sin' && p.tieneImagen) return false;
       if (controlF) {
         const c = store.controlDe(p);
         if (controlF === 'con' && !c.controla) return false;
@@ -200,7 +205,7 @@ function CatalogoProductos() {
       : lista;
     // `configVentas`: el control efectivo depende de las llaves generales.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.state.productos, store.state.configVentas, q, tipo, sinHijos, sinBulto, kgDe, marca, categoria, proveedorId, estadoF, controlF]);
+  }, [store.state.productos, store.state.configVentas, q, tipo, sinHijos, sinBulto, kgDe, marca, categoria, proveedorId, estadoF, controlF, imagenF]);
 
   /*
    * CADA FRACCIONADO ES UNA FILA PROPIA (decisión del dueño, 9/8/2026): el
@@ -218,7 +223,7 @@ function CatalogoProductos() {
     return out;
   }, [productos]);
 
-  const hayFiltro = !!(q || tipo || marca || categoria || proveedorId || controlF || estadoF !== 'vigentes');
+  const hayFiltro = !!(q || tipo || marca || categoria || proveedorId || controlF || imagenF || estadoF !== 'vigentes');
   const stop = (e) => e.stopPropagation();
 
   /**
@@ -261,7 +266,7 @@ function CatalogoProductos() {
     }),
   );
 
-  const pag = usePaginado(filasLista, 'productos', `${q}|${tipo}|${marca}|${categoria}|${proveedorId}|${estadoF}|${controlF}`);
+  const pag = usePaginado(filasLista, 'productos', `${q}|${tipo}|${marca}|${categoria}|${proveedorId}|${estadoF}|${controlF}|${imagenF}`);
 
   const filas = pag.visibles.map(({ clave, p, pr }) => {
     if (pr) {
@@ -338,11 +343,7 @@ function CatalogoProductos() {
         desc="Catálogo. Clic en una fila para ver el detalle, stock por sucursal y trazabilidad."
         actions={isAdmin && (
           <div style={{ display: 'flex', gap: 8 }}>
-            <Btn onClick={() => openModal('margenesMasivos', { productos })}>Actualizar márgenes</Btn>
-            <Btn onClick={() => openModal('importarCatalogo', {})}>Importar catálogo</Btn>
-            <Btn onClick={() => openModal('importarCostos', {})}>Actualizar costos</Btn>
-            <Btn onClick={() => openModal('importarFormatosVenta', {})}>Actualizar formatos de venta</Btn>
-            <Btn onClick={() => openModal('actualizarClasificacion', {})}>Actualizar categoría y etiquetas</Btn>
+            {/* Las cargas masivas viven en la pestaña «Actualizar e importar» (4/10/2026). */}
             <Btn onClick={exportar} disabled={!productos.length}>Exportar CSV</Btn>
             <Btn variant="btn-primary" onClick={() => openModal('producto', {})}>+ Nuevo producto</Btn>
           </div>
@@ -388,6 +389,11 @@ function CatalogoProductos() {
           <option value="sin-hijos">A granel sin fraccionados</option>
           <option value="sin-bulto">Enteros sin bulto (no entran al mayorista por bulto)</option>
         </select>
+        <select className={s['select-inline']} value={imagenF} onChange={(e) => setImagenF(e.target.value)} aria-label="Imagen">
+          <option value="">Con y sin imagen</option>
+          <option value="con">Con imagen</option>
+          <option value="sin">Sin imagen</option>
+        </select>
         {/* `estadoF` también se limpia: `hayFiltro` lo cuenta, así que el botón
             APARECÍA cuando lo único cambiado era el estado — y al hacer clic no
             pasaba nada. Un botón que se muestra y no hace nada es peor que no
@@ -397,7 +403,7 @@ function CatalogoProductos() {
             small
             onClick={() => {
               setQ(''); setTipo(''); setMarca(''); setCategoria(''); setProveedorId('');
-              setControlF(''); setEstadoF('vigentes');
+              setControlF(''); setImagenF(''); setEstadoF('vigentes');
             }}
           >
             Limpiar
@@ -413,7 +419,8 @@ function CatalogoProductos() {
           {controlF === 'sin' && ' Sin control: se venden, fraccionan y mueven aunque no haya stock (el stock se sigue registrando y puede quedar en negativo).'}
           {controlF === 'propio' && ' Tienen el control elegido en su ficha: no siguen a las llaves generales de Ventas › Configuración.'}
           {controlF && ' Se cambia en el detalle de cada producto (pestaña Resumen).'}
-          {isAdmin && ' «Actualizar márgenes» y «Exportar CSV» alcanzan solo a los filtrados.'}
+          {imagenF && ' Las fotos se cargan en Web › Productos del sitio (de a una o en lote).'}
+          {isAdmin && ' «Exportar CSV» alcanza solo a los filtrados.'}
         </div>
       )}
       <Table
@@ -432,9 +439,11 @@ function CatalogoProductos() {
 }
 
 /*
- * DOS PESTAÑAS (28/9/2026, pedido del dueño): el catálogo de siempre y la guía
+ * PESTAÑAS (28/9/2026, pedido del dueño): el catálogo de siempre y la guía
  * de formatos de venta por proveedor — importar de a un proveedor, con muchos
- * proveedores, necesitaba una lista de control para no perderse.
+ * proveedores, necesitaba una lista de control para no perderse. Y desde el
+ * 4/10/2026 «Actualizar e importar», con las cargas masivas que antes llenaban
+ * la cabecera del catálogo.
  */
 const TAB_KEY = 'crm.productos.tab';
 
@@ -459,7 +468,7 @@ function NotaSinControl({ c }) {
 }
 
 export function ProductosPanel() {
-  const { can } = useProductos();
+  const { can, isAdmin } = useProductos();
   const veGuia = can('compras.productos');
   const [tab, setTab] = useState(() => {
     try { return sessionStorage.getItem(TAB_KEY) || 'catalogo'; } catch { return 'catalogo'; }
@@ -468,11 +477,13 @@ export function ProductosPanel() {
     setTab(v);
     try { sessionStorage.setItem(TAB_KEY, v); } catch { /* sin storage: arranca en el catálogo */ }
   };
-  const activa = veGuia ? tab : 'catalogo';
+  /* Cada pestaña con su llave: la guía pide compras.productos; las cargas masivas, administración (como sus botones). */
+  const permitidas = new Set(['catalogo', ...(veGuia ? ['formatos'] : []), ...(isAdmin ? ['actualizar'] : [])]);
+  const activa = permitidas.has(tab) ? tab : 'catalogo';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
-      {veGuia && (
+      {permitidas.size > 1 && (
         <Tabs
           value={activa}
           onChange={(e, v) => elegir(v)}
@@ -481,10 +492,11 @@ export function ProductosPanel() {
           sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}
         >
           <Tab value="catalogo" label="Catálogo" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />
-          <Tab value="formatos" label="Formatos de venta por proveedores" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />
+          {veGuia && <Tab value="formatos" label="Formatos de venta por proveedores" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />}
+          {isAdmin && <Tab value="actualizar" label="Actualizar e importar" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />}
         </Tabs>
       )}
-      {activa === 'formatos' ? <FormatosPorProveedorPanel /> : <CatalogoProductos />}
+      {activa === 'formatos' ? <FormatosPorProveedorPanel /> : activa === 'actualizar' ? <ActualizarImportarPanel /> : <CatalogoProductos />}
     </div>
   );
 }
