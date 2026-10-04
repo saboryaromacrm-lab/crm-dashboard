@@ -37,7 +37,7 @@ const TAB_KEY = 'crm.ventas.configuracion.tab';
 
 /** En qué pestaña vive cada campo de la config: para marcar dónde hay cambios. */
 const tabDeCampo = (k) => {
-  if (['montoMinimoCamioneta', 'envioCamionetaActivo'].includes(k)) return 'tienda';
+  if (['montoMinimoCamioneta', 'envioCamionetaActivo', 'tiendaVistaLista'].includes(k)) return 'tienda';
   if (['puntoVenta', 'condicionIvaEmpresa', 'arcaHabilitado', 'topeSinIdentificar'].includes(k)) return 'facturacion';
   if (/^(ctaCte|presupuesto)/.test(k)) return 'clientes';
   if (/^(caja|mediosPago$|mediosFacturar|recargoCuotas|lector|balanza)/.test(k)) return 'caja';
@@ -591,6 +591,16 @@ export function ConfiguracionPanel() {
                   onChange={setNum('montoMinimoCamioneta')}
                 />
               </Campo>
+            </Seccion>
+          )}
+          {can('ventas.configuracion') && (
+            <Seccion titulo="Cómo se ven los productos" desc="La forma del catálogo de la tienda online.">
+              <Interruptor
+                label="Catálogo sin fotos (vista de lista)"
+                hint="Encendido, la tienda muestra los productos como renglones de una lista, sin imagen: marca, nombre, etiquetas, oferta, precio y el botón de agregar en un solo renglón. Para cuando los productos no tienen fotos cargadas. Apagado, las tarjetas con foto de siempre. La portada no cambia. El cliente lo ve al recargar la tienda."
+                checked={draft.tiendaVistaLista === true}
+                onChange={set('tiendaVistaLista')}
+              />
             </Seccion>
           )}
           {can('ventas.configuracion') && (() => {
