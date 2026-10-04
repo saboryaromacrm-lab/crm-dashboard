@@ -9,6 +9,7 @@
  */
 import { useRef, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
+import { errorMsg } from '@modules/ventas/services/ventas.api.js';
 import { useResource } from '@modules/ventas/hooks/useResource.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { money, num } from '@modules/productos/domain/format.js';
@@ -53,16 +54,18 @@ function SaldoInicial({ actual, onGuardado }) {
   const [msg, setMsg] = useState(null);
   const enVuelo = useRef(false);
   const [guardando, setGuardando] = useState(false);
-  const guardar = async () => {
+  /* Sin mes el servidor no usa el saldo: se exige el mes, o se guarda vacío (Quitar). */
+  const guardar = async (m = mes, imp = importe) => {
     if (enVuelo.current) return;
-    if (mes && !/^\d{4}-\d{2}$/.test(mes)) { setMsg({ tono: 'warn', texto: 'Elegí el mes.' }); return; }
+    const valor = Math.max(0, Number(imp) || 0);
+    if (!/^\d{4}-\d{2}$/.test(m) && (m || valor > 0)) { setMsg({ tono: 'warn', texto: 'Elegí el mes en que arranca ese saldo.' }); return; }
     enVuelo.current = true; setGuardando(true); setMsg(null);
     try {
-      await httpClient.put('/configuracion/empresa', { ivaSaldoInicial: Math.max(0, Number(importe) || 0), ivaSaldoMes: mes });
-      setMsg({ tono: 'ok', texto: 'Guardado. El resultado ya lo arrastra.' });
+      await httpClient.put('/configuracion/empresa', { ivaSaldoInicial: m ? valor : 0, ivaSaldoMes: m });
+      setMsg({ tono: 'ok', texto: m ? 'Guardado. El resultado ya lo arrastra.' : 'Saldo inicial quitado.' });
       onGuardado?.();
     } catch (e) {
-      setMsg({ tono: 'warn', texto: e?.data?.message || 'No se pudo guardar.' });
+      setMsg({ tono: 'warn', texto: errorMsg(e) || 'No se pudo guardar.' });
     } finally {
       enVuelo.current = false; setGuardando(false);
     }
@@ -81,8 +84,8 @@ function SaldoInicial({ actual, onGuardado }) {
           <span>Importe</span>
           <input id="iva-saldo-importe" type="number" min="0" step="0.01" value={importe} onChange={(e) => setImporte(e.target.value)} />
         </label>
-        <Btn variant="btn-primary" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar saldo inicial'}</Btn>
-        {mes && <Btn onClick={() => { setMes(''); setImporte('0'); }} disabled={guardando}>Quitar</Btn>}
+        <Btn variant="btn-primary" onClick={() => guardar()} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar saldo inicial'}</Btn>
+        {actual?.mes && <Btn onClick={() => guardar('', 0)} disabled={guardando}>Quitar</Btn>}
       </div>
       {msg && <Aviso tono={msg.tono}>{msg.texto}</Aviso>}
     </div>
@@ -97,6 +100,7 @@ export function PestanaIva({ qs, version }) {
   if (!d) return null;
   const { ventas: v, compras: c, gastos: g, iva } = d;
   const aPagar = iva.aPagar > 0.009;
+  const cm = iva.cuentaMes;
   const exportar = () => descargarCsv(`resultados-iva-${d.periodo.desde}-${d.periodo.hasta}.csv`,
     ['Mes', 'Ventas facturadas', 'Ventas sin factura (F10)', '% ventas facturadas', 'Compras facturadas', 'Compras sin factura', '% compras facturadas',
       'Débito fiscal', 'Crédito fiscal', 'Percepciones IVA', 'Saldo a favor anterior', 'A pagar', 'Saldo a favor que pasa'],
@@ -144,27 +148,21 @@ export function PestanaIva({ qs, version }) {
       </Grilla>
 
       <Grilla>
-        <Bloque titulo="Cómo se llega al resultado" sub={d.meses.length > 1 ? 'Del período elegido; el saldo a favor anterior es el del último mes.' : `${nombreMes(d.meses[0]?.mes ?? d.periodo.desde.slice(0, 7))}`}>
-          <div style={{ display: 'grid' }}>
-            <Paso nombre="Débito fiscal de lo facturado" importe={iva.debitoFacturado} />
-            {iva.debitoPendiente > 0 && <Paso signo="+" nombre="Débito de lo pendiente de CAE" importe={iva.debitoPendiente} />}
-            <Paso signo="−" nombre="Crédito de compras con factura A" importe={iva.creditoCompras} />
-            <Paso signo="−" nombre="Crédito de gastos con factura A" importe={iva.creditoGastos} />
-            <Paso signo="−" nombre="Percepciones de IVA de compras" importe={iva.percepcionesCompras} />
-            <Paso signo="−" nombre="Percepciones de IVA de gastos" importe={iva.percepcionesGastos} />
-            <Paso nombre="Resultado del período" importe={iva.resultado} fuerte />
-            {d.meses.length === 1 ? (
-              <>
-                <Paso signo="−" nombre="Saldo a favor que venía del mes anterior" importe={iva.saldoAnterior} />
-                <Paso nombre={aPagar ? 'A PAGAR' : 'SALDO A FAVOR que pasa al mes siguiente'} importe={aPagar ? iva.aPagar : iva.saldoAFavor} fuerte />
-              </>
-            ) : (
-              <>
-                <Paso nombre="A PAGAR en el período (suma de los meses, ver Mes a mes)" importe={iva.aPagarPeriodo} fuerte />
-                <Paso nombre="Saldo a favor al cierre del último mes" importe={iva.saldoAFavor} />
-              </>
-            )}
-          </div>
+        <Bloque titulo="Cómo se llega al resultado" sub={cm ? `${nombreMes(cm.mes)}, del día 1 al ${Number(d.periodo.hasta.slice(8))}` : ''}>
+          {cm && (
+            <div style={{ display: 'grid' }}>
+              <Paso nombre="Débito fiscal de lo facturado" importe={cm.debitoFacturado} />
+              {cm.debitoPendiente > 0 && <Paso signo="+" nombre="Débito de lo pendiente de CAE" importe={cm.debitoPendiente} />}
+              <Paso signo="−" nombre="Crédito de compras con factura A" importe={cm.creditoCompras} />
+              <Paso signo="−" nombre="Crédito de gastos con factura A" importe={cm.creditoGastos} />
+              <Paso signo="−" nombre="Percepciones de IVA de compras" importe={cm.percepcionesCompras} />
+              <Paso signo="−" nombre="Percepciones de IVA de gastos" importe={cm.percepcionesGastos} />
+              <Paso nombre="Resultado del mes" importe={cm.resultado} fuerte />
+              <Paso signo="−" nombre="Saldo a favor que venía del mes anterior" importe={iva.saldoAnterior} />
+              <Paso nombre={aPagar ? 'A PAGAR' : 'SALDO A FAVOR que pasa al mes siguiente'} importe={aPagar ? iva.aPagar : iva.saldoAFavor} fuerte />
+              {d.meses.length > 1 && <Paso nombre="A pagar en todo el período (suma de los meses, ver Mes a mes)" importe={iva.aPagarPeriodo} />}
+            </div>
+          )}
           <div className={s.hint} style={{ margin: 0 }}>Es una cuenta de gestión para saber dónde estás parado. La declaración la hace tu contadora (retenciones, saldos de libre disponibilidad, etc.).</div>
         </Bloque>
 
