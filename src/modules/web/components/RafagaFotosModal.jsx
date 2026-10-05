@@ -19,7 +19,7 @@ import { httpClient } from '@core/services/httpClient.js';
 import { ModalShell } from '@modules/productos/components/Modal.jsx';
 import { Btn, s } from '@modules/productos/components/ui.jsx';
 import {
-  MAX_ENTRADA_MB, PRESETS_IMAGEN, cargarImagen, moldear, quitarFondo, exportar,
+  MAX_ENTRADA_MB, PRESETS_IMAGEN, ENCUADRE_INICIAL, cargarImagen, moldear, detectarContenido, quitarFondo, exportar,
 } from '../services/imagenes.js';
 
 export function RafagaFotosModal({ productos, onCerrar, onListo, avisar }) {
@@ -33,6 +33,8 @@ export function RafagaFotosModal({ productos, onCerrar, onListo, avisar }) {
    * flood-fill puede comerse un producto claro que toque el borde. La foto que
    * salga mal se rehace con el "Subir" de ese producto ("Restaurar fondo"). */
   const [sacarFondo, setSacarFondo] = useState(false);
+  const [centrar, setCentrar] = useState(true); // recorta el fondo que sobra (5/10/2026)
+  const [ultimoKb, setUltimoKb] = useState(null);
   const inputRef = useRef(null);
 
   const actual = pendientes[idx];
@@ -45,10 +47,11 @@ export function RafagaFotosModal({ productos, onCerrar, onListo, avisar }) {
     setOcupado(true);
     try {
       const img = await cargarImagen(file);
-      const canvas = moldear(img, PRESETS_IMAGEN.producto);
+      const canvas = moldear(img, PRESETS_IMAGEN.producto, ENCUADRE_INICIAL, centrar ? detectarContenido(img) : null);
       if (sacarFondo) quitarFondo(canvas);
-      const { dataUrl } = exportar(canvas, PRESETS_IMAGEN.producto, { fondoQuitado: sacarFondo });
+      const { dataUrl, kb } = exportar(canvas, PRESETS_IMAGEN.producto, { fondoQuitado: sacarFondo });
       await httpClient.post(`/web/imagenes/producto/${actual.id}`, { data: dataUrl });
+      setUltimoKb(kb);
       setHechas((n) => n + 1);
       setIdx((i) => i + 1);
     } catch (e) {
@@ -78,7 +81,12 @@ export function RafagaFotosModal({ productos, onCerrar, onListo, avisar }) {
         <>
           <div className={s.hint} style={{ margin: '0 0 8px' }}>
             {idx + 1} de {pendientes.length} sin foto ({quedan} por delante) · {hechas} subida(s) en esta pasada
+            {ultimoKb != null && <> · la última quedó en {ultimoKb} KB</>}
           </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', margin: '0 0 6px' }}>
+            <input type="checkbox" checked={centrar} disabled={ocupado} onChange={(e) => setCentrar(e.target.checked)} />
+            <span><strong>Centrar el producto</strong><span className={s.muted}> — recorta el fondo que sobra alrededor.</span></span>
+          </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', margin: '0 0 10px' }}>
             <input
               type="checkbox"

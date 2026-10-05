@@ -25,7 +25,7 @@ import { ModalShell } from '@modules/productos/components/Modal.jsx';
 import { Btn, s } from '@modules/productos/components/ui.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import {
-  MAX_ENTRADA_MB, PRESETS_IMAGEN, cargarImagen, moldear, quitarFondo, exportar,
+  MAX_ENTRADA_MB, PRESETS_IMAGEN, ENCUADRE_INICIAL, cargarImagen, moldear, detectarContenido, quitarFondo, exportar, pesoLegible,
 } from '../services/imagenes.js';
 
 const norm = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
@@ -92,6 +92,9 @@ export function SubirFotosLoteModal({ productos, onCerrar, onListo, avisar }) {
    * salga mal se corrige después con el "Subir" de esa fila, que tiene el
    * "Restaurar fondo". */
   const [sacarFondo, setSacarFondo] = useState(false);
+  /* Centrar el producto (recortar el fondo blanco que sobra) va prendido: si la
+   * foto no tiene fondo liso, el detector no toca nada (5/10/2026). */
+  const [centrar, setCentrar] = useState(true);
   const inputRef = useRef(null);
 
   /* Las URLs de las miniaturas se liberan al cerrar: son blobs del navegador
@@ -152,12 +155,12 @@ export function SubirFotosLoteModal({ productos, onCerrar, onListo, avisar }) {
       if (!f.prodId) continue;
       try {
         const img = await cargarImagen(f.file);
-        const canvas = moldear(img, PRESETS_IMAGEN.producto);
+        const canvas = moldear(img, PRESETS_IMAGEN.producto, ENCUADRE_INICIAL, centrar ? detectarContenido(img) : null);
         if (sacarFondo) quitarFondo(canvas);
-        const { dataUrl } = exportar(canvas, PRESETS_IMAGEN.producto, { fondoQuitado: sacarFondo });
+        const { dataUrl, kb } = exportar(canvas, PRESETS_IMAGEN.producto, { fondoQuitado: sacarFondo });
         await httpClient.post(`/web/imagenes/producto/${f.prodId}`, { data: dataUrl });
         ok += 1;
-        setFila(f.clave, { resultado: 'ok' });
+        setFila(f.clave, { resultado: 'ok', kb });
       } catch (e) {
         setFila(f.clave, { resultado: e?.data?.message || 'No se pudo subir.' });
       }
@@ -220,6 +223,17 @@ export function SubirFotosLoteModal({ productos, onCerrar, onListo, avisar }) {
       </div>
 
       <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, cursor: 'pointer', margin: '10px 0 0' }}>
+        <input type="checkbox" checked={centrar} disabled={subiendo} onChange={(e) => setCentrar(e.target.checked)} style={{ marginTop: 2 }} />
+        <span>
+          <strong>Centrar cada producto</strong>
+          <span className={s.muted} style={{ display: 'block', fontSize: 12 }}>
+            Recorta el fondo que sobra alrededor para que el producto quede centrado y grande. Si la foto no tiene
+            un fondo liso, la deja como está. Cada foto se achica a 800×800 y se comprime al menor peso posible.
+          </span>
+        </span>
+      </label>
+
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, cursor: 'pointer', margin: '10px 0 0' }}>
         <input
           type="checkbox"
           checked={sacarFondo}
@@ -267,7 +281,7 @@ export function SubirFotosLoteModal({ productos, onCerrar, onListo, avisar }) {
                     style={{ width: 44, height: 44, objectFit: 'contain', background: '#fff', border: '1px solid var(--crm-color-border)', borderRadius: 6 }}
                   />
                   <div style={{ flex: 1, minWidth: 160 }}>
-                    <div className={cx(s.mono)} style={{ fontSize: 12, wordBreak: 'break-all' }}>{f.file.name}</div>
+                    <div className={cx(s.mono)} style={{ fontSize: 12, wordBreak: 'break-all' }}>{f.file.name} <span className={s.muted}>· {pesoLegible(f.file.size)}</span></div>
                     <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.05em', color: chip.color }}>
                       {chip.texto}
                     </span>
@@ -280,7 +294,7 @@ export function SubirFotosLoteModal({ productos, onCerrar, onListo, avisar }) {
                       </span>
                     )}
                   </div>
-                  {f.resultado === 'ok' && <span style={{ color: CHIP.emparejado.color, fontWeight: 700 }}>✓ subida</span>}
+                  {f.resultado === 'ok' && <span style={{ color: CHIP.emparejado.color, fontWeight: 700 }}>✓ subida{f.kb ? ` · ${f.kb} KB` : ''}</span>}
                   {f.resultado && f.resultado !== 'ok' && (
                     <span style={{ color: CHIP.sin.color, fontSize: 12 }}>{f.resultado}</span>
                   )}
