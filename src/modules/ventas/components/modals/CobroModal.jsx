@@ -12,6 +12,7 @@ import { Table, Btn, Di, ModalShell, VentaTag, money, fmtFechaHora, s } from '..
 import { configImpresion, imprimirVenta } from '@core/services/imprimir.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { leerTokenTerminal } from '@core/auth/terminal.js';
+import { enDireccionVieja } from '@core/services/direccion.js';
 import p from '../../styles/Pos.module.css';
 
 /**
@@ -139,6 +140,13 @@ export function CobroModal({
     { enabled: !!terminalToken },
   );
   const cajaMp = miCajaMp?.configurado && miCajaMp?.caja ? miCajaMp.caja : null;
+  /* POR QUÉ NO ESTÁ EL QR (5/10/2026): una PC que cobraba con QR lo perdió por
+   * entrar por la dirección vieja, y nadie veía por qué. Ahora se dice. */
+  const sinQrMp = cajaMp ? ''
+    : enDireccionVieja() ? 'estás en la dirección vieja del ERP. Entrá por erp.saboryaroma.com, donde está registrado este equipo.'
+      : !terminalToken ? 'este equipo no está registrado (Sistema › Este equipo).'
+        : miCajaMp?.motivo ? miCajaMp.motivo
+          : miCajaMp?.caja && !miCajaMp.configurado ? 'Mercado Pago no está configurado en el servidor.' : '';
 
   const medios = useMemo(() => {
     const habilitados = (config.mediosPago ?? []).filter((m) => MEDIOS_PAGO[m]);
@@ -859,6 +867,7 @@ export function CobroModal({
           )}
 
           <div className={s['section-title']}>Medios de pago</div>
+          {sinQrMp && <div className={s.hint} style={{ margin: '-4px 0 6px' }}>Sin QR de Mercado Pago: {sinQrMp}</div>}
           {pagos.map((x, i) => (
             <div key={i}>
             <div className={p.pagoFila}>

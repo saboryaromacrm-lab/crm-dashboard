@@ -45,6 +45,9 @@ export const provApi = {
 
   /* Pedidos (kanban + ingresos) */
   kanban: () => httpClient.get('/pedidos-proveedor'),
+  /* El menú del nombre en la tarjeta (5/10/2026). */
+  stockProveedor: (id) => httpClient.get(`/pedidos-proveedor/proveedor/${id}/stock`),
+  ingresosProveedor: (id) => httpClient.get(`/pedidos-proveedor/proveedor/${id}/ingresos`),
   statsPedidos: () => httpClient.get('/pedidos-proveedor/stats'),
   ingresos: (filtros) => httpClient.get(`/pedidos-proveedor/recibidos${qs(filtros)}`),
   solicitarPedidos: (data) => httpClient.post('/pedidos-proveedor', data),

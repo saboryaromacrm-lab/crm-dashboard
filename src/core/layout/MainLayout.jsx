@@ -7,6 +7,7 @@ import { OrdenesWebAlert } from './components/OrdenesWebAlert.jsx';
 import { PedidosCafeAlert } from './components/PedidosCafeAlert.jsx';
 import { PreciosAlert } from './components/PreciosAlert.jsx';
 import { CajasAbiertasBanner } from './components/CajasAbiertasBanner.jsx';
+import { DireccionViejaBanner } from './components/DireccionViejaBanner.jsx';
 import { ConsultasRapidas } from '@modules/consultas/ConsultasRapidas.jsx';
 import { useUI } from '@core/context/UIContext.jsx';
 import { useBreakpoint } from '@core/hooks/useBreakpoint.js';
@@ -51,6 +52,7 @@ export function MainLayout() {
           <Topbar />
         </header>
         {/* Persistente (no se va solo): una caja de un local olvidada abierta. Solo el superadmin lo ve. */}
+        <DireccionViejaBanner />
         <CajasAbiertasBanner />
 
         <main className={styles.content} id="main-content">

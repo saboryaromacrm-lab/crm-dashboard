@@ -147,7 +147,7 @@ export function CajaPanel() {
         {pag.visibles.map((t) => {
           const cerrado = t.estado === 'cerrada';
           return (
-            <tr key={t.id} className={s.clickable} onClick={() => openModal('arqueoTurno', { cajaSesionId: t.id })}>
+            <tr key={t.id} className={s.clickable} onClick={() => openModal('arqueoTurno', { cajaSesionId: t.id, onChange: reload })}>
               <td className={s.mono}>#{t.id}</td>
               <td>{nombreDe(sucursales, t.sucursalId)}</td>
               <td>{nombreDe(usuarios, t.usuarioId)}</td>

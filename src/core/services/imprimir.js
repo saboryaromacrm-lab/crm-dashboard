@@ -931,12 +931,13 @@ export function cuerpoArqueoCaja(arqueo, { moneda, fechaHora, hora, sucursal, ca
 
   /* Cada movimiento con su hora y su motivo: el signo va en el importe para
    * que la columna se lea de un vistazo. */
-  const filasMovs = (a.movimientos ?? []).map((m) => {
+  /* Los anulados (0137) no van al papel: no suman. Lo asentado después del cierre, marcado. */
+  const filasMovs = (a.movimientos ?? []).filter((m) => !m.anuladoEn).map((m) => {
     const egreso = m.tipo === 'egreso';
     return `
       <tr>
         <td class="chica">${cuando(m.fecha)}</td>
-        <td>${esc(m.motivo || (egreso ? 'Egreso' : 'Ingreso'))}</td>
+        <td>${esc(m.motivo || (egreso ? 'Egreso' : 'Ingreso'))}${m.posterior ? ' (después del cierre)' : ''}</td>
         <td class="n">${egreso ? '-' : '+'}${esc(moneda(n(m.importe)))}</td>
       </tr>`;
   }).join('');

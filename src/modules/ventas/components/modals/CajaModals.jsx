@@ -7,7 +7,8 @@ import { MEDIOS_PAGO } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
 import { imprimirArqueoCaja, imprimirEnvioCaja } from '@core/services/imprimir.js';
 import { separarEnvio, sumaBilletes } from '../../domain/separarEnvio.js';
-import { Table, Di, Btn, ModalShell, money, fmtFechaHora, s } from '../ui.jsx';
+import { Table, Di, Btn, Pill, ModalShell, money, fmtFechaHora, s } from '../ui.jsx';
+import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@modules/gastos/components/segundaConfirmacion.jsx';
 
 /* ==================================================================== *
  * Apertura
@@ -886,9 +887,10 @@ function ControlesDelTurno({ controles, ciego }) {
  * Orden inverso: el último movimiento arriba. Al abrirlo casi siempre se busca
  * lo que se acaba de cargar, no lo de hace seis horas.
  */
-function MovimientosDelTurno({ movimientos }) {
+function MovimientosDelTurno({ movimientos, onAnular }) {
   const { usuarios } = useVentas();
-  const [abierto, setAbierto] = useState(false);
+  /* Con algo asentado después del cierre, abierto: es lo que se viene a mirar. */
+  const [abierto, setAbierto] = useState(() => (movimientos ?? []).some((m) => m.posterior));
   if (!movimientos?.length) return null;
 
   // Copia antes de invertir: `arqueo.movimientos` es del estado del padre.
@@ -910,19 +912,32 @@ function MovimientosDelTurno({ movimientos }) {
       {abierto && (
         <Table cols={[
           { h: 'Fecha y hora' }, { h: 'Tipo' }, { h: 'Motivo' }, { h: 'Quién' }, { h: 'Importe', num: true },
+          ...(onAnular ? [{ h: '' }] : []),
         ]}
         >
-          {filas.map((m) => (
-            <tr key={m.id}>
-              <td>{fmtFechaHora(m.fecha)}</td>
-              <td>{m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'}</td>
-              <td>{m.motivo}</td>
-              <td>{usuarios.find((u) => u.id === m.usuarioId)?.nombre || <span className={s.muted}>—</span>}</td>
-              <td className={s.num} style={{ color: m.tipo === 'egreso' ? 'var(--crm-color-danger)' : undefined }}>
-                {m.tipo === 'egreso' ? '−' : '+'}{money(m.importe)}
-              </td>
-            </tr>
-          ))}
+          {filas.map((m) => {
+            const anulado = !!m.anuladoEn;
+            return (
+              <tr key={m.id} style={anulado ? { opacity: 0.55 } : undefined}>
+                <td>{fmtFechaHora(m.fecha)}</td>
+                <td>
+                  {m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'}
+                  {m.posterior && <div><Pill pill="est-pendiente" label="después del cierre" /></div>}
+                </td>
+                <td>
+                  <span style={anulado ? { textDecoration: 'line-through' } : undefined}>{m.motivo}</span>
+                  {anulado && <div className={s.hint} style={{ margin: 0 }}>Anulado por {usuarios.find((u) => u.id === m.anuladoPor)?.nombre || '—'}: {m.anuladoMotivo}</div>}
+                </td>
+                <td>{usuarios.find((u) => u.id === m.usuarioId)?.nombre || <span className={s.muted}>—</span>}</td>
+                <td className={s.num} style={{ color: m.tipo === 'egreso' ? 'var(--crm-color-danger)' : undefined, textDecoration: anulado ? 'line-through' : undefined }}>
+                  {m.tipo === 'egreso' ? '−' : '+'}{money(m.importe)}
+                </td>
+                {onAnular && (
+                  <td>{m.posterior && !anulado && <Btn small variant="btn-delete" onClick={() => onAnular(m)}>Anular</Btn>}</td>
+                )}
+              </tr>
+            );
+          })}
         </Table>
       )}
     </>
@@ -947,7 +962,7 @@ function Renglon({ label, valor, tenue }) {
  * reconstruye el esperado—. El servidor ya los saca para el que no es jefe
  * (`arqueo.ciego`); el cierre lo fuerza para todos hasta que se declara el conteo.
  */
-export function DetalleArqueo({ arqueo, ciego: forzarCiego = false }) {
+export function DetalleArqueo({ arqueo, ciego: forzarCiego = false, onAnularPosterior }) {
   const cerrado = arqueo.sesion?.estado === 'cerrada';
   /* El servidor lo manda ciego al que no es jefe SIEMPRE, también cerrado
    * (0111). `forzarCiego` es el paso 1 del cierre del jefe. */
@@ -1072,7 +1087,7 @@ export function DetalleArqueo({ arqueo, ciego: forzarCiego = false }) {
         </div>
       )}
 
-      <MovimientosDelTurno movimientos={arqueo.movimientos} />
+      <MovimientosDelTurno movimientos={arqueo.movimientos} onAnular={onAnularPosterior} />
 
       <ControlesDelTurno controles={arqueo.controles} ciego={ciego} />
     </>
@@ -1384,13 +1399,136 @@ function TablaBilletes({ titulo, filas, vacio = 'Nada.' }) {
   );
 }
 
-/** Arqueo de un turno ya cerrado (solo lectura, desde el historial). */
-export function ArqueoTurnoModal({ cajaSesionId }) {
+/* ==================================================================== *
+ * Después del cierre (0137): lo que el cajero se olvidó de asentar
+ * ==================================================================== */
+
+/** La diferencia del cierre con su signo y color: lo que el superadmin viene a arreglar. */
+function DifCierre({ v }) {
+  const ok = Math.abs(v) < 0.01;
+  return <strong className={s.mono} style={{ color: ok ? 'var(--crm-color-success)' : 'var(--crm-color-danger)' }}>{v > 0 ? '+' : ''}{money(v)}</strong>;
+}
+
+/**
+ * ASENTAR UN MOVIMIENTO OLVIDADO EN UN TURNO CERRADO (pedido del dueño, solo
+ * superadmin). Muestra en vivo cómo queda la diferencia del cierre —contado
+ * menos esperado: un egreso olvidado baja lo esperado y achica un faltante— y
+ * se confirma dos veces. Lo contado y lo enviado no cambian: son la plata que
+ * ya se contó.
+ */
+function MovimientoPosterior({ sesion, onHecho, onCancelar }) {
+  const { toast } = useVentas();
+  const [tipo, setTipo] = useState('egreso');
+  const [importe, setImporte] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const [error, setError] = useState('');
+  const n = Number(importe);
+  const valido = Number.isFinite(n) && n > 0;
+  const difAntes = Number(sesion.diferencia) || 0;
+  const difDespues = valido ? r2(difAntes + (tipo === 'egreso' ? n : -n)) : difAntes;
+  const sc = useSegundaConfirmacion(`${tipo}|${importe}|${motivo}`);
+  const confirmar = () => sc.clic(
+    () => {
+      setError('');
+      if (!valido) { setError('Escribí el importe.'); return false; }
+      if (motivo.trim().length < 5) { setError('Escribí el motivo: qué fue y quién avisó.'); return false; }
+      return true;
+    },
+    async () => {
+      try {
+        const r = await ventasApi.movimientoPosterior(sesion.id, { tipo, importe: n, motivo: motivo.trim(), confirmado: true });
+        toast(`${tipo === 'egreso' ? 'Egreso' : 'Ingreso'} asentado en el turno #${sesion.id}. Diferencia del cierre: ${money(r.sesion.diferencia)}.`, 'ok');
+        onHecho();
+      } catch (e) { setError(errorMsg(e)); }
+    },
+  );
+  return (
+    <div className={cx(s.callout, s.info)} style={{ display: 'grid', gap: 10 }}>
+      <strong>Asentar un movimiento que el cajero no cargó</strong>
+      <span className={s.hint} style={{ margin: 0 }}>Queda en este turno marcado «después del cierre», firmado por vos, y el cierre se recalcula. Lo contado y lo enviado no cambian.</span>
+      <div className={s['form-grid']}>
+        <div className={s.field}>
+          <label>Qué fue</label>
+          <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+            <option value="egreso">Egreso (salió plata del cajón)</option>
+            <option value="ingreso">Ingreso (entró plata al cajón)</option>
+          </select>
+        </div>
+        <div className={s.field}>
+          <label>Importe <span className={s.req}>*</span></label>
+          <input type="number" min="0" step="any" autoFocus value={importe} onChange={(e) => setImporte(e.target.value)} />
+        </div>
+      </div>
+      <div className={s.field}>
+        <label>Motivo <span className={s.req}>*</span></label>
+        <input value={motivo} maxLength={300} placeholder="Ej: pago al flete de $5.000; avisó Ale el 6/10" onChange={(e) => setMotivo(e.target.value)} />
+      </div>
+      <div>Diferencia del cierre: <DifCierre v={difAntes} /> → <DifCierre v={difDespues} /></div>
+      <AvisoSegundaConfirmacion {...sc}>
+        Se asienta un <strong>{tipo}</strong> de <strong>{money(valido ? n : 0)}</strong> en el turno #{sesion.id} y la diferencia pasa a <DifCierre v={difDespues} />.
+      </AvisoSegundaConfirmacion>
+      {error && <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Btn small onClick={onCancelar}>Cancelar</Btn>
+        <Btn small variant="btn-primary" onClick={confirmar}>{textoBoton(sc, 'Asentar movimiento', 'Sí, asentar')}</Btn>
+      </div>
+    </div>
+  );
+}
+
+/** Anular un movimiento asentado después del cierre: tachado (no se borra) y el cierre vuelve. */
+function AnularPosterior({ sesion, mov, onHecho, onCancelar }) {
+  const { toast } = useVentas();
+  const [motivo, setMotivo] = useState('');
+  const [error, setError] = useState('');
+  const difAntes = Number(sesion.diferencia) || 0;
+  const difDespues = r2(difAntes + (mov.tipo === 'egreso' ? -mov.importe : mov.importe));
+  const sc = useSegundaConfirmacion(motivo);
+  const confirmar = () => sc.clic(
+    () => { setError(''); if (motivo.trim().length < 3) { setError('Escribí por qué se anula.'); return false; } return true; },
+    async () => {
+      try {
+        const r = await ventasApi.anularMovimientoPosterior(sesion.id, mov.id, { motivo: motivo.trim() });
+        toast(`Movimiento anulado. Diferencia del cierre: ${money(r.sesion.diferencia)}.`, 'ok');
+        onHecho();
+      } catch (e) { setError(errorMsg(e)); }
+    },
+  );
+  return (
+    <div className={cx(s.callout, s.warn)} style={{ display: 'grid', gap: 10 }}>
+      <strong>Anular el {mov.tipo} de {money(mov.importe)} («{mov.motivo}»)</strong>
+      <span className={s.hint} style={{ margin: 0 }}>Queda tachado a la vista con tu motivo y deja de sumar en el cierre.</span>
+      <div className={s.field}>
+        <label>Motivo <span className={s.req}>*</span></label>
+        <input value={motivo} maxLength={300} autoFocus placeholder="Ej: lo cargué dos veces" onChange={(e) => setMotivo(e.target.value)} />
+      </div>
+      <div>Diferencia del cierre: <DifCierre v={difAntes} /> → <DifCierre v={difDespues} /></div>
+      <AvisoSegundaConfirmacion {...sc}>Se anula y la diferencia vuelve a <DifCierre v={difDespues} />.</AvisoSegundaConfirmacion>
+      {error && <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Btn small onClick={onCancelar}>Cancelar</Btn>
+        <Btn small variant="btn-delete" onClick={confirmar}>{textoBoton(sc, 'Anular', 'Sí, anular')}</Btn>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Arqueo de un turno desde el historial. Para el SUPERADMIN, con el turno
+ * cerrado: asentar lo que el cajero se olvidó y anular lo asentado así (0137).
+ */
+export function ArqueoTurnoModal({ cajaSesionId, onChange }) {
   const { closeModal, sucursales, usuarios, ctx, toast } = useVentas();
-  const { data: arqueo, loading, error } = useResource(`arqueo-ver:${cajaSesionId}`, () => ventasApi.cajaArqueo(cajaSesionId));
+  const { data: arqueo, loading, error, reload } = useResource(`arqueo-ver:${cajaSesionId}`, () => ventasApi.cajaArqueo(cajaSesionId));
+  const esSuperadmin = usuarios.find((u) => u.id === ctx?.usuarioId)?.rolClave === 'superadmin';
+  /** null | 'asentar' | { anular: movimiento } */
+  const [modo, setModo] = useState(null);
+  const corregible = esSuperadmin && arqueo?.sesion?.estado === 'cerrada' && !arqueo?.ciego;
+  const hecho = () => { setModo(null); reload(); onChange?.(); };
 
   const footer = [
     { texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal },
+    corregible && !modo && { texto: 'Asentar movimiento olvidado', clase: 'btn-ghost', onClick: () => setModo('asentar') },
     /* Reimprimir SIEMPRE, no solo los turnos cerrados: con el turno abierto el
      * papel sale sin conteo y avisandolo, que es justo lo que se necesita para
      * un control a mitad del dia. Salvo A CIEGAS: el papel del turno abierto
@@ -1477,7 +1615,10 @@ export function ArqueoTurnoModal({ cajaSesionId }) {
         </div>
       )}
 
-      <DetalleArqueo arqueo={arqueo} />
+      {modo === 'asentar' && <MovimientoPosterior sesion={sesion} onHecho={hecho} onCancelar={() => setModo(null)} />}
+      {modo?.anular && <AnularPosterior sesion={sesion} mov={modo.anular} onHecho={hecho} onCancelar={() => setModo(null)} />}
+
+      <DetalleArqueo arqueo={arqueo} onAnularPosterior={corregible ? (m) => setModo({ anular: m }) : undefined} />
 
       {sesion.observaciones && <div className={s.callout}>{sesion.observaciones}</div>}
     </ModalShell>

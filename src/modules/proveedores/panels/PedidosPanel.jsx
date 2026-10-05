@@ -4,6 +4,7 @@ import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { errorMsg, provApi } from '../services/proveedores.api.js';
 import { BotonesAlta } from '../components/modals/PedidosModals.jsx';
+import { ProveedorMenu } from '../components/ProveedorMenu.jsx';
 import { Btn, PanelHead, Pill, Stat, Table, fmtFecha, s } from '../components/ui.jsx';
 
 /**
@@ -43,7 +44,7 @@ export function PedidosPanel() {
     return (
       <div className={s.card} style={{ padding: 10, marginBottom: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-          <strong>{t.proveedorNombre}</strong>
+          <ProveedorMenu proveedorId={t.proveedorId} nombre={t.proveedorNombre} />
           <Btn small onClick={() => mutar(provApi.borrarPedido(t.id), 'Tarjeta eliminada.')}>×</Btn>
         </div>
         {t.productosProveedor > 0 && (
