@@ -151,7 +151,8 @@ export function RespaldosPanel({ onAviso }) {
             <strong>Vacía TODA la operatoria</strong> — stock y movimientos, ventas y tickets,
             comprobantes de compra (facturas, remitos, liquidaciones), cobranzas, caja y arqueos,
             transferencias, conteos, incidencias, vencimientos, pagos y compromisos de
-            proveedores, gastos y envíos a Coffit. <strong>Se conservan</strong> los productos
+            proveedores, gastos, envíos a Coffit y el Cash Flow (se vuelve a arrancar; sus
+            conceptos quedan). <strong>Se conservan</strong> los productos
             con sus formatos y precios, los proveedores, los clientes, los usuarios, las fotos y
             toda la configuración. Es para el día que termine la práctica del equipo: los
             contadores arrancan de nuevo y la primera venta real es el ticket 1.

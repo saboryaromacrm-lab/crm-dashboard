@@ -31,6 +31,10 @@ const fechaCorta = (v) => (v ? new Date(v).toLocaleDateString('es-AR', { day: '2
 const fechaIso = (p) => (p ? `${p.slice(8, 10)}/${p.slice(5, 7)}/${p.slice(0, 4)}` : '—');
 const ORIGEN = { saldo_inicial: 'Saldo inicial', sobre: 'Sobre de caja', concepto: 'Concepto', pago_proveedor: 'Pago a proveedor', gasto: 'Gasto', conteo: 'Conteo' };
 const MEDIO = { efectivo: 'efectivo', deposito: 'depósito' };
+/** Lo que se anula desde Movimientos (el sobre se deshace desde Sobres; el saldo inicial, desde el arranque). */
+const ANULABLES = ['concepto', 'pago_proveedor', 'gasto', 'conteo'];
+/** Días desde el cierre de un sobre (calendario local): «hoy», «1 día», «4 días». */
+const diasDesde = (v) => Math.max(0, Math.round((Date.parse(hoy()) - Date.parse(iso(new Date(v)))) / 86_400_000));
 /** Qué es cada movimiento, en una línea. */
 const queEs = (m) => {
   if (m.origen === 'concepto') return m.concepto;
@@ -107,7 +111,7 @@ function Resumen({ d, irA, avisar, onHecho }) {
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <Btn variant="btn-primary" onClick={() => setContando(true)}>Contar mi caja</Btn>
       </div>
-      {contando && <ConteoModal saldo={d.saldo} onCerrar={() => setContando(false)} onHecho={() => { setContando(false); onHecho(); }} avisar={avisar} />}
+      {contando && <ConteoModal saldo={d.saldo} enTransito={d.enTransito} onCerrar={() => setContando(false)} onHecho={() => { setContando(false); onHecho(); }} avisar={avisar} />}
       <Tiles>
         <Tile label="Efectivo en mano" valor={money(d.saldo)} alerta={negativo} detalle={negativo ? 'El saldo quedó en negativo: revisá los movimientos' : 'Sobres controlados + ingresos − egresos'} />
         <Tile label="En tránsito" valor={money(d.enTransito.total)} marca="#2563eb" detalle={d.enTransito.sobres ? `${d.enTransito.sobres} sobre${d.enTransito.sobres === 1 ? '' : 's'} sin controlar` : 'Ningún sobre pendiente'} />
@@ -132,7 +136,10 @@ function Resumen({ d, irA, avisar, onHecho }) {
                 <td className={s.num}>{money(c.contado)}</td>
                 <td className={s.num}>{money(c.esperado)}</td>
                 <td className={s.num}><Diferencia v={c.diferencia} /></td>
-                <td>{Math.abs(c.diferencia) < 0.009 ? <span className={s.muted}>no hizo falta</span> : c.ajustado ? 'Ajustado' : <span className={s.muted}>sin ajustar</span>}</td>
+                <td>
+                  {Math.abs(c.diferencia) < 0.009 ? <span className={s.muted}>no hizo falta</span> : c.ajustado ? 'Ajustado' : <span className={s.muted}>sin ajustar</span>}
+                  {c.enTransito > 0 && <div className={s.hint} style={{ margin: 0 }}>había {money(c.enTransito)} en sobres sin controlar</div>}
+                </td>
               </tr>
             ))}
           </Table>
@@ -155,112 +162,188 @@ function Resumen({ d, irA, avisar, onHecho }) {
 /* ==================================================================== *
  * Sobres
  * ==================================================================== */
-function Billetes({ billetes }) {
-  const filas = Object.entries(billetes || {}).map(([d, n]) => [Number(d), Number(n) || 0]).filter(([, n]) => n > 0).sort((a, b) => b[0] - a[0]);
-  if (!filas.length) return <span className={s.muted}>Sin detalle de billetes.</span>;
+/**
+ * EL CONTADOR DE BILLETES (auditoría 5/10): el mismo para «Contar mi caja» y
+ * para el control a ciegas de un sobre. Cantidades enteras por denominación +
+ * monedas y otros; `payload()` es lo que viaja al servidor (que recalcula).
+ */
+function useBilletes() {
+  const [billetes, setBilletes] = useState({});
+  const [otros, setOtros] = useState('');
+  const suma = DENOMINACIONES.reduce((a, d) => a + d * (Number(billetes[d]) || 0), 0);
+  const contado = Math.round((suma + (Number(otros) || 0)) * 100) / 100;
+  const enteros = DENOMINACIONES.every((d) => billetes[d] == null || billetes[d] === '' || (Number.isInteger(Number(billetes[d])) && Number(billetes[d]) >= 0));
+  const payload = () => {
+    const b = {};
+    for (const d of DENOMINACIONES) if (Number(billetes[d]) > 0) b[d] = Number(billetes[d]);
+    return { billetes: b, otros: Number(otros) || 0 };
+  };
+  return { billetes, setBilletes, otros, setOtros, contado, enteros, payload, clave: `${JSON.stringify(billetes)}|${otros}` };
+}
+
+function ContadorBilletes({ c }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'auto auto auto', gap: '2px 12px', fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>
-      {filas.map(([d, n]) => (
+    <div style={{ display: 'grid', gridTemplateColumns: 'auto 90px 1fr', gap: '6px 12px', alignItems: 'center', fontVariantNumeric: 'tabular-nums' }}>
+      {DENOMINACIONES.map((d, i) => (
         <span key={d} style={{ display: 'contents' }}>
-          <span>{n} ×</span><span>{money(d)}</span><strong style={{ textAlign: 'right' }}>{money(d * n)}</strong>
+          <span>{money(d)}</span>
+          <input type="number" min="0" step="1" inputMode="numeric" value={c.billetes[d] ?? ''} onChange={(e) => c.setBilletes((b) => ({ ...b, [d]: e.target.value }))} aria-label={`Billetes de ${money(d)}`} autoFocus={i === 0} />
+          <strong style={{ textAlign: 'right' }}>{Number(c.billetes[d]) > 0 ? money(d * Number(c.billetes[d])) : ''}</strong>
         </span>
       ))}
+      <span>Monedas y otros</span>
+      <input type="number" min="0" step="0.01" value={c.otros} onChange={(e) => c.setOtros(e.target.value)} aria-label="Monedas y otros" />
+      <strong style={{ textAlign: 'right' }}>{Number(c.otros) > 0 ? money(Number(c.otros)) : ''}</strong>
+      <span style={{ fontWeight: 700 }}>Total contado</span><span />
+      <strong style={{ textAlign: 'right', fontSize: 18 }}>{money(c.contado)}</strong>
     </div>
   );
 }
 
-function SobreModal({ sobre, soloVer, onCerrar, onHecho, avisar }) {
-  const [contado, setContado] = useState(String(sobre.enviado));
+/** Lo que puso el cajero contra lo que contó el dueño, billete por billete: muestra DÓNDE está la diferencia. */
+function CompararBilletes({ delCajero, contados, otrosContados, enviado, contado }) {
+  const cajero = delCajero || {};
+  const yo = contados || {};
+  const dens = DENOMINACIONES.filter((d) => Number(cajero[d]) > 0 || Number(yo[d]) > 0);
+  const hayDetalle = Object.values(cajero).some((n) => Number(n) > 0);
+  return (
+    <Table cols={[{ h: 'Billete' }, { h: 'Puso el cajero', num: true }, { h: 'Contaste', num: true }, { h: 'Diferencia', num: true }]} empty="">
+      {dens.map((d) => {
+        const a = Number(cajero[d]) || 0; const b = Number(yo[d]) || 0;
+        return (
+          <tr key={d}>
+            <td>{money(d)}</td>
+            <td className={s.num}>{hayDetalle ? a : '—'}</td>
+            <td className={s.num}>{b}</td>
+            <td className={s.num}>{hayDetalle ? <Diferencia v={(b - a) * d} /> : '—'}</td>
+          </tr>
+        );
+      })}
+      {Number(otrosContados) > 0 && (
+        <tr><td>Monedas y otros</td><td className={s.num}>—</td><td className={s.num}>{money(otrosContados)}</td><td className={s.num}>—</td></tr>
+      )}
+      <tr>
+        <td><strong>Total</strong></td>
+        <td className={s.num}><strong>{money(enviado)}</strong></td>
+        <td className={s.num}><strong>{money(contado)}</strong></td>
+        <td className={s.num}><Diferencia v={Math.round((contado - enviado) * 100) / 100} /></td>
+      </tr>
+    </Table>
+  );
+}
+
+function CierreDelCajero({ sobre }) {
+  const pagos = Array.isArray(sobre.pagosLocalDetalle) ? sobre.pagosLocalDetalle : [];
+  return (
+    <div style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+      <div className={s['mini-label']}>El cierre del cajero</div>
+      <span>Contó en el cajón: <strong>{money(sobre.contadoCajero)}</strong> · esperado por el sistema: <strong>{money(sobre.esperadoCajero)}</strong> · <Diferencia v={sobre.diferenciaCajero} /></span>
+      <span>Quedó de fondo: <strong>{money(sobre.fondoQueda)}</strong></span>
+      {pagos.length > 0 && (
+        <span>Pagos en efectivo del local en ese turno (informativo, no restan de tu caja): {pagos.map((p, i) => <span key={i}>{i ? ' · ' : ''}{p.motivo || 'Egreso'} <strong>{money(p.importe)}</strong></span>)}</span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * CONTROLAR UN SOBRE, A CIEGAS (auditoría 5/10): primero se cuenta billete
+ * por billete SIN ver lo que dice el sobre (si el número está a la vista, se
+ * tiende a confirmarlo sin contar); recién después se compara, denominación
+ * por denominación, y la diferencia pide su motivo.
+ */
+function SobreModal({ sobre, onCerrar, onHecho, avisar }) {
+  const c = useBilletes();
+  const [paso, setPaso] = useState('contar');
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState('');
-  const n = Number(contado);
-  const diferencia = Number.isFinite(n) ? Math.round((n - sobre.enviado) * 100) / 100 : null;
-  const hayDif = diferencia != null && Math.abs(diferencia) > 0.009;
-  const sc = useSegundaConfirmacion(`${contado}|${motivo}`);
+  const diferencia = Math.round((c.contado - sobre.enviado) * 100) / 100;
+  const hayDif = Math.abs(diferencia) > 0.009;
+  const sc = useSegundaConfirmacion(`${c.clave}|${motivo}|${paso}`);
+  const comparar = () => {
+    setError('');
+    if (!c.enteros) { setError('Las cantidades de billetes van enteras.'); return; }
+    if (c.contado <= 0) { setError('Cargá los billetes que contaste. Si el sobre no llegó o ya estaba en tu saldo inicial, cerrá esto y usá «No corresponde».'); return; }
+    setPaso('comparar');
+  };
   const confirmar = () => sc.clic(
     () => {
       setError('');
-      if (!Number.isFinite(n) || n < 0) { setError('Escribí cuánto contaste.'); return false; }
       if (hayDif && !motivo.trim()) { setError('Contaste distinto de lo enviado: escribí el motivo de la diferencia.'); return false; }
       return true;
     },
     async () => {
       try {
-        const r = await httpClient.post(`/cashflow/sobres/${sobre.cajaSesionId}/controlar`, { contado: n, motivo: motivo.trim(), confirmado: true });
+        const r = await httpClient.post(`/cashflow/sobres/${sobre.cajaSesionId}/controlar`, { ...c.payload(), motivo: motivo.trim(), confirmado: true });
         avisar('ok', `Sobre de ${sobre.sucursal} controlado: ${money(r.contado)} a tu caja. Efectivo en mano: ${money(r.saldo)}.`);
         onHecho();
       } catch (e) { setError(errorMsg(e)); }
     },
   );
-  const pagos = Array.isArray(sobre.pagosLocalDetalle) ? sobre.pagosLocalDetalle : [];
-  return (
-    <ModalShell
-      title={soloVer ? `Sobre de ${sobre.sucursal}` : `Controlar el sobre de ${sobre.sucursal}`}
-      subtitle={`Cierre del ${fechaHora(sobre.cierre)} · armó el sobre: ${sobre.cajero || '—'}`}
-      onClose={onCerrar}
-      footer={soloVer ? [{ texto: 'Cerrar', onClick: onCerrar }] : [
+  const subtitulo = `Cierre del ${fechaHora(sobre.cierre)} · armó el sobre: ${sobre.cajero || '—'}`;
+  if (paso === 'contar') {
+    return (
+      <ModalShell title={`Controlar el sobre de ${sobre.sucursal}`} subtitle={subtitulo} onClose={onCerrar} footer={[
         { texto: 'Cancelar', onClick: onCerrar },
-        { texto: textoBoton(sc, 'Controlar sobre', 'Sí, confirmar'), clase: 'btn-primary', onClick: confirmar },
-      ]}
-    >
-      <div className={s['form-grid']}>
-        <div>
-          <div className={s['mini-label']}>Lo que dice el sobre</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>{money(sobre.enviado)}</div>
-          <Billetes billetes={sobre.billetesEnvio} />
-        </div>
-        <div>
-          <div className={s['mini-label']}>El cierre del cajero</div>
-          <div style={{ fontSize: 13, display: 'grid', gap: 2 }}>
-            <span>Contó en el cajón: <strong>{money(sobre.contadoCajero)}</strong></span>
-            <span>Esperado por el sistema: <strong>{money(sobre.esperadoCajero)}</strong> · <Diferencia v={sobre.diferenciaCajero} /></span>
-            <span>Quedó de fondo: <strong>{money(sobre.fondoQueda)}</strong></span>
-          </div>
-        </div>
+        { texto: 'Comparar con el sobre', clase: 'btn-primary', onClick: comparar, disabled: c.contado <= 0 },
+      ]}>
+        <Aviso tono="info">Abrí el sobre y contá billete por billete. Lo que dice el sobre lo ves <strong>después</strong> de contar: así el control es a ciegas.</Aviso>
+        <ContadorBilletes c={c} />
+        {error && <Aviso tono="warn">{error}</Aviso>}
+      </ModalShell>
+    );
+  }
+  return (
+    <ModalShell title={`Controlar el sobre de ${sobre.sucursal}`} subtitle={subtitulo} wide onClose={onCerrar} footer={[
+      { texto: 'Volver a contar', onClick: () => setPaso('contar') },
+      { texto: textoBoton(sc, 'Controlar sobre', 'Sí, confirmar'), clase: 'btn-primary', onClick: confirmar },
+    ]}>
+      <CompararBilletes delCajero={sobre.billetesEnvio} contados={c.payload().billetes} otrosContados={c.payload().otros} enviado={sobre.enviado} contado={c.contado} />
+      <div className={cx(s.callout, hayDif ? s.warn : s.info)} style={{ margin: 0 }}>
+        {hayDif
+          ? <>{diferencia < 0 ? 'Falta' : 'Sobra'} <strong>{money(Math.abs(diferencia))}</strong> en el sobre. Queda registrado con el cajero que lo armó. Si te equivocaste al contar, tocá «Volver a contar».</>
+          : <>Coincide con lo que mandó el local.</>}
       </div>
-      {pagos.length > 0 && (
-        <div>
-          <div className={s['mini-label']}>Pagos en efectivo que hizo el local en ese turno (informativo: no restan de tu caja)</div>
-          <div style={{ display: 'grid', gap: 2, fontSize: 13 }}>
-            {pagos.map((p, i) => <span key={i}>{p.motivo || 'Egreso'} · <strong>{money(p.importe)}</strong></span>)}
-          </div>
-        </div>
+      {hayDif && (
+        <Campo label="Motivo de la diferencia *">
+          <textarea rows={2} maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej: faltaba un billete de $1.000; el cajero avisó por WhatsApp" autoFocus />
+        </Campo>
       )}
-      {soloVer ? (
-        <div className={cx(s.callout, s.info)}>
-          Contaste <strong>{money(sobre.contado)}</strong> · <Diferencia v={sobre.diferencia} />
-          {sobre.motivo && <> · motivo: {sobre.motivo}</>}
-          <div className={s.hint} style={{ margin: '4px 0 0' }}>Controlado por {sobre.controladoPor || '—'} el {fechaHora(sobre.controladoEn)}.</div>
-        </div>
-      ) : (
-        <>
-          <div className={s['form-grid']}>
-            <Campo label="Cuánto contaste vos" hint="Abrí el sobre y contá. Si coincide, dejá el número como está.">
-              <input type="number" min="0" step="0.01" value={contado} onChange={(e) => setContado(e.target.value)} autoFocus />
-            </Campo>
-            <div>
-              <div className={s['mini-label']}>Diferencia</div>
-              <div style={{ fontSize: 18 }}><Diferencia v={diferencia} /></div>
-              {hayDif && <div className={s.hint} style={{ margin: '4px 0 0' }}>{diferencia < 0 ? 'Falta plata en el sobre.' : 'Sobra plata en el sobre.'} Queda registrado con el cajero que lo armó.</div>}
-            </div>
-          </div>
-          {hayDif && (
-            <Campo label="Motivo de la diferencia *">
-              <textarea rows={2} maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej: faltaba un billete de $1.000; el cajero avisó por WhatsApp" />
-            </Campo>
-          )}
-          <AvisoSegundaConfirmacion {...sc}>
-            Entra a tu caja <strong>{money(n || 0)}</strong> del sobre de <strong>{sobre.sucursal}</strong>
-            {hayDif ? <> con una diferencia de <Diferencia v={diferencia} /></> : ' sin diferencia'}.
-          </AvisoSegundaConfirmacion>
-          {error && <Aviso tono="warn">{error}</Aviso>}
-        </>
-      )}
+      <CierreDelCajero sobre={sobre} />
+      <AvisoSegundaConfirmacion {...sc}>
+        Entra a tu caja <strong>{money(c.contado)}</strong> del sobre de <strong>{sobre.sucursal}</strong>
+        {hayDif ? <> con una diferencia de <Diferencia v={diferencia} /></> : ' sin diferencia'}.
+      </AvisoSegundaConfirmacion>
+      {error && <Aviso tono="warn">{error}</Aviso>}
     </ModalShell>
   );
 }
 
-function AnularModal({ titulo, texto, ruta, onCerrar, onHecho, avisar, exito }) {
+/** Un sobre ya resuelto, para mirar: lo que puso el cajero contra lo que contaste, o por qué no correspondía. */
+function SobreVer({ sobre, onCerrar }) {
+  const conDetalle = Object.values(sobre.billetesContados || {}).some((n) => Number(n) > 0) || sobre.otrosContados > 0;
+  return (
+    <ModalShell title={`Sobre de ${sobre.sucursal}`} subtitle={`Cierre del ${fechaHora(sobre.cierre)} · armó el sobre: ${sobre.cajero || '—'}`} wide onClose={onCerrar} footer={[{ texto: 'Cerrar', onClick: onCerrar }]}>
+      {sobre.descartado ? (
+        <Aviso tono="info">
+          Marcado como <strong>no corresponde</strong>: el sobre decía {money(sobre.enviado)} y no entró a tu caja. Motivo: {sobre.motivo || '—'}.
+        </Aviso>
+      ) : conDetalle ? (
+        <CompararBilletes delCajero={sobre.billetesEnvio} contados={sobre.billetesContados} otrosContados={sobre.otrosContados} enviado={sobre.enviado} contado={sobre.contado} />
+      ) : (
+        <div className={cx(s.callout, s.info)} style={{ margin: 0 }}>
+          El sobre decía <strong>{money(sobre.enviado)}</strong> · contaste <strong>{money(sobre.contado)}</strong> · <Diferencia v={sobre.diferencia} />
+          <div className={s.hint} style={{ margin: '4px 0 0' }}>Controlado antes del conteo por billetes: no hay detalle por denominación.</div>
+        </div>
+      )}
+      {!sobre.descartado && sobre.motivo && <div className={s.hint} style={{ margin: 0 }}>Motivo de la diferencia: {sobre.motivo}</div>}
+      <CierreDelCajero sobre={sobre} />
+      <div className={s.hint} style={{ margin: 0 }}>Resuelto por {sobre.controladoPor || '—'} el {fechaHora(sobre.controladoEn)}.</div>
+    </ModalShell>
+  );
+}
+
+function AnularModal({ titulo, texto, ruta, onCerrar, onHecho, avisar, exito, boton = 'Anular', extra, aviso = 'Se anula y el efectivo en mano se recalcula.', placeholder }) {
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState('');
   const sc = useSegundaConfirmacion(motivo);
@@ -268,7 +351,7 @@ function AnularModal({ titulo, texto, ruta, onCerrar, onHecho, avisar, exito }) 
     () => { setError(''); if (!motivo.trim()) { setError('Escribí el motivo.'); return false; } return true; },
     async () => {
       try {
-        const r = await httpClient.post(ruta, { motivo: motivo.trim() });
+        const r = await httpClient.post(ruta, { motivo: motivo.trim(), ...extra });
         avisar('ok', `${exito} Efectivo en mano: ${money(r.saldo)}.`);
         onHecho();
       } catch (e) { setError(errorMsg(e)); }
@@ -277,86 +360,126 @@ function AnularModal({ titulo, texto, ruta, onCerrar, onHecho, avisar, exito }) 
   return (
     <ModalShell title={titulo} onClose={onCerrar} footer={[
       { texto: 'Cancelar', onClick: onCerrar },
-      { texto: textoBoton(sc, 'Anular', 'Sí, anular'), clase: 'btn-delete', onClick: confirmar },
+      { texto: textoBoton(sc, boton, `Sí, ${boton.toLowerCase()}`), clase: 'btn-delete', onClick: confirmar },
     ]}>
       <div className={s.desc}>{texto} Queda registrado quién lo anuló, cuándo y por qué; no se borra.</div>
-      <Campo label="Motivo *"><textarea rows={2} maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)} autoFocus /></Campo>
-      <AvisoSegundaConfirmacion {...sc}>Se anula y el efectivo en mano se recalcula.</AvisoSegundaConfirmacion>
+      <Campo label="Motivo *"><textarea rows={2} maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder={placeholder} autoFocus /></Campo>
+      <AvisoSegundaConfirmacion {...sc}>{aviso}</AvisoSegundaConfirmacion>
       {error && <Aviso tono="warn">{error}</Aviso>}
     </ModalShell>
   );
 }
 
+const TOPE_SOBRES = 300;
+
 function Sobres({ version, bump, avisar }) {
   const [estado, setEstado] = useState('pendientes');
+  const [sucursalId, setSucursalId] = useState('');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [modal, setModal] = useState(null);
-  const qs = `estado=${estado}${desde ? `&desde=${desde}` : ''}${hasta ? `&hasta=${hasta}` : ''}`;
+  const { data: sucursales } = useResource('cashflow:sucursales', () => httpClient.get('/sucursales'));
+  const qs = `estado=${estado}${sucursalId ? `&sucursalId=${sucursalId}` : ''}${desde ? `&desde=${desde}` : ''}${hasta ? `&hasta=${hasta}` : ''}`;
   const { data, loading, error } = useResource(`cashflow:sobres:${qs}:${version}`, () => httpClient.get(`/cashflow/sobres?${qs}`));
   const filas = data ?? [];
-  const total = filas.reduce((a, x) => a + (estado === 'controlados' ? x.contado : x.enviado), 0);
+  const pendientes = estado === 'pendientes';
+  const total = filas.reduce((a, x) => a + (pendientes ? x.enviado : x.descartado ? 0 : x.contado), 0);
+  const cerrar = () => setModal(null);
+  const hecho = () => { setModal(null); bump(); };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div className={s.toolbar}>
         <select className={s['select-inline']} value={estado} onChange={(e) => setEstado(e.target.value)} aria-label="Estado">
           <option value="pendientes">Sin controlar</option>
-          <option value="controlados">Controlados</option>
+          <option value="controlados">Resueltos</option>
+        </select>
+        <select className={s['select-inline']} value={sucursalId} onChange={(e) => setSucursalId(e.target.value)} aria-label="Local">
+          <option value="">Todos los locales</option>
+          {(sucursales ?? []).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
         </select>
         <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} aria-label="Desde" />
         <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} aria-label="Hasta" />
-        {(desde || hasta) && <Btn small onClick={() => { setDesde(''); setHasta(''); }}>Limpiar</Btn>}
+        {(desde || hasta || sucursalId) && <Btn small onClick={() => { setDesde(''); setHasta(''); setSucursalId(''); }}>Limpiar</Btn>}
         <span className={s.hint} style={{ margin: '0 0 0 auto' }}>{filas.length} sobre{filas.length === 1 ? '' : 's'} · {money(total)}</span>
       </div>
+      {filas.length >= TOPE_SOBRES && <Aviso tono="warn">Se muestran los {TOPE_SOBRES} más recientes: elegí un local o acotá las fechas para ver el resto.</Aviso>}
       {error && <Aviso tono="warn">{error}</Aviso>}
       {loading && !data ? <Cargando /> : (
         <Table
           cols={[
             { h: 'Cierre' }, { h: 'Sucursal' }, { h: 'Cajero' }, { h: 'Enviado', num: true }, { h: 'Pagó el local', num: true },
-            ...(estado === 'controlados' ? [{ h: 'Contado', num: true }, { h: 'Diferencia', num: true }, { h: 'Controlado' }] : []),
+            ...(pendientes ? [{ h: 'Espera' }] : [{ h: 'Contado', num: true }, { h: 'Diferencia', num: true }, { h: 'Resuelto' }]),
             { h: 'Acciones', cls: 'actions-col' },
           ]}
-          empty={estado === 'pendientes' ? 'No hay sobres sin controlar.' : 'Todavía no controlaste ningún sobre.'}
+          empty={pendientes ? 'No hay sobres sin controlar.' : 'Todavía no resolviste ningún sobre.'}
         >
-          {filas.map((x) => (
-            <tr key={x.cajaSesionId}>
-              <td>{fechaHora(x.cierre)}</td>
-              <td>{x.sucursal}</td>
-              <td>{x.cajero || '—'}</td>
-              <td className={s.num}><strong>{money(x.enviado)}</strong></td>
-              <td className={s.num}>{x.pagosLocal > 0 ? <span title="Informativo: no resta de tu caja">{money(x.pagosLocal)}</span> : <span className={s.muted}>—</span>}</td>
-              {estado === 'controlados' && (
-                <>
-                  <td className={s.num}>{money(x.contado)}</td>
-                  <td className={s.num}><Diferencia v={x.diferencia} /></td>
-                  <td><span title={fechaHora(x.controladoEn)}>{x.controladoPor || '—'}</span><div className={s.hint} style={{ margin: 0 }}>{fechaCorta(x.controladoEn)}</div></td>
-                </>
-              )}
-              <td className={s['actions-col']}>
-                <div className={s['row-actions']}>
-                  {estado === 'pendientes'
-                    ? <Btn variant="btn-primary" small onClick={() => setModal({ tipo: 'controlar', sobre: x })}>Controlar</Btn>
-                    : (
+          {filas.map((x) => {
+            const dias = diasDesde(x.cierre);
+            return (
+              <tr key={x.cajaSesionId}>
+                <td>{fechaHora(x.cierre)}</td>
+                <td>{x.sucursal}</td>
+                <td>{x.cajero || '—'}</td>
+                <td className={s.num}><strong>{money(x.enviado)}</strong></td>
+                <td className={s.num}>{x.pagosLocal > 0 ? <span title="Informativo: no resta de tu caja">{money(x.pagosLocal)}</span> : <span className={s.muted}>—</span>}</td>
+                {pendientes ? (
+                  <td>
+                    <span style={dias >= 3 ? { color: 'var(--crm-color-danger)', fontWeight: 700 } : undefined}>
+                      {dias === 0 ? 'hoy' : `${dias} día${dias === 1 ? '' : 's'}`}
+                    </span>
+                  </td>
+                ) : (
+                  <>
+                    <td className={s.num}>{x.descartado ? <Pill pill="st-retenido" label="No corresponde" /> : money(x.contado)}</td>
+                    <td className={s.num}>{x.descartado ? <span className={s.muted}>—</span> : <Diferencia v={x.diferencia} />}</td>
+                    <td><span title={fechaHora(x.controladoEn)}>{x.controladoPor || '—'}</span><div className={s.hint} style={{ margin: 0 }}>{fechaCorta(x.controladoEn)}</div></td>
+                  </>
+                )}
+                <td className={s['actions-col']}>
+                  <div className={s['row-actions']}>
+                    {pendientes ? (
+                      <>
+                        <Btn variant="btn-primary" small onClick={() => setModal({ tipo: 'controlar', sobre: x })}>Controlar</Btn>
+                        <Btn small onClick={() => setModal({ tipo: 'descartar', sobre: x })}>No corresponde</Btn>
+                      </>
+                    ) : (
                       <>
                         <Btn small onClick={() => setModal({ tipo: 'ver', sobre: x })}>Ver</Btn>
                         <Btn small variant="btn-delete" onClick={() => setModal({ tipo: 'deshacer', sobre: x })}>Deshacer</Btn>
                       </>
                     )}
-                </div>
-              </td>
-            </tr>
-          ))}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </Table>
       )}
-      {modal?.tipo === 'controlar' && <SobreModal sobre={modal.sobre} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar} />}
-      {modal?.tipo === 'ver' && <SobreModal sobre={modal.sobre} soloVer onCerrar={() => setModal(null)} avisar={avisar} />}
+      {modal?.tipo === 'controlar' && <SobreModal sobre={modal.sobre} onCerrar={cerrar} onHecho={hecho} avisar={avisar} />}
+      {modal?.tipo === 'ver' && <SobreVer sobre={modal.sobre} onCerrar={cerrar} />}
+      {modal?.tipo === 'descartar' && (
+        <AnularModal
+          titulo={`El sobre de ${modal.sobre.sucursal} no corresponde`}
+          texto={`El sobre del ${fechaCorta(modal.sobre.cierre)} por ${money(modal.sobre.enviado)} sale de «sin controlar» SIN entrar a tu caja y sin cargarle un faltante a ${modal.sobre.cajero || 'el cajero'}. Usalo si ya estaba en tu saldo inicial, si es un duplicado o si se perdió (con su denuncia). Si fue un error, se deshace desde «Resueltos».`}
+          ruta={`/cashflow/sobres/${modal.sobre.cajaSesionId}/descartar`}
+          extra={{ confirmado: true }}
+          boton="No corresponde"
+          aviso={<>El sobre por <strong>{money(modal.sobre.enviado)}</strong> queda resuelto sin plata. Tu efectivo en mano no cambia.</>}
+          placeholder="Ej: ya estaba contado en el saldo inicial del arranque"
+          exito="Sobre marcado como «no corresponde»."
+          onCerrar={cerrar} onHecho={hecho} avisar={avisar}
+        />
+      )}
       {modal?.tipo === 'deshacer' && (
         <AnularModal
-          titulo={`Deshacer el control del sobre de ${modal.sobre.sucursal}`}
-          texto={`El sobre del ${fechaCorta(modal.sobre.cierre)} vuelve a «sin controlar» y los ${money(modal.sobre.contado)} salen de tu efectivo en mano.`}
+          titulo={`Deshacer el sobre de ${modal.sobre.sucursal}`}
+          texto={modal.sobre.descartado
+            ? `El sobre del ${fechaCorta(modal.sobre.cierre)} vuelve a «sin controlar».`
+            : `El sobre del ${fechaCorta(modal.sobre.cierre)} vuelve a «sin controlar» y los ${money(modal.sobre.contado)} salen de tu efectivo en mano. Si esa plata ya se usó, no se puede: el efectivo quedaría en negativo.`}
           ruta={`/cashflow/sobres/${modal.sobre.sobreId}/anular`}
-          exito="Control deshecho: el sobre volvió a pendientes."
-          onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar}
+          boton="Deshacer"
+          exito="Listo: el sobre volvió a «sin controlar»."
+          onCerrar={cerrar} onHecho={hecho} avisar={avisar}
         />
       )}
     </div>
@@ -390,7 +513,7 @@ function TablaMovimientos({ filas, compacta, onAnular }) {
             </td>
             {onAnular && (
               <td className={s['actions-col']}>
-                {!anulado && ['concepto', 'pago_proveedor', 'gasto'].includes(m.origen) && <Btn small variant="btn-delete" onClick={() => onAnular(m)}>Anular</Btn>}
+                {!anulado && ANULABLES.includes(m.origen) && <Btn small variant="btn-delete" onClick={() => onAnular(m)}>Anular</Btn>}
               </td>
             )}
           </tr>
@@ -400,7 +523,21 @@ function TablaMovimientos({ filas, compacta, onAnular }) {
   );
 }
 
-function MovimientoModal({ tipo, conceptos, onCerrar, onHecho, avisar }) {
+/** El efectivo en mano y lo que queda después de sacar `importe` (hoy). Atrasado, el servidor mira ese día. */
+function Disponible({ saldo, importe, fecha }) {
+  const queda = Math.round((saldo - (importe || 0)) * 100) / 100;
+  const noAlcanza = fecha === hoy() && queda < -0.009;
+  return (
+    <div className={cx(s.callout, noAlcanza ? s.warn : s.info)} style={{ margin: 0 }}>
+      Efectivo en mano: <strong>{money(saldo)}</strong>
+      {importe > 0 && <> · después de esto: <strong style={noAlcanza ? { color: 'var(--crm-color-danger)' } : undefined}>{money(queda)}</strong></>}
+      {noAlcanza && <div className={s.hint} style={{ margin: '4px 0 0' }}>No alcanza: los sobres sin controlar no cuentan hasta que los controles.</div>}
+      {fecha !== hoy() && <div className={s.hint} style={{ margin: '4px 0 0' }}>Con fecha anterior se controla el efectivo que había ESE día.</div>}
+    </div>
+  );
+}
+
+function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avisar }) {
   const opciones = conceptos.filter((c) => c.tipo === tipo && c.activo && (c.clase !== 'gasto' || c.gastoCategoriaId));
   const [conceptoId, setConceptoId] = useState(opciones[0]?.id ?? '');
   const [importe, setImporte] = useState('');
@@ -416,6 +553,7 @@ function MovimientoModal({ tipo, conceptos, onCerrar, onHecho, avisar }) {
       if (!concepto) { setError('Elegí el concepto.'); return false; }
       if (!Number.isFinite(n) || n <= 0) { setError('Escribí el importe.'); return false; }
       if (!fecha || fecha > hoy()) { setError('La fecha tiene que ser hoy o anterior.'); return false; }
+      if (tipo === 'egreso' && fecha === hoy() && n > saldo + 0.009) { setError(`No alcanza: tenés ${money(saldo)} en mano.`); return false; }
       return true;
     },
     async () => {
@@ -444,6 +582,7 @@ function MovimientoModal({ tipo, conceptos, onCerrar, onHecho, avisar }) {
         <Campo label="Fecha"><input type="date" value={fecha} max={hoy()} onChange={(e) => setFecha(e.target.value)} /></Campo>
         <Campo label="Detalle"><input maxLength={300} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Opcional: para qué, a quién" /></Campo>
       </div>
+      {tipo === 'egreso' && <Disponible saldo={saldo} importe={n > 0 ? n : 0} fecha={fecha} />}
       <AvisoSegundaConfirmacion {...sc}>
         {tipo === 'ingreso' ? 'Entra' : 'Sale'} <strong>{money(n || 0)}</strong> {tipo === 'ingreso' ? 'a' : 'de'} tu caja por <strong>{concepto?.nombre ?? '—'}</strong> el {fechaIso(fecha)}.
         {concepto?.clase === 'gasto' && <> Se carga también como <strong>gasto pagado</strong> en Gastos ({concepto.gastoCategoria}).</>}
@@ -458,7 +597,7 @@ function MovimientoModal({ tipo, conceptos, onCerrar, onHecho, avisar }) {
  * las facturas (o los gastos cargados) que se pagan y con qué (efectivo o
  * depósito). Es el mismo pago de siempre: queda en la cuenta del proveedor.
  */
-function PagoProveedorModal({ onCerrar, onHecho, avisar }) {
+function PagoProveedorModal({ saldo, onCerrar, onHecho, avisar }) {
   const { data: provs } = useResource('cashflow:proveedores', () => httpClient.get('/cashflow/proveedores'));
   const [proveedorId, setProveedorId] = useState('');
   const [destino, setDestino] = useState('mercaderia');
@@ -486,6 +625,7 @@ function PagoProveedorModal({ onCerrar, onHecho, avisar }) {
         if (tildes[d.docId] != null && (!(v > 0) || v > d.saldo + 0.009)) { setError(`En ${d.etiqueta} el importe tiene que ser mayor a 0 y hasta ${money(d.saldo)}.`); return false; }
       }
       if (medio === 'deposito' && !referencia.trim()) { setError('Para un depósito escribí la referencia (número de depósito o comprobante del banco).'); return false; }
+      if (fecha === hoy() && total > saldo + 0.009) { setError(`No alcanza: tenés ${money(saldo)} en mano.`); return false; }
       return true;
     },
     async () => {
@@ -564,6 +704,7 @@ function PagoProveedorModal({ onCerrar, onHecho, avisar }) {
           <div className={s.hint} style={{ margin: 0 }}>aplicado {money(aplicado)} · a cuenta {money(extra)}</div>
         </div>
       </div>
+      <Disponible saldo={saldo} importe={total} fecha={fecha} />
       <AvisoSegundaConfirmacion {...sc}>
         Sale <strong>{money(total)}</strong> de tu caja para <strong>{prov?.nombre ?? '—'}</strong> ({MEDIO[medio]}), aplicado a {Object.keys(tildes).length} documento{Object.keys(tildes).length === 1 ? '' : 's'}{extra > 0 ? ` y ${money(extra)} a cuenta` : ''}.
       </AvisoSegundaConfirmacion>
@@ -572,7 +713,7 @@ function PagoProveedorModal({ onCerrar, onHecho, avisar }) {
   );
 }
 
-function Movimientos({ version, bump, avisar, conceptos }) {
+function Movimientos({ version, bump, avisar, conceptos, saldo }) {
   const [tipo, setTipo] = useState('');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
@@ -606,13 +747,13 @@ function Movimientos({ version, bump, avisar, conceptos }) {
       {error && <Aviso tono="warn">{error}</Aviso>}
       {loading && !data ? <Cargando /> : <TablaMovimientos filas={filas} onAnular={(m) => setModal({ tipo: 'anular', m })} />}
       {(modal?.tipo === 'ingreso' || modal?.tipo === 'egreso') && (
-        <MovimientoModal tipo={modal.tipo} conceptos={conceptos} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar} />
+        <MovimientoModal tipo={modal.tipo} conceptos={conceptos} saldo={saldo} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar} />
       )}
-      {modal?.tipo === 'pago' && <PagoProveedorModal onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar} />}
+      {modal?.tipo === 'pago' && <PagoProveedorModal saldo={saldo} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar} />}
       {modal?.tipo === 'anular' && (
         <AnularModal
           titulo={`Anular ${modal.m.tipo} de ${money(modal.m.importe)}`}
-          texto={`${queEs(modal.m)} del ${fechaCorta(modal.m.fecha)}${modal.m.detalle ? ` (${modal.m.detalle})` : ''}.${modal.m.origen === 'pago_proveedor' ? ' El pago se desaplica de sus facturas y se anula en la cuenta del proveedor.' : modal.m.origen === 'gasto' ? ' El gasto y su pago se anulan también en Gastos.' : ''}`}
+          texto={`${queEs(modal.m)} del ${fechaCorta(modal.m.fecha)}${modal.m.detalle ? ` (${modal.m.detalle})` : ''}.${modal.m.origen === 'pago_proveedor' ? ' El pago se desaplica de sus facturas y se anula en la cuenta del proveedor.' : modal.m.origen === 'gasto' ? ' El gasto y su pago se anulan también en Gastos.' : modal.m.origen === 'conteo' ? ' El saldo vuelve a lo que decía el libro antes del conteo; el conteo queda registrado.' : ''}`}
           ruta={`/cashflow/movimientos/${modal.m.id}/anular`}
           exito="Movimiento anulado."
           onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar}
@@ -713,28 +854,47 @@ function Conceptos({ conceptos, bump, avisar }) {
 /* ==================================================================== *
  * Contar mi caja
  * ==================================================================== */
-function ConteoModal({ saldo, onCerrar, onHecho, avisar }) {
-  const [billetes, setBilletes] = useState({});
-  const [otros, setOtros] = useState('');
-  const [ajustar, setAjustar] = useState(true);
+/**
+ * Auditoría 5/10: el conteo VE los sobres en tránsito. Un sobre sin controlar
+ * contado junto con la caja aparecía como «sobrante» y, ajustado, la plata
+ * entraba dos veces al controlarlo. Ahora: se avisa antes de contar, se
+ * sospecha en voz alta si lo que sobra coincide con un sobre, y para ajustar
+ * hay que confirmar que esos sobres NO están en lo contado. «Ajustar» arranca
+ * destildado y un conteo vacío no se registra.
+ */
+function ConteoModal({ saldo, enTransito, onCerrar, onHecho, avisar }) {
+  const c = useBilletes();
+  const [ajustar, setAjustar] = useState(false);
+  const [aparte, setAparte] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState('');
-  const sumaBilletes = DENOMINACIONES.reduce((a, d) => a + d * (Number(billetes[d]) || 0), 0);
-  const contado = Math.round((sumaBilletes + (Number(otros) || 0)) * 100) / 100;
-  const diferencia = Math.round((contado - saldo) * 100) / 100;
-  const hayDif = Math.abs(diferencia) > 0.009;
-  const sc = useSegundaConfirmacion(`${JSON.stringify(billetes)}|${otros}|${ajustar}|${motivo}`);
+  const pend = enTransito?.sobres ?? 0;
+  const { data: sobresPend } = useResource(`cashflow:sobres-conteo:${pend}:${enTransito?.total}`, () => httpClient.get('/cashflow/sobres?estado=pendientes'), { enabled: pend > 0 });
+  const diferencia = Math.round((c.contado - saldo) * 100) / 100;
+  const hayDif = c.contado > 0 && Math.abs(diferencia) > 0.009;
+  const quiereAjustar = hayDif && ajustar;
+  /* ¿Lo que sobra se explica por un sobre sin controlar? */
+  const sospecha = useMemo(() => {
+    if (!(diferencia > 0.009) || !pend) return '';
+    const igual = (sobresPend ?? []).find((x) => Math.abs(x.enviado - diferencia) < 0.01);
+    if (igual) return `Sobran ${money(diferencia)}: justo lo que dice el sobre de ${igual.sucursal} del ${fechaCorta(igual.cierre)}. ¿Lo contaste junto con tu caja?`;
+    if (Math.abs(enTransito.total - diferencia) < 0.01) return `Sobran ${money(diferencia)}: justo lo que suman los ${pend} sobres sin controlar. ¿Los contaste junto con tu caja?`;
+    if (diferencia <= enTransito.total + 0.009) return `Sobran ${money(diferencia)} y hay ${money(enTransito.total)} en sobres sin controlar: si alguno está en lo que contaste, no ajustes.`;
+    return '';
+  }, [diferencia, pend, sobresPend, enTransito]);
+  const sc = useSegundaConfirmacion(`${c.clave}|${ajustar}|${aparte}|${motivo}`);
   const confirmar = () => sc.clic(
     () => {
       setError('');
-      if (hayDif && ajustar && !motivo.trim()) { setError('Para ajustar el saldo escribí el motivo de la diferencia.'); return false; }
+      if (!c.enteros) { setError('Las cantidades de billetes van enteras.'); return false; }
+      if (c.contado <= 0) { setError('Cargá lo que contaste: billetes y monedas.'); return false; }
+      if (quiereAjustar && !motivo.trim()) { setError('Para ajustar el saldo escribí el motivo de la diferencia.'); return false; }
+      if (quiereAjustar && pend > 0 && !aparte) { setError(`Confirmá que los ${pend} sobres sin controlar no están en lo que contaste, o controlalos primero.`); return false; }
       return true;
     },
     async () => {
       try {
-        const b = {};
-        for (const d of DENOMINACIONES) if (Number(billetes[d]) > 0) b[d] = Number(billetes[d]);
-        const r = await httpClient.post('/cashflow/conteos', { billetes: b, otros: Number(otros) || 0, ajustar: hayDif && ajustar, motivo: motivo.trim(), confirmado: true });
+        const r = await httpClient.post('/cashflow/conteos', { ...c.payload(), ajustar: quiereAjustar, sobresAparte: aparte, motivo: motivo.trim(), confirmado: true });
         avisar('ok', r.ajustado ? `Conteo registrado y saldo ajustado: efectivo en mano ${money(r.saldo)}.` : hayDif ? `Conteo registrado sin ajustar: hay una diferencia de ${money(Math.abs(r.diferencia))}.` : 'Conteo registrado: coincide con el libro.');
         onHecho();
       } catch (e) { setError(errorMsg(e)); }
@@ -743,36 +903,40 @@ function ConteoModal({ saldo, onCerrar, onHecho, avisar }) {
   return (
     <ModalShell title="Contar mi caja" subtitle={`El libro dice que tenés ${money(saldo)} en mano. Contá y comparemos.`} onClose={onCerrar} footer={[
       { texto: 'Cancelar', onClick: onCerrar },
-      { texto: textoBoton(sc, 'Registrar el conteo', 'Sí, confirmar'), clase: 'btn-primary', onClick: confirmar },
+      { texto: textoBoton(sc, 'Registrar el conteo', 'Sí, confirmar'), clase: 'btn-primary', onClick: confirmar, disabled: c.contado <= 0 },
     ]}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'auto 90px 1fr', gap: '6px 12px', alignItems: 'center', fontVariantNumeric: 'tabular-nums' }}>
-        {DENOMINACIONES.map((d) => (
-          <span key={d} style={{ display: 'contents' }}>
-            <span>{money(d)}</span>
-            <input type="number" min="0" step="1" value={billetes[d] ?? ''} onChange={(e) => setBilletes((b) => ({ ...b, [d]: e.target.value }))} aria-label={`Billetes de ${money(d)}`} />
-            <strong style={{ textAlign: 'right' }}>{Number(billetes[d]) > 0 ? money(d * Number(billetes[d])) : ''}</strong>
-          </span>
-        ))}
-        <span>Monedas y otros</span>
-        <input type="number" min="0" step="0.01" value={otros} onChange={(e) => setOtros(e.target.value)} aria-label="Monedas y otros" />
-        <strong style={{ textAlign: 'right' }}>{Number(otros) > 0 ? money(Number(otros)) : ''}</strong>
-      </div>
-      <div className={cx(s.callout, hayDif ? s.warn : s.info)}>
-        Contaste <strong>{money(contado)}</strong> · el libro dice <strong>{money(saldo)}</strong> · <Diferencia v={diferencia} />
-        {hayDif && <div className={s.hint} style={{ margin: '4px 0 0' }}>{diferencia < 0 ? 'Falta plata respecto del libro.' : 'Hay más plata que en el libro.'}</div>}
-      </div>
+      {pend > 0 && (
+        <Aviso tono="warn">
+          Tenés <strong>{pend}</strong> sobre{pend === 1 ? '' : 's'} sin controlar por <strong>{money(enTransito.total)}</strong>: esa plata todavía no está en el libro.
+          {' '}Contá tu caja <strong>sin esos sobres</strong> (dejalos aparte) o controlalos primero.
+        </Aviso>
+      )}
+      <ContadorBilletes c={c} />
+      {c.contado > 0 && (
+        <div className={cx(s.callout, hayDif ? s.warn : s.info)} style={{ margin: 0 }}>
+          Contaste <strong>{money(c.contado)}</strong> · el libro dice <strong>{money(saldo)}</strong> · <Diferencia v={diferencia} />
+          {hayDif && <div className={s.hint} style={{ margin: '4px 0 0' }}>{diferencia < 0 ? 'Falta plata respecto del libro.' : 'Hay más plata que en el libro.'}</div>}
+        </div>
+      )}
+      {sospecha && <Aviso tono="warn"><strong>Ojo:</strong> {sospecha}</Aviso>}
       {hayDif && (
         <>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, cursor: 'pointer' }}>
             <input type="checkbox" checked={ajustar} onChange={(e) => setAjustar(e.target.checked)} />
-            Ajustar el saldo a lo contado ({money(contado)})
+            Ajustar el saldo a lo contado ({money(c.contado)})
           </label>
-          <div className={s.hint} style={{ margin: 0 }}>Con el ajuste, el libro pasa a decir lo que hay en la mano y queda un movimiento de «ajuste por conteo» con el motivo. Sin ajuste, el conteo queda registrado y el saldo no cambia.</div>
-          {ajustar && <Campo label="Motivo de la diferencia *"><textarea rows={2} maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)} autoFocus /></Campo>}
+          <div className={s.hint} style={{ margin: 0 }}>Con el ajuste, el libro pasa a decir lo que hay en la mano y queda un movimiento de «ajuste por conteo» con el motivo (se puede anular desde Movimientos). Sin ajuste, el conteo queda registrado y el saldo no cambia.</div>
+          {ajustar && pend > 0 && (
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={aparte} onChange={(e) => setAparte(e.target.checked)} style={{ marginTop: 3 }} />
+              <span>Confirmo que los <strong>{pend} sobre{pend === 1 ? '' : 's'} sin controlar</strong> ({money(enTransito.total)}) <strong>no</strong> están en lo que conté.</span>
+            </label>
+          )}
+          {ajustar && <Campo label="Motivo de la diferencia *"><textarea rows={2} maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)} /></Campo>}
         </>
       )}
       <AvisoSegundaConfirmacion {...sc}>
-        Se registra el conteo de <strong>{money(contado)}</strong>{hayDif && ajustar ? <> y el saldo se ajusta: <Diferencia v={diferencia} /></> : hayDif ? ' sin ajustar el saldo' : ''}.
+        Se registra el conteo de <strong>{money(c.contado)}</strong>{quiereAjustar ? <> y el saldo se ajusta: <Diferencia v={diferencia} /></> : hayDif ? ' sin ajustar el saldo' : ''}.
       </AvisoSegundaConfirmacion>
       {error && <Aviso tono="warn">{error}</Aviso>}
     </ModalShell>
@@ -791,7 +955,8 @@ function Reportes({ version }) {
   const [hasta, setHasta] = useState(hoy());
   const qs = `desde=${desde}&hasta=${hasta}`;
   const { data: d, loading, error } = useResource(`cashflow:reporte:${qs}:${version}`, () => httpClient.get(`/cashflow/reporte?${qs}`));
-  const { data: movs } = useResource(`cashflow:reporte-mov:${qs}:${version}`, () => httpClient.get(`/cashflow/movimientos?${qs}&limite=2000`));
+  /* Con los anulados: el CSV los lista marcados (es la auditoría); la impresión y los totales los dejan afuera. */
+  const { data: movs } = useResource(`cashflow:reporte-mov:${qs}:${version}`, () => httpClient.get(`/cashflow/movimientos?${qs}&limite=2000&anulados=1`));
   const preset = (k) => {
     const h = new Date();
     if (k === 'mes') { setDesde(primerDiaMes()); setHasta(hoy()); }
@@ -813,7 +978,7 @@ function Reportes({ version }) {
         ${fila(['Ingresos', money(d.ingresos)])}${fila(['Egresos', money(d.egresos)])}${fila(['<strong>Efectivo al fin del período</strong>', `<strong>${money(d.saldoFin)}</strong>`])}
       </tbody></table>
       ${tabla('Por concepto', ['Concepto', 'Cantidad', 'Importe'], d.porConcepto.map((c) => fila([`${esc(c.tipo === 'ingreso' ? 'Ingreso' : 'Egreso')} · ${esc(c.origen === 'concepto' || c.origen === 'gasto' ? c.concepto : ORIGEN[c.origen] ?? c.origen)}`, c.cantidad, money(c.importe)])))}
-      ${tabla('Sobres por sucursal', ['Sucursal', 'Sobres', 'Controlados', 'Enviado', 'Contado', 'Diferencia'], d.sobresPorSucursal.map((x) => fila([esc(x.sucursal), x.sobres, x.controlados, money(x.enviado), money(x.contado), dif(x.diferencia)])))}
+      ${tabla('Sobres por sucursal (por fecha de cierre)', ['Sucursal', 'Sobres', 'Controlados', 'No corresponden', 'Enviado', 'Contado', 'Diferencia'], d.sobresPorSucursal.map((x) => fila([esc(x.sucursal), x.sobres, x.controlados, x.descartados || 0, money(x.enviado), money(x.contado), dif(x.diferencia)])))}
       ${tabla('Diferencias por cajero', ['Cajero', 'Sobres', 'Con diferencia', 'Faltantes', 'Sobrantes', 'Neto'], d.porCajero.map((x) => fila([esc(x.cajero), x.sobres, x.conDiferencia, dif(x.faltantes), dif(x.sobrantes), dif(x.diferencia)])))}
       ${tabla('Movimientos', ['Fecha', 'Qué', 'Ingreso', 'Egreso'], (movs ?? []).filter((m) => !m.anuladoEn).map((m) => fila([`${esc(fechaHora(m.fecha))} · ${esc(queEs(m))}${m.detalle ? ` · ${esc(m.detalle)}` : ''}`, m.tipo === 'ingreso' ? money(m.importe) : '', m.tipo === 'egreso' ? money(m.importe) : ''])))}`;
     imprimirDocumento('cashflow', { titulo: `Cash Flow ${d.desde} a ${d.hasta}`, cuerpo });
@@ -860,11 +1025,15 @@ function Reportes({ version }) {
                 ))}
               </Table>
             </Bloque>
-            <Bloque titulo="Sobres por sucursal" sub="Lo que mandó cada local y lo que contaste.">
+            <Bloque titulo="Sobres por sucursal" sub="Por fecha de CIERRE del local. En «Ingresos» el sobre cuenta el día que lo controlaste: un sobre del 31 controlado el 1 cae en meses distintos.">
               <Table cols={[{ h: 'Sucursal' }, { h: 'Sobres', num: true }, { h: 'Enviado', num: true }, { h: 'Contado', num: true }, { h: 'Diferencia', num: true }]} empty="Sin sobres en el período.">
                 {d.sobresPorSucursal.map((x) => (
                   <tr key={x.sucursalId}>
-                    <td>{x.sucursal}{x.controlados < x.sobres && <div className={s.hint} style={{ margin: 0 }}>{x.sobres - x.controlados} sin controlar</div>}</td>
+                    <td>
+                      {x.sucursal}
+                      {x.controlados < x.sobres && <div className={s.hint} style={{ margin: 0 }}>{x.sobres - x.controlados} sin controlar</div>}
+                      {x.descartados > 0 && <div className={s.hint} style={{ margin: 0 }}>{x.descartados} no corresponde{x.descartados === 1 ? '' : 'n'} ({money(x.descartadoImporte)}, fuera de las sumas)</div>}
+                    </td>
                     <td className={s.num}>{x.sobres}</td>
                     <td className={s.num}>{money(x.enviado)}</td>
                     <td className={s.num}>{money(x.contado)}</td>
@@ -907,7 +1076,7 @@ export function CashFlowPanel() {
   const avisar = (tono, texto) => setMsg({ tono, texto });
   useEffect(() => {
     if (!msg) return undefined;
-    const t = setTimeout(() => setMsg(null), 6000);
+    const t = setTimeout(() => setMsg(null), 12000);
     return () => clearTimeout(t);
   }, [msg]);
   const { data: d, loading, error } = useResource(`cashflow:resumen:${version}`, () => httpClient.get('/cashflow/resumen'));
@@ -935,7 +1104,7 @@ export function CashFlowPanel() {
           </Tabs>
           {pestana === 'resumen' && <Resumen d={d} irA={setPestana} avisar={avisar} onHecho={bump} />}
           {pestana === 'sobres' && <Sobres version={version} bump={bump} avisar={avisar} />}
-          {pestana === 'movimientos' && <Movimientos version={version} bump={bump} avisar={avisar} conceptos={conceptos ?? []} />}
+          {pestana === 'movimientos' && <Movimientos version={version} bump={bump} avisar={avisar} conceptos={conceptos ?? []} saldo={d.saldo} />}
           {pestana === 'conceptos' && <Conceptos conceptos={conceptos ?? []} bump={bump} avisar={avisar} />}
           {pestana === 'reportes' && <Reportes version={version} />}
         </>
