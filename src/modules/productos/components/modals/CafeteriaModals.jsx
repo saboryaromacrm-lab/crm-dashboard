@@ -19,6 +19,29 @@ import { antiguedad, esVozDelCafe, vozCafeteria } from '../../domain/cafeteria.v
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
+import {
+  BULTO, bultoOfrecible, valorPresentacion, cambioPresentacion, bultosDe, unidadesDeBultos, bultosPartidos,
+} from '../../domain/bulto.js';
+
+/** La casilla de cantidad de un renglón, en unidades o en bultos, con la cuenta a la vista. */
+function CantidadRenglon({ it, prod, unidad, porBulto, onCantidad }) {
+  const enBultos = it.modo === 'bulto' && porBulto > 1 && !it.presId;
+  const u = Number(it.cantidad) || 0;
+  const bultosJustos = porBulto > 1 && !it.presId && u > 0 && Number.isInteger(u / porBulto) ? u / porBulto : 0;
+  return (
+    <div>
+      <input
+        type="number" min="0" step={enBultos ? '1' : (unidad === 'kg' ? 'any' : '1')}
+        value={enBultos ? bultosDe(it, porBulto) : it.cantidad}
+        title={enBultos ? `Bultos de ${porBulto} u.` : (unidad === 'kg' ? 'Kilos' : 'Unidades / paquetes enteros')}
+        aria-label={enBultos ? `Bultos de ${prod.nombre}` : `Cantidad de ${prod.nombre}`}
+        onChange={(e) => onCantidad(enBultos ? unidadesDeBultos(e.target.value, porBulto) : e.target.value)}
+      />
+      {enBultos && u > 0 && <div className={s.hint} style={{ margin: 0 }}>= <strong>{u} u.</strong></div>}
+      {!enBultos && bultosJustos > 0 && <div className={s.hint} style={{ margin: 0 }}>= {bultosJustos} bulto{bultosJustos === 1 ? '' : 's'}</div>}
+    </div>
+  );
+}
 
 function Di({ label, children }) {
   return <div className={s.di}><div className={s.l}>{label}</div><div className={s.v}>{children}</div></div>;
@@ -475,6 +498,11 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
       toast('Hay renglones con media unidad: solo el granel se fracciona. Poné números enteros.', 'err');
       return;
     }
+    if (bultosPartidos(items, store.getProducto)) {
+      toast('Hay renglones por bulto con medio bulto: los bultos van enteros.', 'err');
+      return;
+    }
+    /* Va en UNIDADES siempre: el modo bulto ya se convirtió al tipear. */
     const parsed = conCantidad.map((it) => ({
       productoId: it.prodId,
       presentacionId: it.presId || undefined,
@@ -639,6 +667,7 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
         const u = store.unidadDe(prod, it.presId);
         const disp = store.cant(prod.id, parseInt(sucId, 10), it.presId, 'disponible');
         const { costo: costoU, congelado } = costoDe(it);
+        const porBulto = bultoOfrecible(prod, entrada);
         return (
           <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr .8fr 1fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'start' }}>
             <div style={{ minWidth: 0 }}>
@@ -656,32 +685,31 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
               {!entrada && (
                 <div className={s.hint} style={{ margin: 0 }}>
                   disponible: {store.fmtCant(prod, it.presId, disp)}
+                  {porBulto > 1 && !it.presId && disp >= porBulto && ` (${Math.floor(disp / porBulto)} bulto${Math.floor(disp / porBulto) === 1 ? '' : 's'} enteros)`}
                 </div>
               )}
+              {porBulto > 1 && <div className={s.hint} style={{ margin: 0, fontWeight: 600 }}>Viene en bulto de {porBulto} u.</div>}
             </div>
             <select
-              value={it.presId ?? ''}
+              value={valorPresentacion(it, porBulto)}
               onChange={(e) => {
-                const presId = e.target.value ? parseInt(e.target.value, 10) : null;
+                const cambio = cambioPresentacion(it, e.target.value, porBulto);
                 /* El costo de un paquete no es el de la unidad: al cambiar de
                  * presentación se re-propone, pero SOLO si el campo está
                  * vacío — un número tipeado a mano no se pisa nunca. */
                 setItem(i, {
-                  presId,
-                  ...(entrada && it.costo === '' ? { costo: costoPrevio(it.prodId, presId) } : {}),
+                  ...cambio,
+                  ...(entrada && it.costo === '' ? { costo: costoPrevio(it.prodId, cambio.presId) } : {}),
                 });
               }}
             >
               <option value="">{prod.tipo === 'granel' ? 'Granel (kg)' : 'Unidad'}</option>
+              {porBulto > 1 && <option value={BULTO}>Bulto ×{porBulto}</option>}
               {(prod.presentaciones || []).map((p) => (
                 <option key={p.id} value={p.id}>{store.presLabel(prod, p.id)}</option>
               ))}
             </select>
-            <input
-              type="number" min="0" step={u === 'kg' ? 'any' : '1'} value={it.cantidad}
-              title={u === 'kg' ? 'Kilos' : 'Unidades / paquetes enteros'}
-              onChange={(e) => setItem(i, { cantidad: e.target.value })}
-            />
+            <CantidadRenglon it={it} prod={prod} unidad={u} porBulto={porBulto} onCantidad={(cantidad) => setItem(i, { cantidad })} />
             {entrada ? (
               <div>
                 {/* Si el renglón va a entrar y no tiene costo, el campo lo
@@ -762,13 +790,14 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
       </div>
 
       <div
-        className={cx(s.callout, (sinCosto || fraccionados) ? s.warn : s.ok)}
+        className={cx(s.callout, (sinCosto || fraccionados || bultosPartidos(items, store.getProducto)) ? s.warn : s.ok)}
         style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, gap: 12 }}
       >
         <span>
           {items.length} renglón(es)
           {sinCosto > 0 && <> · <strong>{sinCosto} sin costo</strong> — así no se puede enviar</>}
           {fraccionados > 0 && <> · <strong>{fraccionados} con media unidad</strong> — solo el granel se fracciona</>}
+          {bultosPartidos(items, store.getProducto) > 0 && <> · <strong>{bultosPartidos(items, store.getProducto)} con medio bulto</strong> — los bultos van enteros</>}
         </span>
         <span>Total {entrada ? 'declarado' : 'a costo'}: <strong>{money(total)}</strong></span>
       </div>
@@ -1474,6 +1503,7 @@ export function PedidoCafeteriaFormModal({ inicial = null }) {
         cantidad: Number(it.cantidad),
       }));
     if (!parsed.length) { toast('Agregá al menos un renglón con cantidad.', 'err'); return; }
+    if (bultosPartidos(items, store.getProducto)) { toast('Hay renglones por bulto con medio bulto: los bultos van enteros.', 'err'); return; }
     const suc = parseInt(sucId, 10) || 0;
     if (!suc) { toast('Elegí a qué sucursal se lo pedís.', 'err'); return; }
     if (enVuelo.current) return;
@@ -1553,10 +1583,15 @@ export function PedidoCafeteriaFormModal({ inicial = null }) {
          * a Norte contra el total del negocio es mirar un número que no tiene
          * nada que ver con lo que esa sucursal puede mandar. */
         const disp = store.cant(prod.id, parseInt(sucId, 10), it.presId, 'disponible');
+        /* EL BULTO, a la vista (5/10/2026, pedido del dueño): cuántas unidades trae
+         * la caja cerrada. Solo informa: el pedido sigue siendo en unidades. Con una
+         * presentación (paquete de granel) no aplica: lo que viaja es el paquete. */
+        const porBulto = bultoOfrecible(prod);
         return (
           <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr .8fr auto', gap: 8, marginBottom: 8, alignItems: 'start' }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 600 }}>{prod.nombre}</div>
+              {porBulto > 1 && <div className={s.hint} style={{ margin: 0, fontWeight: 600 }}>Viene en bulto de {porBulto} u.</div>}
               <div className={s.hint} style={{ margin: 0 }}>
                 {sucId
                   ? <>disponible ahí: {store.fmtCant(prod, it.presId, disp)}</>
@@ -1564,19 +1599,16 @@ export function PedidoCafeteriaFormModal({ inicial = null }) {
               </div>
             </div>
             <select
-              value={it.presId ?? ''}
-              onChange={(e) => setItem(i, { presId: e.target.value ? parseInt(e.target.value, 10) : null })}
+              value={valorPresentacion(it, porBulto)}
+              onChange={(e) => setItem(i, cambioPresentacion(it, e.target.value, porBulto))}
             >
               <option value="">{prod.tipo === 'granel' ? 'Granel (kg)' : 'Unidad'}</option>
+              {porBulto > 1 && <option value={BULTO}>Bulto ×{porBulto}</option>}
               {(prod.presentaciones || []).map((p) => (
                 <option key={p.id} value={p.id}>{store.presLabel(prod, p.id)}</option>
               ))}
             </select>
-            <input
-              type="number" min="0" step={u === 'kg' ? 'any' : '1'} value={it.cantidad}
-              title={u === 'kg' ? 'Kilos' : 'Unidades / paquetes enteros'}
-              onChange={(e) => setItem(i, { cantidad: e.target.value })}
-            />
+            <CantidadRenglon it={it} prod={prod} unidad={u} porBulto={porBulto} onCantidad={(cantidad) => setItem(i, { cantidad })} />
             <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>
           </div>
         );

@@ -342,6 +342,22 @@ function MediosPagoEditor({ habilitados, exigenFactura, onChange }) {
             </tr>
           );
         })}
+        {/* EL QR DE MERCADO PAGO, su propio renglón (5/10/2026): no se habilita
+            acá —aparece solo en las PC registradas con caja de Mercado Pago—,
+            pero puede exigir factura por separado del QR del posnet. */}
+        <tr>
+          <td>QR de Mercado Pago</td>
+          <td style={{ textAlign: 'center' }} className={s.hint} title="Aparece en las PC registradas que tienen su caja de Mercado Pago (Ventas › Configuración › Mercado Pago)">según la PC</td>
+          <td style={{ textAlign: 'center' }}>
+            <input
+              type="checkbox"
+              aria-label="QR de Mercado Pago exige factura"
+              checked={exigenFactura.includes('qr_mp')}
+              title="Cobrado con el QR de Mercado Pago, la venta se factura sí o sí"
+              onChange={(e) => setExige('qr_mp', e.target.checked)}
+            />
+          </td>
+        </tr>
       </tbody>
     </table>
   );

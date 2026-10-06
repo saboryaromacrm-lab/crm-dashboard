@@ -230,7 +230,7 @@ export function CobroModal({
     if (condicionPago !== 'contado') return null;
     const exigen = config.mediosFacturar ?? [];
     const usado = pagos.find((x) => Number(x.importe) > 0 && exigen.includes(x.medio));
-    return usado ? (MEDIOS_PAGO[usado.medio] ?? usado.medio) : null;
+    return usado ? etiquetaMedio(usado.medio) : null;
   }, [pagos, condicionPago, config.mediosFacturar]);
 
   const efectivoAsignado = r2(
@@ -587,13 +587,14 @@ export function CobroModal({
   useEffect(() => {
     const onKey = (e) => {
       if (cobroQr) return; // con un cobro por QR en pantalla, F8/F10 no hacen nada
-      if (e.key === 'F10') { e.preventDefault(); if (puedeLiquidar) confirmar('ticket'); }
+      /* Con un medio que exige factura no hay ticket: F10 también factura (5/10/2026). */
+      if (e.key === 'F10') { e.preventDefault(); if (medioExigeFactura) { if (puedeFacturar) confirmar('factura'); } else if (puedeLiquidar) confirmar('ticket'); }
       else if (e.key === 'F8') { e.preventDefault(); if (puedeFacturar) confirmar('factura'); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [puedeLiquidar, puedeFacturar, condicionPago, pagos, observaciones, vuelto, aCuit]);
+  }, [puedeLiquidar, puedeFacturar, medioExigeFactura, condicionPago, pagos, observaciones, vuelto, aCuit]);
 
   if (cobroQr) {
     const esperando = ['esperando', 'procesando'].includes(cobroQr.estado);
@@ -712,20 +713,23 @@ export function CobroModal({
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
         // Los botones nunca son un no-op silencioso: si no se puede cerrar,
         // `confirmar` avisa POR QUÉ (falta plata, es cta. cte., excede crédito).
+        /* MEDIO QUE EXIGE FACTURA (pedido del dueño, 5/10/2026): sin aviso y sin
+         * «Liquidar» — la venta se cierra facturada, con un solo botón principal. */
         {
           texto: enviando ? 'Registrando…'
             : montoQrMp > 0 ? `Facturar y mandar ${money(montoQrMp)} al QR · F8`
             : aCuit?.listo ? `Factura ${aCuit.letra} a ${aCuit.nombre.length > 22 ? `${aCuit.nombre.slice(0, 21)}…` : aCuit.nombre} · F8`
-              : 'Facturar · F8',
-          clase: puedeFacturar ? 'btn-ingreso' : 'btn-ghost',
+              : medioExigeFactura ? `Facturar ${money(totalFinal)} · F8`
+                : 'Facturar · F8',
+          clase: puedeFacturar ? (medioExigeFactura ? 'btn-primary' : 'btn-ingreso') : 'btn-ghost',
           onClick: () => confirmar('factura'),
         },
-        {
+        !medioExigeFactura && {
           texto: enviando ? 'Registrando…' : montoQrMp > 0 ? `Liquidar y mandar ${money(montoQrMp)} al QR · F10` : `Liquidar ${money(totalFinal)} · F10`,
           clase: puedeLiquidar ? 'btn-primary' : 'btn-ghost',
           onClick: () => confirmar('ticket'),
         },
-      ]}
+      ].filter(Boolean)}
     >
       <div className={p.cobroTotal}>
         <span className={p.cobroTotalLabel}>Total</span>
@@ -853,7 +857,8 @@ export function CobroModal({
                   value={entregado}
                   onChange={(e) => setEntregado(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && puedeLiquidar) { e.preventDefault(); confirmar('ticket'); }
+                    if (e.key !== 'Enter') return;
+                    if (medioExigeFactura) { if (puedeFacturar) { e.preventDefault(); confirmar('factura'); } } else if (puedeLiquidar) { e.preventDefault(); confirmar('ticket'); }
                   }}
                 />
               </div>
@@ -932,14 +937,8 @@ export function CobroModal({
             {pagos.length > 1 && <Btn small onClick={dividir}>Partes iguales</Btn>}
           </div>
 
-          {/* El aviso del medio que obliga a facturar: aparece apenas se elige,
-              no cuando el Liquidar rebota. */}
-          {medioExigeFactura && (
-            <div className={cx(s.callout, s.warn)} style={{ marginTop: 'var(--crm-space-3)' }}>
-              <strong>{medioExigeFactura} exige factura.</strong> Esta venta no puede salir como
-              ticket: se factura (F8) o se cobra con otro medio.
-            </div>
-          )}
+          {/* El medio que exige factura ya no avisa (5/10/2026, pedido del dueño):
+              «Liquidar» desaparece y la venta se cierra facturada. */}
 
           {/* Solo habla cuando algo está mal; si los pagos suman justo, silencio. */}
           {Math.abs(faltante) > 0.01 && (

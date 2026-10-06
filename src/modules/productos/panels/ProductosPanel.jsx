@@ -7,6 +7,7 @@ import { FormatosPorProveedorPanel } from './FormatosPorProveedorPanel.jsx';
 import { ActualizarImportarPanel } from './ActualizarImportarPanel.jsx';
 import { num } from '../domain/format.js';
 import { ESTADOS_PRODUCTO } from '../domain/constants.js';
+import { bultoDe } from '../domain/bulto.js';
 import {
   Table, PanelHead, TipoBadge, EstadoProductoBadge, Btn, Pill, usePaginado, s,
 } from '../components/ui.jsx';
@@ -31,14 +32,7 @@ const faltanFraccionados = (p) => p.tipo === 'granel' && !p.soloCafeteria
  * misma cuenta que `bultoCerrado` en el servidor. Sin ninguno de los dos, ese
  * producto no entra por bulto: esta lista dice cuáles son para cargarlos.
  */
-function bultoDe(p) {
-  if (p.tipo === 'granel') return 0;
-  if ((Number(p.unidadesPorBulto) || 0) > 1) return Number(p.unidadesPorBulto);
-  const arr = p.formatosCompra || [];
-  const activo = arr.find((e) => e.usarParaPrecio) || [...arr].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))[0];
-  const c = Number(activo?.cantidad) || 0;
-  return c > 1 && Number.isInteger(c) ? c : 0;
-}
+/* `bultoDe` vive en domain/bulto.js: la usan también los pedidos (5/10/2026). */
 const faltaBulto = (p) => p.tipo !== 'granel' && !p.soloCafeteria && !p.origenCafeteria
   && (p.estado || 'activo') !== 'archivado' && bultoDe(p) === 0;
 

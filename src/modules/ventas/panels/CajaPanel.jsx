@@ -18,19 +18,36 @@ function Diferencia({ valor, cerrado }) {
   );
 }
 
+/** 'AAAA-MM-DD' de hoy menos `atras` días, en la hora de esta PC. */
+const diaAtras = (atras) => {
+  const d = new Date();
+  d.setDate(d.getDate() - atras);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+/* Los atajos de fecha (6/10/2026, pedido del dueño): un día entero cada uno. */
+const ATAJOS = [['Hoy', 0], ['Ayer', 1], ['Antes de ayer', 2]];
+
 export function CajaPanel() {
   const { sucursales, usuarios, ctx, openModal, esJefe } = useVentas();
   const [sucursalId, setSucursalId] = useState(String(ctx.sucursalId ?? ''));
   const [estado, setEstado] = useState('');
+  /* Por fecha de APERTURA del turno. Vacío = los últimos, como siempre. */
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
+  const conFecha = !!(desde || hasta);
 
   const { data, loading, error, reload } = useResource(
-    `turnos:${sucursalId}:${estado}`,
+    `turnos:${sucursalId}:${estado}:${desde}:${hasta}`,
     () => ventasApi.cajaTurnos({
       sucursalId: sucursalId || undefined,
       estado: estado || undefined,
-      limit: 100,
+      desde: desde || undefined,
+      hasta: hasta || undefined,
+      limit: conFecha ? 200 : 100,
     }),
   );
+  const atajo = (n) => { const d = diaAtras(n); setDesde(d); setHasta(d); };
+  const atajoActivo = (n) => desde && desde === hasta && desde === diaAtras(n);
 
   /**
    * El turno de MI sucursal, siempre arriba: la operación diaria (abrir,
@@ -127,8 +144,25 @@ export function CajaPanel() {
           <option value="abierta">Solo abiertos</option>
           <option value="cerrada">Solo cerrados</option>
         </select>
+        {ATAJOS.map(([label, n]) => (
+          <Btn key={n} small variant={atajoActivo(n) ? 'btn-primary' : undefined} onClick={() => atajo(n)}>{label}</Btn>
+        ))}
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          Desde
+          <input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} aria-label="Desde" />
+        </label>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          Hasta
+          <input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} aria-label="Hasta" />
+        </label>
+        {conFecha && <Btn small onClick={() => { setDesde(''); setHasta(''); }}>Limpiar</Btn>}
         <Btn small onClick={reload} disabled={loading}>{loading ? 'Cargando…' : 'Actualizar'}</Btn>
       </div>
+      {conFecha && (
+        <div className={s.hint} style={{ margin: '-6px 0 0' }}>
+          Turnos abiertos {desde === hasta ? `el ${desde.split('-').reverse().join('/')}` : `${desde ? `desde el ${desde.split('-').reverse().join('/')}` : ''}${desde && hasta ? ' ' : ''}${hasta ? `hasta el ${hasta.split('-').reverse().join('/')}` : ''}`}. Los números de arriba son de ese período.
+        </div>
+      )}
 
       {error && <div className={cx(s.callout, s.warn)}>No se pudieron cargar los turnos: <strong>{error}</strong></div>}
 

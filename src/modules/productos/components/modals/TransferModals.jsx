@@ -19,6 +19,8 @@ import { Table, TransferPill, Btn, s } from '../ui.jsx';
 import { LISTAS_PREP, GRUPOS_PEDIDO, listaDeProducto, puedeMandar, disponibleTotal } from '../../domain/pedido.js';
 import { ExplorarProductosModal } from './ExplorarProductosModal.jsx';
 import { SelectorOperador, useOperadoresFraccion } from '../OperadorFraccion.jsx';
+import { bultoDe } from '../../domain/bulto.js';
+import { StockGranelOjo } from '../StockGranelOjo.jsx'; // TEMPORAL: se va con el stock provisorio
 
 /* ---------------- Preparación: helpers compartidos ---------------- */
 
@@ -69,7 +71,7 @@ function equivalenciaCajas(unidades, porBulto) {
  */
 function cajasDeRenglon(prod, presentacionId, cantidad) {
   if (!prod || prod.tipo === 'granel' || presentacionId) return '';
-  return equivalenciaCajas(cantidad, Number(prod.unidadesPorBulto) || 1);
+  return equivalenciaCajas(cantidad, bultoDe(prod) || 1);
 }
 
 /* ============================== NUEVO PEDIDO ============================== */
@@ -841,6 +843,11 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
           <Btn variant="btn-edit" onClick={() => setExplorando(true)}>Buscar en el catálogo</Btn>
         </div>
 
+        {/* El stock a granel contado a ojo en el depósito, para pedir mirándolo (5/10/2026). */}
+        {grupo === 'granel' && (
+          <StockGranelOjo store={store} toast={toast} onAgregar={(p, kg) => agregar(p, '', kg, { limpiar: false })} />
+        )}
+
         {resultados.length > 0 && (
           <div className={s.card} style={{ padding: 0, margin: 0, overflow: 'hidden' }}>
             {resultados.map(({ clave, p, pres }) => {
@@ -1007,7 +1014,8 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                * paquete, y "una caja de paquetes de 500 g" no es algo que el
                * sistema sepa (el bulto del DUN es de la unidad de venta).
                */
-              const porBulto = esGranel ? 1 : (Number(prod.unidadesPorBulto) || 1);
+              /* La ficha o, si no, el formato de compra que fija el precio (5/10/2026). */
+              const porBulto = esGranel ? 1 : (bultoDe(prod) || 1);
               // Cuántos kg de granel hace falta fraccionar para este renglón.
               const pres = presNum ? (prod.presentaciones || []).find((x) => x.id === presNum) : null;
               const pideKg = esGranel
@@ -1019,6 +1027,8 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                   <td>
                     <strong>{prod.nombre}</strong>
                     <div className={s.hint} style={{ margin: 0 }}>{prod.marca || 'Sin marca'}</div>
+                    {/* Pedido de Lucas (5/10/2026): el bulto a la vista debajo del producto. El pedido sigue en unidades. */}
+                    {!esGranel && porBulto > 1 && <div className={s.hint} style={{ margin: 0, fontWeight: 600 }}>Viene en bulto de {num(porBulto, 0)} u.</div>}
                   </td>
                   {esGranel && (
                     <td>
@@ -1105,7 +1115,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                   <td className={s.num} style={{ textAlign: 'center' }}>
                     {!esGranel && porBulto > 1
                       ? (
-                        <div title="El tamaño del bulto sale de la ficha del producto: se cambia ahí">
+                        <div title="Sale de la ficha del producto (Unidades por bulto) o, si no está, del formato de compra que fija el precio">
                           <div style={{ fontWeight: 600 }}>{num(porBulto, 0)}</div>
                           <div className={s.hint} style={{ margin: 0 }}>u./bulto</div>
                         </div>
