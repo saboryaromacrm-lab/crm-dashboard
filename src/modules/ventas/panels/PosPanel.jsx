@@ -3,7 +3,8 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi } from '../services/ventas.api.js';
-import { CONDICIONES_IVA, CONDICIONES_PAGO, MEDIOS_PAGO, ORIGEN_LISTA } from '../domain/constants.js';
+import { CONDICIONES_IVA, CONDICIONES_PAGO, MEDIOS_PAGO, ORIGEN_LISTA, TIPOS_VENTA, nroComprobante } from '../domain/constants.js';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import {
   buscarEnCatalogo, calcularRenglon, descuentosDisponibles, descuentosParaApi,
   extrasParaApi, itemsParaApi, motivoBloqueo, parseEtiquetaBalanza,
@@ -693,6 +694,7 @@ export function PosPanel() {
     clientes, config, ctx, usuarios, sucursales, getCliente, openModal, closeModal, toast, modal,
     goPanel, operador, operadorId,
   } = useVentas();
+  const { can } = usePermissions();
 
   const [ticket, dispatch] = useReducer(ticketReducer, ticketInicial);
   const [activaId, setActivaId] = useState(null);      // null = tabla de ventas en curso
@@ -1378,14 +1380,29 @@ export function PosPanel() {
         },
         onCobrado: (venta, vuelto) => {
           closeModal();
-          openModal('ventaEmitida', {
-            venta, vuelto, renglones: ticket.renglones,
-            onNuevoTicket: () => trasCobrar(venta.id),
-          });
+          /*
+           * DIRECTO AL TICKET SIGUIENTE (6/10/2026, pedido del dueño): sin la
+           * ventana «Venta registrada». El papel ya salió al cobrar (si está
+           * prendido en Sistema › Impresión) y se reimprime desde la
+           * registradora; el vuelto se vio en el cobro y se repite en el aviso.
+           * La ventana queda SOLO si se facturó a un CUIT que todavía no es
+           * cliente: ahí pregunta si se lo agrega, y eso hay que decidirlo.
+           */
+          const cuitNuevo = !!venta.receptor && !!getCliente(venta.clienteId)?.esConsumidorFinal && can('ventas.clientes');
+          if (cuitNuevo) {
+            openModal('ventaEmitida', {
+              venta, vuelto, renglones: ticket.renglones,
+              onNuevoTicket: () => trasCobrar(venta.id),
+            });
+            return;
+          }
+          trasCobrar(venta.id);
+          const tipo = TIPOS_VENTA[venta.tipo]?.label ?? 'Venta';
+          toast(`Venta registrada · ${tipo} ${nroComprobante(venta)} · ${money(venta.total)}${vuelto > 0 ? ` · VUELTO ${money(vuelto)}` : ''}`, 'ok');
         },
       });
     });
-  }, [puedeCobrar, problemas, activaId, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast, restriccion]);
+  }, [puedeCobrar, problemas, activaId, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast, restriccion, getCliente, can]);
 
   const cambiarCliente = (id) => {
     const anterior = clienteActual?.descuento || 0;
