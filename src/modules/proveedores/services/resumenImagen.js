@@ -3,12 +3,14 @@
  *
  * El resumen de una cuenta disponible se le pasa al proveedor por WhatsApp.
  * Sacarle captura a la vista de impresión cortaba la lista (no entra en la
- * pantalla) y la achicaba. Acá se dibuja la MISMA hoja —membrete, datos de la
- * cuenta con «Transferido» resaltado, y la lista con fecha y hora, monto,
- * comprobante y observación— en una imagen PNG del largo que haga falta.
+ * pantalla) y la achicaba. Acá se dibuja la hoja —datos de la cuenta con
+ * «Transferido» resaltado, y la lista con fecha y hora, monto, comprobante y
+ * observación— en una imagen PNG del largo que haga falta.
  *
- * Se dibuja a mano en un canvas (sin librerías): el logo es un data: URI, así
- * que el canvas no queda «contaminado» y se puede copiar.
+ * SIN MEMBRETE (7/10/2026, pedido del dueño): la imagen no lleva el logo ni
+ * los datos de la empresa (razón social, CUIT, dirección, teléfono); arranca
+ * en «Historial de transferencias». El papel de «Imprimir» sí los sigue
+ * llevando. Se dibuja a mano en un canvas, sin librerías.
  */
 import { configImpresion } from '@core/services/imprimir.js';
 import { fmtFechaHora, money } from '@modules/productos/domain/format.js';
@@ -19,20 +21,8 @@ const ESCALA = 2; // nitidez en pantallas y al hacer zoom en el celular
 const FUENTE = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const AMARILLO = '#fff176';
 const BORDE = '#9a9a9a';
-const LOGO_OK = /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 
 const colorMarca = (c) => (/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(String(c || '').trim()) ? String(c).trim() : '#166534');
-
-function cargarLogo(src) {
-  const v = String(src ?? '').trim();
-  if (!LOGO_OK.test(v)) return Promise.resolve(null);
-  return new Promise((res) => {
-    const img = new Image();
-    img.onload = () => res(img);
-    img.onerror = () => res(null);
-    img.src = v;
-  });
-}
 
 /** Parte un texto en renglones que entran en `ancho` (corta palabras larguísimas). */
 function partir(ctx, texto, ancho) {
@@ -62,16 +52,9 @@ function partir(ctx, texto, ancho) {
  * saber el alto), la segunda dibuja.
  */
 export async function imagenResumenCuenta(cuenta, pagos) {
+  /* Solo el color de la marca, para el título (sin logo ni datos de la empresa). */
   const { empresa } = await configImpresion();
-  const logo = await cargarLogo(empresa.logo);
   const color = colorMarca(empresa.colorMarca);
-  const razon = String(empresa.razonSocial || '').trim();
-  const datos = [
-    razon && razon !== String(empresa.nombre || '').trim() && razon,
-    empresa.cuit && `CUIT ${empresa.cuit}`,
-    empresa.direccion,
-    empresa.telefono,
-  ].filter(Boolean).join(' · ');
 
   const COLS = [
     { h: 'Fecha y hora', w: 170, v: (p) => fmtFechaHora(p.fecha) },
@@ -102,26 +85,8 @@ export async function imagenResumenCuenta(cuenta, pagos) {
     };
     if (pintar) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, ANCHO, ctx.canvas.height / ESCALA); }
 
-    // Membrete
-    let y = PAD;
-    let x = PAD;
-    const altoMembrete = 58;
-    if (logo) {
-      const prop = logo.width / logo.height || 1;
-      const w = Math.min(160, prop * altoMembrete);
-      const h = w / prop;
-      if (pintar) ctx.drawImage(logo, x, y + (altoMembrete - h) / 2, w, h);
-      x += w + 14;
-    }
-    texto(empresa.nombre || 'Sabor y Aroma', x, y + 18, { size: 22, peso: 800, col: color });
-    ctx.font = `400 12px ${FUENTE}`;
-    const lineasDatos = partir(ctx, datos, ANCHO - PAD - x);
-    lineasDatos.forEach((l, i) => texto(l, x, y + 42 + i * 16, { size: 12, col: '#555' }));
-    y += Math.max(altoMembrete, 34 + lineasDatos.length * 16) + 10;
-    if (pintar) { ctx.fillStyle = color; ctx.fillRect(PAD, y, ANCHO - 2 * PAD, 2); }
-    y += 22;
-
-    // Título
+    // Título (arriba de todo: sin membrete)
+    let y = PAD + 12;
     texto('Historial de transferencias', PAD, y, { size: 20, peso: 800, col: color });
     y += 24;
     texto(cuenta.proveedorNombre, PAD, y, { size: 13, col: '#555' });

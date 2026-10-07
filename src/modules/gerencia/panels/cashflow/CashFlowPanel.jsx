@@ -6,6 +6,12 @@
  * depósito). Todo lo que mueve plata confirma dos veces; nada se borra, se
  * anula con motivo. Las reglas viven en el servidor (crm-api/src/cashflow);
  * acá solo se pide y se muestra.
+ *
+ * 7/10/2026: las ventanas que mueven plata (contar, sobre, ingreso/egreso,
+ * pago, anular, arranque) se exportan y las usa también la versión de celular
+ * (CashFlowMovil.jsx, en /cashflow): mismas reglas, misma doble confirmación.
+ * Dentro de esa pantalla `useModalModo().movil` es true y se ajustan para el
+ * dedo (botones − / + en los billetes, facturas en tarjetas).
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
@@ -16,35 +22,17 @@ import { cx } from '@shared/utils/classNames.js';
 import { money, num } from '@modules/productos/domain/format.js';
 import { Table, PanelHead, Btn, Pill, s } from '@modules/productos/components/ui.jsx';
 import { ModalShell } from '@modules/productos/components/Modal.jsx';
+import { useModalModo } from '@modules/productos/components/modalModo.js';
 import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@modules/gastos/components/segundaConfirmacion.jsx';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { imprimirDocumento, esc } from '@core/services/imprimir.js';
 import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles } from '../metricas/piezas.jsx';
 import { ColumnasMulti } from '../metricas/graficos.jsx';
-import { iso, MESES } from '../metricas/formato.js';
+import { iso } from '../metricas/formato.js';
+import { ANULABLES, DENOMINACIONES, MEDIO, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
 
-const DENOMINACIONES = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20];
-
-const hoy = () => iso(new Date());
-const fechaHora = (v) => (v ? new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
-const fechaCorta = (v) => (v ? new Date(v).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
-const fechaIso = (p) => (p ? `${p.slice(8, 10)}/${p.slice(5, 7)}/${p.slice(0, 4)}` : '—');
-const ORIGEN = { saldo_inicial: 'Saldo inicial', sobre: 'Sobre de caja', concepto: 'Concepto', pago_proveedor: 'Pago a proveedor', gasto: 'Gasto', conteo: 'Conteo' };
-const MEDIO = { efectivo: 'efectivo', deposito: 'depósito' };
-/** Lo que se anula desde Movimientos (el sobre se deshace desde Sobres; el saldo inicial, desde el arranque). */
-const ANULABLES = ['concepto', 'pago_proveedor', 'gasto', 'conteo'];
-/** Días desde el cierre de un sobre (calendario local): «hoy», «1 día», «4 días». */
-const diasDesde = (v) => Math.max(0, Math.round((Date.parse(hoy()) - Date.parse(iso(new Date(v)))) / 86_400_000));
-/** Qué es cada movimiento, en una línea. */
-const queEs = (m) => {
-  if (m.origen === 'concepto') return m.concepto;
-  if (m.origen === 'sobre') return `Sobre ${m.sucursal ?? ''}`;
-  if (m.origen === 'pago_proveedor') return `Pago a ${m.proveedor ?? 'proveedor'} (${MEDIO[m.medio] ?? m.medio ?? ''})`;
-  if (m.origen === 'gasto') return `Gasto: ${m.concepto ?? m.gastoDescripcion ?? ''}${m.gastoCategoria ? ` · ${m.gastoCategoria}` : ''}`;
-  return ORIGEN[m.origen] ?? m.origen;
-};
 /** La diferencia, con su color: rojo faltó, verde sobró, gris nada. */
-function Diferencia({ v }) {
+export function Diferencia({ v }) {
   if (v == null) return <span className={s.muted}>—</span>;
   const n = Number(v) || 0;
   if (Math.abs(n) < 0.009) return <span style={{ color: 'var(--crm-color-text-muted)' }}>sin diferencia</span>;
@@ -57,7 +45,7 @@ const Campo = ({ label, hint, children }) => (
 /* ==================================================================== *
  * Arranque: desde qué día y con cuánto efectivo en mano
  * ==================================================================== */
-function Arranque({ caja, onHecho, avisar, onCancelar }) {
+export function Arranque({ caja, onHecho, avisar, onCancelar }) {
   const [fecha, setFecha] = useState(caja?.fechaInicio ?? hoy());
   const [saldo, setSaldo] = useState(String(caja?.saldoInicial ?? ''));
   const [error, setError] = useState('');
@@ -83,7 +71,7 @@ function Arranque({ caja, onHecho, avisar, onCancelar }) {
       <div className={s['form-grid']}>
         <Campo label="Arranca el día"><input type="date" value={fecha} max={hoy()} onChange={(e) => setFecha(e.target.value)} /></Campo>
         <Campo label="Efectivo en mano ese día" hint="Lo que contaste, con billetes y monedas. Puede ser 0.">
-          <input type="number" min="0" step="0.01" value={saldo} onChange={(e) => setSaldo(e.target.value)} placeholder="0" />
+          <input type="number" min="0" step="0.01" inputMode="decimal" value={saldo} onChange={(e) => setSaldo(e.target.value)} placeholder="0" />
         </Campo>
       </div>
       <AvisoSegundaConfirmacion {...sc}>
@@ -182,6 +170,8 @@ function useBilletes() {
 }
 
 function ContadorBilletes({ c }) {
+  const { movil } = useModalModo();
+  if (movil) return <ContadorBilletesMovil c={c} />;
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'auto 90px 1fr', gap: '6px 12px', alignItems: 'center', fontVariantNumeric: 'tabular-nums' }}>
       {DENOMINACIONES.map((d, i) => (
@@ -200,8 +190,49 @@ function ContadorBilletes({ c }) {
   );
 }
 
+/**
+ * EL CONTADOR EN EL CELULAR: un renglón por billete con − y + grandes (se
+ * cuenta tocando, sin abrir el teclado) y el número igual se puede escribir.
+ * El total queda fijo abajo de la lista mientras se cuenta.
+ */
+function ContadorBilletesMovil({ c }) {
+  const cant = (d) => Number(c.billetes[d]) || 0;
+  const poner = (d, n) => c.setBilletes((b) => ({ ...b, [d]: n > 0 ? String(n) : '' }));
+  const boton = { width: 44, height: 44, borderRadius: 12, border: '1px solid var(--crm-color-border)', background: 'var(--crm-color-surface-2)', color: 'var(--crm-color-text)', fontSize: 22, fontWeight: 700, lineHeight: 1, cursor: 'pointer', flex: '0 0 auto', touchAction: 'manipulation' };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontVariantNumeric: 'tabular-nums' }}>
+      {DENOMINACIONES.map((d) => (
+        <div key={d} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '5px 0', borderBottom: '1px solid var(--crm-color-border)' }}>
+          <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <strong style={{ fontSize: 16 }}>{money(d).replace(/,00$/, '')}</strong>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: cant(d) ? 'var(--crm-color-primary)' : 'var(--crm-color-text-muted)', overflowWrap: 'anywhere' }}>{cant(d) ? `= ${money(d * cant(d))}` : 'ninguno'}</span>
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '0 0 auto' }}>
+            <button type="button" style={{ ...boton, opacity: cant(d) ? 1 : 0.45 }} onClick={() => poner(d, cant(d) - 1)} disabled={!cant(d)} aria-label={`Un billete menos de ${money(d)}`}>−</button>
+            <input type="number" min="0" step="1" inputMode="numeric" value={c.billetes[d] ?? ''} placeholder="0"
+              onChange={(e) => c.setBilletes((b) => ({ ...b, [d]: e.target.value }))} onFocus={(e) => e.target.select()}
+              aria-label={`Billetes de ${money(d)}`} style={{ width: 58, height: 44, textAlign: 'center', fontWeight: 700, padding: 0 }} />
+            <button type="button" style={boton} onClick={() => poner(d, cant(d) + 1)} aria-label={`Un billete más de ${money(d)}`}>+</button>
+          </div>
+        </div>
+      ))}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 0' }}>
+        <label htmlFor="cf-otros" style={{ fontWeight: 600 }}>Monedas y otros</label>
+        <input id="cf-otros" type="number" min="0" step="0.01" inputMode="decimal" value={c.otros} placeholder="$ 0" onChange={(e) => c.setOtros(e.target.value)} style={{ width: 120, height: 44, textAlign: 'right', flex: '0 0 auto' }} />
+      </div>
+      <div style={{ position: 'sticky', bottom: -16, margin: '0 -16px', padding: '12px 16px', gap: 8, flexWrap: 'wrap', background: 'var(--crm-color-primary-soft)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: '1px solid var(--crm-color-border)', zIndex: 1 }}>
+        <span style={{ fontWeight: 700 }}>Total contado</span>
+        <strong style={{ fontSize: 22 }}>{money(c.contado)}</strong>
+      </div>
+    </div>
+  );
+}
+
 /** Lo que puso el cajero contra lo que contó el dueño, billete por billete: muestra DÓNDE está la diferencia. */
-function CompararBilletes({ delCajero, contados, otrosContados, enviado, contado }) {
+function CompararBilletes(props) {
+  const { movil } = useModalModo();
+  if (movil) return <CompararBilletesMovil {...props} />;
+  const { delCajero, contados, otrosContados, enviado, contado } = props;
   const cajero = delCajero || {};
   const yo = contados || {};
   const dens = DENOMINACIONES.filter((d) => Number(cajero[d]) > 0 || Number(yo[d]) > 0);
@@ -232,6 +263,43 @@ function CompararBilletes({ delCajero, contados, otrosContados, enviado, contado
   );
 }
 
+/** La misma comparación, angosta: cuatro columnas cortas que entran en el teléfono sin correrse. */
+function CompararBilletesMovil({ delCajero, contados, otrosContados, enviado, contado }) {
+  const cajero = delCajero || {};
+  const yo = contados || {};
+  const dens = DENOMINACIONES.filter((d) => Number(cajero[d]) > 0 || Number(yo[d]) > 0);
+  const hayDetalle = Object.values(cajero).some((n) => Number(n) > 0);
+  const fila = { display: 'grid', gridTemplateColumns: '1fr 52px 52px minmax(92px, auto)', gap: 8, alignItems: 'center', padding: '9px 0', borderBottom: '1px solid var(--crm-color-border)', fontVariantNumeric: 'tabular-nums' };
+  const der = { textAlign: 'right' };
+  const sinCentavos = (v) => money(v).replace(/,00$/, '');
+  return (
+    <div style={{ fontSize: 14 }}>
+      <div style={{ ...fila, fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--crm-color-text-secondary)', paddingTop: 0 }}>
+        <span>Billete</span><span style={der}>Cajero</span><span style={der}>Vos</span><span style={der}>Diferencia</span>
+      </div>
+      {dens.map((d) => {
+        const a = Number(cajero[d]) || 0; const b = Number(yo[d]) || 0;
+        return (
+          <div key={d} style={{ ...fila, background: hayDetalle && a !== b ? 'color-mix(in srgb, var(--crm-color-danger) 8%, transparent)' : undefined }}>
+            <strong>{sinCentavos(d)}</strong>
+            <span style={der}>{hayDetalle ? a : '—'}</span>
+            <span style={der}>{b}</span>
+            <span style={der}>{hayDetalle ? <Diferencia v={(b - a) * d} /> : '—'}</span>
+          </div>
+        );
+      })}
+      {Number(otrosContados) > 0 && (
+        <div style={fila}><span>Monedas</span><span style={der}>—</span><span style={der} /><span style={der}>{money(otrosContados)}</span></div>
+      )}
+      <div style={{ display: 'grid', gap: 4, padding: '10px 0 2px' }}>
+        <span style={{ display: 'flex', justifyContent: 'space-between' }}><span>Dice el sobre</span><strong>{money(enviado)}</strong></span>
+        <span style={{ display: 'flex', justifyContent: 'space-between' }}><span>Contaste</span><strong>{money(contado)}</strong></span>
+        <span style={{ display: 'flex', justifyContent: 'space-between' }}><span>Diferencia</span><Diferencia v={Math.round((contado - enviado) * 100) / 100} /></span>
+      </div>
+    </div>
+  );
+}
+
 function CierreDelCajero({ sobre }) {
   const pagos = Array.isArray(sobre.pagosLocalDetalle) ? sobre.pagosLocalDetalle : [];
   return (
@@ -252,7 +320,7 @@ function CierreDelCajero({ sobre }) {
  * tiende a confirmarlo sin contar); recién después se compara, denominación
  * por denominación, y la diferencia pide su motivo.
  */
-function SobreModal({ sobre, onCerrar, onHecho, avisar }) {
+export function SobreModal({ sobre, onCerrar, onHecho, avisar }) {
   const c = useBilletes();
   const [paso, setPaso] = useState('contar');
   const [motivo, setMotivo] = useState('');
@@ -320,7 +388,7 @@ function SobreModal({ sobre, onCerrar, onHecho, avisar }) {
 }
 
 /** Un sobre ya resuelto, para mirar: lo que puso el cajero contra lo que contaste, o por qué no correspondía. */
-function SobreVer({ sobre, onCerrar }) {
+export function SobreVer({ sobre, onCerrar }) {
   const conDetalle = Object.values(sobre.billetesContados || {}).some((n) => Number(n) > 0) || sobre.otrosContados > 0;
   return (
     <ModalShell title={`Sobre de ${sobre.sucursal}`} subtitle={`Cierre del ${fechaHora(sobre.cierre)} · armó el sobre: ${sobre.cajero || '—'}`} wide onClose={onCerrar} footer={[{ texto: 'Cerrar', onClick: onCerrar }]}>
@@ -343,7 +411,7 @@ function SobreVer({ sobre, onCerrar }) {
   );
 }
 
-function AnularModal({ titulo, texto, ruta, onCerrar, onHecho, avisar, exito, boton = 'Anular', extra, aviso = 'Se anula y el efectivo en mano se recalcula.', placeholder }) {
+export function AnularModal({ titulo, texto, ruta, onCerrar, onHecho, avisar, exito, boton = 'Anular', extra, aviso = 'Se anula y el efectivo en mano se recalcula.', placeholder }) {
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState('');
   const sc = useSegundaConfirmacion(motivo);
@@ -537,7 +605,7 @@ function Disponible({ saldo, importe, fecha }) {
   );
 }
 
-function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avisar }) {
+export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avisar }) {
   const opciones = conceptos.filter((c) => c.tipo === tipo && c.activo && (c.clase !== 'gasto' || c.gastoCategoriaId));
   const [conceptoId, setConceptoId] = useState(opciones[0]?.id ?? '');
   const [importe, setImporte] = useState('');
@@ -576,7 +644,7 @@ function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avisar }) 
             {opciones.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.clase === 'gasto' ? ` (gasto · ${c.gastoCategoria})` : ''}</option>)}
           </select>
         </Campo>
-        <Campo label="Importe *"><input type="number" min="0" step="0.01" value={importe} onChange={(e) => setImporte(e.target.value)} autoFocus /></Campo>
+        <Campo label="Importe *"><input type="number" min="0" step="0.01" inputMode="decimal" value={importe} onChange={(e) => setImporte(e.target.value)} autoFocus /></Campo>
       </div>
       <div className={s['form-grid']}>
         <Campo label="Fecha"><input type="date" value={fecha} max={hoy()} onChange={(e) => setFecha(e.target.value)} /></Campo>
@@ -597,7 +665,8 @@ function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avisar }) 
  * las facturas (o los gastos cargados) que se pagan y con qué (efectivo o
  * depósito). Es el mismo pago de siempre: queda en la cuenta del proveedor.
  */
-function PagoProveedorModal({ saldo, onCerrar, onHecho, avisar }) {
+export function PagoProveedorModal({ saldo, onCerrar, onHecho, avisar }) {
+  const { movil } = useModalModo();
   const { data: provs } = useResource('cashflow:proveedores', () => httpClient.get('/cashflow/proveedores'));
   const [proveedorId, setProveedorId] = useState('');
   const [destino, setDestino] = useState('mercaderia');
@@ -674,7 +743,34 @@ function PagoProveedorModal({ saldo, onCerrar, onHecho, avisar }) {
       {prov && (
         <div>
           <div className={s['mini-label']}>{destino === 'gastos' ? 'Gastos que le debés' : 'Facturas que le debés'} — tildá las que pagás</div>
-          {loading && !docs ? <Cargando /> : !(docs ?? []).length ? <div className={s.hint} style={{ margin: 0 }}>No le debés nada {destino === 'gastos' ? 'en gastos' : 'en facturas'}. Podés pagar a cuenta igual.</div> : (
+          {loading && !docs ? <Cargando /> : !(docs ?? []).length ? <div className={s.hint} style={{ margin: 0 }}>No le debés nada {destino === 'gastos' ? 'en gastos' : 'en facturas'}. Podés pagar a cuenta igual.</div> : movil ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {(docs ?? []).map((d) => {
+                const on = tildes[d.docId] != null;
+                return (
+                  <div key={`${d.tipo}${d.docId}`} style={{ border: `1px solid ${on ? 'var(--crm-color-primary)' : 'var(--crm-color-border)'}`, background: on ? 'var(--crm-color-primary-soft)' : 'var(--crm-color-surface)', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={on} onChange={(e) => tildar(d, e.target.checked)} aria-label={`Pagar ${d.etiqueta}`} style={{ width: 22, height: 22, marginTop: 1, flex: '0 0 auto' }} />
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <strong>{d.etiqueta}</strong>
+                        <span className={s.hint} style={{ display: 'block', margin: 0 }}>{fechaCorta(d.fecha)}{d.detalle ? ` · ${d.detalle}` : ''}</span>
+                      </span>
+                      <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <span className={s.hint} style={{ display: 'block', margin: 0 }}>saldo</span>
+                        <strong>{money(d.saldo)}</strong>
+                      </span>
+                    </label>
+                    {on && (
+                      <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <span>Pagás</span>
+                        <input type="number" min="0" max={d.saldo} step="0.01" inputMode="decimal" value={tildes[d.docId]} onChange={(e) => setTildes((t) => ({ ...t, [d.docId]: e.target.value }))} style={{ width: 150, textAlign: 'right', height: 44 }} aria-label={`Importe a pagar de ${d.etiqueta}`} />
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
             <Table cols={[{ h: '' }, { h: 'Documento' }, { h: 'Fecha' }, { h: 'Saldo', num: true }, { h: 'Pagás', num: true }]} empty="">
               {(docs ?? []).map((d) => {
                 const on = tildes[d.docId] != null;
@@ -696,7 +792,7 @@ function PagoProveedorModal({ saldo, onCerrar, onHecho, avisar }) {
       )}
       <div className={s['form-grid']}>
         <Campo label="Además, a cuenta (sin aplicar a un documento)" hint="Queda como saldo a favor en la cuenta del proveedor; se aplica después desde Proveedores.">
-          <input type="number" min="0" step="0.01" value={aCuenta} onChange={(e) => setACuenta(e.target.value)} placeholder="0" />
+          <input type="number" min="0" step="0.01" inputMode="decimal" value={aCuenta} onChange={(e) => setACuenta(e.target.value)} placeholder="0" />
         </Campo>
         <div>
           <div className={s['mini-label']}>Total del pago</div>
@@ -753,7 +849,7 @@ function Movimientos({ version, bump, avisar, conceptos, saldo }) {
       {modal?.tipo === 'anular' && (
         <AnularModal
           titulo={`Anular ${modal.m.tipo} de ${money(modal.m.importe)}`}
-          texto={`${queEs(modal.m)} del ${fechaCorta(modal.m.fecha)}${modal.m.detalle ? ` (${modal.m.detalle})` : ''}.${modal.m.origen === 'pago_proveedor' ? ' El pago se desaplica de sus facturas y se anula en la cuenta del proveedor.' : modal.m.origen === 'gasto' ? ' El gasto y su pago se anulan también en Gastos.' : modal.m.origen === 'conteo' ? ' El saldo vuelve a lo que decía el libro antes del conteo; el conteo queda registrado.' : ''}`}
+          texto={textoAnular(modal.m)}
           ruta={`/cashflow/movimientos/${modal.m.id}/anular`}
           exito="Movimiento anulado."
           onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar}
@@ -862,7 +958,7 @@ function Conceptos({ conceptos, bump, avisar }) {
  * hay que confirmar que esos sobres NO están en lo contado. «Ajustar» arranca
  * destildado y un conteo vacío no se registra.
  */
-function ConteoModal({ saldo, enTransito, onCerrar, onHecho, avisar }) {
+export function ConteoModal({ saldo, enTransito, onCerrar, onHecho, avisar }) {
   const c = useBilletes();
   const [ajustar, setAjustar] = useState(false);
   const [aparte, setAparte] = useState(false);
@@ -946,9 +1042,6 @@ function ConteoModal({ saldo, enTransito, onCerrar, onHecho, avisar }) {
 /* ==================================================================== *
  * Reportes
  * ==================================================================== */
-const etiquetaPeriodo = (p, paso) => (paso === 'mes' ? `${MESES[Number(p.slice(5, 7)) - 1]} ${p.slice(2, 4)}` : `${Number(p.slice(8, 10))}/${Number(p.slice(5, 7))}`);
-const tituloPeriodo = (p, paso) => (paso === 'mes' ? `${MESES[Number(p.slice(5, 7)) - 1]} ${p.slice(0, 4)}` : paso === 'semana' ? `Semana del ${fechaIso(p)}` : fechaIso(p));
-const primerDiaMes = (d = new Date()) => iso(new Date(d.getFullYear(), d.getMonth(), 1));
 
 function Reportes({ version }) {
   const [desde, setDesde] = useState(primerDiaMes());

@@ -198,7 +198,9 @@ export function LoginPage() {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 2 }}>
+    /* La columna se achica hasta el ancho del celular (antes la tarjeta de 400 px
+     * se salía por la derecha en un teléfono de 375). */
+    <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', justifyContent: 'center', gridTemplateColumns: 'minmax(0, 400px)', p: 2 }}>
       <Card sx={{ width: 400, maxWidth: '100%' }}>
         <CardContent sx={{ p: 3.5 }}>
           {/*

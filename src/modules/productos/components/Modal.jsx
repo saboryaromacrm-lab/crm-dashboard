@@ -14,8 +14,22 @@
 import { Dialog, DialogTitle, DialogContent, DialogActions, IconButton } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { Btn, s } from './ui.jsx';
+import { useModalModo } from './modalModo.js';
+
+/* Modo celular (ver modalModo.js): pantalla entera, campos de 16 px, botones
+ * grandes abajo y margen para la muesca y la barra de gestos del teléfono. */
+const SX_MOVIL = {
+  paper: { borderRadius: 0, '& .MuiDialogContent-root input, & .MuiDialogContent-root select, & .MuiDialogContent-root textarea': { fontSize: 16 } },
+  titulo: { pt: 'calc(12px + env(safe-area-inset-top, 0px))', pb: 1.5, pl: 2, position: 'sticky', top: 0 },
+  contenido: { px: 2 },
+  acciones: {
+    px: 2, pt: 1.5, pb: 'calc(12px + env(safe-area-inset-bottom, 0px))', gap: 1, flexWrap: 'wrap',
+    '& > button': { flex: '1 1 130px', minHeight: 48, fontSize: 15, m: 0 },
+  },
+};
 
 export function ModalShell({ title, subtitle, size, wide, muted, onClose, children, footer = [] }) {
+  const { movil } = useModalModo();
   const maxWidth = size ?? (wide ? 'md' : 'sm');
   const esConsulta = maxWidth === 'xl';
   const paperSx = {
@@ -25,6 +39,7 @@ export function ModalShell({ title, subtitle, size, wide, muted, onClose, childr
     // `muted`: fondo gris del app en vez de blanco, para modales que flotan
     // sobre pantallas claras (la caja) y necesitan despegarse visualmente.
     ...(muted && { bgcolor: 'var(--crm-color-bg)' }),
+    ...(movil && SX_MOVIL.paper),
   };
 
   return (
@@ -33,10 +48,11 @@ export function ModalShell({ title, subtitle, size, wide, muted, onClose, childr
       onClose={onClose}
       maxWidth={maxWidth}
       fullWidth
+      fullScreen={movil}
       PaperProps={Object.keys(paperSx).length ? { sx: paperSx } : undefined}
     >
       <DialogTitle
-        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pr: 1, gap: 2 }}
+        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pr: 1, gap: 2, ...(movil && SX_MOVIL.titulo) }}
       >
         <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
           <span style={{ fontSize: 18, fontWeight: 700 }}>{title}</span>
@@ -46,20 +62,20 @@ export function ModalShell({ title, subtitle, size, wide, muted, onClose, childr
             </span>
           )}
         </span>
-        <IconButton aria-label="Cerrar" onClick={onClose} size="small">
-          <CloseIcon fontSize="small" />
+        <IconButton aria-label="Cerrar" onClick={onClose} size={movil ? 'medium' : 'small'}>
+          <CloseIcon fontSize={movil ? 'medium' : 'small'} />
         </IconButton>
       </DialogTitle>
 
       <DialogContent
         dividers
-        sx={esConsulta ? { display: 'flex', flexDirection: 'column', p: 0, overflow: 'hidden' } : undefined}
+        sx={esConsulta ? { display: 'flex', flexDirection: 'column', p: 0, overflow: 'hidden' } : movil ? SX_MOVIL.contenido : undefined}
       >
         {esConsulta ? children : <div className={s.form}>{children}</div>}
       </DialogContent>
 
       {footer.length > 0 && (
-        <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+        <DialogActions disableSpacing={movil} sx={movil ? SX_MOVIL.acciones : { px: 3, py: 2, gap: 1 }}>
           {/* `disabled` para que el botón que confirma se pueda apagar mientras
               la petición vuela: sin eso, un doble click en una conexión lenta
               manda la operación dos veces (dos gastos, dos egresos de caja). */}

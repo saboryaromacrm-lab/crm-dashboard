@@ -14,5 +14,8 @@
     { "src": "/icons/erp-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icons/erp-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "/icons/erp-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Cash Flow", "short_name": "Cash Flow", "description": "La caja central de efectivo, en versión celular", "url": "/cashflow", "icons": [{ "src": "/icons/cashflow-192.png", "sizes": "192x192", "type": "image/png" }] }
   ]
 }
