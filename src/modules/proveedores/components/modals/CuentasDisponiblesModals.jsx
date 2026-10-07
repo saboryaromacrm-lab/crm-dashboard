@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { esc, imprimirDocumento } from '@core/services/imprimir.js';
 import { useProveedores } from '../../context/ProveedoresContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { errorMsg, provApi } from '../../services/proveedores.api.js';
+import { copiarImagenResumen } from '../../services/resumenImagen.js';
 import { fmt, textoResumenCuenta } from '@modules/ventas/domain/cuentasProveedor.js';
 import { Di, ModalShell, Pill, Table, fmtFecha, fmtFechaHora, money, s } from '../ui.jsx';
 
@@ -187,14 +188,19 @@ export function CuentaDisponibleModal({ cuenta, onChange }) {
  * El resumen: lo que se le manda al proveedor
  * ==================================================================== */
 
+/* 7/10/2026 (pedido del dueño): sin la columna Cliente, la fecha CON hora,
+ * en el orden fecha y hora · monto · comprobante · observación, y
+ * «Transferido» con marcador amarillo (print-color-adjust: si no, el
+ * navegador saca el fondo al imprimir). */
+const MARCADOR = 'background:#fff176;-webkit-print-color-adjust:exact;print-color-adjust:exact;';
+
 function cuerpoResumen(cuenta, pagos) {
-  const fila = (k, v) => `<tr><td class="chica"><strong>${esc(k)}</strong></td><td>${esc(v)}</td></tr>`;
+  const fila = (k, v, resaltar = false) => `<tr${resaltar ? ` style="${MARCADOR}"` : ''}><td class="chica"${resaltar ? ` style="${MARCADOR}"` : ''}><strong>${esc(k)}</strong></td><td${resaltar ? ` style="${MARCADOR}"` : ''}>${resaltar ? `<strong>${esc(v)}</strong>` : esc(v)}</td></tr>`;
   const filas = pagos.map((p) => `
     <tr>
-      <td>${esc(fmtFecha(p.fecha))}</td>
-      <td>${esc(p.clienteNombre || '')}</td>
+      <td class="chica">${esc(fmtFechaHora(p.fecha))}</td>
+      <td class="n"><strong>${esc(money(p.importe))}</strong></td>
       <td>${esc(p.documento?.etiqueta || '')}</td>
-      <td style="text-align:right"><strong>${esc(money(p.importe))}</strong></td>
       <td>${esc(p.observaciones || '')}</td>
     </tr>`).join('');
   return `
@@ -204,11 +210,11 @@ function cuerpoResumen(cuenta, pagos) {
       ${fila('Titular', cuenta.titular)}
       ${fila('Alias / CBU', cuenta.cbuAlias)}
       ${fila('A cubrir', money(cuenta.importe))}
-      ${fila('Transferido', `${money(cuenta.pagado)} en ${cuenta.cant} transferencia(s)`)}
+      ${fila('Transferido', `${money(cuenta.pagado)} en ${cuenta.cant} transferencia${cuenta.cant === 1 ? '' : 's'}`, true)}
       ${fila('Falta', money(cuenta.falta))}
     </tbody></table>
     <table>
-      <thead><tr><th>Fecha</th><th>Cliente</th><th>Comprobante</th><th style="text-align:right">Pago</th><th>Obs.</th></tr></thead>
+      <thead><tr><th>Fecha y hora</th><th style="text-align:right">Monto</th><th>Comprobante</th><th>Obs.</th></tr></thead>
       <tbody>${filas}</tbody>
     </table>`;
 }
@@ -231,6 +237,19 @@ export function ResumenCuentaModal({ cuentaId, onChange }) {
     });
     if (!ok) toast('El navegador bloqueó la ventana de impresión.', 'err');
   };
+  /* La misma hoja como imagen, para pegarla en el WhatsApp del proveedor. */
+  const [armandoImagen, setArmandoImagen] = useState(false);
+  const enCurso = useRef(false);
+  const copiarImagen = async () => {
+    if (enCurso.current || !cuenta) return;
+    enCurso.current = true; setArmandoImagen(true);
+    try {
+      const como = await copiarImagenResumen(cuenta, pagos);
+      toast(como === 'copiada'
+        ? 'Imagen copiada: pegala en el WhatsApp del proveedor (Ctrl+V).'
+        : 'Se descargó la imagen: adjuntala en el WhatsApp del proveedor.', 'ok');
+    } catch { toast('No se pudo armar la imagen.', 'err'); } finally { enCurso.current = false; setArmandoImagen(false); }
+  };
   const marcarEnviado = async () => {
     try {
       await provApi.editarCuentaDisponible(cuenta.id, { enviado: true });
@@ -249,6 +268,7 @@ export function ResumenCuentaModal({ cuentaId, onChange }) {
         { texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal },
         ...(cuenta && !cuenta.enviado ? [{ texto: 'Marcar enviado', clase: 'btn-ghost', onClick: marcarEnviado }] : []),
         { texto: 'Imprimir', clase: 'btn-ghost', onClick: imprimir },
+        { texto: armandoImagen ? 'Armando imagen…' : 'Copiar como imagen', clase: 'btn-ghost', onClick: copiarImagen, disabled: armandoImagen || !cuenta },
         { texto: 'Copiar para WhatsApp', clase: 'btn-primary', onClick: copiar },
       ]}
     >

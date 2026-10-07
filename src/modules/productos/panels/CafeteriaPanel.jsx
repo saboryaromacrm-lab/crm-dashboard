@@ -27,6 +27,7 @@ import { pedidosCafe } from '@core/services/pedidosCafe.js';
 import { CafeteriaProductosPanel } from './CafeteriaProductosPanel.jsx';
 import { CoffitCompras, CoffitGastos } from './CoffitComprasGastos.jsx';
 import { CoffitCuenta } from './CoffitCuenta.jsx';
+import { CoffitIngredientes } from './CoffitIngredientes.jsx';
 
 const inicioDeMes = () => {
   const d = new Date();
@@ -43,6 +44,8 @@ const pestanasDe = (v) => [
   /* Los productos del café, adentro de la sección (27/9/2026): antes eran una
    * entrada aparte del menú, lejos de los envíos que los usan. */
   { id: 'productos', label: v.prodSeccion },
+  /* Los ingredientes con su costo por kg / litro (0140): para costear recetas. */
+  { id: 'ingredientes', label: 'Ingredientes', opera: true },
   /* La plata de Coffit, separada en sus dos orígenes (29/9/2026, pedido del
    * dueño): lo comprado a proveedores y los gastos. Solo con las métricas. */
   /* LA CUENTA ENTRE LOS DOS NEGOCIOS (0120): quién le debe a quién, hoy. */
@@ -73,8 +76,8 @@ export function CafeteriaPanel() {
    */
   const verMetricas = can('almacen.cafeteria-metricas');
   const PESTANAS = useMemo(
-    () => pestanasDe(v).filter((t) => verMetricas || !t.metricas),
-    [v, verMetricas],
+    () => pestanasDe(v).filter((t) => (verMetricas || !t.metricas) && (puedeOperar || !t.opera)),
+    [v, verMetricas, puedeOperar],
   );
 
   /*
@@ -243,7 +246,7 @@ export function CafeteriaPanel() {
         */
         actions={(() => {
           /* En Productos el botón es el del producto: vive en la pestaña. */
-          if (pestana === 'productos') return null;
+          if (pestana === 'productos' || pestana === 'ingredientes') return null;
           /* Compras y gastos se cargan en su lugar (Compras › Facturación y
              Gastos); desde acá solo se miran. */
           if (pestana === 'compras' || pestana === 'gastos' || pestana === 'cuenta') return null;
@@ -607,6 +610,7 @@ export function CafeteriaPanel() {
       )}
 
       {pestana === 'productos' && <CafeteriaProductosPanel embebido />}
+      {pestana === 'ingredientes' && puedeOperar && <CoffitIngredientes />}
 
       {pestana === 'cuenta' && verMetricas && (
         <CoffitCuenta desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} />
