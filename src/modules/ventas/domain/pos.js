@@ -447,7 +447,7 @@ function recalcular(estado) {
    *
    * Y ES `descuentoBase` LO QUE VIAJA A LA API, no el combinado — ver
    * `itemsParaApi`. Mandar el 25% del nombrado como si fuera manual lo haría
-   * rebotar contra `descuentoMaxVendedor` antes de que el servidor llegue a
+   * rebotar contra el tope de descuento a mano del usuario antes de que el servidor llegue a
    * aplicarlo.
    */
   const aplicados = (estado.ctx.descuentos ?? [])
@@ -903,7 +903,7 @@ export function itemsParaApi(renglones) {
      * "Atención por tardanza"), y ese porcentaje lo pone el servidor a partir
      * del id — no lo acepta del navegador. Si se mandara el combinado, el
      * servidor lo leería como un descuento puesto a mano y lo rebotaría contra
-     * `descuentoMaxVendedor` (10%) antes de llegar a aplicar el nombrado.
+     * el tope a mano del usuario (0147) antes de llegar a aplicar el nombrado.
      *
      * O sea: el cliente manda lo que decidió una persona, el servidor suma lo
      * que autorizó el dueño. Cada uno pone lo que le corresponde.
@@ -969,6 +969,9 @@ export function ticketDesdeBorrador(borrador, catalogo) {
        * el propio (no había descuentos con nombre todavía).
        */
       descuentoBase: it.descuentoBase ?? it.descuento,
+      /* El que ya traía el ticket guardado lo autorizó quien podía (0147):
+       * seguir trabajando el ticket no lo vuelve a pedir. El servidor mide igual. */
+      descuentoAutorizado: Number(it.descuentoBase ?? it.descuento) || 0,
       descuentoId: it.descuentoId ?? null,
       descuentoNombre: it.descuentoNombre || '',
       ofertaId: it.ofertaId ?? null,
@@ -1021,8 +1024,12 @@ export function problemasDelTicket(renglones, { permitirStockNegativo, descuento
     if (!permitirStockNegativo && !r.stockLibre && r.cantidad > r.stock + 1e-9) {
       problemas.push(`${etiqueta}: hay ${r.stock} ${r.unidad} y estás vendiendo ${r.cantidad}.`);
     }
-    if (!puedePisarPrecio && r.descuento > descuentoMax + 1e-9) {
-      problemas.push(`${etiqueta}: el descuento de ${r.descuento}% supera el tope de ${descuentoMax}%.`);
+    /* Contra la BASE (lo puesto a mano o el del cliente), como el servidor: el
+     * de un descuento con nombre lo autorizó el dueño. `descuentoMax` ya trae
+     * el tope del usuario y el descuento del cliente (0147). */
+    const base = Number(r.descuentoBase ?? r.descuento) || 0;
+    if (!puedePisarPrecio && base > Math.max(descuentoMax, r.descuentoAutorizado || 0) + 1e-9) {
+      problemas.push(`${etiqueta}: el descuento de ${base}% no está permitido (lo máximo para vos acá es ${descuentoMax}%).`);
     }
   }
   return problemas;

@@ -390,7 +390,7 @@ function DescuentosConNombre({ opciones, puestos, onAlternar, habilitado }) {
  * Ticket
  * ==================================================================== */
 
-function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, puedePisarPrecio, preciosDe, ultimoKey, listasPorId, overrideBloqueado, retiro }) {
+function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, sinDescuentoManual, puedePisarPrecio, preciosDe, ultimoKey, listasPorId, overrideBloqueado, retiro }) {
   if (!renglones.length) {
     return (
       <div className={p.ticket}>
@@ -438,7 +438,7 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
              * con nombre existe para permitir. El servidor mide igual.
              */
             const descExcedido = !puedePisarPrecio
-              && (Number(r.descuentoBase ?? r.descuento) || 0) > descuentoMax + 1e-9;
+              && (Number(r.descuentoBase ?? r.descuento) || 0) > Math.max(descuentoMax, r.descuentoAutorizado || 0) + 1e-9;
             /* De a cuántas vende la lista que tiene puesta este renglón, y si
              * la cantidad cargada da bultos justos. Solo para mostrar: no
              * bloquea nada. */
@@ -630,6 +630,9 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                 <td className={p.num}>
                   {r.descuentoId ? (
                     <span title={`Lo pone el descuento "${r.descuentoNombre}"`}>{r.descuento}%</span>
+                  ) : sinDescuentoManual ? (
+                    /* Sin descuento a mano (0147): se ve el del cliente, no se tipea. */
+                    <span title="No tenés habilitado poner descuentos a mano: lo habilita el dueño en Usuarios.">{r.descuento}%</span>
                   ) : (
                     <input
                       className={cx(p.inputMini, descExcedido && p.inputAlerta)}
@@ -771,14 +774,13 @@ export function PosPanel() {
    * PISAR EL PRECIO es un PERMISO (`precio_manual`), no el rol.
    *
    * Antes esto era `rolClave === 'admin'`, y era la única barrera que existía:
-   * `descuentoMaxVendedor` y `overrideListaRequiereAdmin` se evaluaban acá y en
+   * el tope de descuento a mano del usuario y `overrideListaRequiereAdmin` se evaluaban acá y en
    * ningún otro lado, así que un request armado a mano se los saltaba enteros.
    * Ahora la API valida lo mismo con esta misma clave — y tiene que ser LA MISMA,
    * porque si la pantalla habilita algo que el servidor rechaza, el cajero se
    * entera recién al cobrar.
    */
   const puedePisarPrecio = permisosActual.includes('*') || permisosActual.includes('precio_manual');
-  const descuentoMax = Number(config.descuentoMaxVendedor) || 0;
 
   /* --------------------------- Datos del puesto --------------------------- */
 
@@ -790,6 +792,14 @@ export function PosPanel() {
 
   const consumidorFinal = useMemo(() => clientes.find((c) => c.esConsumidorFinal), [clientes]);
   const clienteActual = getCliente(clienteId) || consumidorFinal || null;
+  /*
+   * DESCUENTO A MANO (0147): el tope de quien está en la caja (el relevo firma
+   * con el suyo), que fija el dueño por usuario. 0 = no puede. El del cliente
+   * (su ficha) entra siempre: no es «a mano».
+   */
+  const topeManual = Number(usuarios.find((u) => u.id === (operadorId ?? ctx.usuarioId))?.descuentoManualMax) || 0;
+  const descuentoMax = Math.max(topeManual, Number(clienteActual?.descuento) || 0);
+  const sinDescuentoManual = !puedePisarPrecio && topeManual === 0;
   /* Retiros sin costo (0146): este ticket no se cobra, se registra como retiro. */
   const esRetiro = !!clienteActual?.retiroSinCosto;
   const [confirmandoRetiro, setConfirmandoRetiro] = useState(false);
@@ -1664,6 +1674,7 @@ export function PosPanel() {
                 dispatch={dispatch}
                 permitirStockNegativo={!!config.permitirStockNegativo}
                 descuentoMax={descuentoMax}
+                sinDescuentoManual={sinDescuentoManual}
                 puedePisarPrecio={puedePisarPrecio}
                 preciosDe={preciosDe}
                 ultimoKey={ultimoKey}

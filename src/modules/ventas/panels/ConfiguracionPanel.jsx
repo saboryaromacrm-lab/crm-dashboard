@@ -493,9 +493,6 @@ export function ConfiguracionPanel() {
             checked={draft.overrideListaRequiereAdmin}
             onChange={set('overrideListaRequiereAdmin')}
           />
-          <Campo label="Descuento máximo del vendedor (%)" hint="Por encima de este tope hace falta un administrador.">
-            <input type="number" min="0" max="100" step="0.5" value={draft.descuentoMaxVendedor ?? 0} onChange={setNum('descuentoMaxVendedor')} />
-          </Campo>
           <Campo
             label="Redondeo de precio de góndola"
             hint="Se aplica sobre el precio FINAL con IVA, que es el que ve el cliente; el neto se deriva. Afecta a todo el sistema (etiqueta, caja y catálogo muestran el mismo número)."

@@ -87,8 +87,21 @@ function FacturaElectronica({ su, pendiente, onCambiar }) {
 
 /* ---------------- Modal de usuario (alta / edición) ---------------- */
 
+/** Lo que dice la tabla y la ventana sobre el descuento a mano (0147). */
+const sinTope = (permisos = []) => permisos.includes('*') || permisos.includes('precio_manual');
+const textoDescuento = (u) => (sinTope(u.permisos) ? 'Sin tope (su rol pisa precios)' : u.descuentoManualMax > 0 ? `Hasta ${u.descuentoManualMax} %` : 'No');
+
 function UsuarioModal({ usuario, roles, sucursales = [], onGuardar, onCerrar }) {
   const esAlta = !usuario;
+  /*
+   * DESCUENTO A MANO (0147): por usuario, y por defecto NO. Solo el dueño lo
+   * cambia (llave fuera del catálogo). Lo automático —ofertas, mayorista
+   * ganado, descuento del cliente, descuentos con nombre— no depende de esto.
+   */
+  const { can } = usePermissions();
+  const puedeFijarDescuento = can('usuarios.descuento_manual');
+  const [descManual, setDescManual] = useState((usuario?.descuentoManualMax ?? 0) > 0);
+  const [descTope, setDescTope] = useState(String(usuario?.descuentoManualMax || ''));
   const [nombre, setNombre] = useState(usuario?.nombre ?? '');
   const [rolId, setRolId] = useState(usuario?.rolId ?? roles.find((r) => r.clave === 'cajero')?.id ?? roles[0]?.id);
   const [activo, setActivo] = useState(usuario?.activo ?? true);
@@ -110,9 +123,11 @@ function UsuarioModal({ usuario, roles, sucursales = [], onGuardar, onCerrar }) 
 
   const guardar = async () => {
     setGuardando(true);
+    const tope = descManual ? Number(descTope) || 0 : 0;
     const ok = await onGuardar({
       nombre, rolId: Number(rolId), activo,
       relevoCaja,
+      ...(puedeFijarDescuento ? { descuentoManualMax: tope } : {}),
       sucursales: [...sucs],
       ...(password ? { password } : {}),
       ...(pin ? { pin } : {}),
@@ -196,6 +211,26 @@ function UsuarioModal({ usuario, roles, sucursales = [], onGuardar, onCerrar }) 
         <div className={s.hint} style={{ margin: '4px 0 0' }}>
           Aparece en el POS para tomar la caja de otra sesión con su PIN: las ventas y los
           movimientos quedan firmados con su nombre. No cambia sus permisos.
+        </div>
+      </div>
+      <div className={s.field} style={{ marginTop: 12 }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: puedeFijarDescuento ? 'pointer' : 'default' }}>
+          <input type="checkbox" checked={descManual} disabled={!puedeFijarDescuento} onChange={(e) => setDescManual(e.target.checked)} />
+          Puede poner descuentos a mano
+        </label>
+        {descManual && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            <span style={{ fontSize: 13 }}>Hasta</span>
+            <input type="number" min="0.5" max="100" step="0.5" value={descTope} disabled={!puedeFijarDescuento}
+              onChange={(e) => setDescTope(e.target.value)} aria-label="Tope del descuento a mano (%)" style={{ width: 90 }} />
+            <span style={{ fontSize: 13 }}>%</span>
+          </div>
+        )}
+        <div className={s.hint} style={{ margin: '4px 0 0' }}>
+          {sinTope(rolElegido?.permisos)
+            ? 'Su rol puede pisar precios: no tiene tope.'
+            : 'Las ofertas, el mayorista ganado, el descuento del cliente y los descuentos con nombre se aplican igual. Esto es solo para el descuento que se escribe a mano en el POS.'}
+          {!puedeFijarDescuento && ' Lo cambia el dueño.'}
         </div>
       </div>
       {relevoCaja && (
@@ -537,7 +572,7 @@ export function GerenciaPage() {
       {tab === 'usuarios' && (
         <Table
           cols={[
-            { h: 'Usuario' }, { h: 'Rol' }, { h: 'Sucursales' }, { h: 'Estado' }, { h: 'Contraseña' },
+            { h: 'Usuario' }, { h: 'Rol' }, { h: 'Sucursales' }, { h: 'Descuento a mano' }, { h: 'Estado' }, { h: 'Contraseña' },
             { h: 'Acciones', cls: 'actions-col' },
           ]}
           empty={usuarios === null ? 'Cargando…' : 'Sin usuarios.'}
@@ -557,6 +592,7 @@ export function GerenciaPage() {
                     ? u.sucursales.map((id) => sucursales.find((x) => x.id === id)?.nombre ?? `#${id}`).join(', ')
                     : <span className={s.muted}>Todas</span>}
                 </td>
+                <td>{u.descuentoManualMax > 0 || sinTope(u.permisos) ? textoDescuento(u) : <span className={s.muted}>No</span>}</td>
                 <td>
                   <span className={cx(s.pill, u.activo ? s['st-disponible'] : s['est-cancelada'])}>
                     {u.activo ? 'Activo' : 'Desactivado'}

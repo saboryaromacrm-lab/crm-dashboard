@@ -25,6 +25,8 @@ export function CafeteriaProductosPanel({ embebido = false }) {
   /* La misma llave que la API pide para escribir. La cajera ve la lista pero
    * no los botones: ofrecer uno que iba a rebotar es peor que no ofrecerlo. */
   const puedeCargar = can('almacen.cafeteria-entradas');
+  /* El precio lo pone Sabor y Aroma (8/10/2026): la misma llave que cambia precios en Compras. */
+  const puedePrecio = can('precios') || can('ventas.listas');
 
   /** El color de un número viejo. Tres tonos y nada más: verde no existe —
    *  que esté al día es lo normal, no un logro. */
@@ -91,9 +93,18 @@ export function CafeteriaProductosPanel({ embebido = false }) {
         </td>
         <td className={s.num}>
           {p.precio != null
-            ? <><strong>{money(p.precio)}</strong><Desde dias={p.precioDias} nuncaTexto="desde el alta" /></>
-            : <span className={s.muted}>por margen</span>}
+            ? (
+              <>
+                <strong>{money(p.precio)}</strong>
+                <div className={s.hint} style={{ margin: 0 }}>{p.modo === 'markup' ? 'por markup: sigue al costo' : 'precio fijo'}</div>
+                {p.modo === 'precio' && <Desde dias={p.precioDias} nuncaTexto="desde el alta" />}
+              </>
+            )
+            : p.modo === 'markup'
+              ? <span className={s.muted}>por markup (falta el costo)</span>
+              : <Pill pill="est-cancelada" label="Sin precio: no se puede vender" />}
         </td>
+        <td className={s.num}>{p.markup != null ? `${num(p.markup, 1)}%` : <span className={s.muted}>—</span>}</td>
         <td className={s.num}>
           {p.margen != null
             ? (
@@ -109,16 +120,23 @@ export function CafeteriaProductosPanel({ embebido = false }) {
             : <Pill pill="est-recibida" label="Activo" />}
         </td>
         <td>
-          {puedeCargar && (
+          {(puedeCargar || puedePrecio) && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {!dadoDeBaja && (
+              {!dadoDeBaja && puedePrecio && (
+                <Btn small variant={p.precio == null ? 'btn-primary' : 'btn-ghost'} onClick={() => openModal('precioCafeteria', { producto: p, redondeo: datos?.redondeo ?? 0, onListo: cargar })}>
+                  Precio
+                </Btn>
+              )}
+              {!dadoDeBaja && puedeCargar && (
                 <Btn small onClick={() => openModal('productoCafeteria', { producto: p, onListo: cargar })}>
                   Editar
                 </Btn>
               )}
-              <Btn small variant={dadoDeBaja ? 'btn-ghost' : 'btn-delete'} onClick={() => baja(p)}>
-                {dadoDeBaja ? 'Reactivar' : 'Dar de baja'}
-              </Btn>
+              {puedeCargar && (
+                <Btn small variant={dadoDeBaja ? 'btn-ghost' : 'btn-delete'} onClick={() => baja(p)}>
+                  {dadoDeBaja ? 'Reactivar' : 'Dar de baja'}
+                </Btn>
+              )}
             </div>
           )}
         </td>
@@ -159,6 +177,7 @@ export function CafeteriaProductosPanel({ embebido = false }) {
           { h: 'Producto' }, { h: 'Cómo se vende' },
           { h: 'Costo (lo que te cuesta hacerlo)', num: true },
           { h: `Precio en el mostrador${datos?.lista ? ` (${datos.lista})` : ''}`, num: true },
+          { h: 'Markup', num: true },
           { h: 'Margen', num: true },
           { h: 'Estado' }, { h: '' },
         ]}
@@ -173,9 +192,11 @@ export function CafeteriaProductosPanel({ embebido = false }) {
         El <strong>costo</strong> es lo que te cuesta hacerlo, sin IVA, y lo declarás vos: con ese
         número <strong>se registra cada venta</strong> y se valúa el stock, y el envío lo toma de acá
         solo (se puede corregir en un envío puntual si una tanda salió más cara — eso queda en ese
-        envío y no cambia la ficha). El <strong>precio</strong> es lo que paga el cliente en el
-        mostrador, con IVA; el <strong>margen</strong> se calcula sobre el precio sin IVA, igual que
-        la rentabilidad de las ventas.
+        envío y no cambia la ficha). El <strong>precio</strong> lo pone Sabor y Aroma, fijo o por
+        markup sobre el costo de Coffit (por markup, si el costo cambia el precio lo sigue solo);
+        lo que no tiene precio no se puede cobrar en la caja. El <strong>markup</strong> es sobre el
+        costo; el <strong>margen</strong>, sobre el precio sin IVA, igual que la rentabilidad. Todo lo
+        de Coffit lleva la marca <strong>«Coffit»</strong>, para verlo aparte en Métricas.
       </div>
       <div className={s.hint} style={{ marginTop: 0 }}>
         <strong>Mirá las fechas.</strong> Un costo que no se toca hace meses se muestra igual de

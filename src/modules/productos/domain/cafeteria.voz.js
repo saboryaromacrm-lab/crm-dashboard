@@ -67,7 +67,7 @@ const CASA = {
 
   prodSeccion: 'Productos Coffit',
   prodTitulo: 'Productos Coffit',
-  prodSub: 'Lo que Coffit elabora y manda a las sucursales para vender en el mostrador. Los da de alta ella misma: no se compran, así que no llevan proveedor ni formato de compra.',
+  prodSub: 'Lo que Coffit elabora y manda a las sucursales para vender en el mostrador. Los da de alta ella misma con su costo; el precio lo ponés vos con «Precio», fijo o por markup.',
   prodBtn: '+ Nuevo producto de Coffit',
   prodVacio: 'Coffit todavía no cargó ningún producto.',
 };
@@ -116,7 +116,7 @@ const CAFE = {
 
   prodSeccion: 'Mis productos',
   prodTitulo: 'Mis productos',
-  prodSub: 'Lo que elaborás y mandás a las sucursales. Cargalo acá una vez —nombre, costo y precio— y ya lo podés mandar. No lleva proveedor: el costo lo declarás vos, y con ese costo se registra cada venta.',
+  prodSub: 'Lo que elaborás y mandás a las sucursales. Cargalo acá una vez —nombre y costo— y ya lo podés mandar; el precio del mostrador lo pone Sabor y Aroma. No lleva proveedor: el costo lo declarás vos, y con ese costo se registra cada venta.',
   prodBtn: '+ Nuevo producto',
   prodVacio: 'Todavía no cargaste ninguno. "+ Nuevo producto" carga el primero.',
 };

@@ -23,7 +23,7 @@ import {
   EnvioCafeteriaFormModal,
   PedidoCafeteriaDetalleModal,
   PedidoCafeteriaFormModal,
-  ProductoCafeteriaFormModal,
+  ProductoCafeteriaFormModal, PrecioCafeteriaModal,
   RecibirEnvioCafeteriaModal,
 } from './modals/CafeteriaModals.jsx';
 import {
@@ -242,6 +242,7 @@ const REGISTRY = {
   // El pedido del café: lo arma el rol Cafetería, lo trata el admin.
   pedidoCafeteria: PedidoCafeteriaFormModal,
   productoCafeteria: ProductoCafeteriaFormModal,
+  precioCafeteria: PrecioCafeteriaModal,
   // Vencimientos: editar lo abierto, procesar lo vencido, armar la oferta real.
   vencimientoEditar: VencimientoEditarModal,
   vencimientoProcesar: VencimientoProcesarModal,

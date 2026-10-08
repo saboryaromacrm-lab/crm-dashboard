@@ -1237,10 +1237,10 @@ export function RecibirEnvioCafeteriaModal({ id }) {
 /* ==================================================================== *
  * EL PRODUCTO QUE ELABORA LA CAFETERÍA
  * ==================================================================== *
- * Tres campos y nada más. Un producto que no se compra no tiene proveedor,
- * ni formato de compra, ni costo de lista: el costo lo declara ella en cada
- * envío, y puede cambiar de una semana a la otra. Lo único que hace falta es
- * cómo se llama, si se cuenta o se pesa, y a cuánto lo vende el mostrador.
+ * Lo que carga Coffit (8/10/2026): cómo se llama, si se cuenta o se pesa, el
+ * IVA y su COSTO. El precio no: lo pone Sabor y Aroma (`PrecioCafeteriaModal`),
+ * fijo o por markup sobre este costo. Un producto que no se compra no tiene
+ * proveedor ni formato de compra: el costo lo declara Coffit.
  *
  * El TIPO no se edita después del alta: pasar de contar a pesar le cambia el
  * significado a todo el stock y a todos los envíos que ya existen. Eso es un
@@ -1252,29 +1252,9 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
 
   const [nombre, setNombre] = useState(producto?.nombre ?? '');
   const [esGranel, setEsGranel] = useState(!!producto?.esGranel);
-  const [precio, setPrecio] = useState(producto?.precio != null ? String(producto.precio) : '');
   const [costo, setCosto] = useState(producto?.costo != null ? String(producto.costo) : '');
-  /* Precio POR MARGEN = lo fija la distribuidora desde Compras. El café lo ve
-   * pero no lo cambia: mandarle un número lo convertiría en precio fijo. */
-  const porMargen = esEdicion && !!producto?.porMargen;
-
-  /* El margen, en vivo mientras se tipea: es la única forma de darse cuenta en
-   * el momento de que el precio no cierra. Con los dos números a la vista, un
-   * costo más alto que el precio salta solo. */
-  /* SOBRE EL PRECIO SIN IVA: el IVA que cobra el mostrador es de ARCA, no
-   * del café, y el costo es neto. Es el mismo margen que después da la venta.
-   * Un producto nuevo nace con 21 % (lo que pone el alta). */
   /* 21 % salvo lo que la ley grava a la mitad (el pan): lo elige quien carga. */
   const [iva, setIva] = useState(producto?.iva ?? 21);
-  /* Vender por debajo del costo puede ser a propósito (una liquidación, una
-   * muestra), pero no por un cero de menos: se tilda para poder guardar. */
-  const [aPerdida, setAPerdida] = useState(false);
-  const margen = useMemo(() => {
-    const p = Number(precio) / (1 + iva / 100);
-    const c = Number(costo);
-    if (!(p > 0) || costo === '' || Number.isNaN(c)) return null;
-    return { pct: ((p - c) / p) * 100, neto: p, queda: p - c };
-  }, [precio, costo, iva]);
 
   const enVuelo = useRef(false);
   const [guardando, setGuardando] = useState(false);
@@ -1283,13 +1263,6 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
     if (enVuelo.current) return;
     const n = nombre.trim();
     if (!n) { toast('Poné el nombre del producto.', 'err'); return; }
-    const p = Number(precio);
-    if (!porMargen && !(p > 0)) { toast('Poné a cuánto se vende en el mostrador.', 'err'); return; }
-    if (margen && margen.pct <= 0 && !aPerdida) {
-      toast('El precio no cubre el costo: corregilo, o tildá que lo vendés a pérdida a propósito.', 'err');
-      return;
-    }
-
     enVuelo.current = true;
     setGuardando(true);
     let res;
@@ -1298,18 +1271,11 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
        * que no es lo mismo que mandar 0 y declarar que no cuesta nada. */
       const c = costo === '' ? undefined : Number(costo);
       res = esEdicion
-        ? await store.editarProductoCafeteria(producto.id, {
-          nombre: n, precio: porMargen ? undefined : p, costo: c, iva, confirmarPerdida: aPerdida || undefined,
-        })
-        : await store.crearProductoCafeteria({ nombre: n, esGranel, precio: p, costo: c, iva, confirmarPerdida: aPerdida || undefined });
+        ? await store.editarProductoCafeteria(producto.id, { nombre: n, costo: c, iva })
+        : await store.crearProductoCafeteria({ nombre: n, esGranel, costo: c, iva });
     } finally { enVuelo.current = false; setGuardando(false); }
     if (!res.ok) { toast(res.error || 'No se pudo guardar.', 'err'); return; }
-    toast(
-      esEdicion
-        ? `${n} actualizado.`
-        : `${n} cargado. Ya lo podés incluir en un envío.`,
-      'ok',
-    );
+    toast(esEdicion ? `${n} actualizado.` : `${n} cargado. Sabor y Aroma le pone el precio; ya lo podés incluir en un envío.`, 'ok');
     onListo?.();
     closeModal();
   };
@@ -1318,37 +1284,22 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
     <ModalShell
       title={esEdicion ? `Editar ${producto.nombre}` : 'Nuevo producto de Coffit'}
       subtitle={esEdicion
-        ? 'Se corrige el nombre, el costo y el precio del mostrador (los precios de otras listas no se tocan). Cómo se vende (por unidad o por kilo) no se cambia: eso sería otro producto.'
-        : 'Lo que elabora Coffit y se vende en el mostrador. El costo lo declarás vos: no se compra, así que no sale de ningún proveedor.'}
+        ? 'Se corrige el nombre, el costo y el IVA. Cómo se vende (por unidad o por kilo) no se cambia: eso sería otro producto.'
+        : 'Lo que elabora Coffit y se vende en el mostrador. El costo lo declarás vos; el precio lo pone Sabor y Aroma.'}
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal, disabled: guardando },
-        {
-          texto: guardando ? 'Guardando…' : (esEdicion ? 'Guardar' : 'Crear producto'),
-          clase: 'btn-primary',
-          onClick: guardar,
-          disabled: guardando,
-        },
+        { texto: guardando ? 'Guardando…' : (esEdicion ? 'Guardar' : 'Crear producto'), clase: 'btn-primary', onClick: guardar, disabled: guardando },
       ]}
     >
       <div className={s.field}>
         <label>Nombre <span className={s.req}>*</span></label>
-        <input
-          autoFocus
-          value={nombre}
-          placeholder="Medialuna de manteca"
-          maxLength={120}
-          onChange={(e) => setNombre(e.target.value)}
-        />
+        <input autoFocus value={nombre} placeholder="Medialuna de manteca" maxLength={120} onChange={(e) => setNombre(e.target.value)} />
       </div>
 
       <div className={s.field}>
         <label>Cómo se vende <span className={s.req}>*</span></label>
-        <select
-          value={esGranel ? 'granel' : 'unidad'}
-          disabled={esEdicion}
-          onChange={(e) => setEsGranel(e.target.value === 'granel')}
-        >
+        <select value={esGranel ? 'granel' : 'unidad'} disabled={esEdicion} onChange={(e) => setEsGranel(e.target.value === 'granel')}>
           <option value="unidad">Por unidad — se cuenta (medialuna, sándwich)</option>
           <option value="granel">Por kilo — se pesa (café molido)</option>
         </select>
@@ -1361,15 +1312,11 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
 
       <div className={s.field}>
         <label>Costo — lo que te cuesta hacerlo, sin IVA</label>
-        <input
-          type="number" min="0" step="any" value={costo}
-          placeholder="700"
-          onChange={(e) => setCosto(e.target.value)}
-        />
+        <input type="number" min="0" step="any" value={costo} placeholder="700" onChange={(e) => setCosto(e.target.value)} />
         <div className={s.hint} style={{ marginBottom: 0 }}>
-          Es el costo con el que <strong>se registra cada venta</strong> de este producto y con el que
-          se valúa su stock, y el <strong>envío lo toma de acá solo</strong>. Si una tanda sale más cara
-          se corrige en ese envío, y eso no cambia este número: si el costo cambió de verdad, cambialo acá.
+          Es el costo con el que <strong>se registra cada venta</strong> y se valúa el stock, y el
+          <strong> envío lo toma de acá solo</strong>. Si una tanda sale más cara se corrige en ese envío,
+          y eso no cambia este número: si el costo cambió de verdad, cambialo acá.
           {esEdicion && producto?.costo == null && <> Todavía no cargaste ninguno.</>}
         </div>
       </div>
@@ -1381,61 +1328,119 @@ export function ProductoCafeteriaFormModal({ producto = null, onListo }) {
           <option value={10.5}>10,5 % — lo que la ley grava a la mitad (ej. el pan)</option>
           <option value={0}>Sin IVA — tipo remito, el precio es todo neto</option>
         </select>
-        <div className={s.hint} style={{ marginBottom: 0 }}>
-          {iva === 0
-            ? <>Sin IVA el precio del mostrador queda <strong>entero para vos</strong>. Si alguna vez se factura, sale como IVA 0 %: confirmalo con el contador.</>
-            : 'Si no sabés cuál va, dejá 21 % y consultalo con el contador.'}
-        </div>
+        <div className={s.hint} style={{ marginBottom: 0 }}>Si no sabés cuál va, dejá 21 % y consultalo con el contador.</div>
       </div>
 
-      {porMargen ? (
+      <div className={cx(s.callout)} style={{ margin: 0 }}>
+        El <strong>precio en el mostrador lo pone Sabor y Aroma</strong>
+        {esEdicion && producto?.precio != null ? <>: hoy es <strong>{money(producto.precio)}</strong>.</> : '. Hasta entonces el producto no se puede cobrar en la caja.'}
+      </div>
+    </ModalShell>
+  );
+}
+
+/**
+ * EL PRECIO DE LO QUE ELABORA COFFIT (8/10/2026, pedido del dueño): lo pone
+ * Sabor y Aroma de una de dos formas, y se ve la otra en vivo:
+ *   · precio fijo → el markup que da sobre el costo de Coffit;
+ *   · markup → el precio que sale (con el redondeo de góndola, el mismo de la
+ *     caja), que después acompaña solo al costo cuando Coffit lo cambia.
+ * Vender por debajo del costo se confirma (lo pregunta el servidor).
+ */
+export function PrecioCafeteriaModal({ producto, redondeo = 0, onListo }) {
+  const { store, closeModal, toast } = useProductos();
+  const costo = producto.costo;
+  const [modo, setModo] = useState(producto.modo === 'markup' || (producto.modo == null && costo != null) ? 'markup' : 'precio');
+  const [precio, setPrecio] = useState(producto.precio != null ? String(producto.precio) : '');
+  const [markup, setMarkup] = useState(producto.markup != null ? String(producto.markup) : '');
+  const [aPerdida, setAPerdida] = useState(null);
+  const enVuelo = useRef(false);
+  const [guardando, setGuardando] = useState(false);
+
+  /* El otro número, en vivo, con la misma cuenta que la caja (`ventaFormato`). */
+  const calc = useMemo(() => {
+    if (modo === 'markup') {
+      const m = Number(markup);
+      if (markup === '' || Number.isNaN(m) || costo == null) return null;
+      const prod = { iva: producto.iva, redondeo: producto.redondeo ?? redondeo };
+      return { precio: store.ventaFormato(prod, { modoPrecio: 'markup', markup: m, unidades: 1 }, costo).finalUnitario, markup: m };
+    }
+    const p = Number(precio);
+    if (!(p > 0)) return null;
+    const neto = p / (1 + (Number(producto.iva) || 0) / 100);
+    return { precio: p, markup: costo ? ((neto / costo) - 1) * 100 : null };
+  }, [modo, precio, markup, costo, producto.iva, producto.redondeo, redondeo, store]);
+  const neto = calc ? calc.precio / (1 + (Number(producto.iva) || 0) / 100) : null;
+  const margen = neto && costo != null ? ((neto - costo) / neto) * 100 : null;
+
+  const guardar = async () => {
+    if (enVuelo.current) return;
+    if (!calc) { toast(modo === 'markup' ? 'Poné el markup.' : 'Poné el precio.', 'err'); return; }
+    enVuelo.current = true; setGuardando(true);
+    let res;
+    try {
+      res = await store.precioProductoCafeteria(producto.id, {
+        modo, valor: modo === 'markup' ? Number(markup) : Number(precio), confirmarPerdida: aPerdida === true || undefined,
+      });
+    } finally { enVuelo.current = false; setGuardando(false); }
+    if (!res.ok) {
+      /* Por debajo del costo: el servidor pregunta. Se tilda y se vuelve a guardar. */
+      if (res.status === 409 && res.datos?.perdida) { setAPerdida(false); toast(res.error, 'err'); return; }
+      toast(res.error || 'No se pudo guardar el precio.', 'err');
+      return;
+    }
+    toast(`${producto.nombre}: ${money(calc.precio)} en el mostrador${modo === 'markup' ? ` (markup ${num(Number(markup), 1)} %, sigue al costo de Coffit)` : ''}.`, 'ok');
+    onListo?.();
+    closeModal();
+  };
+
+  const opcion = (valor, titulo, detalle) => (
+    <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer', padding: '8px 10px', borderRadius: 8, border: `1px solid ${modo === valor ? 'var(--crm-color-primary)' : 'var(--crm-color-border)'}`, flex: '1 1 220px' }}>
+      <input type="radio" name="modo-precio-coffit" checked={modo === valor} onChange={() => { setModo(valor); setAPerdida(null); }} style={{ width: 'auto', marginTop: 3 }} />
+      <span><strong>{titulo}</strong><span className={s.hint} style={{ display: 'block', margin: 0 }}>{detalle}</span></span>
+    </label>
+  );
+
+  return (
+    <ModalShell
+      title={`Precio de ${producto.nombre}`}
+      subtitle={`Costo de Coffit: ${costo != null ? `${money(costo)} sin IVA` : 'todavía no lo cargó'} · IVA ${num(producto.iva, 1)} %`}
+      onClose={closeModal}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal, disabled: guardando },
+        { texto: guardando ? 'Guardando…' : 'Guardar precio', clase: 'btn-primary', onClick: guardar, disabled: guardando || aPerdida === false },
+      ]}
+    >
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }} role="radiogroup" aria-label="Cómo se pone el precio">
+        {opcion('markup', 'Por markup', costo != null ? 'Sobre el costo de Coffit: si Coffit lo cambia, el precio lo sigue solo.' : 'Hace falta que Coffit cargue el costo.')}
+        {opcion('precio', 'Precio fijo', 'Escribís el precio y ves el markup que te da.')}
+      </div>
+
+      {modo === 'markup' ? (
         <div className={s.field}>
-          <label>Precio en el mostrador</label>
-          <div className={cx(s.callout)} style={{ margin: 0 }}>
-            Lo fija <strong>Sabor y Aroma por margen</strong> sobre tu costo, así que desde acá no se
-            cambia. Si tiene que ser otro, pedíselo a ellos.
-          </div>
+          <label htmlFor="cof-markup">Markup sobre el costo (%)</label>
+          <input id="cof-markup" type="number" min="0" step="0.5" value={markup} onChange={(e) => { setMarkup(e.target.value); setAPerdida(null); }} disabled={costo == null} autoFocus placeholder="40" />
         </div>
       ) : (
         <div className={s.field}>
-          <label>Precio en el mostrador <span className={s.req}>*</span></label>
-          <input
-            type="number" min="0" step="any" value={precio}
-            placeholder="1500"
-            onChange={(e) => setPrecio(e.target.value)}
-          />
-          <div className={s.hint} style={{ marginBottom: 0 }}>
-            Lo que <strong>paga el cliente</strong>, con IVA incluido.
-          </div>
+          <label htmlFor="cof-precio">Precio en el mostrador, con IVA</label>
+          <input id="cof-precio" type="number" min="0" step="any" value={precio} onChange={(e) => { setPrecio(e.target.value); setAPerdida(null); }} autoFocus placeholder="1500" />
         </div>
       )}
 
-      {/* El margen en vivo: con los dos números a la vista, un precio que no
-          cierra se ve antes de guardar y no tres meses después. */}
-      {margen != null && (
-        <div className={cx(s.callout, margen.pct <= 0 ? s.warn : s.ok)}>
-          {margen.pct <= 0
-            ? (
-              <>
-                Con ese costo <strong>estarías perdiendo plata</strong> en cada uno: sin el IVA quedan{' '}
-                {money(margen.neto)} y hacerlo cuesta {money(Number(costo))}.
-                <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }}>
-                  <input type="checkbox" checked={aPerdida} onChange={(e) => setAPerdida(e.target.checked)} />
-                  Lo vendo a pérdida a propósito
-                </label>
-              </>
-            )
-            : <>Margen: <strong>{margen.pct.toFixed(1)}%</strong> — de cada {money(Number(precio))} que cobrás,{' '}
-              {iva > 0 ? <>{money(Number(precio) - margen.neto)} son IVA ({num(iva, 1)}%) y </> : <>sin IVA, </>}
-              te quedan {money(margen.queda)}.</>}
+      {calc && (
+        <div className={cx(s.callout, margen != null && margen <= 0 ? s.warn : s.ok)} style={{ margin: 0 }}>
+          {modo === 'markup'
+            ? <>Precio en el mostrador: <strong>{money(calc.precio)}</strong>{redondeo || producto.redondeo ? ' (con el redondeo de góndola)' : ''}.</>
+            : <>Markup sobre el costo de Coffit: <strong>{calc.markup == null ? '— (sin costo cargado)' : `${num(calc.markup, 1)} %`}</strong>.</>}
+          {margen != null && <> Margen sobre el precio sin IVA: <strong>{num(margen, 1)} %</strong> ({neto - costo >= 0 ? `te quedan ${money(neto - costo)}` : `perdés ${money(costo - neto)}`} por unidad).</>}
         </div>
       )}
-
-      {!esEdicion && (
-        <div className={cx(s.callout, s.ok)}>
-          Al crearlo queda marcado como <strong>elaborado por Coffit</strong>, que es lo que
-          lo habilita en el envío. Aparece enseguida en el buscador.
-        </div>
+      {aPerdida !== null && (
+        <label className={cx(s.callout, s.warn)} style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '10px 0 0', cursor: 'pointer' }}>
+          <input type="checkbox" checked={aPerdida} onChange={(e) => setAPerdida(e.target.checked)} style={{ width: 'auto' }} />
+          Lo vendo por debajo del costo a propósito
+        </label>
       )}
     </ModalShell>
   );

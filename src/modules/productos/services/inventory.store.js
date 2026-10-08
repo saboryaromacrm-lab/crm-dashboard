@@ -1247,6 +1247,8 @@ const costosEntradaCafeteria = () => httpClient.get('/cafeteria/costos-entrada')
 const productosCafeteria = () => httpClient.get('/cafeteria/productos');
 const crearProductoCafeteria = (o) => _mutate(() => httpClient.post('/cafeteria/productos', o));
 const editarProductoCafeteria = (id, o) => _mutate(() => httpClient.patch(`/cafeteria/productos/${id}`, o));
+/** El precio de lo que elabora Coffit (8/10/2026): fijo o por markup, lo pone Sabor y Aroma. */
+const precioProductoCafeteria = (id, o) => _mutate(() => httpClient.patch(`/cafeteria/productos/${id}/precio`, o));
 const bajaProductoCafeteria = (id, activar) => _mutate(() => httpClient.post(`/cafeteria/productos/${id}/baja`, { activar }));
 const crearEnvioCafeteria = (o) => _mutate(() => httpClient.post('/cafeteria/envios', { usuarioId: state.ctx.usuarioId ?? undefined, ...o }));
 /**
@@ -1477,7 +1479,7 @@ export const inventoryStore = {
   comprasCafeteria, gastosCafeteria,
   cuentaCoffit, movimientoCoffit, anularMovimientoCoffit, cerrarCuentaCoffit, reabrirCierreCoffit, cierreCoffit,
   costosSalidaCafeteria,
-  productosCafeteria, crearProductoCafeteria, editarProductoCafeteria, bajaProductoCafeteria,
+  productosCafeteria, crearProductoCafeteria, editarProductoCafeteria, precioProductoCafeteria, bajaProductoCafeteria,
   crearEnvioCafeteria, editarEnvioCafeteria, anularEnvioCafeteria, recibirEnvioCafeteria,
   perdidasMesVencimientos,
   pedidosCafeteria, pedidoCafeteria, crearPedidoCafeteria, tomarPedidoCafeteria, anularPedidoCafeteria,
