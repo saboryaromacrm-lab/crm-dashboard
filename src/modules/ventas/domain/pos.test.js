@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buscarEnCatalogo, bultoAbajo, bultoArriba, bultoDeFila, calcularRenglon, desgloseBulto,
+  buscarEnCatalogo, bultoAbajo, bultoArriba, bultoDeFila, calcularRenglon, descuentosConMedio, desgloseBulto,
   empujonMayorista, porBulto, textoBulto, totalesTicket,
   unidadesDeLista, ticketDesdeBorrador, ticketReducer, ticketInicial,
 } from './pos.js';
@@ -322,4 +322,17 @@ test('ticketDesdeBorrador: el renglón de un presupuesto queda fijo con su preci
   }, []);
   assert.equal(renglones[0].listaManual, true, 'el motor no lo recotiza');
   assert.equal(renglones[1].listaManual, false);
+});
+
+test('descuentosConMedio: solo los que ganaron en un renglón y piden un medio', () => {
+  const ctx = { descuentos: [
+    { id: 1, nombre: 'Dcto empleado efect', medioPago: 'efectivo', listaId: 10 },
+    { id: 2, nombre: 'Jubilados', medioPago: null, listaId: 10 },
+    { id: 3, nombre: 'Tapado', medioPago: 'transferencia', listaId: 20 },
+  ] };
+  const renglones = [{ descuentoId: 1 }, { descuentoId: 2 }, { descuentoId: null }];
+  assert.deepEqual(descuentosConMedio({ renglones, ctx }), [{ id: 1, nombre: 'Dcto empleado efect', medio: 'efectivo' }]);
+  // Puesto pero tapado (ningún renglón lo lleva): no condiciona el cobro.
+  assert.deepEqual(descuentosConMedio({ renglones: [{ descuentoId: null }], ctx }), []);
+  assert.deepEqual(descuentosConMedio({ renglones: [], ctx: {} }), []);
 });

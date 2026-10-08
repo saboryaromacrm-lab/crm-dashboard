@@ -879,6 +879,21 @@ export function descuentosParaApi(estado) {
 }
 
 /**
+ * LOS DESCUENTOS CON NOMBRE QUE OBLIGAN A UN MEDIO DE PAGO (8/10/2026).
+ *
+ * Solo los que GANARON en algún renglón, el mismo criterio del servidor
+ * (`validarMediosPagoDescuentos`): uno tapado por el descuento del cliente no
+ * bajó un peso y no condiciona con qué se paga. El cobro los usa para ofrecer
+ * solo ese medio desde el principio, en vez de rebotar recién al confirmar.
+ */
+export function descuentosConMedio(estado) {
+  const ganaron = new Set(estado.renglones.map((r) => r.descuentoId).filter(Boolean));
+  return (estado.ctx.descuentos ?? [])
+    .filter((d) => d.medioPago && ganaron.has(d.id))
+    .map((d) => ({ id: d.id, nombre: d.nombre, medio: d.medioPago }));
+}
+
+/**
  * Renglones en el formato que espera `POST/PUT /ventas`.
  *
  * NO viaja `iva`: la alícuota es del PRODUCTO y la pone el servidor

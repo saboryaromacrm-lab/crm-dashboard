@@ -52,6 +52,7 @@ const PLANES = [1, 3, 6];
 
 export function CobroModal({
   ventaId, totales, clienteId, cajaSesionId, onCobrado, facturaInterna = false, mayorista = null, onVolverMinorista = null,
+  descuentosMedio = [], onSacarDescuentos = null,
 }) {
   const { getCliente, config, ctx, closeModal, toast, operadorId } = useVentas();
   const cliente = getCliente(clienteId);
@@ -65,10 +66,25 @@ export function CobroModal({
   const parteMayorista = soloMayorista ? Math.min(Number(mayorista.monto) || 0, Number(totales.total) || 0) : 0;
   /** Todo el ticket es mayorista: no hay parte minorista que se pueda pagar con otro medio. */
   const todoMayorista = !!soloMayorista && r2(Number(totales.total) - parteMayorista) <= 0.02;
+  /*
+   * DESCUENTO CON NOMBRE QUE EXIGE UN MEDIO (8/10/2026, pedido del dueño): el
+   * cobro ofrece SOLO ese medio y al contado desde que se abre, en vez de dejar
+   * cargar otro y rebotar al confirmar. El servidor lo vuelve a validar.
+   * Choque: dos descuentos con medios distintos, o un medio que no sirve para
+   * la parte mayorista — no hay forma de cobrar sin sacar el descuento.
+   */
+  const exigidos = [...new Set(descuentosMedio.map((d) => d.medio))];
+  const medioDescuento = exigidos.length === 1 ? exigidos[0] : null;
+  const nombresDescuento = descuentosMedio.map((d) => `«${d.nombre}»`).join(' y ');
+  const choqueDescuento = exigidos.length > 1
+    ? `${nombresDescuento} piden medios distintos (${exigidos.map((m) => MEDIOS_PAGO[m] || m).join(' y ')}): no se pueden cumplir los dos.`
+    : medioDescuento && soloMayorista && !soloMayorista.includes(medioDescuento)
+      ? `${nombresDescuento} pide ${MEDIOS_PAGO[medioDescuento] || medioDescuento}, y la parte mayorista va solo con ${soloMayorista.map((m) => MEDIOS_PAGO[m] || m).join(' o ')}.`
+      : '';
 
   const [condicionPago, setCondicionPago] = useState('contado');
   const [pagos, setPagos] = useState(() => [{
-    medio: soloMayorista && !soloMayorista.includes('efectivo') ? soloMayorista[0] : 'efectivo',
+    medio: medioDescuento ?? (soloMayorista && !soloMayorista.includes('efectivo') ? soloMayorista[0] : 'efectivo'),
     importe: String(totales.total), cuentaDisponibleId: null,
   }]);
   const [entregado, setEntregado] = useState('');
@@ -156,9 +172,12 @@ export function CobroModal({
       const permitidos = base.filter((m) => soloMayorista.includes(m));
       base = permitidos.length ? permitidos : soloMayorista.filter((m) => MEDIOS_PAGO[m]);
     }
+    // El descuento que exige un medio deja solo ese (aunque no esté entre los habilitados: lo pide el dueño).
+    if (medioDescuento) base = [medioDescuento];
     // El QR de Mercado Pago se guarda como «QR / billetera».
-    return cajaMp && (!todoMayorista || soloMayorista.includes('qr')) ? [...base, QR_MP] : base;
-  }, [config.mediosPago, cajaMp, soloMayorista, todoMayorista]);
+    const qrSirve = medioDescuento ? medioDescuento === 'qr' : (!todoMayorista || soloMayorista.includes('qr'));
+    return cajaMp && qrSirve ? [...base, QR_MP] : base;
+  }, [config.mediosPago, cajaMp, soloMayorista, todoMayorista, medioDescuento]);
 
   /*
    * EL RECARGO POR CUOTAS (0100). El total que se cobra deja de ser el de la
@@ -470,6 +489,7 @@ export function CobroModal({
       return;
     }
     if (avisoTerc) { toast(avisoTerc, 'err'); return; }
+    if (choqueDescuento) { toast(`${choqueDescuento} Sacá el descuento para cobrar.`, 'err'); return; }
     if (faltaMayorista > 0.01) {
       toast(`Faltan ${money(faltaMayorista)} en ${legiblesMayorista} para cubrir la parte mayorista.`, 'err');
       return;
@@ -579,7 +599,7 @@ export function CobroModal({
 
   const pagosOk = condicionPago === 'cuenta_corriente'
     ? !(excedeCredito && config.ctaCteBloquearSuperado)
-    : Math.abs(faltante) <= 0.01 && !avisoTerc && !(faltaMayorista > 0.01);
+    : Math.abs(faltante) <= 0.01 && !avisoTerc && !(faltaMayorista > 0.01) && !choqueDescuento;
   const puedeLiquidar = pagosOk && condicionPago === 'contado' && !medioExigeFactura && !enviando && !aCuit;
   const puedeFacturar = pagosOk && !enviando && (!aCuit || aCuit.listo);
 
@@ -796,9 +816,27 @@ export function CobroModal({
         </div>
       )}
 
+      {descuentosMedio.length > 0 && (
+        <div className={cx(s.callout, choqueDescuento ? s.warn : s.info)} style={{ margin: '0 0 var(--crm-space-3)', display: 'grid', gap: 4 }}>
+          <div>
+            {choqueDescuento || (
+              <>Descuento {nombresDescuento}: se cobra <strong>todo con {etiquetaMedio(medioDescuento)}</strong> y al contado.</>
+            )}
+          </div>
+          {onSacarDescuentos && (
+            <div style={{ marginTop: 4 }}>
+              <Btn small onClick={onSacarDescuentos}>
+                {choqueDescuento ? 'Sacar el descuento' : 'Paga con otro medio: sacar el descuento'}
+              </Btn>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* El selector solo existe cuando hay algo que elegir: cliente con cta. cte.
-          Con precio mayorista también (1/10/2026): se fía y se cobra con sus medios. */}
-      {ctaCteDisponible && (
+          Con precio mayorista también (1/10/2026): se fía y se cobra con sus medios.
+          Con un descuento que exige medio, no: ese descuento es al contado. */}
+      {ctaCteDisponible && !descuentosMedio.length && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 'var(--crm-space-3)' }}>
           <Btn
             variant={condicionPago === 'contado' ? 'btn-primary' : 'btn-ghost'}
@@ -872,7 +910,7 @@ export function CobroModal({
           )}
 
           <div className={s['section-title']}>Medios de pago</div>
-          {sinQrMp && <div className={s.hint} style={{ margin: '-4px 0 6px' }}>Sin QR de Mercado Pago: {sinQrMp}</div>}
+          {sinQrMp && (!medioDescuento || medioDescuento === 'qr') && <div className={s.hint} style={{ margin: '-4px 0 6px' }}>Sin QR de Mercado Pago: {sinQrMp}</div>}
           {pagos.map((x, i) => (
             <div key={i}>
             <div className={p.pagoFila}>
@@ -933,7 +971,7 @@ export function CobroModal({
             </div>
           ))}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Btn small onClick={agregarPago}>+ Otro medio</Btn>
+            {(medios.length > 1 || !medioDescuento) && <Btn small onClick={agregarPago}>+ Otro medio</Btn>}
             {pagos.length > 1 && <Btn small onClick={dividir}>Partes iguales</Btn>}
           </div>
 

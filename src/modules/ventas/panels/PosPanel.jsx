@@ -8,7 +8,7 @@ import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import {
   buscarEnCatalogo, calcularRenglon, descuentosDisponibles, descuentosParaApi,
   extrasParaApi, itemsParaApi, motivoBloqueo, parseEtiquetaBalanza,
-  problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
+  descuentosConMedio, problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
   bultoAbajo, bultoArriba, bultoDeFila, cantidadInicial, desgloseBulto, empujonMayorista, textoBulto,
   totalesTicket, ultimoArticulo, unidadesDeLista,
 } from '../domain/pos.js';
@@ -1012,6 +1012,9 @@ export function PosPanel() {
     [catalogoRaw],
   );
 
+  /** Los descuentos con nombre aplicados que exigen un medio: el cobro ofrece solo ese. */
+  const conMedio = useMemo(() => descuentosConMedio(ticket), [ticket]);
+
   /** Si el ticket tiene renglones a precio mayorista, el cobro ofrece solo sus medios. */
   const restriccion = useMemo(
     () => restriccionMayorista(ticket.renglones, catalogoRaw),
@@ -1437,6 +1440,16 @@ export function PosPanel() {
          * cliente paga con otro, vuelve a minorista y se cobra de nuevo con
          * el total nuevo a la vista. */
         mayorista: restriccion,
+        /* Un descuento con nombre que exige un medio (8/10/2026): el cobro
+         * ofrece solo ese medio. Si el cliente paga con otro, se saca el
+         * descuento y se cobra de nuevo con el total nuevo a la vista. */
+        descuentosMedio: conMedio,
+        onSacarDescuentos: () => {
+          closeModal();
+          const fuera = new Set(conMedio.map((d) => d.id));
+          dispatch({ tipo: 'descuentos', ids: (ticket.descuentos ?? []).filter((id) => !fuera.has(id)) });
+          toast(`Se sacó ${conMedio.map((d) => `«${d.nombre}»`).join(' y ')}. Revisá el total nuevo y cobrá otra vez (F2).`, 'ok');
+        },
         onVolverMinorista: () => {
           closeModal();
           dispatch({ tipo: 'mayorista', aplicar: false });
@@ -1466,7 +1479,7 @@ export function PosPanel() {
         },
       });
     });
-  }, [puedeCobrar, problemas, activaId, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast, restriccion, getCliente, can]);
+  }, [puedeCobrar, problemas, activaId, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast, restriccion, conMedio, getCliente, can]);
 
   /* El retiro no pide caja abierta ni medios: alcanza con un ticket con artículos. */
   const pedirRetiro = useCallback(() => {
