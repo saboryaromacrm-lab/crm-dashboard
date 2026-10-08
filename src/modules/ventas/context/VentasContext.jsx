@@ -17,7 +17,7 @@ const VentasContext = createContext(null);
 
 /** Estado inicial: evita chequear `?.` en cada consumidor. */
 const VACIO = {
-  clientes: [], config: {}, sucursales: [], usuarios: [], marcas: [],
+  clientes: [], config: {}, sucursales: [], sucursalesTodas: [], usuarios: [], marcas: [],
   listasCatalogo: { modalidades: [], listas: [], reglasMarca: [] },
 };
 
@@ -66,6 +66,8 @@ export function VentasProvider({ children, panels = [], defaultPanel }) {
         clientes: d.clientes ?? [],
         config: d.config ?? {},
         sucursales,
+        /* Activas + desactivadas (0143): solo para NOMBRAR en el historial (cajas viejas, ofertas, clientes). */
+        sucursalesTodas: [...sucursales, ...(d.sucursalesInactivas ?? [])],
         usuarios,
         // Catálogo del formato de venta (modalidad › lista + reglas de marca):
         // chico y estable, viaja con el bootstrap para que cotizar no necesite

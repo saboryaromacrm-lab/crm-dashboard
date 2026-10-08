@@ -30,7 +30,7 @@ import { PestanaIva } from './PestanaIva.jsx';
  * EL PANEL
  * ========================================================================== */
 const PESTANAS = [
-  ['ventas', 'Ventas'], ['productos', 'Productos y categorías'], ['comparar', 'Comparar fechas'], ['granel', 'Granel y enteros'], ['rentabilidad', 'Rentabilidad'],
+  ['ventas', 'Ventas'], ['productos', 'Productos y categorías'], ['marcas', 'Marcas'], ['comparar', 'Comparar fechas'], ['granel', 'Granel y enteros'], ['rentabilidad', 'Rentabilidad'],
   ['proveedores', 'Proveedores y listas'], ['stock', 'Stock'], ['iva', 'Resultados IVA'],
 ];
 
@@ -77,7 +77,7 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)', minWidth: 0 }}>
       <PanelHead
         title="Métricas"
-        desc="Ventas, productos y categorías, comparación de fechas, granel y enteros, rentabilidad, proveedores y stock. Se actualiza solo cada 10 minutos; con «Sincronizar» traés lo último en el momento."
+        desc="Ventas, productos y categorías, marcas, comparación de fechas, granel y enteros, rentabilidad, proveedores y stock. Se actualiza solo cada 10 minutos; con «Sincronizar» traés lo último en el momento."
         actions={(
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span className={s.hint} style={{ margin: 0 }} title={e?.ultimaOk ? new Date(e.ultimaOk).toLocaleString('es-AR') : ''}>
@@ -135,7 +135,8 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
       </div>
 
       {pestana === 'ventas' && <PestanaVentas qs={qs} paso={paso} version={version} />}
-      {pestana === 'productos' && <PestanaProductos qs={qs} paso={paso} version={version} />}
+      {pestana === 'productos' && <PestanaProductos key="productos" qs={qs} paso={paso} version={version} />}
+      {pestana === 'marcas' && <PestanaProductos key="marcas" qs={qs} paso={paso} version={version} porMarca />}
       {pestana === 'comparar' && <PestanaComparar desde={desde} hasta={hasta} sucursalId={sucursalId} paso={paso} version={version} />}
       {pestana === 'granel' && (
         <PestanaGranel qs={qs} paso={paso} version={version} onVerTodos={(t) => { setTipoRent(t); setPestana('rentabilidad'); }} />

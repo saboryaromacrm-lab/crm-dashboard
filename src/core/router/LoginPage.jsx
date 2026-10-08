@@ -390,6 +390,12 @@ export function LoginPage() {
                   </div>
                 </Stack>
               </Stack>
+              {/* Trabajaba solo en locales que se desactivaron (0143): el desplegable quedaría vacío sin explicación. */}
+              {usuario?.pideSucursal !== false && (usuario?.sucursales ?? []).length > 0 && !sucursalesDelUsuario.length && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  {usuario.nombre} no tiene ninguna sucursal activa asignada (su local se desactivó). Pedile a gerencia que le asigne otra.
+                </Alert>
+              )}
               {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
               <Stack direction="row" spacing={1.5}>
                 {/* `type="button"`: sin eso, Volver también dispararía el

@@ -10,6 +10,7 @@ import { PanelArca } from '../components/PanelArca.jsx';
 import { MercadoPagoPanel } from '../components/MercadoPagoPanel.jsx';
 import { ListasPanel } from './ListasPanel.jsx';
 import { SitioTienda } from '@modules/web/pages/WebPage.jsx';
+import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
 
 /*
  * CONFIGURACIÓN EN PESTAÑAS (28/9/2026, pedido del dueño): "quedaron todas las
@@ -107,7 +108,7 @@ const FILA_VACIA = {
  * Una fila del listado. Guarda su propio borrador y su propio botón: son
  * registros independientes, no un formulario único como el resto del panel.
  */
-function FilaDescuento({ d, listas, sucursales, onGuardar, onBorrar, ocupado }) {
+function FilaDescuento({ d, listas, sucursales, sucursalesTodas = [], onGuardar, onBorrar, ocupado }) {
   const nuevo = !d;
   const [f, setF] = useState(nuevo ? FILA_VACIA : {
     nombre: d.nombre, porcentaje: d.porcentaje, vence: fechaInput(d.vence),
@@ -174,6 +175,7 @@ function FilaDescuento({ d, listas, sucursales, onGuardar, onBorrar, ocupado }) 
           <label>Sucursal</label>
           <select value={f.sucursalId} onChange={set('sucursalId')}>
             <option value="">Todas</option>
+            <OpcionSucursalGuardada valor={f.sucursalId} lista={sucursales} nombre={sucursalesTodas.find((x) => x.id === Number(f.sucursalId))?.nombre} />
             {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
           </select>
         </div>
@@ -206,7 +208,7 @@ function FilaDescuento({ d, listas, sucursales, onGuardar, onBorrar, ocupado }) 
   );
 }
 
-function SeccionDescuentos({ listas, sucursales, toast }) {
+function SeccionDescuentos({ listas, sucursales, sucursalesTodas = [], toast }) {
   const [filas, setFilas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
@@ -247,7 +249,7 @@ function SeccionDescuentos({ listas, sucursales, toast }) {
               key={d.id}
               d={d}
               listas={listas}
-              sucursales={sucursales}
+              sucursales={sucursales} sucursalesTodas={sucursalesTodas}
               ocupado={ocupado}
               onGuardar={(datos) => accion(
                 () => ventasApi.editarDescuento(d.id, datos), `"${d.nombre}" actualizado.`,
@@ -262,7 +264,7 @@ function SeccionDescuentos({ listas, sucursales, toast }) {
           )}
           <FilaDescuento
             listas={listas}
-            sucursales={sucursales}
+            sucursales={sucursales} sucursalesTodas={sucursalesTodas}
             ocupado={ocupado}
             onGuardar={(datos, limpiar) => accion(
               () => ventasApi.crearDescuento(datos), 'Descuento creado.', limpiar,
@@ -366,7 +368,7 @@ function MediosPagoEditor({ habilitados, exigenFactura, onChange }) {
 /* ------------------------------------------------------------------ */
 
 export function ConfiguracionPanel() {
-  const { config, recargar, toast, listasCatalogo, sucursales } = useVentas();
+  const { config, recargar, toast, listasCatalogo, sucursales, sucursalesTodas } = useVentas();
   const { can } = usePermissions();
   const [tab, setTab] = useState(() => {
     try { return sessionStorage.getItem(TAB_KEY) || 'formato'; } catch { return 'formato'; }
@@ -576,7 +578,7 @@ export function ConfiguracionPanel() {
         <div style={{ gridColumn: '1 / -1' }}>
           <SeccionDescuentos
             listas={listasCatalogo.listas}
-            sucursales={sucursales}
+            sucursales={sucursales} sucursalesTodas={sucursalesTodas}
             toast={toast}
           />
         </div>

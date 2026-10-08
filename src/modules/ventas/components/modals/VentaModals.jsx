@@ -12,7 +12,7 @@
 import { useMemo, useState } from 'react';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
-import { imprimirVenta } from '@core/services/imprimir.js';
+import { abrirVentanaImpresion, imprimirVenta } from '@core/services/imprimir.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../../services/ventas.api.js';
@@ -473,6 +473,16 @@ export function NotaCreditoModal({ venta, onCambio }) {
       return;
     }
     setEnviando(true);
+    /*
+     * LA VENTANA DE IMPRESIÓN SE ABRE EN ESTE CLIC (7/10/2026, el dueño: «al
+     * anular una venta facturada no imprime la nota de crédito»). La nota
+     * espera a ARCA —puede tardar varios segundos— y recién después hay papel:
+     * para entonces el navegador ya no lo toma como respuesta al clic y la
+     * impresión no salía. Abierta ahora, se llena cuando llega la nota (el
+     * mismo arreglo que el remito, ver `abrirVentanaImpresion`). Si la nota
+     * falla, se cierra.
+     */
+    const ventana = abrirVentanaImpresion(esTicket ? 'Registrando la devolución…' : 'Emitiendo la nota de crédito en ARCA…');
     const nc = await act(
       (esTicket ? ventasApi.devolucion : ventasApi.notaCredito)(venta.id, {
         motivo: razon,
@@ -485,18 +495,19 @@ export function NotaCreditoModal({ venta, onCambio }) {
       { recargar: false },
     );
     setEnviando(false);
-    if (!nc) return;
+    if (!nc) { try { ventana?.close(); } catch { /* ya cerrada */ } return; }
     onCambio?.();
     /* Se imprime sola: una nota de crédito que no se le entrega al cliente no
      * sirve de nada, y volver a buscarla en el listado es un paso que se
      * olvida. Si el navegador bloquea la ventana, se avisa — el comprobante ya
      * está emitido y se reimprime desde el detalle. */
     try {
-      const salio = await imprimirVenta(nc, { moneda: money, fechaHora: fmtFechaHora });
+      const salio = await imprimirVenta(nc, { moneda: money, fechaHora: fmtFechaHora, ventana });
       if (!salio) {
         toast(`${esTicket ? 'La devolución se registró' : 'La nota se emitió'}, pero el navegador bloqueó la impresión. Reimprimila desde el listado.`, 'err');
       }
     } catch {
+      try { ventana?.close(); } catch { /* ya cerrada */ }
       toast(`${esTicket ? 'La devolución se registró' : 'La nota se emitió'}, pero no se pudo imprimir. Reimprimila desde el listado.`, 'err');
     }
   };

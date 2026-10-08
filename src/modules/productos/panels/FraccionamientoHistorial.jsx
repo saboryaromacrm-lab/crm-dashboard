@@ -16,6 +16,7 @@ import { useProductos } from '../context/ProductosContext.jsx';
 import { num, fmtFechaHora, fmtTam } from '../domain/format.js';
 import { Table, Stat, Btn, usePaginadoServidor, s } from '../components/ui.jsx';
 import { refrescarOperadores } from '../components/OperadorFraccion.jsx';
+import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
 
 const pad = (n) => String(n).padStart(2, '0');
 const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -344,7 +345,7 @@ export function TabOperadores() {
   });
   useEffect(() => { cargar(); }, [store]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const nombreSuc = (id) => (id == null ? 'Todas' : sucursales.find((x) => x.id === id)?.nombre ?? '—');
+  const nombreSuc = (id) => (id == null ? 'Todas' : store.getSucursal?.(id)?.nombre ?? sucursales.find((x) => x.id === id)?.nombre ?? '—');
 
   const guardar = async (fn, okMsg) => {
     setOcupado(true);
@@ -425,6 +426,7 @@ export function TabOperadores() {
             <td>
               <select value={edit.sucursalId} aria-label="Trabaja en" onChange={(e) => setEdit((x) => ({ ...x, sucursalId: e.target.value }))}>
                 <option value="">Todas las sucursales</option>
+                <OpcionSucursalGuardada valor={edit.sucursalId} lista={sucursales} nombre={nombreSuc(Number(edit.sucursalId))} />
                 {sucursales.map((su) => <option key={su.id} value={su.id}>{su.nombre}</option>)}
               </select>
             </td>

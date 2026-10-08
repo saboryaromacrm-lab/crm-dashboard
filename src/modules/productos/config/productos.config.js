@@ -21,6 +21,7 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import LocalCafeIcon from '@mui/icons-material/LocalCafe';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import SettingsIcon from '@mui/icons-material/Settings';
 
@@ -89,6 +90,9 @@ export const ALMACEN_PANELS = [
    * El globito son los que APURAN: vencidos sin procesar + vencen en ≤7 días.
    */
   { id: 'vencimientos',   label: 'Vencimientos',   icon: EventBusyIcon,      permiso: 'almacen.vencimientos', badge: 'vencimientos' },
+  /* La mercadería QUIETA (7/10/2026): con stock y sin vender hace 7/14/21/30
+     días, por local, con la plata parada y dónde sí se vende. Solo lectura. */
+  { id: 'sin-movimiento', label: 'Sin movimiento', icon: HourglassEmptyIcon, permiso: 'almacen.sin-movimiento' },
   // Punto de SALIDA hacia coffit: el ERP no lleva el stock del café. El globito
   // avisa la demanda del café que espera (pedidos pendientes o armándose).
   /* Dos permisos: la distribuidora entra por `almacen.cafeteria` y el rol

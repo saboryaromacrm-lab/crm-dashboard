@@ -244,6 +244,8 @@ export function EsteEquipoPanel({ onAviso }) {
                     `"${t.nombre}" pasó a ${sucursales.find((x) => x.id === Number(e.target.value))?.nombre ?? 'otra sucursal'}.`,
                   )}
                 >
+                  {/* Un equipo de un local desactivado (0143) muestra el suyo, sin dejar elegirlo de vuelta. */}
+                  {!sucursales.some((x) => x.id === t.sucursalId) && <option value={t.sucursalId} disabled>{t.sucursalNombre} (desactivada)</option>}
                   {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
                 </select>
               </td>

@@ -249,7 +249,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
    * Distribuidora, que es el depósito central, y si no cualquier otra.
    */
   useEffect(() => {
-    if (origenNum && origenNum !== destinoNum && store.getSucursal(origenNum)) return;
+    if (origenNum && origenNum !== destinoNum && store.state.sucursales.some((su) => su.id === origenNum)) return;
     const preferida = dist && dist.id !== destinoNum ? dist.id : null;
     const otra = preferida ?? store.state.sucursales.find((su) => su.id !== destinoNum)?.id ?? '';
     if (otra !== origenId) setOrigenId(otra);

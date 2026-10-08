@@ -1518,7 +1518,8 @@ function AnularPosterior({ sesion, mov, onHecho, onCancelar }) {
  * cerrado: asentar lo que el cajero se olvidó y anular lo asentado así (0137).
  */
 export function ArqueoTurnoModal({ cajaSesionId, onChange }) {
-  const { closeModal, sucursales, usuarios, ctx, toast } = useVentas();
+  // Es historial: nombra también un local que ya cerró (0143).
+  const { closeModal, sucursalesTodas: sucursales, usuarios, ctx, toast } = useVentas();
   const { data: arqueo, loading, error, reload } = useResource(`arqueo-ver:${cajaSesionId}`, () => ventasApi.cajaArqueo(cajaSesionId));
   const esSuperadmin = usuarios.find((u) => u.id === ctx?.usuarioId)?.rolClave === 'superadmin';
   /** null | 'asentar' | { anular: movimiento } */

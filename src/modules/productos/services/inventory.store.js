@@ -70,7 +70,9 @@ function nuevoEstado() {
 
 /* ---------------- Getters ---------------- */
 const getProducto = (id) => state.productos.find((x) => x.id === id);
-const getSucursal = (id) => state.sucursales.find((x) => x.id === id);
+/* Las desactivadas (0143) no se ofrecen para elegir, pero el historial las sigue nombrando. */
+const esActiva = (id) => state.sucursales.some((x) => x.id === id);
+const getSucursal = (id) => state.sucursales.find((x) => x.id === id) ?? (state.sucursalesInactivas || []).find((x) => x.id === id);
 const getProveedor = (id) => state.proveedores.find((x) => x.id === id);
 const getUsuario = (id) => state.usuarios.find((x) => x.id === id);
 function presDe(prod, presId) { return prod && prod.presentaciones ? prod.presentaciones.find((p) => p.id === presId) : null; }
@@ -524,6 +526,7 @@ function _errMsg(e) {
 
 function mergeState(data) {
   state.sucursales = data.sucursales || [];
+  state.sucursalesInactivas = data.sucursalesInactivas || [];
   state.proveedores = data.proveedores || [];
   state.usuarios = data.usuarios || [];
   state.productos = data.productos || [];
@@ -714,7 +717,7 @@ async function init() {
     if (uSesion) {
       state.ctx.usuarioId = uSesion.id;
       const esJefe = uSesion.rolClave === 'admin' || uSesion.rolClave === 'superadmin';
-      if (!esJefe && sesion?.sucursal?.id != null && getSucursal(sesion.sucursal.id)) {
+      if (!esJefe && sesion?.sucursal?.id != null && esActiva(sesion.sucursal.id)) {
         state.ctx.sucursalId = sesion.sucursal.id;
       }
     } else if (state.ctx.usuarioId == null || !getUsuario(state.ctx.usuarioId)) {
@@ -724,7 +727,8 @@ async function init() {
         || activos.find((u) => u.rolClave === 'admin') || activos[0];
       state.ctx.usuarioId = jefe ? jefe.id : null;
     }
-    if (state.ctx.sucursalId != null && !getSucursal(state.ctx.sucursalId)) state.ctx.sucursalId = null;
+    // Solo una ACTIVA puede ser el lugar de trabajo (0143): parado en un local cerrado, se suelta.
+    if (state.ctx.sucursalId != null && !esActiva(state.ctx.sucursalId)) state.ctx.sucursalId = null;
     /*
      * HAY SESIONES SIN SUCURSAL (0098) y se quedan sin ninguna.
      *

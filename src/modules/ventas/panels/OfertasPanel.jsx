@@ -26,7 +26,7 @@ const PILL_ESTADO = {
 };
 
 export function OfertasPanel() {
-  const { ctx, openModal, toast, sucursales } = useVentas();
+  const { ctx, openModal, toast, sucursalesTodas: sucursales } = useVentas();
   const [searchParams, setSearchParams] = useSearchParams();
   const [ofertas, setOfertas] = useState(null);
   const [catalogo, setCatalogo] = useState(null);

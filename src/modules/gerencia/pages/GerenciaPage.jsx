@@ -397,6 +397,32 @@ export function GerenciaPage() {
   const [sucursales, setSucursales] = useState([]);
   /** Ediciones sin guardar de la tabla de sucursales: { [id]: {puntoVenta, direccion} }. */
   const [edits, setEdits] = useState({});
+  /** La sucursal que se está por desactivar: la segunda confirmación (0143). */
+  const [aDesactivar, setADesactivar] = useState(null);
+  const enVuelo = useRef(false);
+  const cambiarEstadoSucursal = async (su, activar) => {
+    if (enVuelo.current) return;
+    enVuelo.current = true;
+    try {
+      const r = await httpClient.post(`/sucursales/${su.id}/${activar ? 'reactivar' : 'desactivar'}`);
+      const extra = activar ? '' : [
+        r.equipos ? `${r.equipos} equipo${r.equipos === 1 ? '' : 's'} registrado${r.equipos === 1 ? '' : 's'} ahí quedaron dados de baja` : '',
+        r.sesiones ? `se cerraron ${r.sesiones} sesión${r.sesiones === 1 ? '' : 'es'} abiertas en ese local` : '',
+        r.usuariosSinLocal?.length ? `OJO: ${r.usuariosSinLocal.join(', ')} trabajaba${r.usuariosSinLocal.length === 1 ? '' : 'n'} solo ahí — asignale${r.usuariosSinLocal.length === 1 ? '' : 's'} otra sucursal en Usuarios` : '',
+        r.gastosFijos?.length ? `OJO: tiene gastos fijos activos (${r.gastosFijos.join(', ')}) que se siguen generando — dalos de baja en Gastos si ya no corren` : '',
+      ].filter(Boolean).join('; ');
+      setAviso({
+        tipo: r.usuariosSinLocal?.length || r.gastosFijos?.length ? 'err' : 'ok',
+        texto: activar ? `${su.nombre} reactivada: vuelve a aparecer en todo el sistema.` : `${su.nombre} desactivada: ya no aparece para elegir en ninguna parte; su historial queda.${extra ? ` ${extra}.` : ''}`,
+      });
+      setADesactivar(null);
+      await cargar();
+    } catch (e) {
+      setAviso({ tipo: 'err', texto: e?.data?.message || 'No se pudo cambiar el estado de la sucursal.' });
+    } finally {
+      enVuelo.current = false;
+    }
+  };
   const [aviso, setAviso] = useState(null);
   const [modal, setModal] = useState(null); // {tipo:'usuario'|'rol', datos}
 
@@ -413,7 +439,8 @@ export function GerenciaPage() {
       const [us, rs, sc] = await Promise.all([
         httpClient.get('/usuarios'),
         httpClient.get('/roles'),
-        httpClient.get('/sucursales'),
+        // Todas, también las desactivadas (0143): acá es donde se reactivan.
+        httpClient.get('/sucursales?todas=1'),
       ]);
       setUsuarios(us); setRoles(rs); setSucursales(sc);
       setEdits({});
@@ -438,7 +465,8 @@ export function GerenciaPage() {
   // El aviso se va solo: es una confirmación, no un estado permanente.
   useEffect(() => {
     if (!aviso) return undefined;
-    const t = setTimeout(() => setAviso(null), 4000);
+    // Un error dice qué falta resolver (por ejemplo, al desactivar una sucursal): se deja leer.
+    const t = setTimeout(() => setAviso(null), aviso.tipo === 'err' ? 15000 : 4000);
     return () => clearTimeout(t);
   }, [aviso]);
 
@@ -615,10 +643,31 @@ export function GerenciaPage() {
             no la tiene prendida emite solo comprobantes internos, sin CAE, y nunca factura con el punto de
             venta de otro local.
           </div>
+          {aDesactivar && (
+            <div className={cx(s.callout, s.warn)} style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <strong>¿Desactivar {aDesactivar.nombre}?</strong> Es para un local que <strong>cerró</strong>:
+                deja de aparecer para elegir en <strong>todo</strong> el sistema (el ingreso, el selector de arriba,
+                Almacén, Compras, Ventas, Gastos, Métricas, Cash Flow) y nadie puede entrar ni operar ahí. Los equipos
+                registrados en ese local quedan dados de baja y se cierran las sesiones abiertas ahí.
+                <strong> Su historial no se borra</strong>: ventas, cajas y facturas viejas lo siguen nombrando.
+                Se puede reactivar cuando quieras.
+              </div>
+              <div className={s.hint} style={{ margin: 0 }}>
+                Antes tiene que estar vacío y sin nada pendiente: stock en cero, caja cerrada, sin pases ni envíos de Coffit
+                en curso, sin tickets, presupuestos ni controles de stock abiertos, sin vencimientos por procesar, sin ventas
+                esperando CAE y sin incidencias. Si falta algo, el sistema te dice todo lo que falta.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Btn variant="btn-delete" onClick={() => cambiarEstadoSucursal(aDesactivar, false)}>Sí, desactivar {aDesactivar.nombre}</Btn>
+                <Btn onClick={() => setADesactivar(null)}>Cancelar</Btn>
+              </div>
+            </div>
+          )}
           <Table
             cols={[
               { h: 'Sucursal' }, { h: 'Tipo' }, { h: 'Punto de venta' },
-              { h: 'Domicilio del comprobante' }, { h: 'Factura electrónica' }, { h: 'Fondo de caja', num: true }, { h: 'Acciones', cls: 'actions-col' },
+              { h: 'Domicilio del comprobante' }, { h: 'Factura electrónica' }, { h: 'Fondo de caja', num: true }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' },
             ]}
             empty="Sin sucursales."
           >
@@ -634,8 +683,9 @@ export function GerenciaPage() {
               const set = (campo) => (e) => setEdits((p) => ({
                 ...p, [su.id]: { ...(p[su.id] ?? {}), [campo]: e.target.value },
               }));
+              const apagada = su.activa === false;
               return (
-                <tr key={su.id}>
+                <tr key={su.id} style={apagada ? { opacity: 0.55 } : undefined}>
                   <td><strong>{su.nombre}</strong></td>
                   <td className={s.muted}>{su.tipo === 'distribuidora' ? 'Distribuidora' : 'Express'}</td>
                   <td>
@@ -643,6 +693,7 @@ export function GerenciaPage() {
                       value={pv}
                       onChange={set('puntoVenta')}
                       maxLength={5}
+                      disabled={apagada}
                       placeholder="00028"
                       style={{ width: 90, fontFamily: 'var(--crm-font-mono, monospace)' }}
                     />
@@ -652,6 +703,7 @@ export function GerenciaPage() {
                       value={dir}
                       onChange={set('direccion')}
                       maxLength={200}
+                      disabled={apagada}
                       placeholder="Calle 123, Formosa"
                       style={{ width: '100%', minWidth: 220 }}
                     />
@@ -678,16 +730,22 @@ export function GerenciaPage() {
                       type="number" min="0" step="1000"
                       value={fondo}
                       onChange={set('fondoCaja')}
+                      disabled={apagada}
                       placeholder="50000"
                       title="Con cuánto abre la caja y cuánto queda apartado al cerrar"
                       style={{ width: 110, textAlign: 'right' }}
                     />
                   </td>
+                  <td>
+                    <span className={cx(s.pill, apagada ? s['est-cancelada'] : s['st-disponible'])}>{apagada ? 'Desactivada' : 'Activa'}</span>
+                    {apagada && su.desactivadaEn && <div className={s.hint} style={{ margin: '2px 0 0' }}>desde el {new Date(su.desactivadaEn).toLocaleDateString('es-AR')}</div>}
+                  </td>
                   <td className={s['actions-col']}>
+                    <div className={s['row-actions']}>
                     <Btn
                       variant="btn-primary"
                       small
-                      disabled={!sucio || (fondoCambio && fondo !== '' && !(Number(fondo) >= 0))}
+                      disabled={apagada || !sucio || (fondoCambio && fondo !== '' && !(Number(fondo) >= 0))}
                       onClick={() => mutar(
                         /* Se manda el nombre y el tipo porque el DTO los exige:
                          * esta pantalla edita dos campos, no la sucursal entera. */
@@ -700,6 +758,10 @@ export function GerenciaPage() {
                     >
                       Guardar
                     </Btn>
+                    {apagada
+                      ? <Btn small variant="btn-ingreso" onClick={() => cambiarEstadoSucursal(su, true)}>Reactivar</Btn>
+                      : su.tipo !== 'distribuidora' && <Btn small variant="btn-delete" onClick={() => setADesactivar(su)}>Desactivar</Btn>}
+                    </div>
                   </td>
                 </tr>
               );
@@ -763,7 +825,7 @@ export function GerenciaPage() {
         <UsuarioModal
           usuario={modal.datos}
           roles={roles}
-          sucursales={sucursales}
+          sucursales={sucursales.filter((x) => x.activa !== false)}
           onCerrar={() => setModal(null)}
           onGuardar={(payload) => (modal.datos
             ? mutar(() => httpClient.patch(`/usuarios/${modal.datos.id}`, payload), 'Usuario actualizado.')

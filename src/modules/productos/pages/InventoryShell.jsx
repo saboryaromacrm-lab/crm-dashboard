@@ -25,6 +25,7 @@ import { IncidenciasPanel } from '../panels/IncidenciasPanel.jsx';
 import { CafeteriaPanel } from '../panels/CafeteriaPanel.jsx';
 import { VencimientosPanel } from '../panels/VencimientosPanel.jsx';
 import { ConteosPanel } from '../panels/ConteosPanel.jsx';
+import { SinMovimientoPanel } from '../panels/SinMovimientoPanel.jsx';
 
 /**
  * Registro de paneles disponibles. Cada módulo elige cuáles muestra (config).
@@ -54,6 +55,7 @@ const PANEL_COMPONENTS = {
   vencimientos: VencimientosPanel,
   // El físico contra el virtual (0066): sesiones de conteo por diferencia.
   conteos: ConteosPanel,
+  'sin-movimiento': SinMovimientoPanel,
   // Las llaves de stock (3/10/2026): antes en Ventas › Configuración.
   configuracion: ConfiguracionAlmacenPanel,
 };

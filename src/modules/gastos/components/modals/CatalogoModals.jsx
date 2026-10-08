@@ -4,6 +4,7 @@ import { useGastos } from '../../context/GastosContext.jsx';
 import { gastosApi } from '../../services/gastos.api.js';
 import { FRECUENCIAS, r2 } from '../../domain/constants.js';
 import { ModalShell, money, s } from '../ui.jsx';
+import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
 
 /* ==================================================================== *
  * Rubros
@@ -132,7 +133,7 @@ export function BorrarCategoriaModal({ categoriaId }) {
  * ==================================================================== */
 
 export function RecurrenteFormModal({ recurrenteId, onChange }) {
-  const { recurrentes, categoriasActivas, proveedores, sucursales, act, closeModal, toast } = useGastos();
+  const { recurrentes, categoriasActivas, proveedores, sucursales, nombreSucursal, act, closeModal, toast } = useGastos();
   const original = recurrenteId ? recurrentes.find((r) => r.id === recurrenteId) : null;
 
   const [f, setF] = useState({
@@ -214,6 +215,7 @@ export function RecurrenteFormModal({ recurrenteId, onChange }) {
           <label>Sucursal</label>
           <select value={f.sucursalId} onChange={set('sucursalId')}>
             <option value="">Toda la empresa</option>
+            <OpcionSucursalGuardada valor={f.sucursalId} lista={sucursales} nombre={nombreSucursal(Number(f.sucursalId))} />
             {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
           </select>
         </div>

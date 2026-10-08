@@ -1196,9 +1196,9 @@ export function imprimirEnvioCaja(d, { moneda, fechaHora, sucursal, cajero, usua
  * cuando llega la respuesta lo evita. Si la operación falla, quien llama la
  * cierra.
  */
-export function abrirVentanaImpresion() {
+export function abrirVentanaImpresion(texto = 'Preparando el remito…') {
   const w = window.open('', '_blank', 'width=760,height=900');
-  if (w) w.document.write('<p style="font-family:sans-serif;padding:24px;color:#555">Preparando el remito…</p>');
+  if (w) w.document.write(`<p style="font-family:sans-serif;padding:24px;color:#555">${esc(texto)}</p>`);
   return w;
 }
 
@@ -1556,8 +1556,13 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
  *
  * Devuelve `false` si el navegador bloqueó la ventana emergente, igual que
  * `imprimirDocumento`.
+ *
+ * `ventana`: una abierta en el clic con `abrirVentanaImpresion` (7/10/2026:
+ * la nota de crédito espera a ARCA varios segundos antes de tener qué
+ * imprimir, y para entonces el navegador ya no lo cuenta como respuesta al
+ * clic y la impresión no salía).
  */
-export async function imprimirVenta(venta, { moneda, fechaHora }) {
+export async function imprimirVenta(venta, { moneda, fechaHora, ventana = null }) {
   const { empresa, impresion } = await configImpresion();
   const nro = `${venta.puntoVenta}-${String(venta.numero ?? '').padStart(8, '0')}`;
   const esNota = String(venta.tipo || '').startsWith('nota_credito');
@@ -1573,6 +1578,7 @@ export async function imprimirVenta(venta, { moneda, fechaHora }) {
     return imprimirDocumento('ticketPos', {
       titulo: `Devolución ${nro}`,
       esTicket: true,
+      ventana,
       direccion: venta.sucursalDireccion || '',
       cuerpo: cuerpoTicket(venta, {
         moneda,
@@ -1591,11 +1597,13 @@ export async function imprimirVenta(venta, { moneda, fechaHora }) {
       cuerpo: await cuerpoFactura(venta, { moneda, fecha: fechaHora, empresa }),
       pie: '',
       direccion: venta.sucursalDireccion || '',
+      ventana,
     });
   }
   return imprimirDocumento('ticketPos', {
     titulo: `Ticket ${nro}`,
     esTicket: true,
+    ventana,
     direccion: venta.sucursalDireccion || '',
     cuerpo: cuerpoTicket(venta, { moneda, fechaHora, leyendaNoFiscal: impresion.leyendaNoFiscal }),
   });

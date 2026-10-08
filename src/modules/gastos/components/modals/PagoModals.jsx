@@ -8,6 +8,7 @@ import {
   Table, Btn, Di, ModalShell, Pill, Saldo, money, fmtFecha, fmtFechaHora, s,
 } from '../ui.jsx';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '../segundaConfirmacion.jsx';
+import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
 
 /* ==================================================================== *
  * Registrar un pago (desde el módulo, no desde la caja)
@@ -133,6 +134,7 @@ export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
           {esJefe ? (
             <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
               <option value="">Sin sucursal</option>
+              <OpcionSucursalGuardada valor={sucursalId} lista={sucursales} nombre={nombreSucursal(Number(sucursalId))} />
               {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
             </select>
           ) : (

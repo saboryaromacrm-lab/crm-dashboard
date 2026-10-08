@@ -10,6 +10,7 @@ import {
 import {
   Table, Btn, Di, ModalShell, GastoEstadoPill, Saldo, money, fmtFecha, fmtFechaHora, s,
 } from '../ui.jsx';
+import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
 
 /* ==================================================================== *
  * Alta y edición del gasto
@@ -536,6 +537,7 @@ export function GastoFormModal({ gastoId, onChange }) {
           {esJefe ? (
             <select value={f.sucursalId} onChange={set('sucursalId')}>
               <option value="">General (toda la empresa)</option>
+              <OpcionSucursalGuardada valor={f.sucursalId} lista={sucursales} nombre={nombreSucursal(Number(f.sucursalId))} />
               {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
             </select>
           ) : (

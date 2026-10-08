@@ -12,6 +12,7 @@ import {
   Table, Btn, Di, ModalShell, VentaTag, VentaEstadoPill, SaldoMonto,
   money, fmtFecha, s,
 } from '../ui.jsx';
+import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
 
 /* ==================================================================== *
  * Alta / edición
@@ -41,7 +42,7 @@ function estadoInicial(cliente, config) {
 }
 
 export function ClienteFormModal({ clienteId }) {
-  const { getCliente, act, closeModal, toast, config, usuarios, sucursales, listasCatalogo } = useVentas();
+  const { getCliente, act, closeModal, toast, config, usuarios, sucursales, sucursalesTodas, listasCatalogo } = useVentas();
   const cliente = clienteId != null ? getCliente(clienteId) : null;
   const editando = !!cliente;
 
@@ -219,6 +220,7 @@ export function ClienteFormModal({ clienteId }) {
           <label>Sucursal habitual</label>
           <select value={f.sucursalId} onChange={set('sucursalId')}>
             <option value="">Sin asignar</option>
+            <OpcionSucursalGuardada valor={f.sucursalId} lista={sucursales} nombre={sucursalesTodas.find((x) => x.id === Number(f.sucursalId))?.nombre} />
             {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
           </select>
         </div>
@@ -426,7 +428,7 @@ function TabComprobantes({ clienteId }) {
 }
 
 export function DetalleClienteModal({ clienteId }) {
-  const { getCliente, closeModal, openModal, usuarios, sucursales } = useVentas();
+  const { getCliente, closeModal, openModal, usuarios, sucursalesTodas: sucursales } = useVentas();
   const [tab, setTab] = useState(0);
   const cliente = getCliente(clienteId);
 

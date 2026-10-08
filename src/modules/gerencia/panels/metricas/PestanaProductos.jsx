@@ -15,6 +15,9 @@
  *
  * Los filtros de arriba (período, sucursal, agrupar) valen igual que en las
  * otras pestañas; acá se suma «Todo / Solo granel / Solo enteros».
+ *
+ * PESTAÑA «MARCAS» (7/10/2026): el mismo componente con `porMarca`. Se recorre
+ * Todas las marcas › una marca (sus productos) › la ficha del producto.
  */
 import { useMemo, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
@@ -32,7 +35,7 @@ const ORDENES = {
   ventaNeta: 'Más vendido', margen: 'Más ganancia ($)', margenPct: 'Mayor margen (%)', margenPctAsc: 'Menor margen (%)',
   sube: 'Lo que más creció ($)', baja: 'Lo que más cayó ($)', nombre: 'Por nombre',
 };
-const RAIZ = { categoriaId: null, subcategoriaId: null, productoId: null, plano: false };
+const RAIZ = { categoriaId: null, subcategoriaId: null, marcaId: null, productoId: null, plano: false };
 
 /** Cantidad en su unidad: kg el granel, unidades el resto; un grupo mezcla puede tener las dos. */
 function cantidadTxt(x) {
@@ -70,7 +73,7 @@ function Parte({ p }) {
   );
 }
 
-export function PestanaProductos({ qs, paso, version }) {
+export function PestanaProductos({ qs, paso, version, porMarca = false }) {
   const [nodo, setNodo] = useState(RAIZ);
   const [tipo, setTipo] = useState('');
   const ir = (n) => setNodo({ ...RAIZ, ...n });
@@ -79,7 +82,8 @@ export function PestanaProductos({ qs, paso, version }) {
     + (nodo.productoId ? `&productoId=${nodo.productoId}` : '')
     + (nodo.categoriaId != null ? `&categoriaId=${nodo.categoriaId}` : '')
     + (nodo.subcategoriaId != null ? `&subcategoriaId=${nodo.subcategoriaId}` : '')
-    + (nodo.plano ? '&plano=1' : '');
+    + (nodo.plano ? '&plano=1' : '')
+    + (porMarca ? `&porMarca=1${nodo.marcaId != null ? `&marcaId=${nodo.marcaId}` : ''}` : '');
   const { data: d, loading, error } = useResource(`metricas:productos:${qn}:${version}`, () => httpClient.get(`/metricas/productos?${qn}`));
 
   if (error) return <Aviso tono="warn">{error}</Aviso>;
@@ -87,10 +91,14 @@ export function PestanaProductos({ qs, paso, version }) {
 
   const r = d.ruta;
   /* Las migas: cada paso vuelve a ese nivel. «Todos los productos» de una categoría vuelve a su lista de subcategorías. */
-  const migas = [{ texto: 'Todas las categorías', n: RAIZ }];
-  if (r.categoria) migas.push({ texto: r.categoria.nombre, n: { categoriaId: r.categoria.id } });
-  if (r.subcategoria && (d.nivel === 'detalle' || !d.plano)) migas.push({ texto: r.subcategoria.nombre, n: { categoriaId: r.categoria?.id ?? 0, subcategoriaId: r.subcategoria.id } });
-  if (d.plano) migas.push({ texto: 'Todos los productos', n: null });
+  const migas = porMarca
+    ? [{ texto: 'Todas las marcas', n: RAIZ }, ...(r.marca ? [{ texto: r.marca.nombre, n: { marcaId: r.marca.id } }] : [])]
+    : [{ texto: 'Todas las categorías', n: RAIZ }];
+  if (!porMarca) {
+    if (r.categoria) migas.push({ texto: r.categoria.nombre, n: { categoriaId: r.categoria.id } });
+    if (r.subcategoria && (d.nivel === 'detalle' || !d.plano)) migas.push({ texto: r.subcategoria.nombre, n: { categoriaId: r.categoria?.id ?? 0, subcategoriaId: r.subcategoria.id } });
+    if (d.plano) migas.push({ texto: 'Todos los productos', n: null });
+  }
   if (r.producto) migas.push({ texto: r.producto.nombre, n: null });
 
   return (
@@ -116,8 +124,8 @@ export function PestanaProductos({ qs, paso, version }) {
       {tipo && <div className={s.hint} style={{ margin: 0 }}>Todos los números son solo de {tipo === 'granel' ? 'granel (en paquetes y suelto)' : 'enteros'}.</div>}
 
       {d.nivel === 'detalle'
-        ? <DetalleProducto d={d} paso={paso} />
-        : <NivelArbol d={d} paso={paso} ir={ir} />}
+        ? <DetalleProducto d={d} paso={paso} porMarca={porMarca} />
+        : <NivelArbol d={d} paso={paso} ir={ir} porMarca={porMarca} />}
     </div>
   );
 }
@@ -125,21 +133,21 @@ export function PestanaProductos({ qs, paso, version }) {
 /* ============================================================================
  * UN NIVEL DEL ÁRBOL: categorías, subcategorías o productos
  * ========================================================================== */
-const NOMBRE_NIVEL = { categoria: ['Categoría', 'categorías'], subcategoria: ['Subcategoría', 'subcategorías'], producto: ['Producto', 'productos'] };
+const NOMBRE_NIVEL = { categoria: ['Categoría', 'categorías'], subcategoria: ['Subcategoría', 'subcategorías'], marca: ['Marca', 'marcas'], producto: ['Producto', 'productos'] };
 
-function NivelArbol({ d, paso, ir }) {
+function NivelArbol({ d, paso, ir, porMarca }) {
   const [q, setQ] = useState('');
   const [orden, setOrden] = useState('ventaNeta');
   const t = d.nodo;
   const [uno, varios] = NOMBRE_NIVEL[d.nivel];
   const esProd = d.nivel === 'producto';
-  const enRaiz = !d.ruta.categoria;
-  const lugar = d.ruta.subcategoria && !d.plano ? d.ruta.subcategoria.nombre : d.ruta.categoria?.nombre;
+  const enRaiz = porMarca ? !d.ruta.marca : !d.ruta.categoria;
+  const lugar = porMarca ? d.ruta.marca?.nombre : d.ruta.subcategoria && !d.plano ? d.ruta.subcategoria.nombre : d.ruta.categoria?.nombre;
 
   const filas = useMemo(() => {
     const txt = q.trim().toLowerCase();
     const base = d.filas.filter((x) => !txt || x.nombre.toLowerCase().includes(txt)
-      || (esProd && (`${x.marca} ${x.subcategoria}`).toLowerCase().includes(txt)));
+      || (esProd && (`${x.marca} ${x.categoria} ${x.subcategoria}`).toLowerCase().includes(txt)));
     const val = {
       ventaNeta: (x) => x.ventaNeta, margen: (x) => x.margen, margenPct: (x) => x.margenPct ?? -Infinity,
       margenPctAsc: (x) => -(x.margenPct ?? Infinity), sube: (x) => x.diferencia, baja: (x) => -x.diferencia,
@@ -151,6 +159,7 @@ function NivelArbol({ d, paso, ir }) {
   /** Bajar un nivel desde una fila. */
   const abrir = (x) => {
     if (esProd) return ir({ productoId: x.clave });
+    if (d.nivel === 'marca') return ir({ marcaId: x.clave });
     if (d.nivel === 'categoria') return ir({ categoriaId: x.clave });
     return ir({ categoriaId: d.ruta.categoria.id, subcategoriaId: x.clave });
   };
@@ -184,7 +193,7 @@ function NivelArbol({ d, paso, ir }) {
       </Tiles>
       <div className={s.hint} style={{ margin: 0 }}>
         Venta neta, sin IVA; las notas de crédito restan. Se compara con {fechaLarga(d.anterior.desde)} → {fechaLarga(d.anterior.hasta)}.
-        Cada producto cuenta en la categoría que tiene <strong>hoy</strong>.
+        Cada producto cuenta en la {porMarca ? 'marca' : 'categoría'} que tiene <strong>hoy</strong>.
       </div>
 
       {sinNada ? <Aviso>No hay ventas{lugar ? ` de ${lugar}` : ''} en este período.</Aviso> : (
@@ -212,7 +221,7 @@ function NivelArbol({ d, paso, ir }) {
       <Bloque
         titulo={d.plano ? `Todos los productos${lugar ? ` de ${lugar}` : ''}` : `Por ${uno.toLowerCase()}${lugar ? ` · ${lugar}` : ''}`}
         sub={esProd ? 'Tocá un producto para ver su ficha: puesto, sucursales, paquetes y listas.' : `Tocá una ${uno.toLowerCase()} para ver ${d.nivel === 'categoria' ? 'sus subcategorías' : 'sus productos'}.`}
-        acciones={!esProd || d.plano ? (
+        acciones={!porMarca && (!esProd || d.plano) ? (
           <Btn small variant="btn-ghost" onClick={() => ir(d.plano
             ? { categoriaId: d.ruta.categoria?.id ?? null }
             : { categoriaId: d.ruta.categoria?.id ?? null, plano: true })}
@@ -220,7 +229,7 @@ function NivelArbol({ d, paso, ir }) {
         ) : null}
       >
         <div className={s.toolbar} style={{ margin: 0 }}>
-          <input type="search" placeholder={`Buscar ${uno.toLowerCase()}${esProd ? ', marca o subcategoría' : ''}…`} value={q} onChange={(ev) => setQ(ev.target.value)} style={{ minWidth: 200 }} aria-label={`Buscar ${uno.toLowerCase()}`} />
+          <input type="search" placeholder={`Buscar ${uno.toLowerCase()}${esProd ? (porMarca ? ', categoría o subcategoría' : ', marca o subcategoría') : ''}…`} value={q} onChange={(ev) => setQ(ev.target.value)} style={{ minWidth: 200 }} aria-label={`Buscar ${uno.toLowerCase()}`} />
           <select className={s['select-inline']} value={orden} onChange={(ev) => setOrden(ev.target.value)} aria-label="Ordenar">
             {Object.entries(ORDENES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
@@ -245,7 +254,9 @@ function NivelArbol({ d, paso, ir }) {
                   <Enlace onClick={() => abrir(x)} title={esProd ? 'Ver la ficha del producto' : `Ver ${d.nivel === 'categoria' ? 'sus subcategorías' : 'sus productos'}`}>{x.nombre}</Enlace>
                   {esProd && (
                     <div className={s.hint} style={{ margin: 0 }}>
-                      {[d.plano ? (d.ruta.categoria ? x.subcategoria : `${x.categoria} › ${x.subcategoria}`) : '', x.marca, x.granel ? 'granel' : ''].filter(Boolean).join(' · ')}
+                      {(porMarca
+                        ? [`${x.categoria} › ${x.subcategoria}`, x.granel ? 'granel' : '']
+                        : [d.plano ? (d.ruta.categoria ? x.subcategoria : `${x.categoria} › ${x.subcategoria}`) : '', x.marca, x.granel ? 'granel' : '']).filter(Boolean).join(' · ')}
                     </div>
                   )}
                   {parcial && <div className={s.hint} style={{ margin: 0 }} title="Hay renglones vendidos sin costo cargado: no entran al margen">{num(x.renglones - x.conCosto, 0)} renglón(es) sin costo</div>}
@@ -312,7 +323,7 @@ function SinVentas({ lista, recortado, total, ir, lugar }) {
  * ========================================================================== */
 const puestoTxt = (p) => (p ? `${num(p.puesto, 0)}.º de ${num(p.de, 0)}` : '—');
 
-function DetalleProducto({ d, paso }) {
+function DetalleProducto({ d, paso, porMarca }) {
   const p = d.producto;
   const t = d.nodo;
   const r = d.ruta;
@@ -328,14 +339,24 @@ function DetalleProducto({ d, paso }) {
         <Tile label="Margen (ganancia bruta)" valor={money(t.margen)} variacion={t.variacionMargen} detalle={`Margen ${pctTxt(t.margenPct)} · antes ${pctTxt(t.margenPctAnterior)}`} />
         <Tile label="Cantidad vendida" valor={cantidadTxt(t)} detalle={`${num(t.renglones, 0)} veces en tickets`} />
         <Tile label={`Precio promedio por ${unidad}`} valor={t.precioPromedio == null ? '—' : money(t.precioPromedio)} detalle="Cobrado, sin IVA" />
-        <Tile
-          label="Puesto en ventas" valor={vendio ? puestoTxt(d.puesto.subcategoria) : 'Sin ventas'}
-          detalle={vendio ? `en ${r.subcategoria?.nombre} · ${puestoTxt(d.puesto.categoria)} en ${r.categoria?.nombre} · ${puestoTxt(d.puesto.total)} de todo` : 'No vendió en el período'}
-          alerta={!vendio}
-        />
+        {porMarca ? (
+          <Tile
+            label="Puesto en ventas" valor={vendio ? puestoTxt(d.puesto.marca) : 'Sin ventas'}
+            detalle={vendio ? `en ${d.marca.nombre} · ${puestoTxt(d.puesto.subcategoria)} en ${r.subcategoria?.nombre} · ${puestoTxt(d.puesto.total)} de todo` : 'No vendió en el período'}
+            alerta={!vendio}
+          />
+        ) : (
+          <Tile
+            label="Puesto en ventas" valor={vendio ? puestoTxt(d.puesto.subcategoria) : 'Sin ventas'}
+            detalle={vendio ? `en ${r.subcategoria?.nombre} · ${puestoTxt(d.puesto.categoria)} en ${r.categoria?.nombre} · ${puestoTxt(d.puesto.total)} de todo` : 'No vendió en el período'}
+            alerta={!vendio}
+          />
+        )}
       </Tiles>
       <div className={s.hint} style={{ margin: 0 }}>
-        Es el {pctTxt(t.participacionSubcategoria)} de lo vendido en {r.subcategoria?.nombre}, el {pctTxt(t.participacionCategoria)} de {r.categoria?.nombre} y el {pctTxt(t.participacionTotal)} de todo.
+        {porMarca
+          ? <>Es el {pctTxt(t.participacionMarca)} de lo vendido de {d.marca.nombre} y el {pctTxt(t.participacionTotal)} de todo ({r.categoria?.nombre} › {r.subcategoria?.nombre}).</>
+          : <>Es el {pctTxt(t.participacionSubcategoria)} de lo vendido en {r.subcategoria?.nombre}, el {pctTxt(t.participacionCategoria)} de {r.categoria?.nombre} y el {pctTxt(t.participacionTotal)} de todo.</>}{' '}
         Se compara con {fechaLarga(d.anterior.desde)} → {fechaLarga(d.anterior.hasta)}.
       </div>
 

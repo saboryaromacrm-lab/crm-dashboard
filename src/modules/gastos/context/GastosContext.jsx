@@ -69,6 +69,7 @@ export function GastosProvider({ children, panels = [], defaultPanel }) {
         categorias: d.categorias ?? [],
         proveedores: d.proveedores ?? [],
         sucursales: d.sucursales ?? [],
+        sucursalesInactivas: d.sucursalesInactivas ?? [],
         usuarios: d.usuarios ?? [],
         recurrentes: d.recurrentes ?? [],
       });
@@ -133,8 +134,8 @@ export function GastosProvider({ children, panels = [], defaultPanel }) {
     [data.proveedores],
   );
   const nombreSucursal = useCallback(
-    (id) => data.sucursales.find((x) => x.id === id)?.nombre || '—',
-    [data.sucursales],
+    (id) => (data.sucursales.find((x) => x.id === id) ?? (data.sucursalesInactivas ?? []).find((x) => x.id === id))?.nombre || '—',
+    [data.sucursales, data.sucursalesInactivas],
   );
 
   /** Rubros que se ofrecen al cargar: los dados de baja no se muestran. */
