@@ -164,14 +164,20 @@ function NivelArbol({ d, paso, ir, porMarca }) {
     return ir({ categoriaId: d.ruta.categoria.id, subcategoriaId: x.clave });
   };
 
+  /* Por marca: qué parte de la venta fue en cada modalidad (Minorista, Mayorista…), del total y de cada marca. */
+  const modalidades = porMarca ? d.modalidades : null;
+  const conModalidades = !!modalidades?.lista.length && d.nivel === 'marca';
+
   const exportar = () => descargarCsv(
     `ventas-por-${d.nivel}${lugar ? `-${lugar}` : ''}${d.tipo ? `-solo-${d.tipo}` : ''}-${d.desde}-${d.hasta}.csv`.replace(/[^\w.-]+/g, '-'),
     [uno, ...(esProd ? ['Marca', 'Categoría', 'Subcategoría', 'Tipo'] : []), 'Venta neta', 'Venta anterior', 'Variación %', `% de ${lugar || 'todo'}`, '% del total',
-      'Unidades', 'Kg', 'Costo', 'Margen', 'Margen %', 'Veces vendido', ...(esProd ? [] : ['Productos que vendieron', 'Productos sin ventas'])],
+      'Unidades', 'Kg', 'Costo', 'Margen', 'Margen %', 'Veces vendido', ...(esProd ? [] : ['Productos que vendieron', 'Productos sin ventas']),
+      ...(conModalidades ? modalidades.lista.map((m) => `% ${m.nombre}`) : [])],
     filas.map((x) => [x.nombre, ...(esProd ? [x.marca, x.categoria, x.subcategoria, x.granel ? 'granel' : 'entero'] : []),
       csvNum(x.ventaNeta), csvNum(x.ventaAnterior), x.variacion == null ? '' : csvNum(x.variacion, 1), x.participacion == null ? '' : csvNum(x.participacion, 1),
       x.participacionTotal == null ? '' : csvNum(x.participacionTotal, 1), csvNum(x.unidadesEnteros, 3), csvNum(x.kilosGranel, 3), csvNum(x.costo), csvNum(x.margen),
-      x.margenPct == null ? '' : csvNum(x.margenPct, 1), x.renglones, ...(esProd ? [] : [x.productos, x.sinVenta])]),
+      x.margenPct == null ? '' : csvNum(x.margenPct, 1), x.renglones, ...(esProd ? [] : [x.productos, x.sinVenta]),
+      ...(conModalidades ? modalidades.lista.map((m) => { const p = x.modalidades?.find((y) => y.id === m.id)?.participacion; return p == null ? '' : csvNum(p, 1); }) : [])]),
   );
 
   const conVenta = d.filas.filter((x) => x.ventaNeta > 0);
@@ -191,6 +197,17 @@ function NivelArbol({ d, paso, ir, porMarca }) {
           detalle={t.sinVenta ? `${num(t.sinVenta, 0)} activos sin ninguna venta` : 'Todos los activos vendieron algo'}
         />
       </Tiles>
+      {modalidades?.nodo.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'baseline' }}>
+          <span className={s['mini-label']} style={{ margin: 0 }}>Por modalidad{lugar ? ` · ${lugar}` : ''}</span>
+          {modalidades.nodo.map((m) => (
+            <span key={m.id} className={s.badge} style={{ background: 'var(--crm-color-surface-2)', color: 'var(--crm-color-text)', fontWeight: 600 }}
+              title={money(m.ventaNeta)}>
+              {modalidades.lista.find((y) => y.id === m.id)?.nombre} {pctTxt(m.participacion)}
+            </span>
+          ))}
+        </div>
+      )}
       <div className={s.hint} style={{ margin: 0 }}>
         Venta neta, sin IVA; las notas de crédito restan. Se compara con {fechaLarga(d.anterior.desde)} → {fechaLarga(d.anterior.hasta)}.
         Cada producto cuenta en la {porMarca ? 'marca' : 'categoría'} que tiene <strong>hoy</strong>.
@@ -242,6 +259,7 @@ function NivelArbol({ d, paso, ir, porMarca }) {
             { h: der(enRaiz ? '% del total' : `% de ${lugar}`), num: true }, ...(enRaiz ? [] : [{ h: der('% del total'), num: true }]),
             { h: der('Cantidad'), num: true }, { h: der('Margen'), num: true }, { h: der('Margen %'), num: true },
             ...(esProd ? [] : [{ h: der('Productos'), num: true }]),
+            ...(conModalidades ? [{ h: 'Por modalidad' }] : []),
           ]}
           empty={q ? 'Nada coincide con la búsqueda.' : 'Sin ventas en el período.'}
           pag={pag}
@@ -275,6 +293,15 @@ function NivelArbol({ d, paso, ir, porMarca }) {
                   <td className={s.num}>
                     {num(x.productos, 0)}
                     {x.sinVenta > 0 && <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-warning, #b45309)' }}>{num(x.sinVenta, 0)} sin ventas</div>}
+                  </td>
+                )}
+                {conModalidades && (
+                  <td style={NOWRAP}>
+                    {x.modalidades?.length ? x.modalidades.map((m) => (
+                      <div key={m.id} title={money(m.ventaNeta)} style={{ fontSize: 13 }}>
+                        {modalidades.lista.find((y) => y.id === m.id)?.nombre} <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{pctTxt(m.participacion)}</strong>
+                      </div>
+                    )) : <span className={s.muted}>—</span>}
                   </td>
                 )}
               </tr>

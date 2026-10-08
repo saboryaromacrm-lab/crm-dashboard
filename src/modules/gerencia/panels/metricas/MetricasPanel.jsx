@@ -232,14 +232,36 @@ function PestanaVentas({ qs, paso, version }) {
           </Grilla>
         </>
       )}
+      <RetirosSinCosto qs={qs} version={version} />
     </div>
+  );
+}
+
+/**
+ * RETIROS SIN COSTO (0146): lo que se llevaron los socios, a costo real.
+ * APARTE de las ventas: no suma a nada de lo de arriba ni resta de la ganancia.
+ * Se lee en vivo de `retiros` (pocos documentos), no de las tablas resumen.
+ */
+function RetirosSinCosto({ qs, version }) {
+  const { data: d, error } = useResource(`metricas:retiros:${qs}:${version}`, () => httpClient.get(`/retiros/resumen?${qs}`));
+  if (error) return <Aviso tono="warn">{error}</Aviso>;
+  if (!d) return null;
+  return (
+    <Bloque titulo="Retiros sin costo" sub="Lo que se llevaron los socios, a costo real. No son ventas: no suman arriba ni restan de la ganancia."
+      acciones={<strong style={{ fontSize: 20, fontVariantNumeric: 'tabular-nums' }}>{money(d.costo)}</strong>}>
+      <Table cols={[{ h: 'Quién' }, { h: 'Retiros', num: true }, { h: 'A costo', num: true }]} empty="No hubo retiros en este período.">
+        {d.porPersona.map((x) => (
+          <tr key={x.clienteId}><td>{x.cliente}</td><td className={s.num}>{num(x.retiros, 0)}</td><td className={cx(s.num, s.mono)}>{money(x.costo)}</td></tr>
+        ))}
+      </Table>
+    </Bloque>
   );
 }
 
 /* ============================================================================
  * RENTABILIDAD Y PROVEEDORES/LISTAS — una tabla de márgenes con lentes
  * ========================================================================== */
-const NOMBRE_LENTE = { producto: 'Producto', categoria: 'Categoría', marca: 'Marca', proveedor: 'Proveedor', lista: 'Lista de precios', sucursal: 'Sucursal' };
+const NOMBRE_LENTE = { producto: 'Producto', categoria: 'Categoría', marca: 'Marca', proveedor: 'Proveedor', lista: 'Lista de precios', modalidad: 'Modalidad', sucursal: 'Sucursal' };
 const ORDENES = { ventaNeta: 'Más vendido', margen: 'Más ganancia ($)', margenPct: 'Mayor margen (%)', margenPctAsc: 'Menor margen (%)' };
 
 function TablaMargenes({ d, lente, conCompras, clave }) {
@@ -373,7 +395,7 @@ function PestanaProveedores({ qs, version }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, opacity: loading ? 0.6 : 1 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {['proveedor', 'lista', 'sucursal'].map((k) => (
+        {['proveedor', 'lista', 'modalidad', 'sucursal'].map((k) => (
           <Btn key={k} small variant={lente === k ? 'btn-primary' : 'btn-ghost'} onClick={() => setLente(k)}>Por {NOMBRE_LENTE[k].toLowerCase()}</Btn>
         ))}
       </div>

@@ -9,6 +9,10 @@ import { imprimirArqueoCaja, imprimirEnvioCaja } from '@core/services/imprimir.j
 import { separarEnvio, sumaBilletes } from '../../domain/separarEnvio.js';
 import { Table, Di, Btn, Pill, ModalShell, money, fmtFechaHora, s } from '../ui.jsx';
 import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@modules/gastos/components/segundaConfirmacion.jsx';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
+import { httpClient } from '@core/services/httpClient.js';
+import { TildeControlar } from '@modules/gerencia/panels/cashflow/CajasAControlar.jsx';
+import { useTildeControlar, useUmbralControlar } from '@modules/gerencia/panels/cashflow/tildeControlar.js';
 
 /* ==================================================================== *
  * Apertura
@@ -674,6 +678,16 @@ export function ControlCajaModal({ cajaSesionId, onChange }) {
   const conDiferencia = !!control && Math.abs(control.diferencia) > 0.009;
   /* La nota que vino CON el conteo ("saqué $5.000 de cambio") ya explica. */
   const faltaExplicar = conDiferencia && !nota.trim();
+  /* Cajas a controlar (0145): solo el dueño, y la marca se guarda al salir del resultado. */
+  const { can } = usePermissions();
+  const dueno = can('gerencia.cashflow');
+  const tilde = useTildeControlar([control?.diferencia], useUmbralControlar(dueno));
+  const guardarMarca = async () => {
+    if (!dueno || !conDiferencia || !tilde.marcar) return;
+    await httpClient.post('/cashflow/a-controlar', { cajaSesionId, nota: tilde.nota.trim() });
+    toast('La caja quedó en «Cajas a controlar» del Cash Flow.', 'ok');
+  };
+  const terminar = () => conCandado(async () => { await guardarMarca(); closeModal(); });
 
   const conCandado = async (fn) => {
     if (candado.current) return;
@@ -708,6 +722,7 @@ export function ControlCajaModal({ cajaSesionId, onChange }) {
       await ventasApi.explicarControl(cajaSesionId, control.id, { observaciones: explicacion.trim() });
       toast('Control registrado con su explicación.', 'ok');
       onChange?.();
+      await guardarMarca();
       closeModal();
     });
   };
@@ -721,7 +736,7 @@ export function ControlCajaModal({ cajaSesionId, onChange }) {
       toast('El conteo ya quedó registrado. Explicá la diferencia antes de salir.', 'err');
       return;
     }
-    closeModal();
+    terminar();
   };
 
   /* A ciegas (0111): el que no es jefe registra su conteo y nada más — la
@@ -784,7 +799,7 @@ export function ControlCajaModal({ cajaSesionId, onChange }) {
       onClose={salir}
       footer={faltaExplicar
         ? [{ texto: enviando ? 'Guardando…' : 'Guardar explicación', clase: 'btn-primary', onClick: explicar, disabled: enviando }]
-        : [{ texto: 'Listo', clase: 'btn-primary', onClick: closeModal }]}
+        : [{ texto: enviando ? 'Guardando…' : 'Listo', clase: 'btn-primary', onClick: terminar, disabled: enviando }]}
     >
       <ResultadoConteo
         esperado={control.esperadoEfectivo}
@@ -808,6 +823,7 @@ export function ControlCajaModal({ cajaSesionId, onChange }) {
             />
           </div>
         ))}
+      {dueno && conDiferencia && <TildeControlar t={tilde} />}
     </ModalShell>
   );
 }
@@ -1213,6 +1229,10 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
    * servidor manda el arqueo completo y se muestra el detalle. Apagada, ni
    * administración lo ve al cerrar («que hagan envíos a ciegas»). */
   const ve = !!config?.cajaVeEsperado && turno?.esperadoEfectivo != null;
+  /* Cajas a controlar (0145): solo el dueño. Con lo que tiene que haber a la vista, la diferencia propone el tilde. */
+  const { can } = usePermissions();
+  const dueno = can('gerencia.cashflow');
+  const tilde = useTildeControlar(ve && conto ? [r2(contado - (Number(turno.esperadoEfectivo) || 0))] : [], useUmbralControlar(dueno));
 
   const aSeparar = () => {
     if (!conto) { toast('Contá los billetes del cajón antes de enviar.', 'err'); return; }
@@ -1235,13 +1255,14 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
         confirmado: true,
         usuarioId: ctx.usuarioId ?? undefined,
         operadorId: operadorId ?? undefined,
+        aControlar: dueno ? tilde.pedido : undefined,
       });
       const nombreDe = (id) => usuarios?.find((u) => u.id === id)?.nombre || '';
       const salio = await imprimirEnvioCaja(
         { ...r, sesionId: r.sesion?.id, cierre: r.sesion?.cierre, esperadoEfectivo: ve ? r.esperadoEfectivo : null, diferencia: ve ? r.diferencia : null },
         { moneda: money, fechaHora: fmtFechaHora, sucursal: sucursal?.nombre || '', cajero: nombreDe(r.sesion?.usuarioId) },
       );
-      toast(`Caja cerrada. Quedan ${money(r.fondoQueda)} en la caja y va el sobre de ${money(r.envio)}.`, 'ok');
+      toast(`Caja cerrada. Quedan ${money(r.fondoQueda)} en la caja y va el sobre de ${money(r.envio)}.${dueno && tilde.marcar ? ' Quedó en «Cajas a controlar».' : ''}`, 'ok');
       if (!salio) toast('La caja se cerró, pero el navegador bloqueó la impresión. Reimprimila desde el historial.', 'err');
       setOperador(null);
       onChange?.();
@@ -1305,6 +1326,7 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
         <TablaBilletes titulo={`Va en el sobre · ${money(envio)}`} filas={DENOMINACIONES.map((d) => [d, cantDe(envioB, d)])} vacio="El sobre va vacío." />
         {resumen}
         {ve && <LoQueTieneQueHaber turno={turno} contado={contado} conto={conto} />}
+        {dueno && <TildeControlar t={tilde} />}
       </ModalShell>
     );
   }

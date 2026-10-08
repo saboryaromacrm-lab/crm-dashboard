@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
-import { ventasApi } from '../services/ventas.api.js';
+import { errorMsg, ventasApi } from '../services/ventas.api.js';
 import { CONDICIONES_IVA, CONDICIONES_PAGO, MEDIOS_PAGO, ORIGEN_LISTA, TIPOS_VENTA, nroComprobante } from '../domain/constants.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import {
@@ -138,6 +138,7 @@ function ElegirClienteModal({ clientes, actualId, onElegir, onCerrar }) {
                 CONDICIONES_IVA[c.condicionIva]?.corto || null,
                 c.ctaCteHabilitada ? 'cta. cte.' : null,
                 c.descuento > 0 ? `${c.descuento}% desc.` : null,
+                c.retiroSinCosto ? 'retiros sin costo' : null,
               ].filter(Boolean).join(' · ') || '—'}
             </span>
           </button>
@@ -152,6 +153,47 @@ function ElegirClienteModal({ clientes, actualId, onElegir, onCerrar }) {
       <div className={s.hint} style={{ margin: '10px 0 0' }}>
         Enter elige el primero de la lista. Sin cliente elegido, la venta es de <strong>Consumidor Final</strong>.
       </div>
+    </ModalShell>
+  );
+}
+
+/**
+ * RETIRO SIN COSTO (0146): el ticket de un cliente marcado no se cobra. Se
+ * registra como retiro —documento aparte, sin caja, ventas, ARCA ni IVA— y
+ * baja el stock. Esta ventana es la segunda confirmación, con candado.
+ */
+function ConfirmarRetiroModal({ cliente, renglones, borradorId, operadorId, onCerrar, onHecho }) {
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState('');
+  const candado = useRef(false);
+  const unidades = renglones.reduce((a, x) => a + (Number(x.cantidad) || 0), 0);
+  const registrar = async () => {
+    if (candado.current) return;
+    candado.current = true; setEnviando(true); setError('');
+    try {
+      const r = await ventasApi.registrarRetiro({
+        clienteId: cliente.id,
+        items: renglones.map((x) => ({ productoId: x.productoId, presentacionId: x.presentacionId ?? null, cantidad: Number(x.cantidad) })),
+        borradorId: borradorId ?? undefined,
+        operadorId: operadorId ?? undefined,
+        confirmado: true,
+      });
+      onHecho(r);
+    } catch (e) { setError(errorMsg(e)); } finally { candado.current = false; setEnviando(false); }
+  };
+  return (
+    <ModalShell title="Registrar retiro sin costo" onClose={enviando ? undefined : onCerrar} footer={[
+      { texto: 'Volver al ticket', clase: 'btn-ghost', onClick: onCerrar, disabled: enviando },
+      { texto: enviando ? 'Registrando…' : 'Sí, registrar el retiro', clase: 'btn-primary', onClick: registrar, disabled: enviando },
+    ]}>
+      <div className={cx(s.callout, s.warn)}>
+        <strong>{cliente.nombre}</strong> se lleva {renglones.length} {renglones.length === 1 ? 'artículo' : 'artículos'} ({num(unidades)} {unidades === 1 ? 'unidad' : 'unidades'}).
+        {' '}<strong>No se cobra nada</strong> y no pasa por la caja. El stock baja ahora y queda en su ficha con el costo de cada producto.
+      </div>
+      <div style={{ maxHeight: 260, overflowY: 'auto', display: 'grid', gap: 2, fontSize: 14 }}>
+        {renglones.map((x) => <div key={x.key}>{x.nombre} × {num(x.cantidad)}</div>)}
+      </div>
+      {error && <div className={cx(s.callout, s.warn)}>{error}</div>}
     </ModalShell>
   );
 }
@@ -348,7 +390,7 @@ function DescuentosConNombre({ opciones, puestos, onAlternar, habilitado }) {
  * Ticket
  * ==================================================================== */
 
-function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, puedePisarPrecio, preciosDe, ultimoKey, listasPorId, overrideBloqueado }) {
+function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, puedePisarPrecio, preciosDe, ultimoKey, listasPorId, overrideBloqueado, retiro }) {
   if (!renglones.length) {
     return (
       <div className={p.ticket}>
@@ -366,10 +408,15 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
           <tr>
             <th>Artículo</th>
             <th style={{ textAlign: 'right' }}>Cantidad</th>
-            <th>Lista</th>
-            <th style={{ textAlign: 'right' }}>Precio</th>
-            <th style={{ textAlign: 'right' }}>Desc. %</th>
-            <th style={{ textAlign: 'right' }}>Subtotal</th>
+            {/* Retiro sin costo (0146): no se cobra, así que no hay lista, precio ni subtotal que mostrar. */}
+            {!retiro && (
+              <>
+                <th>Lista</th>
+                <th style={{ textAlign: 'right' }}>Precio</th>
+                <th style={{ textAlign: 'right' }}>Desc. %</th>
+                <th style={{ textAlign: 'right' }}>Subtotal</th>
+              </>
+            )}
             <th />
           </tr>
         </thead>
@@ -503,6 +550,8 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                     </div>
                   )}
                 </td>
+                {!retiro && (
+                  <>
                 {/*
                   Lista del renglón. Se muestra POR QUÉ la tiene (automática
                   por condición, del cliente, o elegida a mano): si el cliente
@@ -592,6 +641,8 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, pued
                   )}
                 </td>
                 <td className={p.num}><strong>{money(calc.total)}</strong></td>
+                  </>
+                )}
                 <td>
                   <button
                     type="button"
@@ -632,7 +683,7 @@ function VentasAbiertas({ abiertas, catalogo, onAbrir, onNueva, cargando }) {
           {cliente && <div className={s.hint} style={{ margin: 0 }}>{CONDICIONES_IVA[cliente.condicionIva]?.corto}</div>}
         </td>
         <td>{CONDICIONES_PAGO[v.condicionPago] || v.condicionPago}</td>
-        <td className={s.num}><strong>{money(v.total)}</strong></td>
+        <td className={s.num}>{cliente?.retiroSinCosto ? <span className={s.muted}>retiro sin costo</span> : <strong>{money(v.total)}</strong>}</td>
         <td>
           {ultimo
             ? <>
@@ -739,6 +790,9 @@ export function PosPanel() {
 
   const consumidorFinal = useMemo(() => clientes.find((c) => c.esConsumidorFinal), [clientes]);
   const clienteActual = getCliente(clienteId) || consumidorFinal || null;
+  /* Retiros sin costo (0146): este ticket no se cobra, se registra como retiro. */
+  const esRetiro = !!clienteActual?.retiroSinCosto;
+  const [confirmandoRetiro, setConfirmandoRetiro] = useState(false);
 
   /**
    * El catálogo se pide UNA vez por sucursal y trae el precio en TODAS las
@@ -1404,6 +1458,18 @@ export function PosPanel() {
     });
   }, [puedeCobrar, problemas, activaId, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast, restriccion, getCliente, can]);
 
+  /* El retiro no pide caja abierta ni medios: alcanza con un ticket con artículos. */
+  const pedirRetiro = useCallback(() => {
+    if (!activaId || !ticket.renglones.length) { toast('Cargá lo que se lleva antes de registrar el retiro.', 'err'); return; }
+    clearTimeout(guardadoRef.current);
+    setConfirmandoRetiro(true);
+  }, [activaId, ticket.renglones.length, toast]);
+  const retiroRegistrado = useCallback((r) => {
+    setConfirmandoRetiro(false);
+    trasCobrar(activaId);
+    toast(`Retiro #${r.id} registrado para ${r.cliente} · costo ${money(r.costoTotal)}. No se cobró nada.`, 'ok');
+  }, [activaId, trasCobrar, toast]);
+
   const cambiarCliente = (id) => {
     const anterior = clienteActual?.descuento || 0;
     const nuevo = getCliente(id);
@@ -1416,7 +1482,7 @@ export function PosPanel() {
 
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'F2') { e.preventDefault(); cobrar(); }
+      if (e.key === 'F2') { e.preventDefault(); if (esRetiro) pedirRetiro(); else cobrar(); }
       else if (e.key === 'F4') { e.preventDefault(); enfocarBuscador(); }
       else if (e.key === 'Insert') {
         e.preventDefault();
@@ -1435,7 +1501,7 @@ export function PosPanel() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cobrar, enfocarBuscador, activaId, catalogo, config, agregar, openModal, toast, modal, irALista]);
+  }, [cobrar, esRetiro, pedirRetiro, enfocarBuscador, activaId, catalogo, config, agregar, openModal, toast, modal, irALista]);
 
   /* ------------------------------ Render ------------------------------ */
 
@@ -1477,7 +1543,7 @@ export function PosPanel() {
             onClick={() => (activa ? null : abrirVenta(v.id))}
           >
             <span className={p.tabNombre}>{cli?.nombre || `Venta #${v.id}`}</span>
-            <span className={p.tabTotal}>{money(activa ? totales.total : v.total)}</span>
+            <span className={p.tabTotal}>{(activa ? esRetiro : cli?.retiroSinCosto) ? 'retiro' : money(activa ? totales.total : v.total)}</span>
             <span
               className={p.tabCerrar}
               role="button"
@@ -1603,6 +1669,7 @@ export function PosPanel() {
                 ultimoKey={ultimoKey}
                 listasPorId={listasPorId}
                 overrideBloqueado={overrideBloqueado}
+                retiro={esRetiro}
               />
             </div>
 
@@ -1695,6 +1762,11 @@ export function PosPanel() {
                   onElegir={cambiarCliente}
                   onCerrar={() => setSelectorCliente(false)}
                 />
+              )}
+              {esRetiro && (
+                <div className={cx(s.callout, s.warn)} style={{ margin: '8px 0 0' }}>
+                  <strong>Retiro sin costo:</strong> no se cobra nada ni pasa por la caja. Se registra el retiro y baja el stock.
+                </div>
               )}
               <div className={s.hint} style={{ margin: '8px 0 0' }}>
                 {CONDICIONES_IVA[clienteActual?.condicionIva]?.label || '—'}
@@ -1801,6 +1873,8 @@ export function PosPanel() {
             <div className={cx(p.bloque, p.regResumen)}>
               <div className={p.linea}><span>Artículos</span><strong>{totales.renglones}</strong></div>
               <div className={p.linea}><span>Unidades</span><strong>{num(totales.unidades)}</strong></div>
+              {!esRetiro && (
+                <>
               <div className={p.linea}><span>Neto</span><strong>{money(totales.neto)}</strong></div>
               {/* `descuento` incluye las ofertas; acá se separan para que el
                   cajero vea dos cosas distintas: lo que él descontó y lo que
@@ -1821,27 +1895,41 @@ export function PosPanel() {
                 <div className={p.linea}><span>Cargos extra</span><strong>{money(totales.extras)}</strong></div>
               )}
               <div className={p.linea}><span>IVA</span><strong>{money(totales.iva)}</strong></div>
+                </>
+              )}
 
               <div className={p.totalCaja}>
-                <div className={p.totalLabel}>Total</div>
-                <div className={p.totalValor}>{money(totales.total)}</div>
+                <div className={p.totalLabel}>{esRetiro ? 'A cobrar · retiro sin costo' : 'Total'}</div>
+                <div className={p.totalValor}>{money(esRetiro ? 0 : totales.total)}</div>
               </div>
 
-              <DescuentosConNombre
+              {!esRetiro && <DescuentosConNombre
                 opciones={descuentosDelTicket}
                 puestos={descuentosPuestos}
                 onAlternar={alternarDescuento}
                 habilitado={ticket.renglones.length > 0}
-              />
+              />}
 
-              <button type="button" className={p.cobrar} onClick={cobrar} disabled={!puedeCobrar}>
-                Cobrar · F2
-              </button>
+              {esRetiro ? (
+                <button type="button" className={p.cobrar} onClick={pedirRetiro} disabled={!activaId || !ticket.renglones.length}>
+                  Registrar retiro · F2
+                </button>
+              ) : (
+                <button type="button" className={p.cobrar} onClick={cobrar} disabled={!puedeCobrar}>
+                  Cobrar · F2
+                </button>
+              )}
+              {confirmandoRetiro && (
+                <ConfirmarRetiroModal
+                  cliente={clienteActual} renglones={ticket.renglones} borradorId={activaId} operadorId={operadorId}
+                  onCerrar={() => setConfirmandoRetiro(false)} onHecho={retiroRegistrado}
+                />
+              )}
 
               <div className={p.atajos}>
                 <span className={p.tecla}><kbd>Ins</kbd> cargar</span>
                 <span className={p.tecla}><kbd>⇧Ins</kbd> buscar</span>
-                <span className={p.tecla}><kbd>F2</kbd> cobrar</span>
+                <span className={p.tecla}><kbd>F2</kbd> {esRetiro ? 'retiro' : 'cobrar'}</span>
                 <span className={p.tecla}><kbd>F4</kbd> foco</span>
                 <span className={p.tecla}><kbd>Esc</kbd> salir</span>
               </div>

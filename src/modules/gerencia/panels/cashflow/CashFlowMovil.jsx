@@ -57,6 +57,7 @@ import {
   ANULABLES, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, horaCorta, hoy,
   primerDiaMes, queEs, textoAnular, tituloPeriodo,
 } from './formato.js';
+import { CajasAControlar } from './CajasAControlar.jsx';
 import c from './CashFlowMovil.module.css';
 
 const MODO_MOVIL = { movil: true };
@@ -191,7 +192,7 @@ function TarjetaSobre({ x, pendiente, abrir }) {
 /* ==================================================================== *
  * Inicio
  * ==================================================================== */
-function Inicio({ d, abrir, irA, actualizado, version }) {
+function Inicio({ d, abrir, irA, actualizado, version, bump, avisar }) {
   const negativo = d.saldo < -0.009;
   const pend = d.enTransito.sobres;
   const { data: sobresPend } = useResource(`cfm:inicio-sobres:${pend}:${d.enTransito.total}:${version}`, () => httpClient.get('/cashflow/sobres?estado=pendientes'), { enabled: pend > 0 });
@@ -246,6 +247,12 @@ function Inicio({ d, abrir, irA, actualizado, version }) {
         <Seccion titulo="Sobres por controlar" accion={<button type="button" className={c.link} onClick={() => irA('sobres')}>Ver {pend > 2 ? `los ${pend}` : 'todos'}</button>}>
           {(sobresPend ?? []).slice(0, 2).map((x) => <TarjetaSobre key={x.cajaSesionId} x={x} pendiente abrir={abrir} />)}
           {!sobresPend && <div className={cx(c.card, c.vacio)}>Cargando los sobres…</div>}
+        </Seccion>
+      )}
+
+      {d.aControlar > 0 && (
+        <Seccion titulo={`Cajas a controlar (${d.aControlar})`}>
+          <CajasAControlar version={version} bump={bump} avisar={avisar} compacto />
         </Seccion>
       )}
 
@@ -854,7 +861,7 @@ export function CashFlowMovil() {
     cuerpo = (
       <>
         {error && <Aviso tono="error">No se pudo actualizar: {error}. Lo que ves es de las {horaCorta(actualizado)}.</Aviso>}
-        {pestana === 'inicio' && <Inicio d={datos} abrir={abrir} irA={irA} actualizado={actualizado} version={version} />}
+        {pestana === 'inicio' && <Inicio d={datos} abrir={abrir} irA={irA} actualizado={actualizado} version={version} bump={bump} avisar={avisar} />}
         {pestana === 'sobres' && <Sobres f={fSobres} setF={setFSobres} version={version} abrir={abrir} pendientes={pend} />}
         {pestana === 'movimientos' && <Movimientos f={fMov} setF={setFMov} version={version} abrir={abrir} />}
         {pestana === 'reportes' && <Reportes f={fRep} setF={setFRep} version={version} avisar={avisar} />}

@@ -70,6 +70,12 @@ export const ventasApi = {
   eliminarCliente: (id) => httpClient.delete(`/clientes/${id}`),
   reactivarCliente: (id) => httpClient.post(`/clientes/${id}/reactivar`, {}),
 
+  /* Retiros sin costo (0146): documento aparte de las ventas. */
+  registrarRetiro: (data) => httpClient.post('/retiros', data),
+  retirosCliente: (id, filtros) => httpClient.get(`/retiros/cliente/${id}${qs(filtros)}`),
+  anularRetiro: (id, motivo) => httpClient.post(`/retiros/${id}/anular`, { motivo }),
+  marcarRetiros: (id, retiroSinCosto) => httpClient.patch(`/retiros/cliente/${id}/marca`, { retiroSinCosto }),
+
   /* Ventas / cuenta corriente */
   ventas: (filtros) => httpClient.get(`/ventas${qs(filtros)}`),
   /**

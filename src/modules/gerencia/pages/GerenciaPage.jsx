@@ -22,18 +22,7 @@ import { GERENCIA_SECCIONES } from '../config/gerencia.config.js';
 import { RentabilidadPanel } from '../panels/RentabilidadPanel.jsx';
 import { MetricasPanel } from '../panels/metricas/MetricasPanel.jsx';
 import { CashFlowPanel } from '../panels/cashflow/CashFlowPanel.jsx';
-
-/** Placeholder honesto: dice qué va a haber acá cuando se construya. */
-function Proximamente({ seccion }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
-      <PanelHead title={seccion.label} desc={seccion.desc} />
-      <div className={cx(s.callout, s.info)}>
-        <strong>Próximamente.</strong> Esta sección está en la agenda de Gerencia y todavía no se construyó.
-      </div>
-    </div>
-  );
-}
+import { AuditoriaPanel } from '../panels/AuditoriaPanel.jsx';
 
 /**
  * FACTURA ELECTRÓNICA DE UNA SUCURSAL (0124, 30/9/2026). Se enciende de a
@@ -798,26 +787,17 @@ export function GerenciaPage() {
               >
                 <span className={s.subnavIcon}><Icon fontSize="small" /></span>
                 <span className={s.subnavLabel}>{x.label}</span>
-                {x.pronto && (
-                  <span style={{
-                    fontSize: 9.5, fontWeight: 700, letterSpacing: '0.04em', padding: '2px 7px',
-                    borderRadius: 999, border: '1px solid var(--crm-color-border)',
-                    color: 'var(--crm-color-text-muted)', whiteSpace: 'nowrap',
-                  }}>
-                    PRONTO
-                  </span>
-                )}
               </button>
             );
           })}
         </nav>
 
         <div className={s.content}>
-          {/* Cada sección construida tiene su panel; lo agendado dice "pronto". */}
           {activa.id === 'rentabilidad' ? <RentabilidadPanel />
             : activa.id === 'metricas' ? <MetricasPanel />
             : activa.id === 'cashflow' ? <CashFlowPanel />
-            : activa.pronto ? <Proximamente seccion={activa} /> : panelUsuarios}
+            : activa.id === 'auditoria' ? <AuditoriaPanel />
+            : panelUsuarios}
         </div>
       </div>
 

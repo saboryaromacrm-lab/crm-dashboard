@@ -29,6 +29,8 @@ import { imprimirDocumento, esc } from '@core/services/imprimir.js';
 import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles } from '../metricas/piezas.jsx';
 import { ColumnasMulti } from '../metricas/graficos.jsx';
 import { iso } from '../metricas/formato.js';
+import { CajasAControlar, TildeControlar } from './CajasAControlar.jsx';
+import { useTildeControlar, useUmbralControlar } from './tildeControlar.js';
 import { ANULABLES, DENOMINACIONES, MEDIO, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
 
 /** La diferencia, con su color: rojo faltó, verde sobró, gris nada. */
@@ -90,16 +92,12 @@ export function Arranque({ caja, onHecho, avisar, onCancelar }) {
 /* ==================================================================== *
  * Resumen
  * ==================================================================== */
-function Resumen({ d, irA, avisar, onHecho }) {
+function Resumen({ d, conceptos, irA, avisar, onHecho }) {
   const [cambiando, setCambiando] = useState(false);
-  const [contando, setContando] = useState(false);
   const negativo = d.saldo < -0.009;
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Btn variant="btn-primary" onClick={() => setContando(true)}>Contar mi caja</Btn>
-      </div>
-      {contando && <ConteoModal saldo={d.saldo} enTransito={d.enTransito} onCerrar={() => setContando(false)} onHecho={() => { setContando(false); onHecho(); }} avisar={avisar} />}
+      <AccionesCaja saldo={d.saldo} enTransito={d.enTransito} conceptos={conceptos} conConteo onHecho={onHecho} avisar={avisar} />
       <Tiles>
         <Tile label="Efectivo en mano" valor={money(d.saldo)} alerta={negativo} detalle={negativo ? 'El saldo quedó en negativo: revisá los movimientos' : 'Sobres controlados + ingresos − egresos'} />
         <Tile label="En tránsito" valor={money(d.enTransito.total)} marca="#2563eb" detalle={d.enTransito.sobres ? `${d.enTransito.sobres} sobre${d.enTransito.sobres === 1 ? '' : 's'} sin controlar` : 'Ningún sobre pendiente'} />
@@ -169,20 +167,36 @@ function useBilletes() {
   return { billetes, setBilletes, otros, setOtros, contado, enteros, payload, clave: `${JSON.stringify(billetes)}|${otros}` };
 }
 
+/**
+ * ENTER PASA AL RENGLÓN SIGUIENTE (8/10/2026, pedido del dueño): se cuenta un
+ * billete, se escribe, Enter, el próximo — sin mouse. El número del renglón
+ * nuevo queda marcado para escribir encima. Enter nunca confirma nada: en el
+ * último renglón no hace nada (confirmar plata es siempre un clic a propósito).
+ */
+function enterAlSiguiente(e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const campos = [...e.currentTarget.closest('[data-contador]').querySelectorAll('input')];
+  const siguiente = campos[campos.indexOf(e.currentTarget) + 1];
+  if (siguiente) { siguiente.focus(); siguiente.select(); }
+}
+const marcar = (e) => e.target.select();
+
 function ContadorBilletes({ c }) {
   const { movil } = useModalModo();
   if (movil) return <ContadorBilletesMovil c={c} />;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'auto 90px 1fr', gap: '6px 12px', alignItems: 'center', fontVariantNumeric: 'tabular-nums' }}>
+    <div data-contador style={{ display: 'grid', gridTemplateColumns: 'auto 90px 1fr', gap: '6px 12px', alignItems: 'center', fontVariantNumeric: 'tabular-nums' }}>
       {DENOMINACIONES.map((d, i) => (
         <span key={d} style={{ display: 'contents' }}>
           <span>{money(d)}</span>
-          <input type="number" min="0" step="1" inputMode="numeric" value={c.billetes[d] ?? ''} onChange={(e) => c.setBilletes((b) => ({ ...b, [d]: e.target.value }))} aria-label={`Billetes de ${money(d)}`} autoFocus={i === 0} />
+          <input type="number" min="0" step="1" inputMode="numeric" value={c.billetes[d] ?? ''} onChange={(e) => c.setBilletes((b) => ({ ...b, [d]: e.target.value }))}
+            onKeyDown={enterAlSiguiente} onFocus={marcar} aria-label={`Billetes de ${money(d)}`} autoFocus={i === 0} />
           <strong style={{ textAlign: 'right' }}>{Number(c.billetes[d]) > 0 ? money(d * Number(c.billetes[d])) : ''}</strong>
         </span>
       ))}
       <span>Monedas y otros</span>
-      <input type="number" min="0" step="0.01" value={c.otros} onChange={(e) => c.setOtros(e.target.value)} aria-label="Monedas y otros" />
+      <input type="number" min="0" step="0.01" value={c.otros} onChange={(e) => c.setOtros(e.target.value)} onKeyDown={enterAlSiguiente} onFocus={marcar} aria-label="Monedas y otros" />
       <strong style={{ textAlign: 'right' }}>{Number(c.otros) > 0 ? money(Number(c.otros)) : ''}</strong>
       <span style={{ fontWeight: 700 }}>Total contado</span><span />
       <strong style={{ textAlign: 'right', fontSize: 18 }}>{money(c.contado)}</strong>
@@ -200,7 +214,7 @@ function ContadorBilletesMovil({ c }) {
   const poner = (d, n) => c.setBilletes((b) => ({ ...b, [d]: n > 0 ? String(n) : '' }));
   const boton = { width: 44, height: 44, borderRadius: 12, border: '1px solid var(--crm-color-border)', background: 'var(--crm-color-surface-2)', color: 'var(--crm-color-text)', fontSize: 22, fontWeight: 700, lineHeight: 1, cursor: 'pointer', flex: '0 0 auto', touchAction: 'manipulation' };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontVariantNumeric: 'tabular-nums' }}>
+    <div data-contador style={{ display: 'flex', flexDirection: 'column', gap: 4, fontVariantNumeric: 'tabular-nums' }}>
       {DENOMINACIONES.map((d) => (
         <div key={d} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '5px 0', borderBottom: '1px solid var(--crm-color-border)' }}>
           <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -210,7 +224,7 @@ function ContadorBilletesMovil({ c }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '0 0 auto' }}>
             <button type="button" style={{ ...boton, opacity: cant(d) ? 1 : 0.45 }} onClick={() => poner(d, cant(d) - 1)} disabled={!cant(d)} aria-label={`Un billete menos de ${money(d)}`}>−</button>
             <input type="number" min="0" step="1" inputMode="numeric" value={c.billetes[d] ?? ''} placeholder="0"
-              onChange={(e) => c.setBilletes((b) => ({ ...b, [d]: e.target.value }))} onFocus={(e) => e.target.select()}
+              onChange={(e) => c.setBilletes((b) => ({ ...b, [d]: e.target.value }))} onFocus={marcar} onKeyDown={enterAlSiguiente} enterKeyHint="next"
               aria-label={`Billetes de ${money(d)}`} style={{ width: 58, height: 44, textAlign: 'center', fontWeight: 700, padding: 0 }} />
             <button type="button" style={boton} onClick={() => poner(d, cant(d) + 1)} aria-label={`Un billete más de ${money(d)}`}>+</button>
           </div>
@@ -218,7 +232,7 @@ function ContadorBilletesMovil({ c }) {
       ))}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 0' }}>
         <label htmlFor="cf-otros" style={{ fontWeight: 600 }}>Monedas y otros</label>
-        <input id="cf-otros" type="number" min="0" step="0.01" inputMode="decimal" value={c.otros} placeholder="$ 0" onChange={(e) => c.setOtros(e.target.value)} style={{ width: 120, height: 44, textAlign: 'right', flex: '0 0 auto' }} />
+        <input id="cf-otros" type="number" min="0" step="0.01" inputMode="decimal" value={c.otros} placeholder="$ 0" onChange={(e) => c.setOtros(e.target.value)} onFocus={marcar} onKeyDown={enterAlSiguiente} style={{ width: 120, height: 44, textAlign: 'right', flex: '0 0 auto' }} />
       </div>
       <div style={{ position: 'sticky', bottom: -16, margin: '0 -16px', padding: '12px 16px', gap: 8, flexWrap: 'wrap', background: 'var(--crm-color-primary-soft)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: '1px solid var(--crm-color-border)', zIndex: 1 }}>
         <span style={{ fontWeight: 700 }}>Total contado</span>
@@ -327,7 +341,9 @@ export function SobreModal({ sobre, onCerrar, onHecho, avisar }) {
   const [error, setError] = useState('');
   const diferencia = Math.round((c.contado - sobre.enviado) * 100) / 100;
   const hayDif = Math.abs(diferencia) > 0.009;
-  const sc = useSegundaConfirmacion(`${c.clave}|${motivo}|${paso}`);
+  /* Cajas a controlar (0145): la del sobre y la del cierre del cajero; cualquiera de las dos propone el tilde. */
+  const tilde = useTildeControlar([diferencia, sobre.diferenciaCajero], useUmbralControlar());
+  const sc = useSegundaConfirmacion(`${c.clave}|${motivo}|${paso}|${tilde.marcar}`);
   const comparar = () => {
     setError('');
     if (!c.enteros) { setError('Las cantidades de billetes van enteras.'); return; }
@@ -342,8 +358,8 @@ export function SobreModal({ sobre, onCerrar, onHecho, avisar }) {
     },
     async () => {
       try {
-        const r = await httpClient.post(`/cashflow/sobres/${sobre.cajaSesionId}/controlar`, { ...c.payload(), motivo: motivo.trim(), confirmado: true });
-        avisar('ok', `Sobre de ${sobre.sucursal} controlado: ${money(r.contado)} a tu caja. Efectivo en mano: ${money(r.saldo)}.`);
+        const r = await httpClient.post(`/cashflow/sobres/${sobre.cajaSesionId}/controlar`, { ...c.payload(), motivo: motivo.trim(), confirmado: true, aControlar: tilde.pedido });
+        avisar('ok', `Sobre de ${sobre.sucursal} controlado: ${money(r.contado)} a tu caja. Efectivo en mano: ${money(r.saldo)}.${tilde.marcar ? ' La caja quedó en «Cajas a controlar».' : ''}`);
         onHecho();
       } catch (e) { setError(errorMsg(e)); }
     },
@@ -378,9 +394,11 @@ export function SobreModal({ sobre, onCerrar, onHecho, avisar }) {
         </Campo>
       )}
       <CierreDelCajero sobre={sobre} />
+      <TildeControlar t={tilde} />
       <AvisoSegundaConfirmacion {...sc}>
         Entra a tu caja <strong>{money(c.contado)}</strong> del sobre de <strong>{sobre.sucursal}</strong>
-        {hayDif ? <> con una diferencia de <Diferencia v={diferencia} /></> : ' sin diferencia'}.
+        {hayDif ? <> con una diferencia de <Diferencia v={diferencia} /></> : ' sin diferencia'}
+        {tilde.marcar ? <> y la caja va a <strong>Cajas a controlar</strong></> : ''}.
       </AvisoSegundaConfirmacion>
       {error && <Aviso tono="warn">{error}</Aviso>}
     </ModalShell>
@@ -809,6 +827,32 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, avisar }) {
   );
 }
 
+/**
+ * LO QUE SE HACE CON LA CAJA (8/10/2026): entró plata, sacar plata, pagar a un
+ * proveedor y —en el Resumen— contarla. Antes, en la PC, los ingresos y
+ * retiros estaban solo dentro de «Movimientos» y el dueño no los encontraba
+ * (en el celular están en la pantalla de entrada). Una sola pieza para las dos
+ * pestañas: mismos botones, mismas ventanas, mismas confirmaciones.
+ */
+function AccionesCaja({ saldo, enTransito, conceptos, conConteo, small, onHecho, avisar }) {
+  const [abierta, setAbierta] = useState(null);
+  const cerrar = () => setAbierta(null);
+  const hecho = () => { setAbierta(null); onHecho(); };
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
+      <Btn variant="btn-ingreso" small={small} title="Un ingreso de efectivo aparte de los sobres" onClick={() => setAbierta('ingreso')}>+ Entró plata</Btn>
+      <Btn variant="btn-delete" small={small} title="Un retiro, un depósito o un gasto" onClick={() => setAbierta('egreso')}>− Sacar plata</Btn>
+      <Btn small={small} onClick={() => setAbierta('pago')}>Pagar a un proveedor</Btn>
+      {conConteo && <Btn variant="btn-primary" small={small} onClick={() => setAbierta('conteo')}>Contar mi caja</Btn>}
+      {(abierta === 'ingreso' || abierta === 'egreso') && (
+        <MovimientoModal tipo={abierta} conceptos={conceptos} saldo={saldo} onCerrar={cerrar} onHecho={hecho} avisar={avisar} />
+      )}
+      {abierta === 'pago' && <PagoProveedorModal saldo={saldo} onCerrar={cerrar} onHecho={hecho} avisar={avisar} />}
+      {abierta === 'conteo' && <ConteoModal saldo={saldo} enTransito={enTransito} onCerrar={cerrar} onHecho={hecho} avisar={avisar} />}
+    </div>
+  );
+}
+
 function Movimientos({ version, bump, avisar, conceptos, saldo }) {
   const [tipo, setTipo] = useState('');
   const [desde, setDesde] = useState('');
@@ -830,10 +874,8 @@ function Movimientos({ version, bump, avisar, conceptos, saldo }) {
         <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} aria-label="Desde" />
         <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} aria-label="Hasta" />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}><input type="checkbox" checked={anulados} onChange={(e) => setAnulados(e.target.checked)} /> Ver anulados</label>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <Btn variant="btn-ingreso" small onClick={() => setModal({ tipo: 'ingreso' })}>+ Ingreso</Btn>
-          <Btn variant="btn-delete" small onClick={() => setModal({ tipo: 'egreso' })}>− Egreso</Btn>
-          <Btn variant="btn-primary" small onClick={() => setModal({ tipo: 'pago' })}>Pagar a un proveedor</Btn>
+        <div style={{ marginLeft: 'auto' }}>
+          <AccionesCaja saldo={saldo} conceptos={conceptos} small onHecho={bump} avisar={avisar} />
         </div>
       </div>
       <div className={s.hint} style={{ margin: 0 }}>
@@ -842,10 +884,6 @@ function Movimientos({ version, bump, avisar, conceptos, saldo }) {
       </div>
       {error && <Aviso tono="warn">{error}</Aviso>}
       {loading && !data ? <Cargando /> : <TablaMovimientos filas={filas} onAnular={(m) => setModal({ tipo: 'anular', m })} />}
-      {(modal?.tipo === 'ingreso' || modal?.tipo === 'egreso') && (
-        <MovimientoModal tipo={modal.tipo} conceptos={conceptos} saldo={saldo} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar} />
-      )}
-      {modal?.tipo === 'pago' && <PagoProveedorModal saldo={saldo} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar} />}
       {modal?.tipo === 'anular' && (
         <AnularModal
           titulo={`Anular ${modal.m.tipo} de ${money(modal.m.importe)}`}
@@ -1159,7 +1197,9 @@ function Reportes({ version }) {
 /* ==================================================================== *
  * El panel
  * ==================================================================== */
-const PESTANAS = [['resumen', 'Resumen'], ['sobres', 'Sobres de caja'], ['movimientos', 'Movimientos'], ['conceptos', 'Conceptos'], ['reportes', 'Reportes']];
+const PESTANAS = [['resumen', 'Resumen'], ['sobres', 'Sobres de caja'], ['controlar', 'Cajas a controlar'], ['movimientos', 'Movimientos'], ['conceptos', 'Conceptos'], ['reportes', 'Reportes']];
+/** El número entre paréntesis de las pestañas que piden algo. */
+const PENDIENTES = { sobres: (d) => d.enTransito.sobres, controlar: (d) => d.aControlar };
 
 export function CashFlowPanel() {
   const [version, setVersion] = useState(0);
@@ -1193,10 +1233,14 @@ export function CashFlowPanel() {
       ) : (
         <>
           <Tabs value={pestana} onChange={(e, v) => setPestana(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}>
-            {PESTANAS.map(([id, label]) => <Tab key={id} value={id} label={id === 'sobres' && d.enTransito.sobres ? `${label} (${d.enTransito.sobres})` : label} sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />)}
+            {PESTANAS.map(([id, label]) => {
+              const n = PENDIENTES[id]?.(d);
+              return <Tab key={id} value={id} label={n ? `${label} (${n})` : label} sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />;
+            })}
           </Tabs>
-          {pestana === 'resumen' && <Resumen d={d} irA={setPestana} avisar={avisar} onHecho={bump} />}
+          {pestana === 'resumen' && <Resumen d={d} conceptos={conceptos ?? []} irA={setPestana} avisar={avisar} onHecho={bump} />}
           {pestana === 'sobres' && <Sobres version={version} bump={bump} avisar={avisar} />}
+          {pestana === 'controlar' && <CajasAControlar version={version} bump={bump} avisar={avisar} />}
           {pestana === 'movimientos' && <Movimientos version={version} bump={bump} avisar={avisar} conceptos={conceptos ?? []} saldo={d.saldo} />}
           {pestana === 'conceptos' && <Conceptos conceptos={conceptos ?? []} bump={bump} avisar={avisar} />}
           {pestana === 'reportes' && <Reportes version={version} />}

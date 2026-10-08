@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
-import { ventasApi } from '../../services/ventas.api.js';
+import { errorMsg, ventasApi } from '../../services/ventas.api.js';
 import {
   CONDICIONES_IVA, CONDICIONES_PAGO, TIPOS_DOC, docLegible, nroComprobante,
 } from '../../domain/constants.js';
@@ -13,6 +13,7 @@ import {
   money, fmtFecha, s,
 } from '../ui.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
+import { rangoDe } from '@modules/gerencia/panels/metricas/formato.js';
 
 /* ==================================================================== *
  * Alta / edición
@@ -395,6 +396,133 @@ function TabCuenta({ clienteId, cliente }) {
   );
 }
 
+/* ==================================================================== *
+ * Retiros sin costo (0146)
+ * ==================================================================== */
+
+/**
+ * La marca del cliente: lo que se le «vende» en el POS pasa a ser un retiro
+ * sin costo (documento aparte, sin caja, ventas, ARCA, IVA ni métricas de
+ * ventas). Solo el superadmin la cambia, con un segundo clic.
+ */
+function MarcaRetiros({ cliente }) {
+  const { can } = usePermissions();
+  const { toast, recargar } = useVentas();
+  const [confirmando, setConfirmando] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const candado = useRef(false);
+  const activa = !!cliente.retiroSinCosto;
+  const cambiar = async () => {
+    if (!confirmando) { setConfirmando(true); return; }
+    if (candado.current) return;
+    candado.current = true; setOcupado(true);
+    try {
+      await ventasApi.marcarRetiros(cliente.id, !activa);
+      await recargar();
+      toast(activa ? `${cliente.nombre} vuelve a ser un cliente común.` : `${cliente.nombre} es de «Retiros sin costo»: en el POS se registra como retiro.`, 'ok');
+      setConfirmando(false);
+    } catch (e) { toast(errorMsg(e), 'err'); } finally { candado.current = false; setOcupado(false); }
+  };
+  return (
+    <Di label="Retiros sin costo">
+      {activa ? 'Sí: en el POS no se cobra, se registra como retiro' : 'No'}
+      {can('clientes.retiros') && !cliente.esConsumidorFinal && (
+        <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <Btn small variant={confirmando ? 'btn-primary' : 'btn-ghost'} onClick={cambiar} disabled={ocupado}>
+            {ocupado ? 'Guardando…' : confirmando ? (activa ? 'Sí, quitar la marca' : 'Sí, marcar') : (activa ? 'Quitar la marca' : 'Marcar como Retiros sin costo')}
+          </Btn>
+          {confirmando && !ocupado && <Btn small onClick={() => setConfirmando(false)}>Cancelar</Btn>}
+        </div>
+      )}
+    </Di>
+  );
+}
+
+const PERIODOS_RETIRO = [['mes', 'Este mes'], ['mes-pasado', 'Mes pasado'], ['30d', 'Últimos 30 días'], ['anio', 'Este año'], ['todo', 'Todo']];
+
+/** Lo que se llevó, retiro por retiro, con el costo real congelado de cada renglón. */
+function TabRetiros({ cliente }) {
+  const { esJefe } = useVentas();
+  const [periodo, setPeriodo] = useState('mes');
+  const [version, setVersion] = useState(0);
+  const filtros = periodo === 'todo' ? {} : (([desde, hasta]) => ({ desde, hasta }))(rangoDe(periodo));
+  const { data, loading, error } = useResource(`retiros:${cliente.id}:${periodo}:${version}`, () => ventasApi.retirosCliente(cliente.id, filtros));
+  const retiros = data?.retiros ?? [];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+        <select className={s['select-inline']} value={periodo} onChange={(e) => setPeriodo(e.target.value)} aria-label="Período">
+          {PERIODOS_RETIRO.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+        {data && (
+          <div style={{ textAlign: 'right' }}>
+            <div className={s['mini-label']}>Consumido a costo</div>
+            <strong style={{ fontSize: 22, fontVariantNumeric: 'tabular-nums' }}>{money(data.costoTotal)}</strong>
+          </div>
+        )}
+      </div>
+      {error && <div className={cx(s.callout, s.warn)}>{error}</div>}
+      {loading && !data ? <div className={s['empty-state']}>Cargando retiros…</div> : (
+        <Table cols={[{ h: 'Fecha' }, { h: 'Qué se llevó' }, { h: 'Quién lo cargó' }, { h: 'Costo', num: true }]}
+          empty={periodo === 'todo' ? 'Todavía no hay retiros.' : 'No hay retiros en este período.'}>
+          {retiros.map((x) => (
+            <tr key={x.id} style={x.anuladoEn ? { opacity: 0.6 } : undefined}>
+              <td style={{ whiteSpace: 'nowrap' }}>{fmtFecha(x.fecha)}<div className={s.hint} style={{ margin: 0 }}>#{x.id}{x.sucursal ? ` · ${x.sucursal}` : ''}</div></td>
+              <td>
+                {x.items.map((it, i) => (
+                  <div key={i} style={x.anuladoEn ? { textDecoration: 'line-through' } : undefined}>
+                    {it.nombre} × {Number(it.cantidad).toLocaleString('es-AR', { maximumFractionDigits: 3 })}
+                    <span className={s.hint} style={{ margin: '0 0 0 6px' }}>{money(it.costoUnitario * it.cantidad)}</span>
+                  </div>
+                ))}
+                {x.anuladoEn && <div className={s.hint} style={{ margin: 0 }}>Anulado{x.anuladoPor ? ` por ${x.anuladoPor}` : ''}: {x.anuladoMotivo} (la mercadería volvió al stock)</div>}
+                {!x.anuladoEn && esJefe && <AnularRetiro retiro={x} onHecho={() => setVersion((v) => v + 1)} />}
+              </td>
+              <td>{x.usuario || '—'}</td>
+              <td className={s.num} style={x.anuladoEn ? { textDecoration: 'line-through' } : undefined}>{money(x.costoTotal)}</td>
+            </tr>
+          ))}
+        </Table>
+      )}
+      <div className={s.hint} style={{ margin: 0 }}>
+        El costo es el real del día del retiro (lo que te costó, con la parte sin factura), congelado: no cambia si después sube el costo.
+        Los retiros no son ventas: no pasan por la caja, ARCA ni el IVA, y no suman en las métricas de ventas.
+      </div>
+    </div>
+  );
+}
+
+/** Anular un retiro: la mercadería vuelve al stock. Con motivo, segundo clic y candado. */
+function AnularRetiro({ retiro, onHecho }) {
+  const { toast } = useVentas();
+  const [abierto, setAbierto] = useState(false);
+  const [motivo, setMotivo] = useState('');
+  const [confirmando, setConfirmando] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const candado = useRef(false);
+  if (!abierto) return <Btn small onClick={() => setAbierto(true)} style={{ marginTop: 4 }}>Anular</Btn>;
+  const anular = async () => {
+    if (motivo.trim().length < 3) { toast('Escribí por qué se anula el retiro.', 'err'); return; }
+    if (!confirmando) { setConfirmando(true); return; }
+    if (candado.current) return;
+    candado.current = true; setOcupado(true);
+    try {
+      await ventasApi.anularRetiro(retiro.id, motivo.trim());
+      toast(`Retiro #${retiro.id} anulado: la mercadería volvió al stock.`, 'ok');
+      onHecho();
+    } catch (e) { toast(errorMsg(e), 'err'); } finally { candado.current = false; setOcupado(false); }
+  };
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+      <input value={motivo} maxLength={300} onChange={(e) => { setMotivo(e.target.value); setConfirmando(false); }} placeholder="Motivo de la anulación" aria-label="Motivo de la anulación" style={{ minWidth: 200 }} autoFocus />
+      <Btn small variant={confirmando ? 'btn-delete' : 'btn-ghost'} onClick={anular} disabled={ocupado}>
+        {ocupado ? 'Anulando…' : confirmando ? 'Sí, anular y devolver al stock' : 'Anular'}
+      </Btn>
+      <Btn small onClick={() => { setAbierto(false); setConfirmando(false); }} disabled={ocupado}>Cancelar</Btn>
+    </div>
+  );
+}
+
 /** Pestaña de comprobantes emitidos (últimos 100). */
 function TabComprobantes({ clienteId }) {
   const { data, loading, error } = useResource(
@@ -457,6 +585,7 @@ export function DetalleClienteModal({ clienteId }) {
         <Tab label="Resumen" />
         <Tab label="Cuenta corriente" />
         <Tab label="Comprobantes" />
+        {cliente.retiroSinCosto && <Tab label="Retiros" />}
       </Tabs>
 
       {tab === 0 && (
@@ -478,6 +607,7 @@ export function DetalleClienteModal({ clienteId }) {
                 ? `${cliente.limiteCredito > 0 ? money(cliente.limiteCredito) : 'Sin tope'} · ${cliente.diasPlazo} días`
                 : 'No habilitada'}
             </Di>
+            <MarcaRetiros cliente={cliente} />
           </div>
           {cliente.observaciones && (
             <div className={s.callout}>{cliente.observaciones}</div>
@@ -492,6 +622,8 @@ export function DetalleClienteModal({ clienteId }) {
       )}
 
       {tab === 2 && <TabComprobantes clienteId={clienteId} />}
+
+      {tab === 3 && cliente.retiroSinCosto && <TabRetiros cliente={cliente} />}
     </ModalShell>
   );
 }
