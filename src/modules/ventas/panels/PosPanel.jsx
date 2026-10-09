@@ -8,12 +8,12 @@ import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import {
   buscarEnCatalogo, calcularRenglon, descuentosDisponibles, descuentosParaApi,
   extrasParaApi, itemsParaApi, motivoBloqueo, parseEtiquetaBalanza,
-  descuentosConMedio, problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
+  cambioDeDescuento, descuentosConMedio, problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
   bultoAbajo, bultoArriba, bultoDeFila, cantidadInicial, desgloseBulto, empujonMayorista, textoBulto,
   totalesTicket, ultimoArticulo, unidadesDeLista,
 } from '../domain/pos.js';
 import {
-  contextoResolucion, faltantesMayorista, indicePrecios, restriccionMayorista, sugerenciaMayorista,
+  catalogoDeSucursal, contextoResolucion, faltantesMayorista, indicePrecios, restriccionMayorista, sugerenciaMayorista,
 } from '../domain/listas.js';
 
 /** Los orígenes de una puerta al mayorista: para avisar cuando un renglón vuelve a minorista. */
@@ -809,11 +809,13 @@ export function PosPanel() {
    * listas disponibles: cambiar de cliente o cruzar un umbral se resuelve en
    * memoria, sin volver a la red.
    */
-  const { data: catalogoRaw, loading: cargandoCatalogo, error: errorCatalogo, reload: recargarCatalogo } = useResource(
+  const { data: catalogoServidor, loading: cargandoCatalogo, error: errorCatalogo, reload: recargarCatalogo } = useResource(
     `catalogo:${sucursalId}`,
     () => ventasApi.catalogo(sucursalId),
     { enabled: !!sucursalId },
   );
+  /* Sucursal que no vende mayorista (0150): el catálogo de la caja va sin lo mayorista. */
+  const catalogoRaw = useMemo(() => catalogoDeSucursal(catalogoServidor), [catalogoServidor]);
   const catalogo = useMemo(() => catalogoRaw?.items ?? [], [catalogoRaw]);
   const listasCatalogo = useMemo(() => catalogoRaw?.listas ?? [], [catalogoRaw]);
 
@@ -1014,6 +1016,10 @@ export function PosPanel() {
 
   /** Los descuentos con nombre aplicados que exigen un medio: el cobro ofrece solo ese. */
   const conMedio = useMemo(() => descuentosConMedio(ticket), [ticket]);
+  /** El otro % del mismo descuento (general ↔ efectivo, 0149): el cobro ofrece pasar de uno al otro. */
+  const cambioDesc = useMemo(() => cambioDeDescuento(ticket, { esAdmin: puedePisarPrecio }), [ticket, puedePisarPrecio]);
+  /* Tras cambiar de % desde el cobro, se vuelve a abrir solo, con el total nuevo. */
+  const reabrirCobro = useRef(false);
 
   /** Si el ticket tiene renglones a precio mayorista, el cobro ofrece solo sus medios. */
   const restriccion = useMemo(
@@ -1444,6 +1450,13 @@ export function PosPanel() {
          * ofrece solo ese medio. Si el cliente paga con otro, se saca el
          * descuento y se cobra de nuevo con el total nuevo a la vista. */
         descuentosMedio: conMedio,
+        cambioDescuento: cambioDesc,
+        onCambiarDescuento: () => {
+          closeModal();
+          reabrirCobro.current = true;
+          dispatch({ tipo: 'descuentos', ids: cambioDesc.ids });
+          toast(`${cambioDesc.nombre}: ${cambioDesc.porcentaje}% aplicado.`, 'ok');
+        },
         onSacarDescuentos: () => {
           closeModal();
           const fuera = new Set(conMedio.map((d) => d.id));
@@ -1479,7 +1492,12 @@ export function PosPanel() {
         },
       });
     });
-  }, [puedeCobrar, problemas, activaId, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast, restriccion, conMedio, getCliente, can]);
+  }, [puedeCobrar, problemas, activaId, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast, restriccion, conMedio, cambioDesc, getCliente, can]);
+  useEffect(() => {
+    if (!reabrirCobro.current) return;
+    reabrirCobro.current = false;
+    cobrar();
+  }, [cobrar]);
 
   /* El retiro no pide caja abierta ni medios: alcanza con un ticket con artículos. */
   const pedirRetiro = useCallback(() => {

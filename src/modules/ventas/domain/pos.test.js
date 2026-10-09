@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buscarEnCatalogo, bultoAbajo, bultoArriba, bultoDeFila, calcularRenglon, descuentosConMedio, desgloseBulto,
+  buscarEnCatalogo, bultoAbajo, bultoArriba, bultoDeFila, calcularRenglon, cambioDeDescuento, descuentosConMedio, desgloseBulto,
   empujonMayorista, porBulto, textoBulto, totalesTicket,
   unidadesDeLista, ticketDesdeBorrador, ticketReducer, ticketInicial,
 } from './pos.js';
@@ -335,4 +335,34 @@ test('descuentosConMedio: solo los que ganaron en un renglón y piden un medio',
   // Puesto pero tapado (ningún renglón lo lleva): no condiciona el cobro.
   assert.deepEqual(descuentosConMedio({ renglones: [{ descuentoId: null }], ctx }), []);
   assert.deepEqual(descuentosConMedio({ renglones: [], ctx: {} }), []);
+});
+
+test('cambioDeDescuento: del general al de efectivo y de vuelta, solo si el otro gana', () => {
+  const catalogo = { listas: [{ listaId: 1, modalidadId: 10, esBase: true, etiqueta: 'Minorista 1' }], reglasMarca: [] };
+  const precios = new Map([['p5', [{ listaId: 1, precio: 100 }]]]);
+  const descuentos = [
+    { id: 1, nombre: 'Empleados', porcentaje: 10, listaId: 1, medioPago: null, activo: true, efectivoDeId: null },
+    { id: 2, nombre: 'Empleados (efectivo)', porcentaje: 15, listaId: 1, medioPago: 'efectivo', activo: true, efectivoDeId: 1 },
+  ];
+  const item = { key: 'p5', productoId: 5, nombre: 'Coca 2L', iva: 21, precio: 100, stock: 50 };
+  let e = ticketReducer({ ...ticketInicial, ctx: { ...ticketInicial.ctx, catalogo, precios, descuentos } }, { tipo: 'agregar', item, cantidad: 1 });
+  e = ticketReducer(e, { tipo: 'descuentos', ids: [1] });
+  const a = cambioDeDescuento(e);
+  assert.equal(a.haciaEfectivo, true);
+  assert.deepEqual(a.ids, [2]);
+  assert.equal(a.total, totalesTicket(ticketReducer(e, { tipo: 'descuentos', ids: [2] }).renglones).total);
+  assert.ok(a.total < totalesTicket(e.renglones).total, 'en efectivo sale menos');
+
+  const b = cambioDeDescuento(ticketReducer(e, { tipo: 'descuentos', ids: [2] }));
+  assert.equal(b.haciaEfectivo, false);
+  assert.deepEqual(b.ids, [1]);
+
+  // La pareja vencida, desactivada o que pide admin: no se ofrece.
+  const conOtro = (cambios) => ({ ...e, ctx: { ...e.ctx, descuentos: [descuentos[0], { ...descuentos[1], ...cambios }] } });
+  assert.equal(cambioDeDescuento(conOtro({ vence: '2020-01-01T00:00:00Z' })), null);
+  assert.equal(cambioDeDescuento(conOtro({ activo: false })), null);
+  assert.equal(cambioDeDescuento(conOtro({ requiereAdmin: true })), null);
+  assert.ok(cambioDeDescuento(conOtro({ requiereAdmin: true }), { esAdmin: true }));
+  // Un descuento sin pareja: nada que ofrecer.
+  assert.equal(cambioDeDescuento({ ...e, ctx: { ...e.ctx, descuentos: [descuentos[0]] } }), null);
 });

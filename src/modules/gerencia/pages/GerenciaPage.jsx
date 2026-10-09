@@ -85,6 +85,59 @@ function FacturaElectronica({ su, pendiente, onCambiar }) {
   );
 }
 
+/**
+ * VENDE MAYORISTA (0150, 8/10/2026, pedido del dueño): no todas las sucursales
+ * trabajan la venta mayorista. Apagado, esa caja cobra todo a precio minorista
+ * (sin aviso, sin bulto, sin lista mayorista del cliente) y el servidor lo
+ * exige. Cambia lo que se le cobra al cliente, así que se confirma en la fila.
+ * La Distribuidora no se apaga: surte la tienda online, que es mayorista.
+ */
+function VendeMayorista({ su, onCambiar }) {
+  const [preguntando, setPreguntando] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const enVuelo = useRef(false);
+  const vende = su.vendeMayorista !== false;
+  const fija = su.tipo === 'distribuidora';
+
+  const confirmar = async () => {
+    if (enVuelo.current) return;
+    enVuelo.current = true; setOcupado(true);
+    try {
+      await onCambiar(!vende);
+    } finally {
+      enVuelo.current = false; setOcupado(false); setPreguntando(false);
+    }
+  };
+
+  if (preguntando) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 240 }}>
+        <span style={{ fontSize: 12.5 }}>
+          {vende
+            ? <>¿<strong>{su.nombre}</strong> deja de vender mayorista? Su caja va a cobrar todo a precio minorista.</>
+            : <>¿<strong>{su.nombre}</strong> vende mayorista? Su caja vuelve a ofrecer el precio mayorista cuando se cumple.</>}
+        </span>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <Btn small variant={vende ? 'btn-danger' : 'btn-primary'} disabled={ocupado} onClick={confirmar}>
+            {ocupado ? 'Guardando…' : vende ? 'Sí, solo minorista' : 'Sí, vende mayorista'}
+          </Btn>
+          <Btn small disabled={ocupado} onClick={() => setPreguntando(false)}>No</Btn>
+        </div>
+      </div>
+    );
+  }
+
+  const bloqueo = fija ? 'La Distribuidora vende mayorista: surte la tienda online.' : su.activa === false ? 'Sucursal desactivada.' : '';
+  return (
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: bloqueo ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }} title={bloqueo || undefined}>
+      <input type="checkbox" checked={vende} disabled={!!bloqueo || ocupado} onChange={() => setPreguntando(true)} />
+      <strong style={{ color: vende ? 'var(--crm-color-success)' : 'var(--crm-color-text-secondary)' }}>
+        {vende ? 'Vende mayorista' : 'Solo minorista'}
+      </strong>
+    </label>
+  );
+}
+
 /* ---------------- Modal de usuario (alta / edición) ---------------- */
 
 /** Lo que dice la tabla y la ventana sobre el descuento a mano (0147). */
@@ -692,7 +745,7 @@ export function GerenciaPage() {
           <Table
             cols={[
               { h: 'Sucursal' }, { h: 'Tipo' }, { h: 'Punto de venta' },
-              { h: 'Domicilio del comprobante' }, { h: 'Factura electrónica' }, { h: 'Fondo de caja', num: true }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' },
+              { h: 'Domicilio del comprobante' }, { h: 'Factura electrónica' }, { h: 'Mayorista' }, { h: 'Fondo de caja', num: true }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' },
             ]}
             empty="Sin sucursales."
           >
@@ -750,6 +803,17 @@ export function GerenciaPage() {
                       )}
                     />
                   </td>
+                  <td>
+                    <VendeMayorista
+                      su={su}
+                      onCambiar={(vende) => mutar(
+                        () => httpClient.patch(`/sucursales/${su.id}`, { nombre: su.nombre, tipo: su.tipo, vendeMayorista: vende }),
+                        vende
+                          ? `${su.nombre}: vende mayorista. Su caja ofrece el precio mayorista cuando se cumple.`
+                          : `${su.nombre}: solo minorista. Su caja cobra todo a precio minorista.`,
+                      )}
+                    />
+                  </td>
                   <td className={s.num}>
                     <input
                       type="number" min="0" step="1000"
@@ -792,6 +856,11 @@ export function GerenciaPage() {
               );
             })}
           </Table>
+          <div className={s.hint}>
+            <strong>Mayorista</strong>: la sucursal en «Solo minorista» cobra todo a precio minorista — su caja no
+            ofrece el aviso mayorista, el bulto ni la lista mayorista de un cliente, y el sistema no deja cobrar ahí
+            un renglón mayorista. La Distribuidora vende mayorista siempre: surte la tienda online.
+          </div>
           <div className={s.hint}>
             El <strong>fondo de caja</strong> es con cuánto abre la caja de cada local y cuánto queda
             apartado al cerrar para el turno siguiente; si está vacío, lo fija la primera apertura.

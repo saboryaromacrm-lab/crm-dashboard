@@ -4,6 +4,8 @@ import { useSeccion } from '../hooks/useSeccion.js';
 import { num, money, fmtFechaHora } from '../domain/format.js';
 import { TIPOS_MOV, ESTADOS_STOCK, labelTipoMov } from '../domain/constants.js';
 import { sucursalOptions, productoOptions } from '../components/selectOptions.jsx';
+import { FiltroProductoControles } from '../components/FiltroProducto.jsx';
+import { useFiltroProducto } from '../hooks/useFiltroProducto.js';
 import { Table, PanelHead, MovTag, Btn, usePaginado, s } from '../components/ui.jsx';
 import { imprimirDocumento, cuerpoValeOperacion } from '@core/services/imprimir.js';
 
@@ -34,6 +36,7 @@ export function HistorialPanel({ preset, embedded }) {
   const ini = preset ?? panelParams;
   const [prodF, setProdF] = useState(() => (ini?.productoId ? String(ini.productoId) : ''));
   const [sucF, setSucF] = useState(() => (ini?.sucursalId ? String(ini.sucursalId) : ''));
+  const fp = useFiltroProducto(store);
 
   /* RANGO DE FECHAS (28/8, pedido del dueño). No puede ser un filtro de
    * pantalla: acá abajo hay solo los últimos 300 movimientos, y filtrar eso
@@ -63,10 +66,10 @@ export function HistorialPanel({ preset, embedded }) {
       if (tipoF && m.tipo !== tipoF) return false;
       if (prodF && m.productoId !== parseInt(prodF, 10)) return false;
       if (sucF && m.sucursalId !== parseInt(sucF, 10) && m.sucursalDestinoId !== parseInt(sucF, 10)) return false;
-      return true;
+      return fp.coincide(m.productoId, m.productoNombre);
     });
 
-  const pag = usePaginado(movs, 'movimientos', `${tipoF}|${prodF}|${sucF}|${desdeF}|${hastaF}`);
+  const pag = usePaginado(movs, 'movimientos', `${tipoF}|${prodF}|${sucF}|${desdeF}|${hastaF}|${fp.clave}`);
 
   /** El documento o motivo que explica el movimiento, como lo escribió quien
    *  lo generó ("Venta 0001-00000042 · Consumidor Final", "Recepción factura…",
@@ -164,13 +167,14 @@ export function HistorialPanel({ preset, embedded }) {
         />
       )}
       <div className={s.toolbar}>
+        <FiltroProductoControles f={fp} id="movs" />
         <select className={s['select-inline']} value={tipoF} onChange={(e) => setTipoF(e.target.value)}>
           <option value="">Todos los movimientos</option>
           {Object.keys(TIPOS_MOV).map((k) => <option key={k} value={k}>{TIPOS_MOV[k].label}</option>)}
         </select>
         <select className={s['select-inline']} value={prodF} onChange={(e) => setProdF(e.target.value)}>
           <option value="">Todos los productos</option>
-          {productoOptions(store, false)}
+          {productoOptions(store, false, null, (p) => String(p.id) === prodF || fp.coincide(p.id))}
         </select>
         <select className={s['select-inline']} value={sucF} onChange={(e) => setSucF(e.target.value)}>
           <option value="">Todas las sucursales</option>

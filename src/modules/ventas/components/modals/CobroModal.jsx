@@ -52,7 +52,7 @@ const PLANES = [1, 3, 6];
 
 export function CobroModal({
   ventaId, totales, clienteId, cajaSesionId, onCobrado, facturaInterna = false, mayorista = null, onVolverMinorista = null,
-  descuentosMedio = [], onSacarDescuentos = null,
+  descuentosMedio = [], onSacarDescuentos = null, cambioDescuento = null, onCambiarDescuento = null,
 }) {
   const { getCliente, config, ctx, closeModal, toast, operadorId } = useVentas();
   const cliente = getCliente(clienteId);
@@ -76,6 +76,9 @@ export function CobroModal({
   const exigidos = [...new Set(descuentosMedio.map((d) => d.medio))];
   const medioDescuento = exigidos.length === 1 ? exigidos[0] : null;
   const nombresDescuento = descuentosMedio.map((d) => `«${d.nombre}»`).join(' y ');
+  /* El otro % del mismo descuento (0149): pasar al de efectivo, o volver al general. */
+  const aEfectivo = cambioDescuento?.haciaEfectivo && onCambiarDescuento ? cambioDescuento : null;
+  const aGeneral = cambioDescuento && !cambioDescuento.haciaEfectivo && onCambiarDescuento ? cambioDescuento : null;
   const choqueDescuento = exigidos.length > 1
     ? `${nombresDescuento} piden medios distintos (${exigidos.map((m) => MEDIOS_PAGO[m] || m).join(' y ')}): no se pueden cumplir los dos.`
     : medioDescuento && soloMayorista && !soloMayorista.includes(medioDescuento)
@@ -823,13 +826,31 @@ export function CobroModal({
               <>Descuento {nombresDescuento}: se cobra <strong>todo con {etiquetaMedio(medioDescuento)}</strong> y al contado.</>
             )}
           </div>
-          {onSacarDescuentos && (
+          {aGeneral && !choqueDescuento ? (
+            <div style={{ marginTop: 4 }}>
+              <Btn small onClick={onCambiarDescuento}>
+                Paga con otro medio: volver a «{aGeneral.nombre}» −{aGeneral.porcentaje}% ({money(aGeneral.total)})
+              </Btn>
+            </div>
+          ) : onSacarDescuentos && (
             <div style={{ marginTop: 4 }}>
               <Btn small onClick={onSacarDescuentos}>
                 {choqueDescuento ? 'Sacar el descuento' : 'Paga con otro medio: sacar el descuento'}
               </Btn>
             </div>
           )}
+        </div>
+      )}
+
+      {aEfectivo && (
+        <div className={cx(s.callout, s.info)} style={{ margin: '0 0 var(--crm-space-3)', display: 'grid', gap: 4 }}>
+          <div>
+            Pagando todo en efectivo: <strong>«{aEfectivo.nombre}» −{aEfectivo.porcentaje}%</strong>,
+            total <strong>{money(aEfectivo.total)}</strong> (ahorra {money(r2(totalCobrar - aEfectivo.total))}).
+          </div>
+          <div style={{ marginTop: 4 }}>
+            <Btn small onClick={onCambiarDescuento}>Paga en efectivo: aplicar {aEfectivo.porcentaje}%</Btn>
+          </div>
         </div>
       )}
 

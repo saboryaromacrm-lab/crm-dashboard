@@ -307,6 +307,29 @@ export function restriccionMayorista(renglones, catalogo) {
 }
 
 /** Índice `key → [{listaId, precio, unidadesMinimas}]`, ya ordenado por preferencia. */
+/**
+ * EL CATÁLOGO DE UNA SUCURSAL QUE NO VENDE MAYORISTA (0150, pedido del dueño).
+ *
+ * El servidor manda los datos mayoristas igual (carteles y ofertas los usan) y
+ * avisa con `vendeMayorista: false`. Acá se sacan en UN solo lugar: sin la
+ * modalidad, sus listas ni sus precios, la caja no ofrece el aviso, el empujón,
+ * el bulto ni la lista mayorista del cliente — todo queda a precio minorista.
+ * La lista base se queda siempre: es el piso del local (igual que el servidor).
+ */
+export function catalogoDeSucursal(catalogo) {
+  if (!catalogo || catalogo.vendeMayorista !== false) return catalogo;
+  const mod = catalogo.mayorista?.modalidadId ?? catalogo.montoMayorista?.modalidadId ?? null;
+  const fuera = new Set((catalogo.listas ?? []).filter((l) => mod != null && l.modalidadId === mod && !l.esBase).map((l) => l.listaId));
+  return {
+    ...catalogo,
+    mayorista: null,
+    montoMayorista: null,
+    listas: (catalogo.listas ?? []).filter((l) => !fuera.has(l.listaId)),
+    reglasMarca: (catalogo.reglasMarca ?? []).filter((r) => r.modalidadId !== mod),
+    items: (catalogo.items ?? []).map((it) => ({ ...it, precios: (it.precios ?? []).filter((p) => !fuera.has(p.listaId)) })),
+  };
+}
+
 export function indicePrecios(items) {
   const m = new Map();
   for (const i of items) m.set(i.key, i.precios || []);

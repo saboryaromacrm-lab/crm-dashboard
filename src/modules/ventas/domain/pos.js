@@ -894,6 +894,50 @@ export function descuentosConMedio(estado) {
 }
 
 /**
+ * EL OTRO PORCENTAJE DEL MISMO DESCUENTO (0149, 8/10/2026).
+ *
+ * Un descuento puede tener su pareja «(efectivo)» con un % mayor. Al cobrar se
+ * ofrece el cambio que corresponde: del general al de efectivo (si paga todo
+ * en efectivo) o de vuelta al general (si paga con otro medio). Devuelve
+ * `{ haciaEfectivo, desde, nombre, porcentaje, ids, total }` o null.
+ *
+ * Solo si el otro de verdad GANARÍA en algún renglón (activo, vigente, de esta
+ * sucursal, que lo pueda aplicar quien está en la caja y que no lo tape el
+ * descuento propio del renglón): ofrecer uno que no cambia nada es ruido.
+ */
+export function cambioDeDescuento(estado, { esAdmin = false } = {}) {
+  const catalogo = estado.ctx.descuentos ?? [];
+  const puestos = estado.descuentos ?? [];
+  const ganaron = new Set(estado.renglones.map((r) => r.descuentoId).filter(Boolean));
+  const ahora = estado.ctx.ahora ? new Date(estado.ctx.ahora).getTime() : Date.now();
+  const sucursalId = estado.ctx.sucursalId ?? null;
+  for (const id of puestos) {
+    if (!ganaron.has(id)) continue;
+    const d = catalogo.find((x) => x.id === id);
+    if (!d) continue;
+    const otro = d.efectivoDeId != null
+      ? catalogo.find((x) => x.id === d.efectivoDeId)
+      : catalogo.find((x) => x.efectivoDeId === d.id);
+    if (!otro || otro.activo === false) continue;
+    if (otro.vence && new Date(otro.vence).getTime() < ahora) continue;
+    if (otro.sucursalId != null && sucursalId != null && otro.sucursalId !== sucursalId) continue;
+    if (otro.requiereAdmin && !esAdmin) continue;
+    const ids = puestos.map((x) => (x === id ? otro.id : x));
+    const hip = ticketReducer(estado, { tipo: 'descuentos', ids });
+    if (!hip.renglones.some((r) => r.descuentoId === otro.id)) continue;
+    return {
+      haciaEfectivo: d.efectivoDeId == null,
+      desde: d.nombre,
+      nombre: otro.nombre,
+      porcentaje: Number(otro.porcentaje),
+      ids,
+      total: totalesTicket(hip.renglones, hip.extras).total,
+    };
+  }
+  return null;
+}
+
+/**
  * Renglones en el formato que espera `POST/PUT /ventas`.
  *
  * NO viaja `iva`: la alícuota es del PRODUCTO y la pone el servidor

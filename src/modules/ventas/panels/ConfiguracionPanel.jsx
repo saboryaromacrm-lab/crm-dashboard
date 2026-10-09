@@ -101,8 +101,15 @@ const fechaInput = (iso) => {
 const estaVencido = (iso) => !!iso && new Date(iso).getTime() < Date.now();
 
 const FILA_VACIA = {
-  nombre: '', porcentaje: '', vence: '', medioPago: '', listaId: '', sucursalId: '', requiereAdmin: false,
+  nombre: '', porcentaje: '', porcentajeEfectivo: '', vence: '', medioPago: '', listaId: '', sucursalId: '', requiereAdmin: false,
 };
+
+/** El borrador de una fila existente; `d.pareja` es su % en efectivo (0149). */
+const filaDe = (d) => ({
+  nombre: d.nombre, porcentaje: d.porcentaje, porcentajeEfectivo: d.pareja?.porcentaje ?? '', vence: fechaInput(d.vence),
+  medioPago: d.medioPago ?? '', listaId: d.listaId ?? '', sucursalId: d.sucursalId ?? '',
+  requiereAdmin: !!d.requiereAdmin,
+});
 
 /**
  * Una fila del listado. Guarda su propio borrador y su propio botón: son
@@ -110,25 +117,15 @@ const FILA_VACIA = {
  */
 function FilaDescuento({ d, listas, sucursales, sucursalesTodas = [], onGuardar, onBorrar, ocupado }) {
   const nuevo = !d;
-  const [f, setF] = useState(nuevo ? FILA_VACIA : {
-    nombre: d.nombre, porcentaje: d.porcentaje, vence: fechaInput(d.vence),
-    medioPago: d.medioPago ?? '', listaId: d.listaId ?? '', sucursalId: d.sucursalId ?? '',
-    requiereAdmin: !!d.requiereAdmin,
-  });
-  useEffect(() => {
-    if (!nuevo) {
-      setF({
-        nombre: d.nombre, porcentaje: d.porcentaje, vence: fechaInput(d.vence),
-        medioPago: d.medioPago ?? '', listaId: d.listaId ?? '', sucursalId: d.sucursalId ?? '',
-        requiereAdmin: !!d.requiereAdmin,
-      });
-    }
-  }, [d, nuevo]);
+  const [f, setF] = useState(nuevo ? FILA_VACIA : filaDe(d));
+  useEffect(() => { if (!nuevo) setF(filaDe(d)); }, [d, nuevo]);
 
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const guardar = () => onGuardar({
     nombre: f.nombre.trim(),
     porcentaje: Number(f.porcentaje) || 0,
+    // Vacío = sin % en efectivo (si lo tenía, se saca). Con un medio exigido no corresponde.
+    porcentajeEfectivo: f.medioPago || f.porcentajeEfectivo === '' ? null : Number(f.porcentajeEfectivo),
     vence: f.vence || '',
     medioPago: f.medioPago || '',
     listaId: Number(f.listaId) || 0,
@@ -146,9 +143,19 @@ function FilaDescuento({ d, listas, sucursales, sucursalesTodas = [], onGuardar,
           {nuevo && <label>Nombre</label>}
           <input value={f.nombre} onChange={set('nombre')} placeholder="Nuevo descuento (ej.: Empleados)" />
         </div>
-        <div className={s.field} style={{ flex: '0 1 90px', margin: 0 }}>
-          {nuevo && <label>%</label>}
+        <div className={s.field} style={{ flex: '0 1 100px', margin: 0 }}>
+          <label>% general</label>
           <input type="number" min="0" max="100" step="0.5" value={f.porcentaje} onChange={set('porcentaje')} placeholder="%" />
+        </div>
+        {/* 0149: el % mayor pagando TODO en efectivo. Solo en uno de cualquier
+            forma de pago: el que ya exige un medio no tiene "otro" medio. */}
+        <div className={s.field} style={{ flex: '0 1 110px', margin: 0 }}>
+          <label>% en efectivo</label>
+          <input
+            type="number" min="0" max="100" step="0.5" value={f.medioPago ? '' : f.porcentajeEfectivo}
+            onChange={set('porcentajeEfectivo')} placeholder={f.medioPago ? 'no aplica' : 'opcional'}
+            disabled={!!f.medioPago} title={f.medioPago ? 'Este descuento ya pide un medio de pago.' : 'Mayor que el general; vacío = no tiene'}
+          />
         </div>
         <div className={s.field} style={{ flex: '1 1 150px', margin: 0 }}>
           <label>Vence</label>
@@ -213,8 +220,13 @@ function SeccionDescuentos({ listas, sucursales, sucursalesTodas = [], toast }) 
   const [cargando, setCargando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
 
+  /* La pareja «(efectivo)» (0149) no es una fila propia: va dentro de su general. */
   const cargar = async () => {
-    try { setFilas(await ventasApi.descuentos()); } catch { setFilas([]); } finally { setCargando(false); }
+    try {
+      const todos = await ventasApi.descuentos();
+      setFilas(todos.filter((d) => d.efectivoDeId == null)
+        .map((d) => ({ ...d, pareja: todos.find((x) => x.efectivoDeId === d.id) ?? null })));
+    } catch { setFilas([]); } finally { setCargando(false); }
   };
   useEffect(() => { cargar(); }, []);
 
@@ -238,7 +250,8 @@ function SeccionDescuentos({ listas, sucursales, sucursalesTodas = [], toast }) 
       desc={'Los crea el administrador y la cajera los elige en el punto de venta, sin tipear el número. '
         + 'Cada uno cae SOLO sobre los renglones de su lista de precios, nunca sobre el total: si el ticket '
         + 'mezcla listas, el resto se cobra entero. Se puede aplicar uno por lista, gana el mayor contra el '
-        + 'descuento que el renglón ya tenga, y no toca los renglones que están en oferta.'}
+        + 'descuento que el renglón ya tenga, y no toca los renglones que están en oferta. Con «% en efectivo», '
+        + 'la cajera ve también «Nombre (efectivo)» y al cobrar la caja ofrece pasar de uno al otro según cómo pague.'}
     >
       {cargando ? (
         <span className={s.muted}>Cargando descuentos…</span>

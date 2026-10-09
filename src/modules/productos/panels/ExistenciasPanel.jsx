@@ -4,6 +4,8 @@ import { useProductos } from '../context/ProductosContext.jsx';
 import { money } from '../domain/format.js';
 import { ESTADOS_STOCK } from '../domain/constants.js';
 import { sucursalOptions, productoOptions } from '../components/selectOptions.jsx';
+import { FiltroProductoControles } from '../components/FiltroProducto.jsx';
+import { useFiltroProducto } from '../hooks/useFiltroProducto.js';
 import { Table, PanelHead, TipoBadge, StockPill, Btn, usePaginado, s } from '../components/ui.jsx';
 import { HistorialPanel } from './HistorialPanel.jsx';
 
@@ -35,6 +37,7 @@ export function ExistenciasPanel() {
   const [sucF, setSucF] = useState('');
   const [prodF, setProdF] = useState('');
   const [estadoF, setEstadoF] = useState('');
+  const fp = useFiltroProducto(store);
   /* La FOTO y la PELÍCULA como pestañas de la misma pantalla (27/8, pedido del
    * dueño). `movsPreset.k` cuenta los clics en "Movs." y va en la key del
    * historial embebido: sin remount, los useState del filtro no releerían el
@@ -52,11 +55,11 @@ export function ExistenciasPanel() {
       if (sucF && st.sucursalId !== parseInt(sucF, 10)) return false;
       if (prodF && st.productoId !== parseInt(prodF, 10)) return false;
       if (estadoF && st.estado !== estadoF) return false;
-      return true;
+      return fp.coincide(st.productoId);
     })
     .sort((a, b) => a.productoId - b.productoId || a.sucursalId - b.sucursalId);
 
-  const pag = usePaginado(entradas, 'existencias', `${sucF}|${prodF}|${estadoF}`);
+  const pag = usePaginado(entradas, 'existencias', `${sucF}|${prodF}|${estadoF}|${fp.clave}`);
 
   const filas = pag.visibles.map((st) => {
       const p = store.getProducto(st.productoId), su = store.getSucursal(st.sucursalId);
@@ -118,13 +121,14 @@ export function ExistenciasPanel() {
       ) : (
         <>
           <div className={s.toolbar}>
+            <FiltroProductoControles f={fp} id="exist" />
             <select className={s['select-inline']} value={sucF} onChange={(e) => setSucF(e.target.value)}>
               <option value="">Todas las sucursales</option>
               {sucursalOptions(store, false)}
             </select>
             <select className={s['select-inline']} value={prodF} onChange={(e) => setProdF(e.target.value)}>
               <option value="">Todos los productos</option>
-              {productoOptions(store, false)}
+              {productoOptions(store, false, null, (p) => String(p.id) === prodF || fp.coincide(p.id))}
             </select>
             <select className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)}>
               <option value="">Todos los estados</option>

@@ -59,10 +59,11 @@ export function sucursalOptionsOtras(store, excluirId) {
     .map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>);
 }
 
-export function productoOptions(store, incTodos, soloTipo) {
+/** `filtro(p)`: opcional, acota la lista (el buscador de Existencias y Movimientos). */
+export function productoOptions(store, incTodos, soloTipo, filtro) {
   const arr = incTodos ? [<option key="_all" value="">Todos los productos</option>] : [];
   store.state.productos
-    .filter((p) => !soloTipo || p.tipo === soloTipo)
+    .filter((p) => (!soloTipo || p.tipo === soloTipo) && (!filtro || filtro(p)))
     .forEach((p) => arr.push(<option key={p.id} value={p.id}>{p.nombre}</option>));
   return arr;
 }

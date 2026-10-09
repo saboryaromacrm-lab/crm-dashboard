@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  agregadosTicket, calificacion, contextoResolucion, faltantesMayorista, reglasDeMarcaCumplidas,
+  agregadosTicket, calificacion, catalogoDeSucursal, contextoResolucion, faltantesMayorista, reglasDeMarcaCumplidas,
   resolverRenglon, restriccionMayorista, sugerenciaMayorista, totalPiso,
 } from './listas.js';
 
@@ -180,4 +180,33 @@ test('restriccionMayorista: por la MODALIDAD de la lista puesta, llegue como lle
     { listaId: 3, cantidad: 1, precioUnitario: 50, iva: 21 },
   ], catalogo), { medios: ['efectivo', 'transferencia'], articulos: 1, monto: 326.7, modalidad: 'Mayorista' }, 'monto = la parte mayorista con IVA: 3 × 100 − 10% = 270 + IVA');
   assert.equal(restriccionMayorista([{ listaId: 2 }], { ...catalogo, mayorista: { ...catalogo.mayorista, mediosPago: [] } }), null, 'sin medios configurados no restringe');
+});
+
+test('catalogoDeSucursal: sin mayorista, la caja no ve la modalidad, sus listas ni sus precios', () => {
+  const cat = {
+    vendeMayorista: false,
+    listas: [
+      { listaId: 1, modalidadId: 10, esBase: true }, { listaId: 2, modalidadId: 20, esBase: false }, { listaId: 3, modalidadId: 20, esBase: false },
+    ],
+    mayorista: { modalidadId: 20, mediosPago: ['efectivo'], porBulto: true },
+    montoMayorista: { monto: 50000, modalidadId: 20 },
+    reglasMarca: [{ marcaId: 7, modalidadId: 20, unidadesMinimas: 6 }, { marcaId: 8, modalidadId: 10, unidadesMinimas: 2 }],
+    items: [{ key: 'p1', precios: [{ listaId: 1, precio: 100 }, { listaId: 2, precio: 80 }, { listaId: 3, precio: 70 }] }],
+    ofertas: [{ id: 1 }],
+  };
+  const c = catalogoDeSucursal(cat);
+  assert.equal(c.mayorista, null);
+  assert.equal(c.montoMayorista, null);
+  assert.deepEqual(c.listas.map((l) => l.listaId), [1]);
+  assert.deepEqual(c.reglasMarca.map((r) => r.marcaId), [8]);
+  assert.deepEqual(c.items[0].precios.map((p) => p.listaId), [1]);
+  assert.deepEqual(c.ofertas, [{ id: 1 }], 'lo demás viaja igual');
+  // El aviso y el empujón se apagan solos: no hay modalidad mayorista.
+  const ctx = contextoResolucion({ catalogo: c, cliente: { listas: [2] }, renglones: [] });
+  assert.equal(ctx.modalidadMayorista, null);
+  assert.equal(ctx.montoCumplido, null);
+  // La que vende mayorista (o un catálogo viejo sin el dato): tal cual.
+  assert.equal(catalogoDeSucursal({ ...cat, vendeMayorista: true }).listas.length, 3);
+  const viejo = { ...cat }; delete viejo.vendeMayorista;
+  assert.equal(catalogoDeSucursal(viejo), viejo);
 });
