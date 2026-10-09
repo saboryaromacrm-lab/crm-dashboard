@@ -1,18 +1,34 @@
 import { useState } from 'react';
+import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 import { useGastos } from '../context/GastosContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { gastosApi } from '../services/gastos.api.js';
-import { FRECUENCIAS, periodoISO } from '../domain/constants.js';
+import { FRECUENCIAS, mesLargo as nombrePeriodo, periodoISO } from '../domain/constants.js';
 import { Table, PanelHead, Stat, Btn, Pill, money, fmtFecha, s } from '../components/ui.jsx';
+import { SueldosTab } from './SueldosTab.jsx';
+import { BienesTab } from './BienesTab.jsx';
 
-/** 'AAAA-MM' legible: "agosto 2026". */
-function nombrePeriodo(periodo) {
-  const [a, m] = String(periodo).split('-').map(Number);
-  if (!a || !m) return periodo;
-  const d = new Date(a, m - 1, 1);
-  const t = d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
-  return t.charAt(0).toUpperCase() + t.slice(1);
+/**
+ * GASTOS FIJOS Y SUELDOS (0152, solo superadmin): lo que el estado de
+ * resultados necesita y no sale de un comprobante. Tres pestañas: lo que se
+ * repite (genera gastos reales), los sueldos por empleado (el costo del mes
+ * con cargas y aguinaldo) y los bienes de uso (amortizaciones).
+ */
+export function FijosPanel() {
+  const [tab, setTab] = useState('repiten');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
+      <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}>
+        <Tab value="repiten" label="Se repiten" sx={{ minHeight: 40 }} />
+        <Tab value="sueldos" label="Sueldos" sx={{ minHeight: 40 }} />
+        <Tab value="bienes" label="Bienes de uso" sx={{ minHeight: 40 }} />
+      </Tabs>
+      {tab === 'repiten' && <RecurrentesTab />}
+      {tab === 'sueldos' && <SueldosTab />}
+      {tab === 'bienes' && <BienesTab />}
+    </div>
+  );
 }
 
 /**
@@ -23,7 +39,7 @@ function nombrePeriodo(periodo) {
  * La generación es idempotente: se comprueba contra los gastos ya emitidos por
  * cada plantilla, así que apretar dos veces no duplica nada.
  */
-export function FijosPanel() {
+function RecurrentesTab() {
   const { recurrentes, categorias, proveedores, ctx, act, openModal, recargar } = useGastos();
   const [periodo, setPeriodo] = useState(periodoISO());
   const [generando, setGenerando] = useState(false);

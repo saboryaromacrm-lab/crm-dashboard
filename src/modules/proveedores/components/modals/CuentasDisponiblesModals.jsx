@@ -303,3 +303,118 @@ export function ResumenCuentaModal({ cuentaId, onChange }) {
     </ModalShell>
   );
 }
+
+/**
+ * PAGO PROPIO A UNA CUENTA (0151, 9/10/2026, pedido del dueño): Sabor y Aroma
+ * transfiere desde su propia cuenta a la del proveedor, sin pasar por la caja.
+ * Suma a «Pagado» de la cuenta y baja la deuda con el proveedor (queda como
+ * pago a cuenta para aplicar a una factura, como los de los clientes). Es plata:
+ * segunda confirmación y candado contra el doble clic.
+ */
+export function PagoPropioModal({ cuenta: c, onChange }) {
+  const { act, closeModal, toast } = useProveedores();
+  const [importe, setImporte] = useState(String(r2(c.falta)));
+  const [fecha, setFecha] = useState(hoyISO());
+  const [referencia, setReferencia] = useState('');
+  const [observaciones, setObservaciones] = useState('');
+  const [confirmando, setConfirmando] = useState(false);
+  const enCurso = useRef(false);
+  const n = r2(importe);
+  const cambiar = (fn) => (e) => { fn(e.target.value); setConfirmando(false); };
+
+  const registrar = async () => {
+    if (!(n > 0)) { toast('Poné el importe que transferiste.', 'err'); return; }
+    if (n > r2(c.falta) + 0.004) { toast(`A esta cuenta le faltan ${money(c.falta)}: no se puede pagar de más.`, 'err'); return; }
+    if (!confirmando) { setConfirmando(true); return; }
+    if (enCurso.current) return;
+    enCurso.current = true;
+    try {
+      const ok = await act(
+        provApi.pagoPropioCuenta(c.id, { importe: n, fecha, referencia: referencia.trim() || undefined, observaciones: observaciones.trim() || undefined }),
+        `Pago propio de ${money(n)} a ${c.proveedorNombre} (${c.titular}) registrado.`,
+      );
+      if (ok) onChange?.();
+    } finally { enCurso.current = false; }
+  };
+
+  return (
+    <ModalShell
+      title={`Pago propio a ${c.proveedorNombre}`}
+      subtitle={`${c.titular} · ${c.cbuAlias}`}
+      onClose={closeModal}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+        { texto: confirmando ? 'Sí, registrar' : 'Registrar pago', clase: 'btn-primary', onClick: registrar },
+      ]}
+    >
+      <div className={cx(s.callout, s.info)} style={{ margin: 0 }}>
+        Una transferencia que hiciste <strong>vos, desde la cuenta de Sabor y Aroma</strong>, a esta cuenta del proveedor. No pasa
+        por la caja: suma a «Pagado» y baja lo que le debés al proveedor (queda como pago a cuenta, para aplicar a su factura).
+        A cubrir <strong>{money(c.importe)}</strong> · pagado <strong>{money(c.pagado)}</strong> · falta <strong>{money(c.falta)}</strong>.
+      </div>
+      <div className={s['form-grid']} style={{ marginTop: 12 }}>
+        <div className={s.field}>
+          <label>Importe <span className={s.req}>*</span></label>
+          <input type="number" min="0" step="0.01" value={importe} onChange={cambiar(setImporte)} autoFocus />
+          <button type="button" className={s.linkBtn} style={{ marginTop: 4, alignSelf: 'flex-start' }} onClick={() => { setImporte(String(r2(c.falta))); setConfirmando(false); }}>
+            Todo lo que falta ({money(c.falta)})
+          </button>
+        </div>
+        <div className={s.field}>
+          <label>Fecha de la transferencia</label>
+          <input type="date" value={fecha} max={hoyISO()} onChange={cambiar(setFecha)} />
+        </div>
+        <div className={s.field}>
+          <label>Nº de operación o desde qué cuenta</label>
+          <input value={referencia} maxLength={120} onChange={cambiar(setReferencia)} placeholder="Opcional · ej: Galicia, op. 123456" />
+        </div>
+        <div className={s.field}>
+          <label>Observaciones</label>
+          <input value={observaciones} maxLength={300} onChange={cambiar(setObservaciones)} placeholder="Opcional" />
+        </div>
+      </div>
+      {confirmando && (
+        <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>
+          ¿Registrás la transferencia de <strong>{money(n)}</strong> desde tu cuenta a <strong>{c.proveedorNombre}</strong> ({c.titular} · {c.cbuAlias})?{' '}
+          {n >= r2(c.falta) - 0.004 ? 'La cuenta queda cubierta.' : `Le van a quedar ${money(r2(c.falta - n))} por cubrir.`}
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
+/** Anular un pago propio: con su espejo en la cuenta del proveedor (si ya se aplicó a una factura, la API frena). */
+export function AnularPagoPropioModal({ pago: p, onChange }) {
+  const { act, closeModal, toast } = useProveedores();
+  const [motivo, setMotivo] = useState('');
+  const enCurso = useRef(false);
+  const anular = async () => {
+    if (motivo.trim().length < 3) { toast('Escribí por qué se anula.', 'err'); return; }
+    if (enCurso.current) return;
+    enCurso.current = true;
+    try {
+      const ok = await act(provApi.anularPagoPropio(p.id, motivo.trim()), 'Pago propio anulado.');
+      if (ok) onChange?.();
+    } finally { enCurso.current = false; }
+  };
+  return (
+    <ModalShell
+      title={`Anular el pago propio de ${money(p.importe)}`}
+      subtitle={`${p.proveedorNombre} · ${p.titular}`}
+      onClose={closeModal}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+        { texto: 'Anular', clase: 'btn-delete', onClick: anular },
+      ]}
+    >
+      <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>
+        Vuelve a faltar ese importe en la cuenta y se anula también el pago en la cuenta corriente del proveedor. Si ya está
+        aplicado a una factura, primero hay que desaplicarlo en Proveedores.
+      </div>
+      <div className={s.field}>
+        <label>Motivo <span className={s.req}>*</span></label>
+        <input autoFocus value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej: la transferencia rebotó" />
+      </div>
+    </ModalShell>
+  );
+}

@@ -3,7 +3,7 @@
  * ============================================================================
  * `permiso` es la clave de SECCIÓN: el manifiesto deriva de acá qué claves
  * hacen visible el módulo, y la página filtra el sub-menú con las mismas.
- * Métricas, Cash Flow y Auditoría usan llaves que no están en el catálogo de
+ * Métricas, Resultados, Cash Flow y Auditoría usan llaves que no están en el catálogo de
  * permisos, así que no se asignan a ningún rol: solo el superadmin.
  *
  * 8/10/2026 (0144): salieron «Reportes de ventas», «Valorización de stock» y
@@ -15,6 +15,7 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import InsightsIcon from '@mui/icons-material/Insights';
 import PaymentsIcon from '@mui/icons-material/Payments';
+import AssessmentIcon from '@mui/icons-material/Assessment';
 
 export const GERENCIA_SECCIONES = [
   { id: 'usuarios', label: 'Usuarios y roles', icon: GroupIcon, permiso: 'gerencia.usuarios' },
@@ -29,6 +30,12 @@ export const GERENCIA_SECCIONES = [
      * stock que rota. Lee tablas resumen, así no frena las cajas. */
     id: 'metricas', label: 'Métricas', icon: InsightsIcon, permiso: 'gerencia.metricas',
     desc: 'Ventas, rentabilidad, proveedores, listas y stock, casi en vivo.',
+  },
+  {
+    /* 9/10/2026 (0152): el estado de resultados completo, todo en neto (el IVA
+     * aparte), por mes y por local, con objetivos y su configuración. */
+    id: 'resultados', label: 'Resultados', icon: AssessmentIcon, permiso: 'gerencia.resultados',
+    desc: 'El estado de resultados: ventas, costos, gastos y lo que queda, por mes y por local, con el IVA aparte.',
   },
   {
     /* 4/10/2026 (0133): la caja central de efectivo físico del dueño — los

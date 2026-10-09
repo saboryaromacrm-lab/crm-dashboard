@@ -17,6 +17,8 @@ import { RouteErrorBoundary } from './RouteErrorBoundary.jsx';
 /* Cash Flow para el celular (7/10/2026): pantalla propia, sin el menú del
  * ERP, para guardarla como acceso directo. Se carga solo si se entra ahí. */
 const CashFlowMovil = lazy(() => import('@modules/gerencia/panels/cashflow/CashFlowMovil.jsx').then((m) => ({ default: m.CashFlowMovil })));
+/* Resultados para el celular (9/10/2026, 0152): para mirar el mes desde el teléfono. */
+const ResultadosMovil = lazy(() => import('@modules/gerencia/panels/resultados/ResultadosMovil.jsx').then((m) => ({ default: m.ResultadosMovil })));
 
 /**
  * APPLICATION ROUTER
@@ -52,6 +54,11 @@ function buildRouter() {
           // (el permiso lo controla la pantalla: solo `gerencia.cashflow`).
           path: 'cashflow',
           element: <CashFlowMovil />,
+        },
+        {
+          // Ídem (0152): el estado de resultados en el teléfono; solo `gerencia.resultados`.
+          path: 'resultados',
+          element: <ResultadosMovil />,
         },
         {
           element: <MainLayout />,

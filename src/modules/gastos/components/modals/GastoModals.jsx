@@ -5,7 +5,7 @@ import { useResource } from '../../hooks/useResource.js';
 import { errorMsg, gastosApi } from '../../services/gastos.api.js';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '../segundaConfirmacion.jsx';
 import {
-  MEDIOS_PAGO, TIPOS_DOC_GASTO, hoyISO, r2, nombreProveedor,
+  MEDIOS_PAGO, TIPOS_DOC_GASTO, hoyISO, mesLargo, r2, nombreProveedor,
 } from '../../domain/constants.js';
 import {
   Table, Btn, Di, ModalShell, GastoEstadoPill, Saldo, money, fmtFecha, fmtFechaHora, s,
@@ -104,6 +104,8 @@ export function GastoFormModal({ gastoId, onChange }) {
     negocio: 'distribuidora',
     condicionPago: 'contado',
     vencimiento: '',
+    /* El mes al que corresponde (0152, devengado): vacío = el de la fecha. */
+    periodo: '',
     iva: '',
     /* El pie abierto (0071): los tres del papel, cada uno a su columna. */
     impInternos: '',
@@ -149,6 +151,7 @@ export function GastoFormModal({ gastoId, onChange }) {
       negocio: original.negocio || 'distribuidora',
       condicionPago: original.condicionPago,
       vencimiento: original.vencimiento ? String(original.vencimiento).slice(0, 10) : '',
+      periodo: original.periodo ? String(original.periodo).slice(0, 7) : '',
       /* La NC se guarda en NEGATIVO (0114): acá se muestra en positivo, como
        * el papel, y el servidor le vuelve a poner el signo. */
       iva: Math.abs(original.iva || 0) || '',
@@ -353,6 +356,8 @@ export function GastoFormModal({ gastoId, onChange }) {
     const payload = {
       categoriaId: Number(f.categoriaId),
       vencimiento: f.vencimiento || undefined,
+      /* El mes al que corresponde (0152): lo elige el jefe; vacío al editar lo vuelve al mes de la fecha. */
+      ...(esJefe && (editando || f.periodo) ? { periodo: f.periodo } : {}),
       observaciones: f.observaciones.trim(),
       usuarioId: ctx.usuarioId ?? undefined,
       /*
@@ -815,6 +820,15 @@ export function GastoFormModal({ gastoId, onChange }) {
             Sin vencimiento no aparece en Cuentas a pagar como atrasado.
           </div>
         </div>
+        {esJefe && (
+          <div className={s.field}>
+            <label>Corresponde al mes</label>
+            <input type="month" value={f.periodo} onChange={set('periodo')} />
+            <div className={s.hint} style={{ margin: '6px 0 0' }}>
+              Vacío = el mes de la fecha. Ej.: el alquiler de octubre que se factura en noviembre va en octubre en Resultados.
+            </div>
+          </div>
+        )}
       </div>
 
       <div className={s.field}>
@@ -965,6 +979,7 @@ export function DetalleGastoModal({ gastoId, onChange }) {
         <Di label="Sucursal">{g.sucursalId ? nombreSucursal(g.sucursalId) : 'Toda la empresa'}</Di>
         <Di label="Condición">{g.condicionPago === 'contado' ? 'Contado' : 'Cuenta corriente'}</Di>
         <Di label="Vence">{g.vencimiento ? fmtFecha(g.vencimiento) : '—'}</Di>
+        {g.periodo && <Di label="Corresponde a">{mesLargo(String(g.periodo).slice(0, 7))}</Di>}
       </div>
 
       <div className={s['section-title']}>Importes</div>

@@ -9,6 +9,7 @@ import {
   CategoriaFormModal, BorrarCategoriaModal, RecurrenteFormModal, BorrarRecurrenteModal,
   ProveedorFormModal,
 } from './modals/CatalogoModals.jsx';
+import { BienFormModal, EmpleadoFormModal } from './modals/PlanillaModals.jsx';
 
 /** Un solo modal a la vez: el contexto guarda `{ type, props }`. */
 const REGISTRY = {
@@ -26,6 +27,8 @@ const REGISTRY = {
   recurrenteForm: RecurrenteFormModal,
   borrarRecurrente: BorrarRecurrenteModal,
   proveedorForm: ProveedorFormModal,
+  empleadoForm: EmpleadoFormModal,
+  bienForm: BienFormModal,
 };
 
 export function ModalHost() {

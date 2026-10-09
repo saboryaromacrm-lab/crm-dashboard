@@ -116,6 +116,9 @@ export const provApi = {
   editarCuentaDisponible: (id, data) => httpClient.patch(`/cuentas-disponibles/${id}`, data),
   borrarCuentaDisponible: (id) => httpClient.delete(`/cuentas-disponibles/${id}`),
   pagosCuentasDisponibles: (filtros) => httpClient.get(`/cuentas-disponibles/pagos${qs(filtros)}`),
+  /** Pago propio (0151): Sabor y Aroma transfiere desde su cuenta, sin pasar por la caja. */
+  pagoPropioCuenta: (id, data) => httpClient.post(`/cuentas-disponibles/${id}/pagos`, data),
+  anularPagoPropio: (pagoId, motivo) => httpClient.post(`/cuentas-disponibles/pagos/${pagoId}/anular`, { motivo }),
   reporteCuentasDisponibles: (filtros) => httpClient.get(`/cuentas-disponibles/reporte${qs(filtros)}`),
 
   /* La caja de la sucursal (para el pago en efectivo desde el cajón) */

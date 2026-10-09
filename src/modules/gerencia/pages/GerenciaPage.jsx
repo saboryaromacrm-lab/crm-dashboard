@@ -23,6 +23,7 @@ import { RentabilidadPanel } from '../panels/RentabilidadPanel.jsx';
 import { MetricasPanel } from '../panels/metricas/MetricasPanel.jsx';
 import { CashFlowPanel } from '../panels/cashflow/CashFlowPanel.jsx';
 import { AuditoriaPanel } from '../panels/AuditoriaPanel.jsx';
+import { ResultadosPanel } from '../panels/resultados/ResultadosPanel.jsx';
 
 /**
  * FACTURA ELECTRÓNICA DE UNA SUCURSAL (0124, 30/9/2026). Se enciende de a
@@ -900,6 +901,7 @@ export function GerenciaPage() {
         <div className={s.content}>
           {activa.id === 'rentabilidad' ? <RentabilidadPanel />
             : activa.id === 'metricas' ? <MetricasPanel />
+            : activa.id === 'resultados' ? <ResultadosPanel />
             : activa.id === 'cashflow' ? <CashFlowPanel />
             : activa.id === 'auditoria' ? <AuditoriaPanel />
             : panelUsuarios}

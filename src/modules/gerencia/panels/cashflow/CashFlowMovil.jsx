@@ -729,7 +729,7 @@ function ConceptoForm({ concepto, onCerrar, onHecho, avisar }) {
 /* ==================================================================== *
  * Menú e instalación
  * ==================================================================== */
-function Menu({ onCerrar, irAlErp, salir, instalar, nombre }) {
+function Menu({ onCerrar, irAlErp, irAResultados, salir, instalar, nombre }) {
   return (
     <ModalShell title="Cash Flow" subtitle={nombre ? `Entraste como ${nombre}` : undefined} onClose={onCerrar} footer={[{ texto: 'Cerrar', onClick: onCerrar }]}>
       <div className={c.hoja}>
@@ -737,6 +737,12 @@ function Menu({ onCerrar, irAlErp, salir, instalar, nombre }) {
           <span className={c.accionIcono} data-tono="verde"><IosShareRoundedIcon /></span>
           <span>Tenerlo en la pantalla del celular<small>Un ícono que abre directo el Cash Flow</small></span>
         </button>
+        {irAResultados && (
+          <button type="button" className={c.opcion} onClick={irAResultados}>
+            <span className={c.accionIcono} data-tono="verde"><BarChartRoundedIcon /></span>
+            <span>Ver Resultados<small>El estado de resultados del mes, en neto</small></span>
+          </button>
+        )}
         <button type="button" className={c.opcion} onClick={irAlErp}>
           <span className={c.accionIcono} data-tono="azul"><OpenInNewRoundedIcon /></span>
           <span>Abrir el ERP completo<small>Con el menú de todas las secciones</small></span>
@@ -980,7 +986,10 @@ export function CashFlowMovil() {
 
         {/* Las ventanas: las mismas del panel de Gerencia, a pantalla completa. */}
         {modal?.tipo === 'menu' && (
-          <Menu onCerrar={cerrar} nombre={user?.name} irAlErp={() => { setModal(null); navigate('/'); }} salir={salir} instalar={() => setModal({ tipo: 'instalar' })} />
+          <Menu
+            onCerrar={cerrar} nombre={user?.name} irAlErp={() => { setModal(null); navigate('/'); }} salir={salir} instalar={() => setModal({ tipo: 'instalar' })}
+            irAResultados={can('gerencia.resultados') ? () => { setModal(null); navigate('/resultados'); } : null}
+          />
         )}
         {modal?.tipo === 'instalar' && <Instalar onCerrar={cerrar} />}
         {modal?.tipo === 'conteo' && datos && <ConteoModal saldo={saldo} enTransito={datos.enTransito} onCerrar={cerrar} onHecho={hecho} avisar={avisar} />}

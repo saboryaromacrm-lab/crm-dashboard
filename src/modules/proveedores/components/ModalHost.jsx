@@ -6,7 +6,7 @@ import { CompromisoModal, PagarCompromisoModal } from './modals/CompromisosModal
 import { EcheqModal } from './modals/EcheqsModals.jsx';
 import { AjusteModal, BorrarAjusteModal } from './modals/EdocModals.jsx';
 import { PagoProveedorModal, AnularPagoModal } from './modals/PagosModals.jsx';
-import { CuentaDisponibleModal, ResumenCuentaModal } from './modals/CuentasDisponiblesModals.jsx';
+import { AnularPagoPropioModal, CuentaDisponibleModal, PagoPropioModal, ResumenCuentaModal } from './modals/CuentasDisponiblesModals.jsx';
 import { StockProveedorModal, IngresosProveedorModal } from './ProveedorMenu.jsx';
 
 /** Un solo host: el contexto dice qué modal está abierto y con qué props.
@@ -27,6 +27,8 @@ const MODALS = {
   // Cuentas disponibles (0095): el balde y su resumen para el proveedor.
   cuentaDisponible: CuentaDisponibleModal,
   resumenCuenta: ResumenCuentaModal,
+  pagoPropio: PagoPropioModal,
+  anularPagoPropio: AnularPagoPropioModal,
   // El menú del nombre en las tarjetas de Pedidos (5/10/2026).
   stockProveedor: StockProveedorModal,
   ingresosProveedor: IngresosProveedorModal,

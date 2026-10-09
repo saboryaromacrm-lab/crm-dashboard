@@ -65,6 +65,22 @@ export const gastosApi = {
   generarFijos: (data) => httpClient.post('/gastos/recurrentes/generar', data),
 
   /*
+   * Sueldos y bienes de uso (0152): la planilla del estado de resultados.
+   * Viven en `/resultados` (solo superadmin) y se cargan desde Gastos fijos.
+   */
+  empleados: () => httpClient.get('/resultados/empleados'),
+  crearEmpleado: (data) => httpClient.post('/resultados/empleados', data),
+  editarEmpleado: (id, data) => httpClient.patch(`/resultados/empleados/${id}`, data),
+  borrarEmpleado: (id) => httpClient.delete(`/resultados/empleados/${id}`),
+  guardarSueldo: (empleadoId, data) => httpClient.post(`/resultados/empleados/${empleadoId}/sueldos`, data),
+  borrarSueldo: (id) => httpClient.delete(`/resultados/sueldos/${id}`),
+  bienes: () => httpClient.get('/resultados/bienes'),
+  crearBien: (data) => httpClient.post('/resultados/bienes', data),
+  editarBien: (id, data) => httpClient.patch(`/resultados/bienes/${id}`, data),
+  borrarBien: (id) => httpClient.delete(`/resultados/bienes/${id}`),
+  encenderAmortizaciones: (amortizaciones) => httpClient.put('/resultados/configuracion', { amortizaciones }),
+
+  /*
    * Pagos a proveedores (la plata). Este módulo trabaja SIEMPRE sobre el
    * destino "gastos": los de mercadería viven en Compras › Pagos en sucursal.
    * Un pago de gastos solo puede aplicarse a gastos — el candado está en la

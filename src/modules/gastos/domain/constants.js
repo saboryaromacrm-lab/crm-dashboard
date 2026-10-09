@@ -58,6 +58,23 @@ export function periodoISO(offsetMeses = 0) {
 }
 
 /** Primer día del mes actual, para el filtro por defecto de los listados. */
+/**
+ * Un DÍA del calendario 'AAAA-MM-DD' como «16/3/2026», sin pasar por Date:
+ * `new Date('2026-03-16')` es medianoche UTC, que en Argentina es el 15.
+ */
+export function diaLegible(dia) {
+  const [a, m, d] = String(dia ?? '').slice(0, 10).split('-').map(Number);
+  return a && m && d ? `${d}/${m}/${a}` : '—';
+}
+
+/** 'AAAA-MM' legible: "Agosto 2026". */
+export function mesLargo(periodo) {
+  const [a, m] = String(periodo).split('-').map(Number);
+  if (!a || !m) return periodo;
+  const t = new Date(a, m - 1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 export function inicioDeMes() {
   const d = new Date();
   return hoyISO(new Date(d.getFullYear(), d.getMonth(), 1));

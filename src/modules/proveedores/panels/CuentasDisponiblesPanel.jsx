@@ -153,6 +153,9 @@ function VistaCuentas({ tick }) {
             <td>
               <div style={{ display: 'flex', gap: 4 }}>
                 <Btn small variant="btn-primary" onClick={() => openModal('resumenCuenta', { cuentaId: c.id, onChange: refrescar })}>Resumen</Btn>
+                {c.estado === 'abierta' && (
+                  <Btn small variant="btn-ingreso" title="Una transferencia tuya, desde la cuenta de Sabor y Aroma (sin pasar por la caja)" onClick={() => openModal('pagoPropio', { cuenta: c, onChange: refrescar })}>Pagar</Btn>
+                )}
                 <Btn small onClick={() => openModal('cuentaDisponible', { cuenta: c, onChange: refrescar })}>Editar</Btn>
                 {c.puedeBorrar && <Btn small onClick={() => borrar(c)} title="Borrar (solo sin transferencias)">×</Btn>}
               </div>
@@ -172,12 +175,12 @@ function VistaCuentas({ tick }) {
 /* ------------------------------- Pagos ------------------------------- */
 
 function VistaPagos() {
-  const { proveedores, toast } = useProveedores();
+  const { proveedores, toast, openModal, recargarContadores } = useProveedores();
   const [proveedorId, setProveedorId] = useState('');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [anulados, setAnulados] = useState(false);
-  const { data } = useResource(
+  const { data, reload } = useResource(
     `ctas-disp-pagos:${proveedorId}:${desde}:${hasta}:${anulados}`,
     () => provApi.pagosCuentasDisponibles({
       proveedorId: proveedorId || undefined, desde: desde || undefined, hasta: hasta || undefined, anulados: anulados || undefined,
@@ -192,7 +195,8 @@ function VistaPagos() {
   return (
     <>
       <div className={s.hint} style={{ marginTop: 0 }}>
-        Cada transferencia con su cliente y su comprobante. No se cargan a mano: nacen del cobro en la caja o del recibo.
+        Cada transferencia con su cliente y su comprobante: las de clientes nacen del cobro en la caja o del recibo; las
+        tuyas, del botón «Pagar» de cada cuenta (dicen «Pago propio» y se anulan desde acá).
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
@@ -221,11 +225,18 @@ function VistaPagos() {
             <td><strong>{p.proveedorNombre}</strong></td>
             <td>{p.titular} <span className={cx(s.mono, s.muted)}>{p.cbuAlias}</span></td>
             <td>{p.clienteNombre || '—'}</td>
-            <td className={s.mono}>{p.documento ? `${p.documento.clase === 'recibo' ? 'Recibo' : 'Venta'} ${p.documento.etiqueta}` : '—'}</td>
+            <td className={s.mono}>{p.documento ? (p.propio ? p.documento.etiqueta : `${p.documento.clase === 'recibo' ? 'Recibo' : 'Venta'} ${p.documento.etiqueta}`) : '—'}</td>
             <td className={s.num} style={{ color: 'var(--crm-color-success)' }}><strong>{money(p.importe)}</strong></td>
             <td>{p.usuarioNombre || '—'}</td>
             <td>{p.anuladoEn ? <Pill pill="est-cancelada" label="anulada" /> : (p.observaciones || <span className={s.muted}>—</span>)}</td>
-            <td><Btn small onClick={() => copiar(`${p.titular} · ${p.cbuAlias} · ${money(p.importe)}`)}>Copiar</Btn></td>
+            <td>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <Btn small onClick={() => copiar(`${p.titular} · ${p.cbuAlias} · ${money(p.importe)}`)}>Copiar</Btn>
+                {p.propio && !p.anuladoEn && (
+                  <Btn small variant="btn-delete" onClick={() => openModal('anularPagoPropio', { pago: p, onChange: () => { reload(); recargarContadores(); } })}>Anular</Btn>
+                )}
+              </div>
+            </td>
           </tr>
         ))}
       </Table>
