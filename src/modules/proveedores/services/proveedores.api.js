@@ -35,6 +35,9 @@ export const provApi = {
   proveedor: (id) => httpClient.get(`/proveedores/${id}`),
   crearProveedor: (data) => httpClient.post('/proveedores', data),
   editarProveedor: (id, data) => httpClient.patch(`/proveedores/${id}`, data),
+  /** El «Sin factura %» de la ficha a todos sus productos (9/10/2026): vista previa y aplicar. */
+  sinFacturaProductos: (id) => httpClient.get(`/productos/sin-factura-proveedor/${id}`),
+  aplicarSinFactura: (id) => httpClient.post(`/productos/sin-factura-proveedor/${id}`, {}),
   eliminarProveedor: (id) => httpClient.delete(`/proveedores/${id}`),
   cuentas: (id) => httpClient.get(`/proveedores/${id}/cuentas`),
   guardarCuentas: (id, cuentas) => httpClient.put(`/proveedores/${id}/cuentas`, { cuentas }),

@@ -1318,7 +1318,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       });
       if (!res.ok) { toast(res.error || 'No se pudo facturar el remito.', 'err'); return; }
       toast(`Remito facturado: pasó a ser la factura ${letra} ${puntoVenta}-${numero || remito.id}. El stock no se movió.`, 'ok');
-      closeModal();
+      if (res.mezcla) openModal('mezclaCompra', { mezcla: res.mezcla }); else closeModal();
       return;
     }
 
@@ -1378,7 +1378,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     if (tomarPagos.length) partes.push(`${tomarPagos.length} pago(s) de sucursal aplicado(s)`);
     if (ahora > 0) partes.push(`${money(ahora)} pagados`);
     toast(partes.length ? `Comprobante registrado · ${partes.join(' · ')}.` : 'Comprobante registrado.', 'ok');
-    closeModal();
+    if (res.mezcla) openModal('mezclaCompra', { mezcla: res.mezcla }); else closeModal();
   };
 
   /** Renglones completos: producto + cantidad (+ tamaño del bulto si va por bultos). */
@@ -3075,6 +3075,44 @@ function productoProveedorOptions(store) {
 }
 
 /* ============================== DETALLE DE COMPROBANTE ============================== */
+/**
+ * LA COMPRA VINO DISTINTA A LO CARGADO (9/10/2026, pedido del dueño). La
+ * factura y la liquidación del mismo día se apartaron más de 10 puntos del
+ * «Sin factura %» de la ficha. Solo informa: una entrega distinta no cambia el
+ * % de los productos (es un promedio); si el proveedor cambió para siempre, se
+ * cambia en su ficha y se aplica a todos sus productos desde ahí.
+ */
+export function MezclaCompraModal({ mezcla: m }) {
+  const { closeModal } = useProductos();
+  return (
+    <ModalShell
+      title="Esta compra vino distinta a lo cargado"
+      subtitle={m.proveedor}
+      onClose={closeModal}
+      footer={[{ texto: 'Entendido', clase: 'btn-primary', onClick: closeModal }]}
+    >
+      <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>
+        Entre los papeles de ese día, en neto: <strong>{money(m.facturadoNeto)}</strong> con factura A y{' '}
+        <strong>{money(m.liquidado)}</strong> en liquidación → <strong>{num(m.porcReal, 1)} % sin factura</strong>.
+        Los productos de esta compra tienen cargado <strong>{num(m.porcProductos, 1)} %</strong>
+        {Math.abs(m.porcProductos - m.porcFicha) > 0.05 && <> (en la ficha del proveedor: {num(m.porcFicha, 1)} %)</>}.
+      </div>
+      <p style={{ margin: '12px 0 0' }}>
+        <strong>Si fue algo puntual, no hace falta hacer nada:</strong> el % de cada producto es un promedio y una
+        entrega distinta no lo cambia. La cuenta del proveedor y el IVA ya quedaron con lo que vino en cada papel.
+      </p>
+      <p className={s.hint} style={{ margin: '8px 0 0' }}>
+        Cuenta solo la factura A (es la que da crédito fiscal), con sus notas de débito y crédito del día; la B y la C
+        no entran. Todo en neto, sin IVA ni percepciones.
+      </p>
+      <p className={s.hint} style={{ margin: '8px 0 0' }}>
+        Si el proveedor cambió su forma de facturar: en Proveedores, abrí su ficha, cambiá el «Sin factura %», guardá
+        y usá «Aplicar a todos sus productos».
+      </p>
+    </ModalShell>
+  );
+}
+
 export function ComprobanteDetalleModal({ id }) {
   const { store, closeModal, openModal, can } = useProductos();
   const c = store.getComprobante(id);

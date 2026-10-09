@@ -191,6 +191,8 @@ export const ventasApi = {
   /** Con cuánto debería abrir: lo que dejó el último cierre, o el fondo fijo (0111). */
   cajaApertura: (sucursalId) => httpClient.get(`/caja/apertura/${sucursalId}`),
   cajaTurnos: (filtros) => httpClient.get(`/caja${qs(filtros)}`),
+  /** Ingresos y egresos de caja de todos los turnos (9/10/2026). */
+  cajaMovimientos: (filtros) => httpClient.get(`/caja/movimientos${qs(filtros)}`),
   cajaArqueo: (id) => httpClient.get(`/caja/${id}/arqueo`),
   abrirCaja: (data) => httpClient.post('/caja/abrir', data),
   cerrarCaja: (id, data) => httpClient.post(`/caja/${id}/cerrar`, data),

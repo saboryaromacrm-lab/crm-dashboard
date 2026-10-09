@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buscarEnCatalogo, bultoAbajo, bultoArriba, bultoDeFila, calcularRenglon, cambioDeDescuento, descuentosConMedio, desgloseBulto,
+  agruparDescuentos, buscarEnCatalogo, descuentosDisponibles, bultoAbajo, bultoArriba, bultoDeFila, calcularRenglon, cambioDeDescuento, descuentosConMedio, desgloseBulto,
   empujonMayorista, porBulto, textoBulto, totalesTicket,
   unidadesDeLista, ticketDesdeBorrador, ticketReducer, ticketInicial,
 } from './pos.js';
@@ -365,4 +365,31 @@ test('cambioDeDescuento: del general al de efectivo y de vuelta, solo si el otro
   assert.ok(cambioDeDescuento(conOtro({ requiereAdmin: true }), { esAdmin: true }));
   // Un descuento sin pareja: nada que ofrecer.
   assert.equal(cambioDeDescuento({ ...e, ctx: { ...e.ctx, descuentos: [descuentos[0]] } }), null);
+});
+
+test('agruparDescuentos: el general con su «(efectivo)» adentro, los demás solos', () => {
+  const ops = [
+    { id: 1, nombre: 'Empleados', efectivoDeId: null },
+    { id: 2, nombre: 'Empleados (efectivo)', efectivoDeId: 1 },
+    { id: 3, nombre: 'Jubilados', efectivoDeId: null },
+    { id: 5, nombre: 'Huérfano (efectivo)', efectivoDeId: 4 },
+  ];
+  const g = agruparDescuentos(ops);
+  assert.deepEqual(g.map((x) => [x.d.id, x.pareja?.id ?? null]), [[1, 2], [3, null], [5, null]]);
+});
+
+test('descuentosDisponibles: el general y su «(efectivo)» se cambian entre sí; otro de la misma lista sigue bloqueado', () => {
+  const catalogo = { listas: [{ listaId: 1, modalidadId: 10, esBase: true, etiqueta: 'Minorista 1' }], reglasMarca: [] };
+  const precios = new Map([['p5', [{ listaId: 1, precio: 100 }]]]);
+  const descuentos = [
+    { id: 1, nombre: 'Empleados', porcentaje: 5, listaId: 1, activo: true, efectivoDeId: null },
+    { id: 2, nombre: 'Empleados (efectivo)', porcentaje: 10, listaId: 1, medioPago: 'efectivo', activo: true, efectivoDeId: 1 },
+    { id: 3, nombre: 'Jubilados', porcentaje: 8, listaId: 1, activo: true, efectivoDeId: null },
+  ];
+  const item = { key: 'p5', productoId: 5, nombre: 'Coca 2L', iva: 21, precio: 100, stock: 50 };
+  let e = ticketReducer({ ...ticketInicial, ctx: { ...ticketInicial.ctx, catalogo, precios, descuentos } }, { tipo: 'agregar', item, cantidad: 1 });
+  e = ticketReducer(e, { tipo: 'descuentos', ids: [2] });
+  const d = descuentosDisponibles(e);
+  assert.equal(d.find((x) => x.id === 1).aplicable, true, 'el general del mismo descuento se puede elegir');
+  assert.equal(d.find((x) => x.id === 3).aplicable, false, 'otro descuento de la misma lista, no');
 });

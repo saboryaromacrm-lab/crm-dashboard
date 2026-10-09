@@ -270,10 +270,12 @@ export function RentabilidadPanel() {
               <div className={s.hint} style={{ marginTop: 0 }}>
                 Lo que cada proveedor facturó de verdad en el período contra el % declarado en su
                 ficha. Si difieren en serio, el costo de sus productos está mal partido — y el precio también.
+                Cuenta solo la factura A (la que da crédito fiscal), en neto; no entran los proveedores que
+                facturan B o C.
               </div>
               <Table
                 cols={[
-                  { h: 'Proveedor' }, { h: 'Facturado (neto)', num: true }, { h: 'Liquidación', num: true },
+                  { h: 'Proveedor' }, { h: 'Factura A (neto)', num: true }, { h: 'Liquidación', num: true },
                   { h: '% real', num: true }, { h: '% declarado', num: true }, { h: '' },
                 ]}
                 empty="Sin compras con liquidación en el período."

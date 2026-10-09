@@ -54,8 +54,8 @@ import {
   AnularModal, Arranque, ConteoModal, MovimientoModal, PagoProveedorModal, SobreModal, SobreVer,
 } from './CashFlowPanel.jsx';
 import {
-  ANULABLES, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, horaCorta, hoy,
-  primerDiaMes, queEs, textoAnular, tituloPeriodo,
+  ANULABLES, FILTROS_REPORTE_VACIOS, conSigno, ORIGEN, ORIGENES_REPORTE, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso,
+  hayFiltrosReporte, horaCorta, hoy, primerDiaMes, qsFiltrosReporte, queEs, textoAnular, textoFiltrosReporte, tituloPeriodo,
 } from './formato.js';
 import { CajasAControlar } from './CajasAControlar.jsx';
 import c from './CashFlowMovil.module.css';
@@ -66,7 +66,8 @@ const PESTANAS = [
   { id: 'sobres', label: 'Sobres', Icono: EmailOutlinedIcon },
   { id: 'movimientos', label: 'Movimientos', Icono: SwapVertIcon },
   { id: 'reportes', label: 'Reportes', Icono: BarChartRoundedIcon },
-  { id: 'conceptos', label: 'Conceptos', Icono: CategoryOutlinedIcon },
+  /* «Conceptos» vive dentro de Configuración (9/10/2026, pedido del dueño). */
+  { id: 'configuracion', label: 'Configuración', corto: 'Config.', Icono: CategoryOutlinedIcon },
 ];
 const CLAVE_PESTANA = 'erp.cashflow.movil.pestana';
 const leerPestana = () => {
@@ -133,7 +134,11 @@ function Seccion({ titulo, accion, children }) {
 
 function FilaMovimiento({ m, onClick, conFecha }) {
   const anulado = !!m.anuladoEn;
-  const extra = [conFecha ? cuando(m.fecha) : horaCorta(m.fecha), m.usuario, m.detalle].filter(Boolean).join(' · ');
+  /* Un sobre lleva las dos fechas (9/10/2026): la caja del local y cuándo lo controlaste. */
+  const fechas = m.cierreCaja
+    ? `caja del ${fechaCorta(m.cierreCaja)} · controlado ${conFecha ? cuando(m.fecha) : horaCorta(m.fecha)}`
+    : (conFecha ? cuando(m.fecha) : horaCorta(m.fecha));
+  const extra = [fechas, m.usuario, m.detalle].filter(Boolean).join(' · ');
   return (
     <button type="button" className={cx(c.fila, anulado && c.anulado)} onClick={() => onClick(m)}>
       <span className={c.filaIcono} data-tipo={m.tipo} aria-hidden>
@@ -359,7 +364,7 @@ function Sobres({ f, setF, version, abrir, pendientes: nPend }) {
  * Movimientos
  * ==================================================================== */
 function Movimientos({ f, setF, version, abrir }) {
-  const qs = `${f.tipo ? `tipo=${f.tipo}&` : ''}${f.desde ? `desde=${f.desde}&` : ''}${f.hasta ? `hasta=${f.hasta}&` : ''}${f.anulados ? 'anulados=1&' : ''}`;
+  const qs = `${f.tipo ? `tipo=${f.tipo}&` : ''}${f.desde ? `desde=${f.desde}&` : ''}${f.hasta ? `hasta=${f.hasta}&` : ''}${f.anulados ? 'anulados=1&' : ''}${f.porCaja ? 'fechaDe=caja&' : ''}`;
   const { data, loading, error } = useResource(`cfm:mov:${qs}:${version}`, () => httpClient.get(`/cashflow/movimientos?${qs}`));
   const filas = useMemo(() => data ?? [], [data]);
   const vivos = filas.filter((m) => !m.anuladoEn);
@@ -369,15 +374,15 @@ function Movimientos({ f, setF, version, abrir }) {
   const dias = useMemo(() => {
     const g = [];
     for (const m of filas) {
-      const k = iso(new Date(m.fecha));
+      const k = iso(new Date(f.porCaja && m.cierreCaja ? m.cierreCaja : m.fecha));
       if (!g.length || g[g.length - 1].k !== k) g.push({ k, filas: [], neto: 0 });
       const dia = g[g.length - 1];
       dia.filas.push(m);
       if (!m.anuladoEn) dia.neto += m.tipo === 'ingreso' ? m.importe : -m.importe;
     }
     return g;
-  }, [filas]);
-  const filtrando = !!(f.desde || f.hasta || f.anulados);
+  }, [filas, f.porCaja]);
+  const filtrando = !!(f.desde || f.hasta || f.anulados || f.porCaja);
   return (
     <>
       <div className={c.seg} role="group" aria-label="Tipo de movimiento">
@@ -390,7 +395,8 @@ function Movimientos({ f, setF, version, abrir }) {
           {f.desde || f.hasta ? `${f.desde ? fechaIso(f.desde) : '…'} – ${f.hasta ? fechaIso(f.hasta) : '…'}` : 'Elegir fechas'}
         </button>
         <button type="button" className={c.chip} aria-pressed={!!f.anulados} onClick={() => setF({ ...f, anulados: !f.anulados })}>Ver anulados</button>
-        {filtrando && <button type="button" className={c.chip} onClick={() => setF({ ...f, desde: '', hasta: '', anulados: false, verFiltros: false })}>Quitar filtros</button>}
+        <button type="button" className={c.chip} aria-pressed={!!f.porCaja} onClick={() => setF({ ...f, porCaja: !f.porCaja })}>Sobres por fecha de caja</button>
+        {filtrando && <button type="button" className={c.chip} onClick={() => setF({ ...f, desde: '', hasta: '', anulados: false, porCaja: false, verFiltros: false })}>Quitar filtros</button>}
       </div>
       {f.verFiltros && (
         <div className={c.campos}>
@@ -403,6 +409,7 @@ function Movimientos({ f, setF, version, abrir }) {
         <div><span>Egresos</span><strong className={c.egreso}>{moneyCorto(egresos)}</strong></div>
         <div><span>Neto</span><strong>{moneyCorto(ingresos - egresos)}</strong></div>
       </div>
+      {f.porCaja && <Aviso>Sobres agrupados por el <strong>cierre de la caja del local</strong>, no por el día en que los controlaste.</Aviso>}
       {filas.length >= 500 && <Aviso>Se muestran los últimos 500: elegí fechas para ver los anteriores.</Aviso>}
       {error && <Aviso tono="error">{error}</Aviso>}
       {loading && !data ? <div className={cx(c.card, c.vacio)}>Cargando…</div> : !filas.length ? (
@@ -437,6 +444,7 @@ function DetalleMovimiento({ m, onCerrar, onAnular }) {
         <dt>Tipo</dt><dd>{m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} · {ORIGEN[m.origen] ?? m.origen}</dd>
         {m.detalle && <><dt>Detalle</dt><dd>{m.detalle}</dd></>}
         <dt>Lo cargó</dt><dd>{m.usuario || '—'}</dd>
+        {m.cierreCaja && <><dt>Caja del local</dt><dd>{fechaHora(m.cierreCaja)} (cierre del turno)</dd><dt>Entró a tu caja</dt><dd>{fechaHora(m.fecha)} (cuando lo controlaste)</dd></>}
         {m.origen === 'sobre' && m.sobreDiferencia != null && Math.abs(m.sobreDiferencia) > 0.009 && (
           <><dt>Diferencia del sobre</dt><dd><Dif v={m.sobreDiferencia} /></dd></>
         )}
@@ -456,8 +464,11 @@ function DetalleMovimiento({ m, onCerrar, onAnular }) {
 /* ==================================================================== *
  * Reportes
  * ==================================================================== */
-function Reportes({ f, setF, version, avisar }) {
-  const qs = `desde=${f.desde}&hasta=${f.hasta}`;
+function Reportes({ f, setF, version, avisar, conceptos }) {
+  const { data: sucursales } = useResource('cfm:sucursales', () => httpClient.get('/sucursales'));
+  const qs = `desde=${f.desde}&hasta=${f.hasta}${qsFiltrosReporte(f)}`;
+  const filtros = textoFiltrosReporte(f, conceptos, sucursales ?? []);
+  const opcionesConcepto = conceptos.filter((x) => !f.tipo || x.tipo === f.tipo);
   const { data: d, loading, error } = useResource(`cfm:reporte:${qs}:${version}`, () => httpClient.get(`/cashflow/reporte?${qs}`));
   const [bajando, setBajando] = useState(false);
   const preset = (k) => {
@@ -472,7 +483,7 @@ function Reportes({ f, setF, version, avisar }) {
     setBajando(true);
     try {
       const movs = await httpClient.get(`/cashflow/movimientos?${qs}&limite=2000&anulados=1`);
-      descargarCsv(`cash-flow-${f.desde}-${f.hasta}.csv`,
+      descargarCsv(`cash-flow-${f.desde}-${f.hasta}${filtros ? '-filtrado' : ''}.csv`,
         ['Fecha', 'Tipo', 'Qué', 'Detalle', 'Quién', 'Ingreso', 'Egreso', 'Anulado', 'Motivo anulación'],
         (movs ?? []).map((m) => [fechaHora(m.fecha), m.tipo, queEs(m), m.detalle || '', m.usuario || '', m.tipo === 'ingreso' ? csvNum(m.importe) : '', m.tipo === 'egreso' ? csvNum(m.importe) : '', m.anuladoEn ? 'Sí' : '', m.anuladoMotivo || '']));
     } catch (e) { avisar('error', errorMsg(e)); } finally { setBajando(false); }
@@ -491,16 +502,66 @@ function Reportes({ f, setF, version, avisar }) {
           <label className={c.campo}><span>Hasta</span><input type="date" value={f.hasta} min={f.desde} max={hoy()} onChange={(e) => e.target.value && setF({ ...f, hasta: e.target.value })} /></label>
         </div>
       )}
+      {/* Los filtros (9/10/2026): los mismos que en la PC. */}
+      <div className={c.campos}>
+        <label className={c.campo}>
+          <span>Tipo</span>
+          <select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value, conceptoId: '' })}>
+            <option value="">Todos</option><option value="ingreso">Ingresos</option><option value="egreso">Egresos</option>
+          </select>
+        </label>
+        <label className={c.campo}>
+          <span>De dónde</span>
+          <select value={f.origen} onChange={(e) => setF({ ...f, origen: e.target.value, conceptoId: '' })}>
+            <option value="">Todo</option>
+            {ORIGENES_REPORTE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </label>
+        {(!f.origen || f.origen === 'concepto' || f.origen === 'gasto') && (
+          <label className={c.campo}>
+            <span>Concepto</span>
+            <select value={f.conceptoId} onChange={(e) => setF({ ...f, conceptoId: e.target.value })}>
+              <option value="">Todos</option>
+              {opcionesConcepto.map((x) => <option key={x.id} value={x.id}>{x.nombre}{x.activo === false ? ' (desactivado)' : ''}</option>)}
+            </select>
+          </label>
+        )}
+        {(!f.origen || f.origen === 'sobre') && !f.conceptoId && f.tipo !== 'egreso' && (
+          <label className={c.campo}>
+            <span>Sobres de</span>
+            <select value={f.sucursalId} onChange={(e) => setF({ ...f, sucursalId: e.target.value })}>
+              <option value="">Todos</option>
+              {(sucursales ?? []).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+      {hayFiltrosReporte(f) && (
+        <div className={c.chips} data-envolver>
+          <button type="button" className={c.chip} onClick={() => setF({ ...f, ...FILTROS_REPORTE_VACIOS })}>Quitar filtros</button>
+        </div>
+      )}
       {error && <Aviso tono="error">{error}</Aviso>}
       {loading && !d ? <div className={cx(c.card, c.vacio)}>Cargando…</div> : !d ? null : (
         <>
           <div className={c.resumenLinea}><span>Del <strong>{fechaIso(d.desde)}</strong> al <strong>{fechaIso(d.hasta)}</strong></span><span>{plural(d.movimientos, 'movimiento', 'movimientos')}</span></div>
-          <div className={c.tiles}>
-            <div className={c.tile}><span>Efectivo al inicio</span><strong>{money(d.saldoInicio)}</strong><small>antes del primer movimiento</small></div>
-            <div className={c.tile}><span>Efectivo al fin</span><strong className={d.saldoFin < -0.009 ? c.egreso : undefined}>{money(d.saldoFin)}</strong><small>al {fechaIso(d.hasta)}</small></div>
-            <div className={c.tile}><span>Ingresos</span><strong className={c.ingreso}>{money(d.ingresos)}</strong><small>{d.saldoInicial > 0 ? `+ ${money(d.saldoInicial)} del arranque` : 'sobres y otros'}</small></div>
-            <div className={c.tile}><span>Egresos</span><strong className={c.egreso}>{money(d.egresos)}</strong><small>lo que salió</small></div>
-          </div>
+          {d.filtrado ? (
+            <>
+              <Aviso>Filtrado: <strong>{filtros}</strong>. El efectivo al inicio y al fin es de la caja entera: con filtros no se muestra.</Aviso>
+              <div className={c.tiles}>
+                <div className={c.tile}><span>Ingresos</span><strong className={c.ingreso}>{money(d.ingresos)}</strong><small>con este filtro</small></div>
+                <div className={c.tile}><span>Egresos</span><strong className={c.egreso}>{money(d.egresos)}</strong><small>con este filtro</small></div>
+                <div className={c.tile}><span>Neto</span><strong>{conSigno(d.ingresos - d.egresos, money)}</strong><small>ingresos − egresos</small></div>
+              </div>
+            </>
+          ) : (
+            <div className={c.tiles}>
+              <div className={c.tile}><span>Efectivo al inicio</span><strong>{money(d.saldoInicio)}</strong><small>antes del primer movimiento</small></div>
+              <div className={c.tile}><span>Efectivo al fin</span><strong className={d.saldoFin < -0.009 ? c.egreso : undefined}>{money(d.saldoFin)}</strong><small>al {fechaIso(d.hasta)}</small></div>
+              <div className={c.tile}><span>Ingresos</span><strong className={c.ingreso}>{money(d.ingresos)}</strong><small>{d.saldoInicial > 0 ? `+ ${money(d.saldoInicial)} del arranque` : 'sobres y otros'}</small></div>
+              <div className={c.tile}><span>Egresos</span><strong className={c.egreso}>{money(d.egresos)}</strong><small>lo que salió</small></div>
+            </div>
+          )}
           {d.serie.length > 1 && (
             <div className={c.card} style={{ padding: '12px 12px 6px' }}>
               <ColumnasMulti
@@ -523,7 +584,7 @@ function Reportes({ f, setF, version, avisar }) {
               )) : <div className={c.vacio}>Sin movimientos en el período.</div>}
             </div>
           </Seccion>
-          <Seccion titulo="Sobres por local">
+          {d.conSobres && <Seccion titulo="Sobres por local">
             <div className={cx(c.card, c.lista)}>
               {d.sobresPorSucursal.length ? d.sobresPorSucursal.map((x) => (
                 <div key={x.sucursalId} className={c.fila}>
@@ -540,8 +601,8 @@ function Reportes({ f, setF, version, avisar }) {
               )) : <div className={c.vacio}>Sin sobres en el período.</div>}
             </div>
             <p className={c.nota}>Por fecha de cierre del local. En «Ingresos» el sobre cuenta el día que lo controlaste.</p>
-          </Seccion>
-          <Seccion titulo="Diferencias por cajero">
+          </Seccion>}
+          {d.conSobres && <Seccion titulo="Diferencias por cajero">
             <div className={cx(c.card, c.lista)}>
               {d.porCajero.length ? d.porCajero.map((x) => (
                 <div key={x.usuarioId ?? x.cajero} className={c.fila}>
@@ -553,7 +614,7 @@ function Reportes({ f, setF, version, avisar }) {
                 </div>
               )) : <div className={c.vacio}>Sin sobres controlados en el período.</div>}
             </div>
-          </Seccion>
+          </Seccion>}
           <button type="button" className={cx(c.btn, c.btnAncho)} onClick={exportar} disabled={bajando || !d.movimientos}>{bajando ? 'Preparando…' : 'Descargar los movimientos (CSV)'}</button>
         </>
       )}
@@ -764,8 +825,8 @@ export function CashFlowMovil() {
 
   /* Los filtros de cada pestaña viven acá: ir y volver no los pierde. */
   const [fSobres, setFSobres] = useState({ estado: 'pendientes', sucursalId: '', desde: '', hasta: '', verFechas: false });
-  const [fMov, setFMov] = useState({ tipo: '', desde: '', hasta: '', anulados: false, verFiltros: false });
-  const [fRep, setFRep] = useState(() => ({ k: 'mes', desde: primerDiaMes(), hasta: hoy() }));
+  const [fMov, setFMov] = useState({ tipo: '', desde: '', hasta: '', anulados: false, porCaja: false, verFiltros: false });
+  const [fRep, setFRep] = useState(() => ({ k: 'mes', desde: primerDiaMes(), hasta: hoy(), ...FILTROS_REPORTE_VACIOS }));
 
   const { data: d, loading, error } = useResource(`cfm:resumen:${version}`, () => httpClient.get('/cashflow/resumen'), { enabled: puede });
   const { data: conceptos } = useResource(`cfm:conceptos:${version}`, () => httpClient.get('/cashflow/conceptos'), { enabled: puede });
@@ -864,8 +925,8 @@ export function CashFlowMovil() {
         {pestana === 'inicio' && <Inicio d={datos} abrir={abrir} irA={irA} actualizado={actualizado} version={version} bump={bump} avisar={avisar} />}
         {pestana === 'sobres' && <Sobres f={fSobres} setF={setFSobres} version={version} abrir={abrir} pendientes={pend} />}
         {pestana === 'movimientos' && <Movimientos f={fMov} setF={setFMov} version={version} abrir={abrir} />}
-        {pestana === 'reportes' && <Reportes f={fRep} setF={setFRep} version={version} avisar={avisar} />}
-        {pestana === 'conceptos' && <Conceptos conceptos={conceptos ?? []} abrir={abrir} cambiarActivo={cambiarActivo} ocupado={ocupado} />}
+        {pestana === 'reportes' && <Reportes f={fRep} setF={setFRep} version={version} avisar={avisar} conceptos={conceptos ?? []} />}
+        {pestana === 'configuracion' && <Conceptos conceptos={conceptos ?? []} abrir={abrir} cambiarActivo={cambiarActivo} ocupado={ocupado} />}
       </>
     );
   }
@@ -898,13 +959,13 @@ export function CashFlowMovil() {
 
         {hayCaja && (
           <nav className={c.nav} aria-label="Secciones del Cash Flow">
-            {PESTANAS.map(({ id, label, Icono }) => (
-              <button key={id} type="button" className={c.tab} aria-current={pestana === id ? 'page' : undefined} onClick={() => irA(id)}>
+            {PESTANAS.map(({ id, label, corto, Icono }) => (
+              <button key={id} type="button" className={c.tab} aria-current={pestana === id ? 'page' : undefined} onClick={() => irA(id)} aria-label={label}>
                 <span className={c.tabIcono}>
                   <Icono fontSize="small" />
                   {id === 'sobres' && pend > 0 && <span className={c.badge}>{pend > 99 ? '99+' : pend}</span>}
                 </span>
-                {label}
+                {corto ?? label}
               </button>
             ))}
           </nav>

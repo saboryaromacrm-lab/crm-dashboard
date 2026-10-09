@@ -466,6 +466,8 @@
 .descItem:disabled { opacity: 0.5; cursor: not-allowed; }
 .descItemPuesto { background: color-mix(in srgb, var(--crm-color-success) 12%, transparent); }
 .descMotivo { display: block; font-size: 11px; color: var(--crm-color-text-secondary); margin-top: 1px; }
+/* Las dos opciones de un descuento con su «(efectivo)», adentro de su renglón. */
+.descSub { padding-left: 22px; background: var(--crm-color-surface-alt, rgba(0, 0, 0, 0.025)); }
 
 /* El chip de lo aplicado: es lo único que la cajera necesita ver de un vistazo
    mientras cobra, así que vive fuera del desplegable. */

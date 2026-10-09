@@ -31,7 +31,7 @@ import { ColumnasMulti } from '../metricas/graficos.jsx';
 import { iso } from '../metricas/formato.js';
 import { CajasAControlar, TildeControlar } from './CajasAControlar.jsx';
 import { useTildeControlar, useUmbralControlar } from './tildeControlar.js';
-import { ANULABLES, DENOMINACIONES, MEDIO, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
+import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
 
 /** La diferencia, con su color: rojo faltó, verde sobró, gris nada. */
 export function Diferencia({ v }) {
@@ -187,7 +187,7 @@ function ContadorBilletes({ c }) {
   if (movil) return <ContadorBilletesMovil c={c} />;
   return (
     <div data-contador style={{ display: 'grid', gridTemplateColumns: 'auto 90px 1fr', gap: '6px 12px', alignItems: 'center', fontVariantNumeric: 'tabular-nums' }}>
-      {DENOMINACIONES.map((d, i) => (
+      {DENOMINACIONES_A_CONTAR.map((d, i) => (
         <span key={d} style={{ display: 'contents' }}>
           <span>{money(d)}</span>
           <input type="number" min="0" step="1" inputMode="numeric" value={c.billetes[d] ?? ''} onChange={(e) => c.setBilletes((b) => ({ ...b, [d]: e.target.value }))}
@@ -215,7 +215,7 @@ function ContadorBilletesMovil({ c }) {
   const boton = { width: 44, height: 44, borderRadius: 12, border: '1px solid var(--crm-color-border)', background: 'var(--crm-color-surface-2)', color: 'var(--crm-color-text)', fontSize: 22, fontWeight: 700, lineHeight: 1, cursor: 'pointer', flex: '0 0 auto', touchAction: 'manipulation' };
   return (
     <div data-contador style={{ display: 'flex', flexDirection: 'column', gap: 4, fontVariantNumeric: 'tabular-nums' }}>
-      {DENOMINACIONES.map((d) => (
+      {DENOMINACIONES_A_CONTAR.map((d) => (
         <div key={d} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '5px 0', borderBottom: '1px solid var(--crm-color-border)' }}>
           <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <strong style={{ fontSize: 16 }}>{money(d).replace(/,00$/, '')}</strong>
@@ -339,7 +339,11 @@ export function SobreModal({ sobre, onCerrar, onHecho, avisar }) {
   const [paso, setPaso] = useState('contar');
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState('');
-  const diferencia = Math.round((c.contado - sobre.enviado) * 100) / 100;
+  /* «ESTÁ TODO» (9/10/2026, pedido del dueño): confirmar el sobre sin contar
+   * billete por billete. Entra lo que dice el sobre, sin diferencia, y queda
+   * anotado que no se contó (no se inventa un conteo que no se hizo). */
+  const todo = paso === 'todo';
+  const diferencia = todo ? 0 : Math.round((c.contado - sobre.enviado) * 100) / 100;
   const hayDif = Math.abs(diferencia) > 0.009;
   /* Cajas a controlar (0145): la del sobre y la del cierre del cajero; cualquiera de las dos propone el tilde. */
   const tilde = useTildeControlar([diferencia, sobre.diferenciaCajero], useUmbralControlar());
@@ -358,7 +362,10 @@ export function SobreModal({ sobre, onCerrar, onHecho, avisar }) {
     },
     async () => {
       try {
-        const r = await httpClient.post(`/cashflow/sobres/${sobre.cajaSesionId}/controlar`, { ...c.payload(), motivo: motivo.trim(), confirmado: true, aControlar: tilde.pedido });
+        const cuerpo = todo
+          ? { contado: sobre.enviado, motivo: NOTA_ESTA_TODO }
+          : { ...c.payload(), motivo: motivo.trim() };
+        const r = await httpClient.post(`/cashflow/sobres/${sobre.cajaSesionId}/controlar`, { ...cuerpo, confirmado: true, aControlar: tilde.pedido });
         avisar('ok', `Sobre de ${sobre.sucursal} controlado: ${money(r.contado)} a tu caja. Efectivo en mano: ${money(r.saldo)}.${tilde.marcar ? ' La caja quedó en «Cajas a controlar».' : ''}`);
         onHecho();
       } catch (e) { setError(errorMsg(e)); }
@@ -369,10 +376,31 @@ export function SobreModal({ sobre, onCerrar, onHecho, avisar }) {
     return (
       <ModalShell title={`Controlar el sobre de ${sobre.sucursal}`} subtitle={subtitulo} onClose={onCerrar} footer={[
         { texto: 'Cancelar', onClick: onCerrar },
+        { texto: 'Está todo', onClick: () => { setError(''); setPaso('todo'); } },
         { texto: 'Comparar con el sobre', clase: 'btn-primary', onClick: comparar, disabled: c.contado <= 0 },
       ]}>
-        <Aviso tono="info">Abrí el sobre y contá billete por billete. Lo que dice el sobre lo ves <strong>después</strong> de contar: así el control es a ciegas.</Aviso>
+        <Aviso tono="info">Abrí el sobre y contá billete por billete. Lo que dice el sobre lo ves <strong>después</strong> de contar: así el control es a ciegas. Si no hace falta contarlo, «Está todo».</Aviso>
         <ContadorBilletes c={c} />
+        {error && <Aviso tono="warn">{error}</Aviso>}
+      </ModalShell>
+    );
+  }
+  if (todo) {
+    return (
+      <ModalShell title={`Controlar el sobre de ${sobre.sucursal}`} subtitle={subtitulo} onClose={onCerrar} footer={[
+        { texto: 'Volver a contar', onClick: () => setPaso('contar') },
+        { texto: textoBoton(sc, 'Está todo', 'Sí, está todo'), clase: 'btn-primary', onClick: confirmar },
+      ]}>
+        <Aviso tono="info">
+          El sobre dice <strong>{money(sobre.enviado)}</strong>. Con «Está todo» entra eso a tu caja sin contar billete por billete,
+          y queda anotado así en el control.
+        </Aviso>
+        <CierreDelCajero sobre={sobre} />
+        <TildeControlar t={tilde} />
+        <AvisoSegundaConfirmacion {...sc}>
+          Entra a tu caja <strong>{money(sobre.enviado)}</strong> del sobre de <strong>{sobre.sucursal}</strong> sin contarlo
+          {tilde.marcar ? <> y la caja va a <strong>Cajas a controlar</strong></> : ''}.
+        </AvisoSegundaConfirmacion>
         {error && <Aviso tono="warn">{error}</Aviso>}
       </ModalShell>
     );
@@ -408,6 +436,7 @@ export function SobreModal({ sobre, onCerrar, onHecho, avisar }) {
 /** Un sobre ya resuelto, para mirar: lo que puso el cajero contra lo que contaste, o por qué no correspondía. */
 export function SobreVer({ sobre, onCerrar }) {
   const conDetalle = Object.values(sobre.billetesContados || {}).some((n) => Number(n) > 0) || sobre.otrosContados > 0;
+  const estaTodo = sobre.motivo === NOTA_ESTA_TODO;
   return (
     <ModalShell title={`Sobre de ${sobre.sucursal}`} subtitle={`Cierre del ${fechaHora(sobre.cierre)} · armó el sobre: ${sobre.cajero || '—'}`} wide onClose={onCerrar} footer={[{ texto: 'Cerrar', onClick: onCerrar }]}>
       {sobre.descartado ? (
@@ -418,11 +447,13 @@ export function SobreVer({ sobre, onCerrar }) {
         <CompararBilletes delCajero={sobre.billetesEnvio} contados={sobre.billetesContados} otrosContados={sobre.otrosContados} enviado={sobre.enviado} contado={sobre.contado} />
       ) : (
         <div className={cx(s.callout, s.info)} style={{ margin: 0 }}>
-          El sobre decía <strong>{money(sobre.enviado)}</strong> · contaste <strong>{money(sobre.contado)}</strong> · <Diferencia v={sobre.diferencia} />
-          <div className={s.hint} style={{ margin: '4px 0 0' }}>Controlado antes del conteo por billetes: no hay detalle por denominación.</div>
+          {estaTodo
+            ? <>El sobre decía <strong>{money(sobre.enviado)}</strong> · confirmado con <strong>«Está todo»</strong>, sin contar billete por billete.</>
+            : <>El sobre decía <strong>{money(sobre.enviado)}</strong> · contaste <strong>{money(sobre.contado)}</strong> · <Diferencia v={sobre.diferencia} /></>}
+          {!estaTodo && <div className={s.hint} style={{ margin: '4px 0 0' }}>Controlado antes del conteo por billetes: no hay detalle por denominación.</div>}
         </div>
       )}
-      {!sobre.descartado && sobre.motivo && <div className={s.hint} style={{ margin: 0 }}>Motivo de la diferencia: {sobre.motivo}</div>}
+      {!sobre.descartado && sobre.motivo && !estaTodo && <div className={s.hint} style={{ margin: 0 }}>Motivo de la diferencia: {sobre.motivo}</div>}
       <CierreDelCajero sobre={sobre} />
       <div className={s.hint} style={{ margin: 0 }}>Resuelto por {sobre.controladoPor || '—'} el {fechaHora(sobre.controladoEn)}.</div>
     </ModalShell>
@@ -575,10 +606,18 @@ function Sobres({ version, bump, avisar }) {
 /* ==================================================================== *
  * Movimientos
  * ==================================================================== */
+/*
+ * DOS FECHAS (9/10/2026, pedido del dueño): «Entró a tu caja» es cuándo se
+ * registró el movimiento (un sobre: el día que lo controlaste); «Caja del
+ * local» es el cierre del turno de donde salió el sobre.
+ */
 function TablaMovimientos({ filas, compacta, onAnular }) {
   return (
     <Table
-      cols={[{ h: 'Fecha' }, { h: 'Qué' }, ...(compacta ? [] : [{ h: 'Detalle' }, { h: 'Quién' }]), { h: 'Importe', num: true }, ...(onAnular ? [{ h: '', cls: 'actions-col' }] : [])]}
+      cols={[
+        { h: compacta ? 'Fecha' : 'Entró a tu caja' }, ...(compacta ? [] : [{ h: 'Caja del local' }]), { h: 'Qué' },
+        ...(compacta ? [] : [{ h: 'Detalle' }, { h: 'Quién' }]), { h: 'Importe', num: true }, ...(onAnular ? [{ h: '', cls: 'actions-col' }] : []),
+      ]}
       empty="Sin movimientos."
     >
       {(filas ?? []).map((m) => {
@@ -586,11 +625,20 @@ function TablaMovimientos({ filas, compacta, onAnular }) {
         const que = queEs(m);
         return (
           <tr key={m.id} style={anulado ? { opacity: 0.55, textDecoration: 'line-through' } : undefined} title={anulado ? `Anulado por ${m.anuladoPor || '—'}: ${m.anuladoMotivo}` : undefined}>
-            <td>{compacta ? fechaCorta(m.fecha) : fechaHora(m.fecha)}</td>
+            <td>
+              {compacta ? fechaCorta(m.fecha) : fechaHora(m.fecha)}
+              {!compacta && m.cierreCaja && <div className={s.hint} style={{ margin: 0 }}>lo controlaste</div>}
+            </td>
+            {!compacta && (
+              <td>
+                {m.cierreCaja ? <>{fechaHora(m.cierreCaja)}<div className={s.hint} style={{ margin: 0 }}>cierre del turno</div></> : <span className={s.muted}>—</span>}
+              </td>
+            )}
             <td>
               <Pill pill={m.tipo === 'ingreso' ? 'st-disponible' : 'st-comprometido'} label={m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} />{' '}{que}
               {m.origen === 'sobre' && m.sobreDiferencia != null && Math.abs(m.sobreDiferencia) > 0.009 && <> · <Diferencia v={m.sobreDiferencia} /></>}
               {compacta && m.detalle && <div className={s.hint} style={{ margin: 0 }}>{m.detalle}</div>}
+              {compacta && m.cierreCaja && <div className={s.hint} style={{ margin: 0 }}>caja del {fechaCorta(m.cierreCaja)} · controlado el {fechaCorta(m.fecha)}</div>}
             </td>
             {!compacta && <td>{m.detalle || <span className={s.muted}>—</span>}{anulado && <div className={s.hint} style={{ margin: 0, textDecoration: 'none' }}>Anulado: {m.anuladoMotivo}</div>}</td>}
             {!compacta && <td>{m.usuario || '—'}</td>}
@@ -858,8 +906,10 @@ function Movimientos({ version, bump, avisar, conceptos, saldo }) {
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [anulados, setAnulados] = useState(false);
+  /* 'mov' = cuándo entró a tu caja; 'caja' = el cierre del turno del local (solo sobres). */
+  const [fechaDe, setFechaDe] = useState('mov');
   const [modal, setModal] = useState(null);
-  const qs = `${tipo ? `tipo=${tipo}&` : ''}${desde ? `desde=${desde}&` : ''}${hasta ? `hasta=${hasta}&` : ''}${anulados ? 'anulados=1&' : ''}`;
+  const qs = `${tipo ? `tipo=${tipo}&` : ''}${desde ? `desde=${desde}&` : ''}${hasta ? `hasta=${hasta}&` : ''}${anulados ? 'anulados=1&' : ''}${fechaDe === 'caja' ? 'fechaDe=caja&' : ''}`;
   const { data, loading, error } = useResource(`cashflow:mov:${qs}:${version}`, () => httpClient.get(`/cashflow/movimientos?${qs}`));
   const filas = data ?? [];
   const vivos = filas.filter((m) => !m.anuladoEn);
@@ -871,6 +921,10 @@ function Movimientos({ version, bump, avisar, conceptos, saldo }) {
         <select className={s['select-inline']} value={tipo} onChange={(e) => setTipo(e.target.value)} aria-label="Tipo">
           <option value="">Ingresos y egresos</option><option value="ingreso">Solo ingresos</option><option value="egreso">Solo egresos</option>
         </select>
+        <select className={s['select-inline']} value={fechaDe} onChange={(e) => setFechaDe(e.target.value)} aria-label="Qué fecha">
+          <option value="mov">Por fecha en que entró a tu caja</option>
+          <option value="caja">Por fecha de la caja del local (sobres)</option>
+        </select>
         <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} aria-label="Desde" />
         <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} aria-label="Hasta" />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}><input type="checkbox" checked={anulados} onChange={(e) => setAnulados(e.target.checked)} /> Ver anulados</label>
@@ -879,6 +933,7 @@ function Movimientos({ version, bump, avisar, conceptos, saldo }) {
         </div>
       </div>
       <div className={s.hint} style={{ margin: 0 }}>
+        {fechaDe === 'caja' && <>Sobres por el <strong>cierre de la caja del local</strong> (no por el día en que los controlaste) · </>}
         {vivos.length} movimiento{vivos.length === 1 ? '' : 's'} · ingresos {money(ingresos)} · egresos {money(egresos)} · neto {money(ingresos - egresos)}
         {filas.length >= 500 && ' · se muestran los últimos 500: acotá las fechas para ver más.'}
       </div>
@@ -1081,10 +1136,43 @@ export function ConteoModal({ saldo, enTransito, onCerrar, onHecho, avisar }) {
  * Reportes
  * ==================================================================== */
 
-function Reportes({ version }) {
+/** Los filtros de los reportes: tipo, de dónde vino, concepto y local (este, solo para los sobres). */
+function FiltrosReporte({ f, setF, conceptos, sucursales }) {
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const opcionesConcepto = conceptos.filter((x) => !f.tipo || x.tipo === f.tipo);
+  return (
+    <div className={s.toolbar}>
+      <select className={s['select-inline']} value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value, conceptoId: '' })} aria-label="Ingresos o egresos">
+        <option value="">Ingresos y egresos</option><option value="ingreso">Solo ingresos</option><option value="egreso">Solo egresos</option>
+      </select>
+      <select className={s['select-inline']} value={f.origen} onChange={(e) => setF({ ...f, origen: e.target.value, conceptoId: '' })} aria-label="De dónde">
+        <option value="">Todo</option>
+        {ORIGENES_REPORTE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+      </select>
+      {(!f.origen || f.origen === 'concepto' || f.origen === 'gasto') && (
+        <select className={s['select-inline']} value={f.conceptoId} onChange={(e) => setF({ ...f, conceptoId: e.target.value })} aria-label="Concepto">
+          <option value="">Todos los conceptos</option>
+          {opcionesConcepto.map((x) => <option key={x.id} value={x.id}>{x.nombre}{x.activo === false ? ' (desactivado)' : ''}</option>)}
+        </select>
+      )}
+      {(!f.origen || f.origen === 'sobre') && !f.conceptoId && f.tipo !== 'egreso' && (
+        <select className={s['select-inline']} value={f.sucursalId} onChange={set('sucursalId')} aria-label="Local de los sobres">
+          <option value="">Sobres de todos los locales</option>
+          {sucursales.map((x) => <option key={x.id} value={x.id}>Sobres de {x.nombre}</option>)}
+        </select>
+      )}
+      {hayFiltrosReporte(f) && <Btn small variant="btn-ghost" onClick={() => setF(FILTROS_REPORTE_VACIOS)}>Quitar filtros</Btn>}
+    </div>
+  );
+}
+
+function Reportes({ version, conceptos }) {
   const [desde, setDesde] = useState(primerDiaMes());
   const [hasta, setHasta] = useState(hoy());
-  const qs = `desde=${desde}&hasta=${hasta}`;
+  const [f, setF] = useState(FILTROS_REPORTE_VACIOS);
+  const { data: sucursales } = useResource('cashflow:sucursales', () => httpClient.get('/sucursales'));
+  const qs = `desde=${desde}&hasta=${hasta}${qsFiltrosReporte(f)}`;
+  const filtros = textoFiltrosReporte(f, conceptos, sucursales ?? []);
   const { data: d, loading, error } = useResource(`cashflow:reporte:${qs}:${version}`, () => httpClient.get(`/cashflow/reporte?${qs}`));
   /* Con los anulados: el CSV los lista marcados (es la auditoría); la impresión y los totales los dejan afuera. */
   const { data: movs } = useResource(`cashflow:reporte-mov:${qs}:${version}`, () => httpClient.get(`/cashflow/movimientos?${qs}&limite=2000&anulados=1`));
@@ -1094,7 +1182,7 @@ function Reportes({ version }) {
     if (k === 'mes-pasado') { setDesde(iso(new Date(h.getFullYear(), h.getMonth() - 1, 1))); setHasta(iso(new Date(h.getFullYear(), h.getMonth(), 0))); }
     if (k === 'anio') { setDesde(iso(new Date(h.getFullYear(), 0, 1))); setHasta(hoy()); }
   };
-  const exportar = () => descargarCsv(`cash-flow-${desde}-${hasta}.csv`,
+  const exportar = () => descargarCsv(`cash-flow-${desde}-${hasta}${filtros ? '-filtrado' : ''}.csv`,
     ['Fecha', 'Tipo', 'Qué', 'Detalle', 'Quién', 'Ingreso', 'Egreso', 'Anulado', 'Motivo anulación'],
     (movs ?? []).map((m) => [fechaHora(m.fecha), m.tipo, queEs(m), m.detalle || '', m.usuario || '', m.tipo === 'ingreso' ? csvNum(m.importe) : '', m.tipo === 'egreso' ? csvNum(m.importe) : '', m.anuladoEn ? 'Sí' : '', m.anuladoMotivo || '']));
   const imprimir = () => {
@@ -1104,15 +1192,16 @@ function Reportes({ version }) {
     const dif = (v) => (Math.abs(v) < 0.009 ? '—' : `${v > 0 ? '+' : '−'}${money(Math.abs(v))}`);
     const cuerpo = `
       <h2 style="margin:0 0 2px">Cash Flow · ${esc(fechaIso(d.desde))} al ${esc(fechaIso(d.hasta))}</h2>
+      ${filtros ? `<div style="font-size:13px">Filtrado: ${esc(filtros)}</div>` : ''}
       <table style="font-size:13px;margin:8px 0"><tbody>
-        ${fila(['Efectivo al inicio del período', money(d.saldoInicio)])}${d.saldoInicial > 0 ? fila(['Saldo inicial (arranque)', money(d.saldoInicial)]) : ''}
-        ${fila(['Ingresos', money(d.ingresos)])}${fila(['Egresos', money(d.egresos)])}${fila(['<strong>Efectivo al fin del período</strong>', `<strong>${money(d.saldoFin)}</strong>`])}
+        ${d.filtrado ? '' : fila(['Efectivo al inicio del período', money(d.saldoInicio)])}${!d.filtrado && d.saldoInicial > 0 ? fila(['Saldo inicial (arranque)', money(d.saldoInicial)]) : ''}
+        ${fila(['Ingresos', money(d.ingresos)])}${fila(['Egresos', money(d.egresos)])}${d.filtrado ? fila(['<strong>Neto</strong>', `<strong>${conSigno(d.ingresos - d.egresos, money)}</strong>`]) : fila(['<strong>Efectivo al fin del período</strong>', `<strong>${money(d.saldoFin)}</strong>`])}
       </tbody></table>
       ${tabla('Por concepto', ['Concepto', 'Cantidad', 'Importe'], d.porConcepto.map((c) => fila([`${esc(c.tipo === 'ingreso' ? 'Ingreso' : 'Egreso')} · ${esc(c.origen === 'concepto' || c.origen === 'gasto' ? c.concepto : ORIGEN[c.origen] ?? c.origen)}`, c.cantidad, money(c.importe)])))}
-      ${tabla('Sobres por sucursal (por fecha de cierre)', ['Sucursal', 'Sobres', 'Controlados', 'No corresponden', 'Enviado', 'Contado', 'Diferencia'], d.sobresPorSucursal.map((x) => fila([esc(x.sucursal), x.sobres, x.controlados, x.descartados || 0, money(x.enviado), money(x.contado), dif(x.diferencia)])))}
-      ${tabla('Diferencias por cajero', ['Cajero', 'Sobres', 'Con diferencia', 'Faltantes', 'Sobrantes', 'Neto'], d.porCajero.map((x) => fila([esc(x.cajero), x.sobres, x.conDiferencia, dif(x.faltantes), dif(x.sobrantes), dif(x.diferencia)])))}
+      ${!d.conSobres ? '' : tabla('Sobres por sucursal (por fecha de cierre)', ['Sucursal', 'Sobres', 'Controlados', 'No corresponden', 'Enviado', 'Contado', 'Diferencia'], d.sobresPorSucursal.map((x) => fila([esc(x.sucursal), x.sobres, x.controlados, x.descartados || 0, money(x.enviado), money(x.contado), dif(x.diferencia)])))}
+      ${!d.conSobres ? '' : tabla('Diferencias por cajero', ['Cajero', 'Sobres', 'Con diferencia', 'Faltantes', 'Sobrantes', 'Neto'], d.porCajero.map((x) => fila([esc(x.cajero), x.sobres, x.conDiferencia, dif(x.faltantes), dif(x.sobrantes), dif(x.diferencia)])))}
       ${tabla('Movimientos', ['Fecha', 'Qué', 'Ingreso', 'Egreso'], (movs ?? []).filter((m) => !m.anuladoEn).map((m) => fila([`${esc(fechaHora(m.fecha))} · ${esc(queEs(m))}${m.detalle ? ` · ${esc(m.detalle)}` : ''}`, m.tipo === 'ingreso' ? money(m.importe) : '', m.tipo === 'egreso' ? money(m.importe) : ''])))}`;
-    imprimirDocumento('cashflow', { titulo: `Cash Flow ${d.desde} a ${d.hasta}`, cuerpo });
+    imprimirDocumento('cashflow', { titulo: `Cash Flow ${d.desde} a ${d.hasta}${filtros ? ` (${filtros})` : ''}`, cuerpo });
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1127,15 +1216,29 @@ function Reportes({ version }) {
           <Btn small onClick={imprimir} disabled={!d}>Imprimir</Btn>
         </div>
       </div>
+      <FiltrosReporte f={f} setF={setF} conceptos={conceptos} sucursales={sucursales ?? []} />
       {error && <Aviso tono="warn">{error}</Aviso>}
       {loading && !d ? <Cargando /> : !d ? null : (
         <>
-          <Tiles>
-            <Tile label="Efectivo al inicio" valor={money(d.saldoInicio)} detalle={`al ${fechaIso(d.desde)}, antes del primer movimiento`} />
-            <Tile label="Ingresos" valor={money(d.ingresos)} marca="var(--crm-color-primary)" detalle={d.saldoInicial > 0 ? `+ ${money(d.saldoInicial)} del arranque` : 'sobres y otros ingresos'} />
-            <Tile label="Egresos" valor={money(d.egresos)} marca="#dc2626" detalle={`${d.movimientos} movimiento${d.movimientos === 1 ? '' : 's'} en el período`} />
-            <Tile label="Efectivo al fin" valor={money(d.saldoFin)} alerta={d.saldoFin < -0.009} detalle={`al ${fechaIso(d.hasta)}`} />
-          </Tiles>
+          {d.filtrado ? (
+            <>
+              <div className={s.hint} style={{ margin: 0 }}>
+                Filtrado: <strong>{filtros}</strong>. El efectivo al inicio y al fin es de la caja entera, así que con filtros no se muestra.
+              </div>
+              <Tiles>
+                <Tile label="Ingresos" valor={money(d.ingresos)} marca="var(--crm-color-primary)" detalle="con este filtro" />
+                <Tile label="Egresos" valor={money(d.egresos)} marca="#dc2626" detalle={`${d.movimientos} movimiento${d.movimientos === 1 ? '' : 's'} en el período`} />
+                <Tile label="Neto" valor={conSigno(d.ingresos - d.egresos, money)} detalle="ingresos − egresos" />
+              </Tiles>
+            </>
+          ) : (
+            <Tiles>
+              <Tile label="Efectivo al inicio" valor={money(d.saldoInicio)} detalle={`al ${fechaIso(d.desde)}, antes del primer movimiento`} />
+              <Tile label="Ingresos" valor={money(d.ingresos)} marca="var(--crm-color-primary)" detalle={d.saldoInicial > 0 ? `+ ${money(d.saldoInicial)} del arranque` : 'sobres y otros ingresos'} />
+              <Tile label="Egresos" valor={money(d.egresos)} marca="#dc2626" detalle={`${d.movimientos} movimiento${d.movimientos === 1 ? '' : 's'} en el período`} />
+              <Tile label="Efectivo al fin" valor={money(d.saldoFin)} alerta={d.saldoFin < -0.009} detalle={`al ${fechaIso(d.hasta)}`} />
+            </Tiles>
+          )}
           {d.serie.length > 1 && (
             <ColumnasMulti
               titulo={`Ingresos y egresos por ${d.paso}`}
@@ -1156,7 +1259,7 @@ function Reportes({ version }) {
                 ))}
               </Table>
             </Bloque>
-            <Bloque titulo="Sobres por sucursal" sub="Por fecha de CIERRE del local. En «Ingresos» el sobre cuenta el día que lo controlaste: un sobre del 31 controlado el 1 cae en meses distintos.">
+            {d.conSobres && <Bloque titulo="Sobres por sucursal" sub="Por fecha de CIERRE del local. En «Ingresos» el sobre cuenta el día que lo controlaste: un sobre del 31 controlado el 1 cae en meses distintos.">
               <Table cols={[{ h: 'Sucursal' }, { h: 'Sobres', num: true }, { h: 'Enviado', num: true }, { h: 'Contado', num: true }, { h: 'Diferencia', num: true }]} empty="Sin sobres en el período.">
                 {d.sobresPorSucursal.map((x) => (
                   <tr key={x.sucursalId}>
@@ -1172,9 +1275,9 @@ function Reportes({ version }) {
                   </tr>
                 ))}
               </Table>
-            </Bloque>
+            </Bloque>}
           </Grilla>
-          <Bloque titulo="Diferencias por cajero" sub="De los sobres controlados en el período: a quién le falta o le sobra plata al armar el sobre.">
+          {d.conSobres && <Bloque titulo="Diferencias por cajero" sub="De los sobres controlados en el período: a quién le falta o le sobra plata al armar el sobre.">
             <Table cols={[{ h: 'Cajero' }, { h: 'Sobres', num: true }, { h: 'Con diferencia', num: true }, { h: 'Faltantes', num: true }, { h: 'Sobrantes', num: true }, { h: 'Neto', num: true }]} empty="Sin sobres controlados en el período.">
               {d.porCajero.map((x) => (
                 <tr key={x.usuarioId ?? x.cajero}>
@@ -1187,7 +1290,7 @@ function Reportes({ version }) {
                 </tr>
               ))}
             </Table>
-          </Bloque>
+          </Bloque>}
         </>
       )}
     </div>
@@ -1197,7 +1300,8 @@ function Reportes({ version }) {
 /* ==================================================================== *
  * El panel
  * ==================================================================== */
-const PESTANAS = [['resumen', 'Resumen'], ['sobres', 'Sobres de caja'], ['controlar', 'Cajas a controlar'], ['movimientos', 'Movimientos'], ['conceptos', 'Conceptos'], ['reportes', 'Reportes']];
+/* «Conceptos» vive dentro de Configuración (9/10/2026, pedido del dueño). */
+const PESTANAS = [['resumen', 'Resumen'], ['sobres', 'Sobres de caja'], ['controlar', 'Cajas a controlar'], ['movimientos', 'Movimientos'], ['reportes', 'Reportes'], ['configuracion', 'Configuración']];
 /** El número entre paréntesis de las pestañas que piden algo. */
 const PENDIENTES = { sobres: (d) => d.enTransito.sobres, controlar: (d) => d.aControlar };
 
@@ -1242,8 +1346,13 @@ export function CashFlowPanel() {
           {pestana === 'sobres' && <Sobres version={version} bump={bump} avisar={avisar} />}
           {pestana === 'controlar' && <CajasAControlar version={version} bump={bump} avisar={avisar} />}
           {pestana === 'movimientos' && <Movimientos version={version} bump={bump} avisar={avisar} conceptos={conceptos ?? []} saldo={d.saldo} />}
-          {pestana === 'conceptos' && <Conceptos conceptos={conceptos ?? []} bump={bump} avisar={avisar} />}
-          {pestana === 'reportes' && <Reportes version={version} />}
+          {pestana === 'reportes' && <Reportes version={version} conceptos={conceptos ?? []} />}
+          {pestana === 'configuracion' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className={s['section-title']} style={{ margin: 0 }}>Conceptos</div>
+              <Conceptos conceptos={conceptos ?? []} bump={bump} avisar={avisar} />
+            </div>
+          )}
         </>
       )}
     </div>

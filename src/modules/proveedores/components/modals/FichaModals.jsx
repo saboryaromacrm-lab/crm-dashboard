@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { useProveedores } from '../../context/ProveedoresContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { provApi, MEDIOS_HABITUALES, CONDICIONES_COMPRA } from '../../services/proveedores.api.js';
@@ -11,6 +12,70 @@ import { Btn, ModalShell, s } from '../ui.jsx';
  * COMERCIAL de la app vieja: qué emite, cómo cobra, a cuántos días, el modo
  * de cuenta y las cuentas bancarias.
  */
+/**
+ * «APLICAR A TODOS SUS PRODUCTOS» (9/10/2026, pedido del dueño). El % de la
+ * ficha solo precarga los formatos nuevos; esto lleva el % GUARDADO a todos los
+ * productos del proveedor —mueve su costo y su góndola—, así que muestra antes
+ * cuántos cambian y pide confirmar. Solo un administrador (la API lo exige).
+ */
+function AplicarSinFactura({ proveedorId, sucio }) {
+  const { toast } = useProveedores();
+  const { esAdmin } = usePermissions();
+  const [vista, setVista] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+  const enVuelo = useRef(false);
+  if (!esAdmin) return null;
+
+  const preguntar = async () => {
+    setOcupado(true);
+    try { setVista(await provApi.sinFacturaProductos(proveedorId)); }
+    catch (e) { toast(e?.data?.message || 'No se pudo leer sus productos.', 'err'); }
+    finally { setOcupado(false); }
+  };
+  const aplicar = async () => {
+    if (enVuelo.current) return;
+    enVuelo.current = true; setOcupado(true);
+    try {
+      const r = await provApi.aplicarSinFactura(proveedorId);
+      toast(r.productos ? `${r.productos} producto(s) pasaron a ${r.porcFicha} % sin factura. Su costo y su góndola ya se recalcularon.` : 'Todos sus productos ya tenían ese %.', 'ok');
+      setVista(null);
+    } catch (e) {
+      toast(e?.data?.message || 'No se pudo aplicar.', 'err');
+    } finally { enVuelo.current = false; setOcupado(false); }
+  };
+
+  if (!vista) {
+    return (
+      <div style={{ marginTop: 8 }}>
+        <Btn small disabled={sucio || ocupado} onClick={preguntar}>Aplicar a todos sus productos</Btn>
+        {sucio && <div className={s.hint} style={{ margin: '4px 0 0' }}>Guardá primero el % nuevo.</div>}
+      </div>
+    );
+  }
+  return (
+    <div className={s.callout} style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+      {vista.cambian ? (
+        <>
+          <span>
+            ¿Pasar <strong>{vista.cambian} de sus {vista.productos} producto(s)</strong> a <strong>{vista.porcFicha} % sin factura</strong>?
+            Hoy: {vista.porcentajes.map((x) => `${x.productos} en ${x.porc} %`).join(' · ')}. Se recalcula su costo y su góndola,
+            y queda en la Auditoría.
+          </span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <Btn small variant="btn-primary" disabled={ocupado} onClick={aplicar}>{ocupado ? 'Aplicando…' : 'Sí, aplicar'}</Btn>
+            <Btn small disabled={ocupado} onClick={() => setVista(null)}>No</Btn>
+          </div>
+        </>
+      ) : (
+        <span>
+          Sus {vista.productos} producto(s) ya tienen {vista.porcFicha} % sin factura: no hay nada que cambiar.{' '}
+          <Btn small onClick={() => setVista(null)}>Cerrar</Btn>
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function FichaProveedorModal({ proveedorId, onChange }) {
   const { getProveedor, act, closeModal, toast } = useProveedores();
   const editando = !!proveedorId;
@@ -59,6 +124,11 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
   const setCta = (i, k) => (e) => setCuentas((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)));
 
   const esDiferido = f.medioHabitual === 'cta_cte' || f.medioHabitual === 'echeq';
+  /* El % sin factura del proveedor: liquidación pura sin número = 100 (es lo
+   * único que puede querer decir), factura pura = 0 siempre. */
+  const porcForm = f.condicionCompra === 'factura'
+    ? 0
+    : (f.porcSinFactura === '' ? (f.condicionCompra === 'liquidacion' ? 100 : 0) : Number(f.porcSinFactura));
 
   const guardar = async () => {
     if (!f.nombre.trim()) { toast('El nombre es obligatorio.', 'err'); return; }
@@ -76,11 +146,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       medioHabitual: f.medioHabitual,
       diasPago: f.diasPago === '' ? null : Number(f.diasPago),
       modoCuenta: f.modoCuenta,
-      /* El % sin factura del proveedor: liquidación pura sin número = 100 (es
-       * lo único que puede querer decir), factura pura = 0 siempre. */
-      porcSinFactura: f.condicionCompra === 'factura'
-        ? 0
-        : (f.porcSinFactura === '' ? (f.condicionCompra === 'liquidacion' ? 100 : 0) : Number(f.porcSinFactura)),
+      porcSinFactura: porcForm,
       minimoTransferencia: f.minimoTransferencia === '' ? 0 : Number(f.minimoTransferencia),
     };
     const res = await act(
@@ -148,6 +214,12 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
             Qué parte del valor viene sin factura. Precarga los formatos de compra nuevos
             de este proveedor; el que manda para cada producto es el del formato.
           </div>
+          {editando && (
+            <AplicarSinFactura
+              proveedorId={proveedorId}
+              sucio={porcForm !== (Number(original?.porcSinFactura) || 0)}
+            />
+          )}
         </div>
         <div className={s.field}>
           <label>Cómo cobra habitualmente</label>

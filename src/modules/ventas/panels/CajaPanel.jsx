@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react';
+import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi } from '../services/ventas.api.js';
 import { Table, PanelHead, Stat, Btn, Pill, usePaginado, money, fmtFechaHora, s } from '../components/ui.jsx';
 import p from '../styles/Pos.module.css';
+import { CajaMovimientos } from './CajaMovimientos.jsx';
+import { ATAJOS, diaAtras } from '../domain/diasCaja.js';
 
 /** Diferencia de arqueo con su color: cero es verde, cualquier otra cosa rojo. */
 function Diferencia({ valor, cerrado }) {
@@ -18,17 +21,10 @@ function Diferencia({ valor, cerrado }) {
   );
 }
 
-/** 'AAAA-MM-DD' de hoy menos `atras` días, en la hora de esta PC. */
-const diaAtras = (atras) => {
-  const d = new Date();
-  d.setDate(d.getDate() - atras);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-/* Los atajos de fecha (6/10/2026, pedido del dueño): un día entero cada uno. */
-const ATAJOS = [['Hoy', 0], ['Ayer', 1], ['Antes de ayer', 2]];
-
 export function CajaPanel() {
   const { sucursales, usuarios, ctx, openModal, esJefe } = useVentas();
+  /* Los turnos o los ingresos y egresos de todos los turnos (9/10/2026). */
+  const [vista, setVista] = useState('turnos');
   const [sucursalId, setSucursalId] = useState(String(ctx.sucursalId ?? ''));
   const [estado, setEstado] = useState('');
   /* Por fecha de APERTURA del turno. Vacío = los últimos, como siempre. */
@@ -85,7 +81,7 @@ export function CajaPanel() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Caja"
-        desc="El turno de tu sucursal y el historial de arqueos. Clic en una fila para ver el detalle por medio de pago."
+        desc="El turno de tu sucursal, el historial de arqueos y los ingresos y egresos de caja. Clic en una fila para ver el turno."
       />
 
       {/* ---------------- Turno actual de mi sucursal ---------------- */}
@@ -126,6 +122,12 @@ export function CajaPanel() {
         )}
       </div>
 
+ <Tabs value={vista} onChange={(e, v) => setVista(v)} sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}>
+        <Tab value="turnos" label="Turnos" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />
+        <Tab value="movimientos" label="Ingresos y egresos" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />
+      </Tabs>
+
+      {vista === 'movimientos' ? <CajaMovimientos /> : (<>
       <div className={s.stats}>
         <Stat label="Turnos abiertos" value={stats.abiertos} accent={stats.abiertos ? 'accent-green' : undefined} />
         <Stat label="Turnos cerrados" value={stats.cerrados} />
@@ -205,6 +207,7 @@ export function CajaPanel() {
           concilian contra el resumen del banco o del posnet.
         </div>
       )}
+      </>)}
     </div>
   );
 }

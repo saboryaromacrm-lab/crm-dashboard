@@ -14,7 +14,7 @@ import { TransferenciaModal, DetalleTransferModal, RecibirTransferModal, Prepara
 import { IncidenciaModal, ResolverIncidenciaModal, DetalleIncidenciaModal } from './modals/IncidenciaModals.jsx';
 import { ConteoNuevoModal, ConteoModal } from './modals/ConteosModals.jsx';
 import { ProveedorFormModal, DetalleProveedorModal } from './modals/ProveedorModals.jsx';
-import { ComprobanteFormModal, ComprobanteDetalleModal, AnularComprobanteModal } from './modals/ComprobanteModals.jsx';
+import { ComprobanteFormModal, ComprobanteDetalleModal, AnularComprobanteModal, MezclaCompraModal } from './modals/ComprobanteModals.jsx';
 import {
   TomarPagosComprobanteModal, PagoSucursalDetalleModal,
 } from './modals/PagosSucursalModals.jsx';
@@ -233,6 +233,7 @@ const REGISTRY = {
   comprobanteForm: ComprobanteFormModal,
   lecturaFactura: LecturaFacturaModal,
   comprobanteDetalle: ComprobanteDetalleModal,
+  mezclaCompra: MezclaCompraModal,
   anularComprobante: AnularComprobanteModal,
   tomarPagosComprobante: TomarPagosComprobanteModal,
   pagoSucursalDetalle: PagoSucursalDetalleModal,

@@ -8,7 +8,7 @@ import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import {
   buscarEnCatalogo, calcularRenglon, descuentosDisponibles, descuentosParaApi,
   extrasParaApi, itemsParaApi, motivoBloqueo, parseEtiquetaBalanza,
-  cambioDeDescuento, descuentosConMedio, problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
+  agruparDescuentos, cambioDeDescuento, descuentosConMedio, problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
   bultoAbajo, bultoArriba, bultoDeFila, cantidadInicial, desgloseBulto, empujonMayorista, textoBulto,
   totalesTicket, ultimoArticulo, unidadesDeLista,
 } from '../domain/pos.js';
@@ -328,8 +328,20 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
  */
 function DescuentosConNombre({ opciones, puestos, onAlternar, habilitado }) {
   const [abierto, setAbierto] = useState(false);
+  /* El descuento con su «(efectivo)» abierto (9/10/2026): un renglón por descuento y sus dos opciones al tocarlo. */
+  const [grupo, setGrupo] = useState(null);
+  const grupos = useMemo(() => agruparDescuentos(opciones), [opciones]);
   // Sin descuentos cargados no hay nada que ofrecer: la fila no aparece.
   if (!opciones.length) return null;
+  const elegir = (d) => { onAlternar(d); setAbierto(false); setGrupo(null); };
+  const opcion = (d, titulo, cls) => (
+    <button key={d.id} type="button" className={cx(p.descItem, cls, d.puesto && p.descItemPuesto)} disabled={!d.aplicable} onClick={() => elegir(d)}>
+      <span>{d.puesto ? '✓ ' : ''}<strong>{titulo}</strong> −{d.porcentaje}%</span>
+      <span className={p.descMotivo}>
+        {d.motivo || `Sobre ${d.lista}${d.medioPago ? ` · solo con ${MEDIOS_PAGO[d.medioPago] || d.medioPago}` : ''}`}
+      </span>
+    </button>
+  );
 
   return (
     <div>
@@ -357,29 +369,35 @@ function DescuentosConNombre({ opciones, puestos, onAlternar, habilitado }) {
         className={p.descBoton}
         disabled={!habilitado}
         aria-expanded={abierto}
-        onClick={() => setAbierto((v) => !v)}
+        onClick={() => { setAbierto((v) => !v); setGrupo(null); }}
       >
         {abierto ? 'Cerrar' : 'Aplicar descuento'}
       </button>
 
       {abierto && (
         <div className={p.descLista}>
-          {opciones.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              className={cx(p.descItem, d.puesto && p.descItemPuesto)}
-              disabled={!d.aplicable}
-              onClick={() => { onAlternar(d); setAbierto(false); }}
-            >
-              <span>
-                {d.puesto ? '✓ ' : ''}<strong>{d.nombre}</strong> −{d.porcentaje}%
-              </span>
-              <span className={p.descMotivo}>
-                {d.motivo || `Sobre ${d.lista}${d.medioPago ? ` · solo con ${MEDIOS_PAGO[d.medioPago] || d.medioPago}` : ''}`}
-              </span>
-            </button>
-          ))}
+          {grupos.map(({ d, pareja }) => {
+            if (!pareja) return opcion(d, d.nombre);
+            const desplegado = grupo === d.id;
+            const puesto = d.puesto || pareja.puesto;
+            return (
+              <div key={d.id}>
+                <button
+                  type="button" className={cx(p.descItem, puesto && p.descItemPuesto)} aria-expanded={desplegado}
+                  disabled={!d.aplicable && !pareja.aplicable} onClick={() => setGrupo(desplegado ? null : d.id)}
+                >
+                  <span>{desplegado ? '▾ ' : '▸ '}{puesto ? '✓ ' : ''}<strong>{d.nombre}</strong></span>
+                  <span className={p.descMotivo}>−{d.porcentaje}% · en efectivo −{pareja.porcentaje}% · Sobre {d.lista}</span>
+                </button>
+                {desplegado && (
+                  <>
+                    {opcion(d, 'Cualquier forma de pago', p.descSub)}
+                    {opcion(pareja, 'Pagando todo en efectivo', p.descSub)}
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

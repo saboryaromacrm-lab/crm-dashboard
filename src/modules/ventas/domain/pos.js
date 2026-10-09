@@ -831,9 +831,12 @@ export function descuentosDisponibles(estado, { esAdmin = false } = {}) {
     if (!(r.ofertaDescuento > 0)) sinOferta.add(r.listaId);
   }
 
-  const ocupadas = new Set(
-    (estado.ctx.descuentos ?? []).filter((d) => puestos.includes(d.id)).map((d) => d.listaId),
+  /* La lista ocupada y POR CUÁL: el general y su «(efectivo)» (0149) se
+   * reemplazan entre sí, no se bloquean (es cambiar de % del mismo descuento). */
+  const ocupadas = new Map(
+    (estado.ctx.descuentos ?? []).filter((d) => puestos.includes(d.id)).map((d) => [d.listaId, d]),
   );
+  const pareja = (a, b) => a.efectivoDeId === b.id || b.efectivoDeId === a.id;
 
   return (estado.ctx.descuentos ?? [])
     .filter((d) => d.activo !== false)
@@ -846,7 +849,7 @@ export function descuentosDisponibles(estado, { esAdmin = false } = {}) {
       } else if (d.requiereAdmin && !esAdmin) motivo = 'Lo aplica un administrador';
       else if (!conRenglon.has(d.listaId)) motivo = `Ningún renglón usa ${etiqueta(d.listaId)}`;
       else if (!sinOferta.has(d.listaId)) motivo = `Lo de ${etiqueta(d.listaId)} ya está en oferta`;
-      else if (!puesto && ocupadas.has(d.listaId)) motivo = `Ya hay uno de ${etiqueta(d.listaId)}`;
+      else if (!puesto && ocupadas.has(d.listaId) && !pareja(d, ocupadas.get(d.listaId))) motivo = `Ya hay uno de ${etiqueta(d.listaId)}`;
       return { ...d, lista: etiqueta(d.listaId), puesto, motivo, aplicable: puesto || !motivo };
     });
 }
@@ -876,6 +879,21 @@ export function descuentosParaApi(estado) {
     if (!d || !listas.has(d.listaId)) return false;
     return !(d.vence && new Date(d.vence).getTime() < ahora);
   });
+}
+
+/**
+ * EL DESPLEGABLE DE LA CAJA, AGRUPADO (9/10/2026, pedido del dueño): un
+ * renglón por descuento. El que tiene su pareja «(efectivo)» (0149) va con
+ * ella adentro: al tocarlo se abren las dos opciones. Con varios descuentos,
+ * los dos % del mismo dejan de mezclarse con los demás.
+ * Devuelve [{ d, pareja }] — `pareja` es el de efectivo o null. Un «(efectivo)»
+ * cuyo general no está en la lista va solo.
+ */
+export function agruparDescuentos(opciones) {
+  const ids = new Set(opciones.map((d) => d.id));
+  return opciones
+    .filter((d) => !(d.efectivoDeId != null && ids.has(d.efectivoDeId)))
+    .map((d) => ({ d, pareja: opciones.find((x) => x.efectivoDeId === d.id) ?? null }));
 }
 
 /**

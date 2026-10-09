@@ -65,6 +65,22 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
   const sinFactura = c.porcSinFactura > 0;
   const finalUnitario = costoFinalUnitarioDe(c, fila, prod.iva);
   const set = (patch) => onChange(i, patch);
+  /*
+   * EN «PRECIO FINAL», CAMBIAR EL % SIN FACTURA CONSERVA EL NETO (9/10/2026,
+   * pedido del dueño). Lo cargado es lo que se paga con los papeles del reparto
+   * viejo; si solo cambiara el %, el mismo desembolso se leería con otro
+   * reparto y la mercadería parecería más barata (o más cara) sin haber
+   * cambiado de precio. Así que lo pagado se recalcula: neto × ((1−q)·(1+IVA)+q).
+   */
+  const conPorc = (porcSinFactura, extra = {}) => {
+    const final = Number(fila.costoFinal) || 0;
+    if (fila.modoCosto !== 'final' || !(final > 0)) return set({ ...extra, porcSinFactura });
+    const factor = (q) => (1 - (Number(q) || 0) / 100) * (1 + (Number(prod.iva) || 0) / 100) + (Number(q) || 0) / 100;
+    /* El neto se ANCLA la primera vez (sin redondear): tipear «30» pasa por «3»,
+     * y recalcular sobre el número ya redondeado podía correr un centavo. */
+    const neto = fila._netoAncla ?? final / factor(fila.porcSinFactura);
+    return set({ ...extra, porcSinFactura, costoFinal: String(Math.round(neto * factor(porcSinFactura) * 100) / 100), _netoAncla: neto });
+  };
 
   /*
    * Cambiar el proveedor precarga SU % sin factura (la ficha declara qué
@@ -74,7 +90,7 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
   const setProveedor = (proveedorId) => {
     const pv = proveedores.find((x) => x.id === proveedorId);
     const porc = Number(pv?.porcSinFactura) || (pv?.condicionCompra === 'liquidacion' ? 100 : 0);
-    set({ proveedorId, porcSinFactura: porc ? String(porc) : '' });
+    conPorc(porc ? String(porc) : '', { proveedorId });
   };
 
   return (
@@ -154,7 +170,7 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
               <label>Cómo se carga el costo</label>
               <select
                 value={fila.modoCosto} disabled={!esAdmin}
-                onChange={(e) => set({ modoCosto: e.target.value })}
+                onChange={(e) => set({ modoCosto: e.target.value, _netoAncla: undefined })}
               >
                 <option value="lista">Costo de lista — el sistema calcula</option>
                 <option value="final">Costo final con IVA — cargado directo</option>
@@ -212,17 +228,18 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
                 <label>{sinFactura ? 'Lo que pagás por el bulto (papeles sumados)' : 'Costo final del bulto (con IVA)'}</label>
                 <input
                   type="number" min="0" step="0.001" value={fila.costoFinal} placeholder="0" disabled={!esAdmin}
-                  onChange={(e) => set({ costoFinal: e.target.value })}
+                  onChange={(e) => set({ costoFinal: e.target.value, _netoAncla: undefined })}
                 />
               </div>
               <div className={s.field}>
                 <label>Sin factura %</label>
                 <input
                   type="number" min="0" max="100" step="0.01" value={fila.porcSinFactura} placeholder="0" disabled={!esAdmin}
-                  onChange={(e) => set({ porcSinFactura: e.target.value })}
+                  onChange={(e) => conPorc(e.target.value)}
                 />
                 <div className={s.hint} style={{ margin: '6px 0 0' }}>
                   Qué parte viene en liquidación. Solo la parte facturada trae IVA adentro del número.
+                  Si lo cambiás, el costo neto se conserva y lo que pagás por el bulto se recalcula con el reparto nuevo.
                 </div>
               </div>
               <div className={cx(s.callout, s.warn)}>
