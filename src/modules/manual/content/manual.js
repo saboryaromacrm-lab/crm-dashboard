@@ -219,8 +219,8 @@ export const MANUAL = [
             items: [
               '**El proveedor se reconoce por el CUIT del papel**, no por parecido de nombre. Para que funcione, cada proveedor tiene que tener su CUIT cargado en su ficha — sin eso la factura llega a la bandeja sin proveedor y hay que elegirlo a mano (una sola vez: la próxima ya se reconoce).',
               '**Lo que el papel NO dice, se pregunta.** Sobre todo **en qué sucursal entró la mercadería**: eso lo sabe quien la recibió y no está escrito en ninguna parte de la factura. Se propone la sucursal del que subió la foto, pero es editable.',
-              '**El detalle de renglones se carga a mano.** Argentina no tiene intercambio de factura estructurada (no hay nada como el CFDI mexicano): los ítems solo existen en el PDF del proveedor. Esa parte es la etapa que sigue.',
-              '**Del PDF no se lee el QR**, solo de las fotos: su encabezado se carga a mano. Igual se guarda el archivo.',
+              '**Los renglones los lee la IA** (desde el 9/10/2026, ver «Leer las facturas con IA»): PDF, fotos y escaneos. El encabezado que el QR no dio también sale de ahí.',
+              '**Del PDF no se lee el QR** (solo de las fotos): su encabezado lo completa la IA al leerlo.',
               '**Una factura de varias hojas es UNA sola factura** con varias páginas: se sube la primera y las demás se agregan desde su detalle con "+ Agregar página".',
             ],
           },
@@ -253,7 +253,7 @@ export const MANUAL = [
             tono: 'ok',
             texto: 'De paso quedaron tapados dos agujeros que ya existían. **(1)** `comprobantes` no tenía el índice único de número que Ventas y Cobranzas sí tenían: con carga manual no molestaba porque el que cargaba se acordaba, pero con papeles entrando desde el celular el duplicado era cuestión de tiempo — y entraba dos veces al stock y a la deuda. **(2)** El punto de venta ahora se **normaliza a cuatro dígitos** en las dos puertas: el papel imprime "00115", el QR trae "115" y antes eran dos puntos de venta distintos, así que el control de duplicados no los cruzaba.',
           },
-          { t: 'ruta', texto: 'Compras › Procesamiento de facturas (pestañas Facturas y Proveedores) · el permiso es `compras.lecturas` (subir el papel lo puede hacer cualquiera con la sección; confirmar la factura sigue siendo del admin)' },
+          { t: 'ruta', texto: 'Compras › Procesamiento de facturas (pestañas Facturas y Lectura con IA) · en el celular, erp.saboryaroma.com/facturas · el permiso es `compras.lecturas` (subir el papel lo puede hacer cualquiera con la sección; la IA, confirmar la factura y el tablero son del superadmin y el admin)' },
         ],
       },
       {
@@ -3200,6 +3200,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**9/10/2026**', '**FACTURAS DE COMPRA LEÍDAS CON IA** (pedido del dueño, migración 0153). Las facturas de la bandeja (PDF, fotos y escaneos, de a una o en tanda) las **lee la IA sola al subirlas**: encabezado, renglones y pie. El sistema controla la cuenta (renglones, subtotal, total y el QR); si no cierra con el modelo barato (Haiku) se relee sola con el fuerte (Sonnet). Los productos los reconoce el sistema con lo aprendido; lo desconocido se asocia a mano entre los parecidos o con **«Que la IA elija»** (sugerencia a aceptar); nunca crea nada sola. Proveedor nuevo: se da de alta con los datos del papel desde la ficha. Pestaña **«Lectura con IA»**: gastado del mes, **tope mensual** (aviso al 80 %), promedio por factura y cada llamada con tokens y costo. **En el celular**: erp.saboryaroma.com/facturas para sacarle la foto. Solo superadmin y admin. **Se eliminó la lectura de PDF anterior** (recetas, asistente, formatos por proveedor y pdf.js). Necesita la clave `ANTHROPIC_API_KEY` en Dokploy.'],
               ['**9/10/2026**', '**GERENCIA › RESULTADOS: EL ESTADO DE RESULTADOS** (pedido del dueño, migración 0152; solo superadmin). **Todo en neto** (sin IVA), por mes y por local: ventas a precio de lista − descuentos − notas de crédito + envíos = **ventas netas**; − costo de lo vendido (el congelado en cada venta) − mermas ± ajustes de inventario = **margen bruto**; − Ingresos Brutos, tasa municipal, comisiones de tarjetas y Mercado Pago y otros gastos variables = **contribución marginal**; − sueldos (con cargas y 1/12 de aguinaldo), gastos fijos y amortizaciones = **resultado operativo**; ± recargo por cuotas y gastos financieros = **antes de Ganancias**; − Ganancias estimado = **resultado neto**. Abajo y aparte, los retiros de los socios (retiros sin costo). Arriba: márgenes, **punto de equilibrio**, fijos sobre ventas, comparación con el mes anterior y con un año antes, y el **objetivo** del mes. Columnas por mes o por local; los grupos de gastos se abren por rubro. Exporta a Excel y a PDF. Reglas: cada gasto en el **mes al que corresponde** (campo nuevo en la carga, para el jefe); IIBB y municipal por % de lo facturado sin IVA (municipal **distinta por local**, con mínimo), posnet **4 %** de lo cobrado con tarjeta (sin IVA: se recupera), cada tasa con «vigente desde»; si se carga el **pago real** del mes en su rubro, manda el real (IIBB real = pago + percepciones de IIBB del mes). Lo que no es de un local se **reparte por ventas** o queda en **Administración**, según el rubro. Coffit afuera. **Ganancias** (persona humana): por lo acumulado del año con la escala 2026 de ARCA y las deducciones (ganancia no imponible + deducción especial), sobre la parte facturada del resultado (configurable). Pestaña **IVA (aparte)**: el declarado (débito − crédito − percepciones con el saldo a favor arrastrado) y el **de gestión** (el IVA de lo vendido sin factura, que queda en la casa). Pestañas **Objetivos** (venta y resultado por mes, de la empresa o de un local) y **Configuración** (tasas, cómo entra cada rubro, escala de Ganancias, amortizaciones). En el **celular**: erp.saboryaroma.com/resultados (también desde el menú del Cash Flow). **Gastos › Gastos fijos y sueldos** pasó a ser solo del superadmin, con tres pestañas: lo que se repite, **Sueldos** (cada empleado con su sueldo bruto, % de cargas y aumentos «vigente desde») y **Bienes de uso** (amortizaciones). Todo cambio de configuración queda en Auditoría.'],
               ['**9/10/2026**', '**CUENTAS DISPONIBLES: PAGO PROPIO** (pedido del dueño, migración 0151). En Proveedores › Cuentas disponibles, cada cuenta abierta tiene el botón **«Pagar»**: una transferencia que hace Sabor y Aroma **desde su propia cuenta** a la del proveedor, sin pasar por la caja. Se carga el importe (arranca con lo que falta, con el atajo «Todo lo que falta»), la fecha, el Nº de operación o desde qué cuenta, y observaciones; pide segunda confirmación. Suma a «Pagado» de la cuenta (y la cubre si llega) y queda como **pago a cuenta en la cuenta corriente del proveedor** (transferencia, sin caja), para aplicar a su factura como los de los clientes. Mismas reglas que las transferencias de clientes —no a una cuenta cortada o cubierta, no de más, no antes de lo conciliado— salvo el mínimo por transferencia del proveedor (es para los clientes). En la pestaña Pagos dice «Pago propio · Transferencia propia» y se **anula desde ahí** con motivo (vuelve a faltar y su pago en la cuenta corriente queda anulado; si ya se aplicó a una factura, primero hay que desaplicarlo). Desde la cuenta corriente del proveedor no se anula.'],
               ['**9/10/2026**', '**CAJA: «APLICAR DESCUENTO» AGRUPADO** (pedido del dueño). El desplegable muestra **un renglón por descuento**: el que tiene % en efectivo aparece una sola vez («▸ Empleados · −5 % · en efectivo −10 %») y al tocarlo se abren sus dos opciones, **«Cualquier forma de pago»** y **«Pagando todo en efectivo»**. Así, con muchos descuentos, los dos % del mismo no se mezclan con los demás. Con uno de los dos puesto, el otro del mismo descuento se puede elegir directo (lo reemplaza); otro descuento de la misma lista sigue bloqueado (uno por lista).'],
@@ -3527,124 +3528,43 @@ export const MANUAL = [
       },
       {
         id: 'lectura-renglones',
-        actualizado: '2026-08-08 07:00',
-        titulo: 'Leer los renglones de la factura — PDFs digitales HECHO · fotos EN ESPERA',
+        actualizado: '2026-10-09',
+        titulo: 'Leer las facturas con IA',
         bloques: [
           {
-            t: 'nota',
-            tono: 'ok',
-            texto: '**La mitad barata quedó construida el 8/8/2026.** Si el papel de la bandeja es un **PDF digital** (la factura electrónica que el proveedor manda por mail), los renglones **se leen del archivo** — sin modelo de visión, sin clave de API, sin costo, y el archivo no sale del sistema. En el paso 2 del alta aparece el botón **"Leer renglones del PDF"**. Lo que sigue EN ESPERA es la otra mitad: las **fotos** (no tienen texto adentro) — para esas el único camino es el modelo de visión de abajo, ahora con menos volumen y menos costo que el presupuestado.',
-          },
-          {
             t: 'p',
-            texto: '**Cómo funciona lo construido.** El PDF trae cada fragmento de texto con su posición X/Y en la hoja: se agrupa por altura (misma línea) y se ordena de izquierda a derecha — el renglón queda reconstruido tal como se ve impreso. Después una **receta por proveedor** interpreta ese texto: dónde están los renglones, cómo viene el pie, qué mugre trae (Tango parte los números con espacios: "87, 731. 41"). La primera receta es la de **Bavosi** (formato Tango, el ERP más común del país). La propuesta llena renglones, bonificación, percepciones (se tildan solas si el proveedor las tiene configuradas) y el encabezado — que en un PDF también es texto, así que **completa lo que el QR no pudo** (número, fecha, CAE, vencimiento) con un botón "usar este encabezado".',
-          },
-          {
-            t: 'p',
-            texto: '**Los tres controles que hacen confiable la lectura**: Σ renglones tiene que dar el subtotal del papel (si falta un renglón, se delata solo); el pie tiene que cerrar consigo mismo (neto + IVA + percepciones = total); y el total leído tiene que coincidir con el de la lectura (QR o tipeado). Con la factura real de Bavosi: 12 de 12 renglones, todo al centavo. El **matcheo de productos** es el único paso con criterio (el papel dice "AVENA INSTANT FWP CUM10x400g" y el catálogo "Avena Instantanea CUMANA x400g"): propone por similitud de tokens, y lo que no reconoce queda listado para agregar a mano — **el parser propone, la persona confirma**, nunca adivina. Los renglones sin matchear suelen ser artículos nuevos del proveedor.',
-          },
-          {
-            t: 'p',
-            texto: '**El mapeo de artículos se APRENDE, y el trabajo manual es solo la primera vez.** El producto se reconoce en tres niveles, del más confiable al menos: (1) el **mapeo aprendido** — el código del artículo tal como lo imprime la factura, asociado a nuestro producto la última vez que una persona confirmó una factura; (2) el **código del catálogo** (el campo "código de proveedor" del formato de compra, que vino del sistema viejo — con corrimientos: la factura real dice 10206 donde el catálogo dice 10200); (3) el **parecido de nombres**, solo para el arranque en frío. Con la factura real de Bavosi: 8 de 12 salen por código exacto del catálogo, 1 por parecido, y quedan 2 genuinamente nuevos (salmón y mariscos, que no están en el catálogo).',
-          },
-          {
-            t: 'p',
-            texto: '**Cómo se asocia lo que no reconoce.** En el panel del PDF, cada renglón sin producto muestra un selector **"Asociar con un producto…"** con todo el catálogo: el admin elige el producto del sistema (aunque en la factura figure con otro nombre), el renglón se agrega al alta, y **al GUARDAR el comprobante el par (código → producto) queda aprendido** — la próxima factura del mismo proveedor lo reconoce sola. Si se cancela, no se aprende nada. Un mapeo mal aprendido se corrige solo: en la factura siguiente se cambia el producto del renglón y el guardado pisa el mapeo viejo. Si el artículo es realmente nuevo, primero se crea en Productos y después se asocia.',
-          },
-          {
-            t: 'nota',
-            tono: 'warn',
-            texto: '**Para agregar la receta de otro proveedor** hace falta UNA factura real suya en PDF: el botón del modal muestra el **texto extraído** aunque no haya receta, y con eso se arma (registro `RECETAS` en `crm-api/src/facturas/recetas.ts`, por CUIT del emisor). Si el proveedor también factura con Tango, la receta de Bavosi probablemente sirva casi entera. Un PDF **sin** capa de texto (escaneo, foto convertida) avisa y no propone nada: eso es una foto con otro nombre.',
-          },
-          {
-            t: 'p',
-            texto: '**Lo que sigue EN ESPERA — las fotos.** El diseño original de esta ficha era para leer la imagen con un modelo de visión, y queda vigente solo para los papeles fotografiados: la decisión sigue siendo del dueño (la imagen sale de la máquina) más una clave de API. Todo lo de abajo describe ese camino.',
-          },
-          {
-            t: 'p',
-            texto: '**Por qué hace falta un modelo de visión y no un programa.** El encabezado se resuelve leyendo un QR, que es un dato exacto. Los renglones no: solo existen dibujados en el PDF del proveedor, cada proveedor los imprime distinto, y Argentina no tiene intercambio de factura estructurada (nada como el CFDI mexicano). Hay que interpretar imagen, y eso lo hace un modelo.',
+            texto: '**Desde el 9/10/2026 las facturas de compra las lee la IA** (Claude, por la API de Anthropic): PDF por mail, fotos del celular y escaneos, de a una o en tanda. Reemplazó entera a la lectura de PDF anterior (recetas por proveedor, estructura del asistente y lectura automática), que se eliminó.',
           },
           {
             t: 'lista',
             items: [
-              '**El circuito**: el papel ya está guardado y el encabezado ya salió del QR (eso no cambia) → la API manda la imagen o el PDF al modelo con un esquema fijo de respuesta → vuelve un JSON con los renglones → el sistema calcula el pie y lo compara contra el total del QR → la factura aparece en la bandeja con los renglones puestos.',
-              '**Corre en la API (crm-api), nunca en el navegador**: la clave de la API no puede estar en el frontend, cualquiera la vería mirando el código de la página.',
-              '**Sería un interruptor, no una pieza**: sin clave configurada, la bandeja anda exactamente como hoy (papel guardado, encabezado del QR, renglones a mano). Se puede probar con veinte facturas y apagarlo si no convence.',
+              '**Se lee sola al subirla** (se puede apagar en la pestaña «Lectura con IA»; ahí también está «Leer las pendientes con IA»). Corre en el servidor, de a dos por vez y en segundo plano: no frena nada.',
+              '**La IA solo transcribe** lo impreso (encabezado, renglones, pie) en un formato fijo. **La cuenta la controla el sistema**: cada renglón (cantidad × precio − descuentos = importe), la suma contra el subtotal y subtotal − bonificación + IVA + percepciones = total; y si hubo QR, su total manda.',
+              '**Primero el modelo barato (Haiku)**; si la cuenta no cierra, **se vuelve a leer sola con el fuerte (Sonnet)** y queda la lectura que mejor cierra. Si igual no cierra, queda en amarillo con lo que no da.',
+              '**El encabezado**: el QR, si se leyó, manda (es exacto). Si no, sale de lo leído; el proveedor se reconoce por el CUIT. **Si el CUIT no está**, la ficha de la factura ofrece **darlo de alta con los datos del papel** (vos confirmás).',
+              '**Los productos los reconoce el sistema**, no la IA: lo aprendido de facturas anteriores (código del papel → producto), el código del formato de compra o un nombre claramente igual. Lo que no reconoce se **asocia a mano** en el alta (con los parecidos primero) o con **«Que la IA elija»**, que elige solo entre esos candidatos y queda como sugerencia a aceptar. **Nunca crea productos ni proveedores sola.** Al guardar, lo asociado queda aprendido.',
+              '**Siempre se revisa**: el alta se abre precargada (renglones, bonificación, percepciones) y se confirma como siempre, con los precios a confirmar de siempre.',
             ],
-          },
-          {
-            t: 'p',
-            texto: '**Lo que se le pediría, y sobre todo lo que NO.** Acá está la diferencia entre que funcione y que sea una lotería: cuanto más chico el trabajo del modelo, más confiable el resultado.',
-          },
-          {
-            t: 'lista',
-            items: [
-              '**NO se le pide el encabezado.** Ya lo tenemos exacto del QR; pedírselo sería meter una posibilidad de error donde hoy no hay ninguna.',
-              '**NO se le pide identificar el producto.** No se le pasa el catálogo para que elija: es justo donde un modelo inventa con más ganas — le das 900 productos y devuelve uno parecido con total seguridad. El producto lo resuelve el **código del proveedor** contra el diccionario que se va llenando (determinístico), y si no matchea es un rojo que decide una persona.',
-              '**NO se le pide sumar nada.** La aritmética la hace el código, siempre. Un modelo que suma es un modelo al que hay que revisarle la suma.',
-              '**SÍ se le pide una sola cosa: copiar lo que dice el papel** — por renglón: código, descripción, cantidad, unidad, precio unitario, % de descuento e importe; más las líneas del pie tal como están impresas. Transcribir, no interpretar. "Copiá esta tabla" es una tarea muchísimo más fácil y más verificable que "entendé esta factura".',
-            ],
-          },
-          {
-            t: 'nota',
-            tono: 'ok',
-            texto: '**El esquema no es una sugerencia.** La API tiene salida estructurada: se declara la forma exacta del JSON —qué campos, de qué tipo, cuáles obligatorios— y la respuesta está **obligada** a cumplirla. No es pedirle amablemente que devuelva JSON y después rezar. Lo que el esquema NO garantiza es que los números sean los correctos; para eso está el control del total.',
-          },
-          {
-            t: 'p',
-            texto: '**El lazo que se cierra solo.** El total del QR es la respuesta al final del libro. Si el pie calculado con los renglones leídos da ese número, la extracción está *demostrada* y la factura queda lista para confirmar. Si no da, **segundo intento con el modelo más capaz** — la primera pasada va con el barato y solo las que fallan escalan, así que el costo lo domina el camino barato. Si tampoco cierra, queda para cargar a mano con la diferencia marcada: nunca se carga nada roto en silencio.',
-          },
-          {
-            t: 'nota',
-            tono: 'warn',
-            texto: 'Lo que **no** se le pediría es que declare cuánta confianza tiene en cada renglón. Esa autoevaluación es poco confiable y da una falsa sensación de control: un renglón mal leído con "confianza alta" es peor que no tener el dato. **Vale más la prueba aritmética que la opinión del modelo sobre sí mismo.**',
-          },
-          {
-            t: 'p',
-            texto: '**El PDF se da vuelta y pasa a ser el mejor caso.** Hoy el PDF es el peor: no se le puede leer el QR y su encabezado va a mano. Para leer renglones es al revés — la API acepta PDF de forma nativa y un PDF de factura es texto vectorial, no una foto de un papel con sombras, arrugas y flash. Como muchos proveedores mandan la factura por mail en PDF, ese circuito (bajar del mail → subir → salen los renglones) sería el más confiable de todos, aunque su encabezado se siga tipeando.',
           },
           {
             t: 'tabla',
-            cols: ['Modelo', 'Por factura', '50 facturas/mes'],
+            cols: ['', 'Haiku 5.5 (siempre)', 'Sonnet 5.5 (solo si no cierra)'],
             filas: [
-              ['Sonnet 5 (la primera pasada)', '~US$ 0,056', '**~US$ 3**'],
-              ['Opus 5 (solo los reintentos)', '~US$ 0,094', '—'],
+              ['Precio (USD por millón de tokens)', '0,10 entrada · 0,50 salida', '2 entrada · 10 salida'],
+              ['Factura de 1 hoja (~5.000 / ~2.000 tokens)', '**~USD 0,0014**', '~USD 0,028'],
             ],
           },
           {
-            t: 'p',
-            texto: 'Las cuentas son sobre una factura de 40 renglones fotografiada (la de Bavosi tiene 3): la imagen a resolución completa pesa hasta ~4.800 tokens, la instrucción con el esquema ~1.500 y la respuesta con 40 renglones ~2.500, a US$3 por millón de entrada y US$15 de salida. **El costo no es el problema** — son unos pocos dólares por mes.',
+            t: 'nota',
+            tono: 'ok',
+            texto: '**Tope de gasto mensual** (arranca en USD 5, se cambia en «Lectura con IA»): al llegar al 80 % avisa; al llegar al tope, las facturas nuevas quedan «Tope del mes» y se cargan a mano (o se sube el tope y se leen solas). Cada llamada queda registrada con su modelo, tokens y costo.',
           },
           {
             t: 'nota',
             tono: 'warn',
-            texto: '**La decisión real: el papel sale de la máquina.** La imagen viaja a la API del modelo — los precios de los proveedores, los CUITs, los códigos. Es el único componente de todo el sistema que manda datos afuera: el importador de catálogos, la lectura del QR y todo lo demás corren en la red local. No es una objeción, es el precio del servicio, pero la decisión es del dueño.',
+            texto: '**Para que ande hace falta la clave**: en Dokploy, en la aplicación del servidor, la variable `ANTHROPIC_API_KEY` con la clave creada en platform.claude.com (con crédito cargado: la API se paga aparte de la suscripción de Claude). Sin clave la bandeja funciona igual, con la carga a mano. El control sigue mirando **la plata, no las cantidades**: los bultos hay que mirarlos.',
           },
-          {
-            t: 'p',
-            texto: '**Qué NO arregla, incluso funcionando perfecto:**',
-          },
-          {
-            t: 'lista',
-            items: [
-              '**El bulto contra la unidad.** El modelo va a leer "4.00" y "CUM10x1kg" fielmente; decidir si son 4 cajas o 40 kg es conocimiento del negocio, no lectura. Es justo el punto ciego del control del total (la plata cierra igual), así que la guarda contra el costo histórico de la presentación sigue siendo necesaria.',
-              '**El flete y los envases retornables.** El modelo transcribe el renglón sin problema; el sistema sigue sin tener dónde guardarlo. **Esto hay que resolverlo ANTES**: si no, cada factura con flete falla el cuadre por más perfecta que sea la lectura.',
-              '**La compresión del papel.** Lo que se guarda hoy está comprimido a 2.200 px de lado largo, justo debajo del límite de 2.576 px de la API, así que sirve. Si algún día se baja esa compresión para ahorrar base, la letra chica de los renglones se pierde y la lectura empeora sin que nada avise.',
-            ],
-          },
-          {
-            t: 'p',
-            texto: '**Qué falta para poder empezar** — dos cosas, y una es del dueño:',
-          },
-          {
-            t: 'lista',
-            items: [
-              '**Decidir que el papel puede salir de la máquina**, y sacar una **clave de API de Anthropic** (console.anthropic.com, con tarjeta). Esa clave es una credencial de la cuenta del dueño y factura a su nombre: no la puede sacar nadie más.',
-              '**Resolver los renglones que no son mercadería** (flete, envases retornables, redondeo). Hoy `comprobante_items` exige un producto, así que ese renglón no se puede guardar. Es una decisión de diseño de una sola vez: un flag de "concepto no inventariable" en el ítem —más honesto— o productos de servicio designados.',
-              'Con esas dos, el resto es construirlo: el módulo que llama a la API, el esquema de respuesta, el reintento con escalada de modelo, y el diccionario de códigos del proveedor que aprende de cada confirmación (`producto_proveedores.codigoProveedor` ya existe y es la llave).',
-            ],
-          },
-          { t: 'ruta', texto: 'Lo que ya funciona está en Formato de Compra › "Facturas por procesar" · esta ficha es solo el diseño de la etapa que sigue' },
+          { t: 'ruta', texto: 'Compras › Procesamiento de facturas › Lectura con IA · en el celular: erp.saboryaroma.com/facturas (o desde el menú del Cash Flow)' },
         ],
       },
       {

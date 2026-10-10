@@ -55,6 +55,44 @@ export function LecturaFacturaModal({ id }) {
   };
   useEffect(() => { cargar(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* Mientras la IA la lee, se pregunta cada 4 s; al terminar se recarga (trae el encabezado leído). */
+  const iaLeyendo = l?.iaEstado === 'en_cola' || l?.iaEstado === 'leyendo';
+  useEffect(() => {
+    if (!iaLeyendo) return undefined;
+    const t = setInterval(async () => {
+      try {
+        const r = await store.lecturaFactura(id);
+        if (r.iaEstado !== 'en_cola' && r.iaEstado !== 'leyendo') cargar();
+      } catch { /* se reintenta en el próximo tick */ }
+    }, 4000);
+    return () => clearInterval(t);
+  }, [iaLeyendo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const leerConIa = async () => {
+    try {
+      await store.leerFacturasConIa([id]);
+      setL((x) => ({ ...x, iaEstado: 'en_cola' }));
+      toast('La IA la está leyendo.', 'ok');
+    } catch (e) {
+      toast(e?.data?.message || 'No se pudo mandar a leer.', 'err');
+    }
+  };
+
+  /** El proveedor del papel no está: se da de alta con lo que leyó la IA (y la persona confirma). */
+  const altaProveedor = () => {
+    const e = l?.ia?.encabezado ?? {};
+    openModal('proveedorForm', {
+      inicial: {
+        nombre: e.razonSocialEmisor || '', cuit: e.cuitEmisor || l.cuit || '', direccion: e.domicilioEmisor || '',
+        condicionIva: e.condicionIvaEmisor || 'responsable_inscripto',
+      },
+      alCrear: async (prov) => {
+        try { await store.guardarLecturaFactura(id, { proveedorId: prov.id }); } catch { /* se elige a mano */ }
+        openModal('lecturaFactura', { id });
+      },
+    });
+  };
+
   const patch = useMemo(() => ({
     proveedorId: proveedorId ? Number(proveedorId) : 0,
     sucursalId: sucursalId ? Number(sucursalId) : 0,
@@ -171,8 +209,8 @@ export function LecturaFacturaModal({ id }) {
     <ModalShell
       title="Factura de la bandeja"
       subtitle={l.leido
-        ? 'El encabezado salió del QR del papel: es exacto, no interpretado'
-        : 'Sin QR legible: el encabezado se carga a mano'}
+        ? 'El encabezado salió del QR del papel: es exacto'
+        : 'Sin QR: el encabezado sale de lo que lee la IA (revisalo)'}
       wide
       onClose={closeModal}
       footer={footer}
@@ -183,9 +221,26 @@ export function LecturaFacturaModal({ id }) {
         <div className={cx(s.callout, s.warn)}>
           Para poder cargarla falta <strong>{faltan.join(', ')}</strong>.
           {!l.proveedorId && l.cuit && (
-            <> El CUIT <span className={s.mono}>{l.cuit}</span> no está en ningún proveedor:
-              cargalo en su ficha (Proveedores) y la próxima factura se reconoce sola.</>
+            <> El CUIT <span className={s.mono}>{l.cuit}</span> no está en ningún proveedor{l.ia?.encabezado?.razonSocialEmisor ? <> (el papel dice <strong>{l.ia.encabezado.razonSocialEmisor}</strong>)</> : ''}:
+              {' '}<button type="button" className={s.linkBtn} onClick={altaProveedor}>darlo de alta con los datos del papel</button>
+              {' '}y la próxima factura se reconoce sola.</>
           )}
+        </div>
+      )}
+
+      {/* LA LECTURA CON IA (0153): en qué anda. */}
+      {editable && (l.archivos || []).length > 0 && (
+        <div className={cx(s.callout, l.iaEstado === 'lista' ? (l.ia?.control?.cierra ? s.ok : s.warn) : (l.iaEstado === 'error' || l.iaEstado === 'tope') ? s.warn : s.info)}
+          style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: 1, minWidth: 220 }}>
+            {iaLeyendo && <><strong>La IA está leyendo esta factura…</strong> en unos segundos se completa sola.</>}
+            {l.iaEstado === 'lista' && (l.ia?.control?.cierra
+              ? <><strong>Leída por la IA: la cuenta cierra.</strong> {l.ia.renglones?.length} renglones; al procesar se precargan.</>
+              : <><strong>Leída por la IA, pero la cuenta no cierra:</strong> {(l.ia?.control?.problemas || []).join(' ')} Revisala al procesar.</>)}
+            {(l.iaEstado === 'error' || l.iaEstado === 'tope') && <><strong>La IA no pudo leerla:</strong> {l.ia?.error}</>}
+            {!l.iaEstado && 'Todavía no se leyó con la IA.'}
+          </span>
+          {!iaLeyendo && <button type="button" className={cx(s.btn, s['btn-ghost'], s['btn-sm'])} onClick={leerConIa}>{l.iaEstado === 'lista' ? 'Leer de nuevo' : 'Leer con IA'}</button>}
         </div>
       )}
 

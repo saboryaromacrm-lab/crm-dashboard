@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 import { httpClient } from '@core/services/httpClient.js';
@@ -17,32 +17,52 @@ function atrasoDe(c) {
   return Math.max(0, Math.round((new Date(c.fechaCarga) - new Date(c.fecha)) / 86400000));
 }
 
-/* ---- Alta / edición de proveedor ---- */
-export function ProveedorFormModal({ provId }) {
+/*
+ * ---- Alta / edición de proveedor ----
+ * `inicial` precarga un alta con lo que leyó la IA del papel (0153: nombre,
+ * CUIT, condición de IVA y domicilio); `alCrear(proveedor)` sigue el trámite
+ * (la factura de la bandeja queda con su proveedor). La IA propone, la
+ * persona confirma: nunca se crea solo.
+ */
+export function ProveedorFormModal({ provId, inicial = null, alCrear = null }) {
   const { store, act, closeModal, toast } = useProductos();
   const prov = provId != null ? store.getProveedor(provId) : null;
   const ed = !!prov;
+  const base = prov || inicial || {};
+  const enVuelo = useRef(false);
 
-  const [nombre, setNombre] = useState(prov?.nombre || '');
-  const [cuit, setCuit] = useState(prov?.cuit || '');
-  const [condicionIva, setCondicionIva] = useState(prov?.condicionIva || 'responsable_inscripto');
-  const [telefono, setTelefono] = useState(prov?.telefono || '');
-  const [email, setEmail] = useState(prov?.email || '');
-  const [direccion, setDireccion] = useState(prov?.direccion || '');
+  const [nombre, setNombre] = useState(base.nombre || '');
+  const [cuit, setCuit] = useState(base.cuit || '');
+  const [condicionIva, setCondicionIva] = useState(base.condicionIva || 'responsable_inscripto');
+  const [telefono, setTelefono] = useState(base.telefono || '');
+  const [email, setEmail] = useState(base.email || '');
+  const [direccion, setDireccion] = useState(base.direccion || '');
   // Clasificación compartida con el módulo Gastos: un proveedor, un CUIT, una
   // cuenta. Los flags solo definen en qué buscador aparece.
   const [proveeMercaderia, setProveeMercaderia] = useState(prov ? prov.proveeMercaderia !== false : true);
   const [proveeGastos, setProveeGastos] = useState(!!prov?.proveeGastos);
 
-  const guardar = () => {
+  const guardar = async () => {
     if (!nombre.trim()) { toast('El nombre comercial es obligatorio.', 'err'); return; }
     const o = { nombre, cuit, condicionIva, telefono, email, direccion, proveeMercaderia, proveeGastos };
-    act(prov ? store.editarProveedor(prov.id, o) : store.crearProveedor(o), prov ? 'Proveedor actualizado.' : 'Proveedor creado.');
+    if (!alCrear || prov) {
+      act(prov ? store.editarProveedor(prov.id, o) : store.crearProveedor(o), prov ? 'Proveedor actualizado.' : 'Proveedor creado.');
+      return;
+    }
+    if (enVuelo.current) return;
+    enVuelo.current = true;
+    try {
+      const r = await store.crearProveedor(o);
+      if (!r?.ok) { toast(r?.error || 'No se pudo crear el proveedor.', 'err'); return; }
+      toast(`${nombre.trim()} creado.`, 'ok');
+      await alCrear(r);
+    } finally { enVuelo.current = false; }
   };
 
   return (
     <ModalShell
       title={ed ? 'Editar proveedor' : 'Nuevo proveedor'}
+      subtitle={!ed && inicial ? 'Con los datos que leyó la IA del papel: revisalos antes de crear' : undefined}
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },

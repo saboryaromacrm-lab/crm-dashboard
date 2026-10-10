@@ -15,8 +15,6 @@
 import { httpClient, HttpError } from '@core/services/httpClient.js';
 import { leerClave, escribirClave, leerSesion } from '@core/auth/sesion.js';
 import { num, fmtTam } from '../domain/format.js';
-import { leerRenglonesPdf } from '../domain/facturas/leerRenglones.js';
-import { pdfjsDelNavegador } from '../domain/facturas/lineasPdf.js';
 
 const CTX_KEY = 'crm_inv_ctx';
 
@@ -1328,51 +1326,17 @@ const vincularLecturaFactura = (id, comprobanteId) => _mutate(() => httpClient.p
  * promesa con una URL `blob:` local, bajada con el Bearer y cacheada.
  */
 const papelFactura = (archivoId) => httpClient.urlProtegida(`/facturas/archivos/${archivoId}`);
-/**
- * LA PROPUESTA DE CARGA leída del PDF digital: renglones + pie + encabezado.
- *
- * SE LEE EN ESTE NAVEGADOR (28/9/2026): el servidor atiende las cajas y leer
- * un PDF grande las frenaba. Acá se baja el PDF (con la sesión), pdf.js lo
- * lee en su propio hilo con la receta del formato del proveedor, y al
- * servidor solo viaja lo leído (unos KB) para reconocer los productos. Solo
- * lectura — no toca nada; el alta precarga y la persona confirma.
+/*
+ * LA LECTURA CON IA (0153): la hace el servidor (la clave de la IA nunca llega
+ * al navegador). La factura se lee sola al subirla; acá se pide leer (o
+ * volver a leer), la propuesta de carga y que la IA elija entre candidatos.
  */
-/** El PDF de una factura de la bandeja, bajado con la sesión (para leerlo acá). */
-async function pdfDeLectura(id) {
-  const lec = await lecturaFactura(id);
-  const pdf = (lec.archivos || []).find((a) => a.mime === 'application/pdf');
-  if (!pdf) {
-    throw new Error((lec.archivos || []).length
-      ? 'Esta factura es una foto: por ahora los renglones se leen solo de PDFs digitales. Se carga a mano.'
-      : 'Esta factura ya no tiene el archivo (se borra al cargarla). Agregala de nuevo para leerla.');
-  }
-  const datos = await httpClient.urlProtegida(`/facturas/archivos/${pdf.id}`).then((u) => fetch(u)).then((r) => r.arrayBuffer());
-  return { lec, datos };
-}
-
-async function leerRenglonesLectura(id) {
-  const [{ lec, datos }, pdfjs] = await Promise.all([pdfDeLectura(id), pdfjsDelNavegador()]);
-  // El proveedor viaja en el detalle: su formato y, si la armó, su estructura propia.
-  const leida = await leerRenglonesPdf({ pdfjs, datos, proveedor: lec });
-  const extra = { fuente: leida.fuente, control: leida.control ?? null, confirmada: !!leida.confirmada, texto: leida.texto };
-  if (!leida.formato) {
-    return { receta: null, cierra: false, encabezado: null, renglones: [], pie: null, avisos: leida.avisos, ...extra };
-  }
-  const propuesta = await httpClient.post(`/facturas/lecturas/${id}/emparejar`, {
-    receta: leida.formato,
-    encabezado: leida.encabezado,
-    renglones: leida.renglones,
-    pie: leida.pie,
-    avisos: leida.avisos,
-  });
-  return { ...propuesta, ...extra };
-}
-
-/* ---- La guía por proveedor de Procesamiento de facturas (28/9/2026) ---- */
-const facturasPorProveedor = () => httpClient.get('/facturas/proveedores');
-const formatoFacturaProveedor = (proveedorId, formato) => httpClient.put(`/facturas/proveedores/${proveedorId}/formato`, { formato });
-/** La estructura propia que armó el asistente (queda en uso para ese proveedor). */
-const plantillaFacturaProveedor = (proveedorId, plantilla) => httpClient.put(`/facturas/proveedores/${proveedorId}/plantilla`, { plantilla });
+const iaFacturas = () => httpClient.get('/facturas/ia/estado');
+const iaConfigFacturas = (o) => httpClient.put('/facturas/ia/config', o);
+/** Leer estas facturas con la IA; sin ids, todas las pendientes sin leer. */
+const leerFacturasConIa = (ids) => httpClient.post('/facturas/ia/leer', ids?.length ? { ids } : {});
+const propuestaIa = (id) => httpClient.get(`/facturas/lecturas/${id}/propuesta`);
+const elegirConIa = (id) => httpClient.post(`/facturas/lecturas/${id}/elegir`, {});
 const espacioFacturas = () => httpClient.get('/facturas/espacio');
 const liberarFacturas = () => httpClient.post('/facturas/liberar', {});
 
@@ -1473,7 +1437,7 @@ export const inventoryStore = {
   facturasReferenciables,
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
-  papelFactura, leerRenglonesLectura, facturasPorProveedor, formatoFacturaProveedor, plantillaFacturaProveedor, pdfDeLectura, espacioFacturas, liberarFacturas,
+  papelFactura, iaFacturas, iaConfigFacturas, leerFacturasConIa, propuestaIa, elegirConIa, espacioFacturas, liberarFacturas,
   pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
   enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria, costosEntradaCafeteria, depositoCafeteria,
   comprasCafeteria, gastosCafeteria,

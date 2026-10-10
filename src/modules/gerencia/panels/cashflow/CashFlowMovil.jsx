@@ -729,7 +729,7 @@ function ConceptoForm({ concepto, onCerrar, onHecho, avisar }) {
 /* ==================================================================== *
  * Menú e instalación
  * ==================================================================== */
-function Menu({ onCerrar, irAlErp, irAResultados, salir, instalar, nombre }) {
+function Menu({ onCerrar, irAlErp, irAResultados, irAFacturas, salir, instalar, nombre }) {
   return (
     <ModalShell title="Cash Flow" subtitle={nombre ? `Entraste como ${nombre}` : undefined} onClose={onCerrar} footer={[{ texto: 'Cerrar', onClick: onCerrar }]}>
       <div className={c.hoja}>
@@ -741,6 +741,12 @@ function Menu({ onCerrar, irAlErp, irAResultados, salir, instalar, nombre }) {
           <button type="button" className={c.opcion} onClick={irAResultados}>
             <span className={c.accionIcono} data-tono="verde"><BarChartRoundedIcon /></span>
             <span>Ver Resultados<small>El estado de resultados del mes, en neto</small></span>
+          </button>
+        )}
+        {irAFacturas && (
+          <button type="button" className={c.opcion} onClick={irAFacturas}>
+            <span className={c.accionIcono} data-tono="verde"><EmailOutlinedIcon /></span>
+            <span>Cargar facturas<small>Sacale la foto: la IA la lee sola</small></span>
           </button>
         )}
         <button type="button" className={c.opcion} onClick={irAlErp}>
@@ -989,6 +995,7 @@ export function CashFlowMovil() {
           <Menu
             onCerrar={cerrar} nombre={user?.name} irAlErp={() => { setModal(null); navigate('/'); }} salir={salir} instalar={() => setModal({ tipo: 'instalar' })}
             irAResultados={can('gerencia.resultados') ? () => { setModal(null); navigate('/resultados'); } : null}
+            irAFacturas={can('compras.lecturas') ? () => { setModal(null); navigate('/facturas'); } : null}
           />
         )}
         {modal?.tipo === 'instalar' && <Instalar onCerrar={cerrar} />}

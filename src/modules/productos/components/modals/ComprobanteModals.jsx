@@ -26,6 +26,145 @@ const letraPorDefecto = (cond) => (!cond || cond === 'responsable_inscripto' ? '
 const ALICUOTAS = [0, 2.5, 5, 10.5, 21, 27];
 /** Tres decimales: los kg de una bolsa vienen con coma (22,68 kg). */
 const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+/**
+ * LO QUE LEYÓ LA IA, EN EL PASO 2 DEL ALTA (0153): el resumen (renglones, con
+ * producto, si la cuenta cierra, modelo y costo), el encabezado leído, los
+ * renglones sin producto para asociar a mano —con los parecidos primero y lo
+ * que sugiera la IA— y el detalle completo de lo leído.
+ */
+function PanelIa({ propuesta: d, cargando, leyendo, eligiendo, asociados, productos, onAplicar, onReleer, onElegir, onAsociar, onUsarEncabezado }) {
+  const estado = d?.estado ?? '';
+  const renglones = d?.renglones ?? [];
+  const sinProducto = renglones.filter((x) => !x.productoId);
+  const activos = useMemo(
+    () => productos.filter((p) => (p.estado || 'activo') === 'activo').slice().sort((a, b) => a.nombre.localeCompare(b.nombre)),
+    [productos],
+  );
+  const usd = (n) => `USD ${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 4 })}`;
+  const modelo = (m) => (/haiku/.test(m || '') ? 'Haiku' : /sonnet/.test(m || '') ? 'Sonnet' : m || '');
+  const tono = estado === 'lista' ? (d.cierra ? s.ok : s.warn) : estado === 'error' || estado === 'tope' ? s.warn : s.info;
+  return (
+    <div className={cx(s.callout, tono)} style={{ marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ flex: 1, minWidth: 220 }}>
+          {!d && cargando && 'Trayendo lo que leyó la IA…'}
+          {leyendo && <><strong>La IA está leyendo esta factura…</strong> se precarga sola en unos segundos.</>}
+          {estado === '' && d && 'Esta factura todavía no se leyó con la IA.'}
+          {(estado === 'error' || estado === 'tope') && <><strong>La IA no pudo leerla:</strong> {d.error || 'error desconocido'}</>}
+          {estado === 'lista' && (
+            <>
+              <strong>{renglones.length} renglones leídos por la IA</strong> · {renglones.length - sinProducto.length} con producto
+              {' · '}{d.cierra ? <strong>la cuenta cierra</strong> : <strong>la cuenta no cierra: revisá</strong>}
+              <span className={s.muted}> · {modelo(d.modelo)} · {usd(d.costoUsd)}</span>
+            </>
+          )}
+        </span>
+        {estado === 'lista' && <Btn small onClick={onAplicar} disabled={cargando}>Volver a precargar</Btn>}
+        {!leyendo && d && <Btn small onClick={onReleer}>{estado === 'lista' ? 'Leer de nuevo' : 'Leer con IA'}</Btn>}
+      </div>
+
+      {estado === 'lista' && d.encabezado?.numero && (
+        <div style={{ marginTop: 4 }}>
+          La IA leyó: <strong>
+            {TIPOS_COMPROBANTE[d.encabezado.tipo]?.label || d.encabezado.tipo}{' '}
+            {d.encabezado.letra} {d.encabezado.puntoVenta}-{d.encabezado.numero}
+          </strong>{d.encabezado.fecha && <> · {d.encabezado.fecha.split('-').reverse().map(Number).join('/')}</>}
+          {d.encabezado.cae && <> · CAE <span className={s.mono}>{d.encabezado.cae}</span></>}
+          <button type="button" className={s.linkBtn} style={{ marginLeft: 8 }} onClick={onUsarEncabezado}>usar este encabezado</button>
+        </div>
+      )}
+
+      {estado === 'lista' && sinProducto.length > 0 && (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ flex: 1, minWidth: 220 }}>
+              <strong>Sin producto reconocido.</strong> Asociá cada uno con el producto del sistema y <strong>se aprende al
+              guardar</strong>: la próxima factura lo reconoce sola. Si es un artículo nuevo, primero se crea en Productos.
+            </span>
+            {sinProducto.some((x) => x.candidatos?.length && !x.sugerido && !asociados[x.i]) && (
+              <Btn small onClick={onElegir} disabled={eligiendo}>{eligiendo ? 'Pensando…' : 'Que la IA elija'}</Btn>
+            )}
+          </div>
+          <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
+            {sinProducto.map((x) => (
+              <li key={x.i} style={{ marginBottom: 6 }}>
+                {x.codigo && <span className={s.mono}>{x.codigo} </span>}{x.descripcion} — {num(x.cantidad)} × {money(x.costoBulto || x.precioUnitario)}
+                {asociados[x.i] ? (
+                  <strong style={{ marginLeft: 8, color: 'var(--crm-color-success)' }}>→ {asociados[x.i]} ✓</strong>
+                ) : (
+                  <>
+                    {x.sugerido && (
+                      <span style={{ marginLeft: 8 }}>
+                        La IA sugiere <strong>{x.sugerido.nombre}</strong>{' '}
+                        <button type="button" className={s.linkBtn} onClick={() => onAsociar(x, x.sugerido.id)}>Aceptar</button>
+                      </span>
+                    )}
+                    <select
+                      style={{ marginLeft: 8, maxWidth: 280 }}
+                      defaultValue=""
+                      onChange={(e) => { if (e.target.value) onAsociar(x, e.target.value); }}
+                    >
+                      <option value="">{x.sugerido ? 'O elegí otro…' : 'Asociar con un producto…'}</option>
+                      {x.candidatos?.length > 0 && (
+                        <optgroup label="Parecidos">
+                          {x.candidatos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                        </optgroup>
+                      )}
+                      <optgroup label="Todos los productos">
+                        {activos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                      </optgroup>
+                    </select>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {d?.avisos?.length > 0 && (
+        <div style={{ marginTop: 6, color: 'var(--crm-color-warning)' }}>
+          {d.avisos.map((a, i) => <div key={i}>· {a}</div>)}
+        </div>
+      )}
+
+      {estado === 'lista' && (
+        <details style={{ marginTop: 6 }}>
+          <summary className={s.hint} style={{ cursor: 'pointer', margin: 0 }}>Ver todo lo que leyó la IA</summary>
+          <div className={s.tblScroll}>
+            <table className={s.table} style={{ fontSize: 12, marginTop: 6 }}>
+              <thead>
+                <tr><th>#</th><th>Código</th><th>Descripción</th><th className={s.num}>Cant.</th><th className={s.num}>Precio</th><th className={s.num}>Dto. %</th><th className={s.num}>Importe</th><th>Producto</th></tr>
+              </thead>
+              <tbody>
+                {renglones.map((x) => (
+                  <tr key={x.i} style={x.cierra ? undefined : { background: 'color-mix(in srgb, var(--crm-color-warning) 14%, transparent)' }}>
+                    <td>{x.i + 1}{!x.cierra && ' ⚠'}</td>
+                    <td className={s.mono}>{x.codigo || '—'}</td>
+                    <td>{x.descripcion}</td>
+                    <td className={s.num}>{num(x.cantidad)} {x.unidad}</td>
+                    <td className={s.num}>{money(x.precioUnitario)}</td>
+                    <td className={s.num}>{x.dto ? num(x.dto, 2) : '—'}</td>
+                    <td className={s.num}>{money(x.importe)}</td>
+                    <td>{x.productoNombre || asociados[x.i] || <span className={s.muted}>—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className={s.hint} style={{ margin: '4px 0 0' }}>
+            Pie leído: subtotal {money(d.pie?.subtotal)}
+            {d.pie?.bonifImporte > 0 && <> · bonificación {money(d.pie.bonifImporte)}</>}
+            {(d.pie?.ivas || []).map((x, i) => <span key={i}> · IVA {num(x.alicuota)} % {money(x.importe)}</span>)}
+            {(d.pie?.percepciones || []).map((x, i) => <span key={`p${i}`}> · {x.nombre} {money(x.importe)}</span>)}
+            {' · '}total <strong>{money(d.pie?.total)}</strong>
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
 /** Dos decimales: los importes de dinero. */
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -383,18 +522,19 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * renglón a su propio tilde. */
   const [todoCoffit, setTodoCoffit] = useState(false);
 
-  /* ---- Lectura de renglones desde el PDF digital ----
-   * Si el papel de la bandeja es un PDF con capa de texto, el backend lo lee
-   * (receta por proveedor) y devuelve una PROPUESTA: renglones, pie y
-   * encabezado. Acá solo se precarga — la persona confirma. Las fotos no
-   * tienen capa de texto: para esas el endpoint contesta 400. */
-  const [propuestaPdf, setPropuestaPdf] = useState(null);
-  const [leyendoPdf, setLeyendoPdf] = useState(false);
-  /** CAE leído del PDF (cuando el QR no se leyó y la lectura no lo trae). */
-  const [caePdf, setCaePdf] = useState('');
-  /** Códigos del papel ya asociados a mano en este alta: código → nombre. */
+  /* ---- La lectura con IA (0153) ----
+   * La IA leyó el papel en el servidor (PDF, foto o escaneo). Acá se pide la
+   * PROPUESTA —renglones con su producto, candidatos de los desconocidos y lo
+   * que sugirió la IA— y se precarga. La persona revisa y confirma. */
+  const [propuestaIa, setPropuestaIa] = useState(null);
+  const [cargandoIa, setCargandoIa] = useState(false);
+  const [eligiendoIa, setEligiendoIa] = useState(false);
+  /** CAE leído por la IA (cuando el QR no se leyó y la lectura no lo trae). */
+  const [caeIa, setCaeIa] = useState('');
+  /** Renglones del papel ya asociados a mano en este alta: número de renglón → nombre. */
   const [asociados, setAsociados] = useState({});
-  const tienePdf = !!lectura?.archivos?.some((a) => a.mime === 'application/pdf');
+  /* En la conversión de un remito los renglones ya están (son lo que entró): no se leen. */
+  const conIa = !!lectura?.id && !esConversion;
 
   /** Deriva de la MISMA lista: si el tipo INGRESA mercadería, entra siempre. */
   const permiteRecepcion = TIPOS_CON_RECEPCION.has(tipo);
@@ -754,109 +894,126 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   /** Toca UNA percepción por su índice real (lo usa la × del pie). */
   const setPerc = (i, patch) => setPercepciones((r) => r.map((p, j) => (j === i ? { ...p, ...patch } : p)));
 
-  /* ---- Leer el PDF: pedir la propuesta y precargar el formulario ---- */
+  /* ---- La lectura con IA: pedir la propuesta y precargar el formulario ---- */
 
-  /** Aplica el encabezado leído del PDF a los campos del paso 1. Es un botón
-   * aparte y no automático: si el QR ya llenó el encabezado (o alguien lo
-   * tipeó), pisarlo sin aviso sería decidir por la persona. */
-  const usarEncabezadoPdf = () => {
-    const e = propuestaPdf?.encabezado;
+  /** Aplica el encabezado leído a los campos del paso 1. Es un botón aparte y no
+   * automático: si el QR ya llenó el encabezado (o alguien lo tipeó), pisarlo
+   * sin aviso sería decidir por la persona. */
+  const usarEncabezadoIa = () => {
+    const e = propuestaIa?.encabezado;
     if (!e) return;
     if (e.tipo) setTipo(e.tipo);
     if (e.letra) setLetra(e.letra);
     if (e.puntoVenta) setPuntoVenta(e.puntoVenta);
     if (e.numero) setNumero(String(e.numero));
     if (e.fecha) setFecha(e.fecha);
-    if (e.vencimiento) setVenc(e.vencimiento);
-    if (e.cae) setCaePdf(e.cae);
-    toast('Encabezado tomado del PDF.', 'ok');
+    if (e.cae) setCaeIa(e.cae);
+    toast('Encabezado tomado de lo que leyó la IA.', 'ok');
   };
 
-  const leerPdf = async () => {
-    if (leyendoPdf || !lectura) return;
-    // Releer pisa lo cargado: si ya hay renglones armados a mano, se pregunta.
-    if (items.some((it) => it.productoId)
-      && !window.confirm('Leer el PDF reemplaza los renglones ya cargados. ¿Seguir?')) return;
-    setLeyendoPdf(true);
-    try {
-      const d = await store.leerRenglonesLectura(lectura.id);
-      setPropuestaPdf(d);
-      if (!d?.receta) {
-        toast(d?.avisos?.[0] || 'No se pudo leer el PDF.', 'err');
-        return;
-      }
-      const filas = (d.renglones || []).filter((x) => x.productoId).map((x) => ({
-        productoId: String(x.productoId),
-        bultos: String(x.cantidad),
-        porBulto: String(x.porBulto || 1),
-        costoBulto: x.costoBulto != null ? String(x.costoBulto) : '',
-        // El costo vino del papel: que el catálogo no lo pise al re-elegir.
-        descuento: String(x.dto || 0),
-        iva: String(x.iva ?? 21),
-        costoAuto: false,
-        // Para el mapeo aprendido: si el admin cambia el producto de esta fila
-        // y guarda, el código del papel queda asociado al producto NUEVO.
-        codigoProveedor: x.codigo || '',
-        descripcionPapel: x.descripcion || '',
+  /** Precarga renglones, bonificación y percepciones con la propuesta. */
+  const aplicarPropuesta = (d) => {
+    const filas = (d.renglones || []).filter((x) => x.productoId).map((x) => ({
+      productoId: String(x.productoId),
+      bultos: String(x.cantidad),
+      porBulto: String(x.porBulto || 1),
+      costoBulto: x.costoBulto != null ? String(x.costoBulto) : '',
+      // El costo vino del papel: que el catálogo no lo pise al re-elegir.
+      descuento: String(x.dto || 0),
+      iva: String(x.iva ?? store.getProducto(x.productoId)?.iva ?? 21),
+      costoAuto: false,
+      // Para el mapeo aprendido: si el admin cambia el producto de esta fila
+      // y guarda, el código del papel queda asociado al producto NUEVO.
+      codigoProveedor: x.codigoProveedor || '',
+      descripcionPapel: x.descripcion || '',
+    }));
+    setAsociados({});
+    if (filas.length) setItems(filas);
+    if (d.pie?.bonifImporte > 0 || d.pie?.bonifPct > 0) {
+      setBonifPct(d.pie.bonifPct ? String(d.pie.bonifPct) : '');
+      if (d.pie.bonifImporte > 0) setBonifManual(d.pie.bonifImporte);
+    }
+    if (d.pie?.percepciones?.length) {
+      // Tildar las configuradas del proveedor que el papel trajo: por nombre
+      // parecido o por la misma alícuota. El importe del papel manda.
+      const k = (v) => String(v || '').normalize('NFD').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      setPercepciones((prev) => prev.map((p) => {
+        const m = d.pie.percepciones.find((x) => {
+          const a = k(x.nombre); const b = k(p.nombre);
+          return (a && b && (a.includes(b) || b.includes(a)))
+            || (x.alicuota && Number(p.alicuota) === Number(x.alicuota));
+        });
+        return m ? { ...p, aplicar: true, importeManual: m.importe } : p;
       }));
-      setAsociados({});
-      if (filas.length) setItems(filas);
-      if (d.pie?.bonifImporte > 0) {
-        setBonifPct(d.pie.bonifPct != null ? String(d.pie.bonifPct) : '');
-        setBonifManual(d.pie.bonifImporte);
+    }
+    return filas.length;
+  };
+
+  /** Pide la propuesta; con `aplicar`, precarga (si hay renglones a mano, pregunta antes). */
+  const cargarPropuesta = async ({ aplicar = false, preguntar = false } = {}) => {
+    if (!conIa || cargandoIa) return;
+    setCargandoIa(true);
+    try {
+      const d = await store.propuestaIa(lectura.id);
+      setPropuestaIa(d);
+      if (aplicar && d.estado === 'lista' && d.renglones?.length) {
+        if (preguntar && items.some((it) => it.productoId)
+          && !window.confirm('Esto reemplaza los renglones ya cargados con lo que leyó la IA. ¿Seguir?')) return;
+        const n = aplicarPropuesta(d);
+        toast(`${d.renglones.length} renglones leídos por la IA (${n} con producto).`, 'ok');
       }
-      if (d.pie?.percepciones?.length) {
-        // Tildar las configuradas del proveedor que el papel trajo: por nombre
-        // parecido o por la misma alícuota. El importe del papel manda.
-        const k = (v) => String(v || '').normalize('NFD').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-        setPercepciones((prev) => prev.map((p) => {
-          const m = d.pie.percepciones.find((x) => {
-            const a = k(x.nombre); const b = k(p.nombre);
-            return (a && b && (a.includes(b) || b.includes(a)))
-              || (x.alicuota != null && Number(p.alicuota) === Number(x.alicuota));
-          });
-          return m ? { ...p, aplicar: true, importeManual: m.importe } : p;
-        }));
-      }
-      const conProd = filas.length;
-      toast(`${d.renglones.length} renglones leídos del PDF (${conProd} con producto).`, 'ok');
     } catch (err) {
-      setPropuestaPdf(null);
-      toast(err?.message || 'No se pudo leer el PDF.', 'err');
+      toast(err?.data?.message || err?.message || 'No se pudo traer lo que leyó la IA.', 'err');
     } finally {
-      setLeyendoPdf(false);
+      setCargandoIa(false);
     }
   };
 
-  /*
-   * LA APP ARMA LA ESTRUCTURA SOLA (28/9/2026, pedido del dueño). Si el
-   * proveedor no tiene estructura, el PDF se leyó con la lectura automática:
-   * si cerró con el papel, se ofrece dejarla como la suya; si no, se abre el
-   * asistente para marcar las columnas una vez. Al guardar la estructura, el
-   * asistente vuelve a abrir esta misma factura para leerla con ella.
-   */
-  const usarLecturaAutomatica = async () => {
+  /* Al abrir el alta desde la bandeja: si la IA ya la leyó, se precarga sola. */
+  useEffect(() => {
+    if (conIa) cargarPropuesta({ aplicar: lectura.iaEstado === 'lista' });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Mientras la IA la está leyendo, se pregunta cada 4 s y se precarga al terminar. */
+  const iaLeyendo = propuestaIa?.estado === 'en_cola' || propuestaIa?.estado === 'leyendo';
+  useEffect(() => {
+    if (!iaLeyendo) return undefined;
+    const t = setInterval(() => cargarPropuesta({ aplicar: true, preguntar: true }), 4000);
+    return () => clearInterval(t);
+  }, [iaLeyendo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Volver a leer con la IA (o leerla por primera vez). */
+  const releerIa = async () => {
     try {
-      await store.formatoFacturaProveedor(parseInt(provId, 10), 'auto');
-      setPropuestaPdf((d) => (d ? { ...d, confirmada: true } : d));
-      toast('Listo: las facturas de este proveedor se van a leer solas.', 'ok');
-    } catch (e) {
-      toast(e?.data?.message || 'No se pudo guardar.', 'err');
+      await store.leerFacturasConIa([lectura.id]);
+      setPropuestaIa({ estado: 'en_cola', renglones: [], avisos: [] });
+      toast('La IA la está leyendo: en unos segundos se precarga sola.', 'ok');
+    } catch (err) {
+      toast(err?.data?.message || 'No se pudo mandar a leer.', 'err');
     }
   };
-  const abrirAsistente = () => openModal('asistenteFactura', {
-    proveedorId: parseInt(provId, 10),
-    proveedorNombre: provElegido?.nombre || '',
-    lecturaId: lectura.id,
-    volver: { proveedorId: provId, lectura },
-  });
+
+  /** «Que la IA elija» entre los candidatos de los renglones sin producto: quedan como sugerencias. */
+  const elegirIa = async () => {
+    if (eligiendoIa) return;
+    setEligiendoIa(true);
+    try {
+      const d = await store.elegirConIa(lectura.id);
+      setPropuestaIa(d);
+      const n = (d.renglones || []).filter((x) => x.sugerido).length;
+      toast(n ? `La IA sugirió ${n} producto(s): revisalos y aceptalos.` : 'La IA no encontró ninguno que sea claramente el mismo.', n ? 'ok' : 'err');
+    } catch (err) {
+      toast(err?.data?.message || 'No se pudo pedir a la IA.', 'err');
+    } finally {
+      setEligiendoIa(false);
+    }
+  };
 
   /**
-   * ASOCIAR A MANO un renglón que la lectura no reconoció: el admin elige el
-   * producto del sistema y el renglón se agrega al alta con el código del
-   * papel adentro. Al GUARDAR, ese par (código → producto) queda aprendido y
-   * la próxima factura lo reconoce sola — el trabajo manual es solo la primera
-   * vez que aparece cada artículo.
+   * ASOCIAR A MANO un renglón que no se reconoció: el admin elige el producto
+   * del sistema (o acepta el que sugirió la IA) y el renglón se agrega al alta
+   * con el código del papel adentro. Al GUARDAR, ese par (código → producto)
+   * queda aprendido y la próxima factura lo reconoce sola.
    */
   const asociarRenglon = (ren, prodId) => {
     const prod = store.getProducto(parseInt(prodId, 10));
@@ -868,15 +1025,15 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       porBulto: entry ? String(entry.cantidad || 1) : (prod.tipo === 'entero' ? String(prod.unidadesPorBulto || 1) : '1'),
       costoBulto: ren.costoBulto != null ? String(ren.costoBulto) : '',
       descuento: String(ren.dto || 0),
-      iva: String(ren.iva ?? 21),
+      iva: String(ren.iva ?? prod.iva ?? 21),
       costoAuto: false,
-      codigoProveedor: ren.codigo || '',
+      codigoProveedor: ren.codigoProveedor || '',
       descripcionPapel: ren.descripcion || '',
     };
     // Las filas vacías de relleno se van; las cargadas se quedan.
     setItems((prev) => [...prev.filter((it) => it.productoId), fila]);
-    setAsociados((a) => ({ ...a, [ren.codigo]: prod.nombre }));
-    toast(`${prod.nombre} agregado. Al guardar, el código ${ren.codigo} queda aprendido.`, 'ok');
+    setAsociados((a) => ({ ...a, [ren.i]: prod.nombre }));
+    toast(`${prod.nombre} agregado. Al guardar, queda aprendido para las próximas facturas.`, 'ok');
   };
   /** Cuál de los dos modales chicos del pie está abierto: null | 'bonificacion' | 'percepciones'. */
   const [modalPie, setModalPie] = useState(null);
@@ -1289,7 +1446,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         letra, puntoVenta, numero, fecha, fechaCarga,
         vencimientoPago: venc || null,
         observaciones: obs.trim(),
-        cae: lectura?.cae || caePdf || undefined,
+        cae: lectura?.cae || caeIa || undefined,
         lecturaId: lectura?.id,
         bonificacion: Number(bonifPct) || 0,
         bonificacionImporte: bonifImporte,
@@ -1335,7 +1492,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       vencimientoPago: venc || null, observaciones: obs.trim(), items: parsed,
       // De la bandeja: el CAE del QR (o el leído del PDF, si el QR no se pudo)
       // y la lectura que este comprobante cierra en la misma transacción.
-      cae: lectura?.cae || caePdf || undefined,
+      cae: lectura?.cae || caeIa || undefined,
       lecturaId: lectura?.id,
       // La factura que esta nota ajusta ('0' = el usuario dijo que no corresponde).
       refComprobanteId: esNota && refId && refId !== '0' ? Number(refId) : undefined,
@@ -1458,7 +1615,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           formulario que se está llenando. */}
       {lectura?.archivos?.length > 0 && (
         <div className={cx(s.callout)} style={{ marginBottom: 'var(--crm-space-3)' }}>
-          <strong>Esta factura vino de la bandeja.</strong> El encabezado salió del QR del papel
+          <strong>Esta factura vino de la bandeja.</strong> El encabezado salió {lectura.leido ? 'del QR del papel' : 'de lo que leyó la IA'}
           {lectura.cae && <> · CAE <span className={s.mono}>{lectura.cae}</span></>}.{' '}
           {/* `window.open` con la URL blob YA BAJADA (25/8): el href crudo a la
               API recibía 401 — un link no manda el token de la sesión. */}
@@ -1694,128 +1851,14 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       <>
       <div className={s['section-title']}>Ítems</div>
 
-      {/* El papel es un PDF digital: los renglones se LEEN, no se tipean. */}
-      {tienePdf && (
-        <div className={cx(s.callout, s.info)} style={{ marginBottom: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <span>
-              Este papel es un <strong>PDF digital</strong>: los renglones se pueden leer directo del archivo.
-            </span>
-            <Btn small variant="btn-primary" onClick={leerPdf} disabled={leyendoPdf}>
-              {leyendoPdf ? 'Leyendo…' : propuestaPdf ? 'Releer el PDF' : 'Leer renglones del PDF'}
-            </Btn>
-          </div>
-
-          {propuestaPdf?.receta && (
-            <div style={{ marginTop: 8 }}>
-              <div>
-                <strong>{propuestaPdf.renglones.length} renglones leídos</strong>
-                {' '}· {propuestaPdf.renglones.filter((x) => x.productoId).length} con producto propuesto
-                {propuestaPdf.cierra && <> · <strong>el total cierra con el papel</strong></>}
-                {propuestaPdf.fuente === 'automatico' && <span className={s.muted}> · lectura automática</span>}
-                {propuestaPdf.fuente === 'plantilla' && <span className={s.muted}> · estructura propia</span>}
-              </div>
-
-              {/* La lectura automática cerró con el papel: se ofrece dejarla como la estructura del proveedor. */}
-              {propuestaPdf.fuente === 'automatico' && propuestaPdf.control?.cierra && !propuestaPdf.confirmada && provId && (
-                <div className={cx(s.callout, s.ok)} style={{ marginTop: 6, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span style={{ flex: 1, minWidth: 220 }}>
-                    Se leyó sola y la suma de los renglones <strong>cierra con el subtotal del papel</strong>.
-                    ¿Leer así todas las facturas de {provElegido?.nombre || 'este proveedor'}?
-                  </span>
-                  <Btn small variant="btn-primary" onClick={usarLecturaAutomatica}>Sí, usar la lectura automática</Btn>
-                </div>
-              )}
-              {/* No cerró: los renglones pueden estar incompletos; la salida es marcar las columnas una vez. */}
-              {(propuestaPdf.fuente === 'automatico' || propuestaPdf.fuente === 'plantilla') && propuestaPdf.control && !propuestaPdf.control.cierra && provId && (
-                <div className={cx(s.callout, s.warn)} style={{ marginTop: 6, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <span style={{ flex: 1, minWidth: 220 }}>
-                    La lectura <strong>no cierra con el papel</strong>: revisá los renglones, o armá la estructura de este
-                    proveedor marcando las columnas una vez.
-                  </span>
-                  <Btn small onClick={abrirAsistente}>{propuestaPdf.fuente === 'plantilla' ? 'Rehacer la estructura' : 'Armar la estructura'}</Btn>
-                </div>
-              )}
-
-              {propuestaPdf.encabezado?.numero && (
-                <div style={{ marginTop: 4 }}>
-                  El PDF dice: <strong>
-                    {TIPOS_COMPROBANTE[propuestaPdf.encabezado.tipo]?.label || propuestaPdf.encabezado.tipo}{' '}
-                    {propuestaPdf.encabezado.letra} {propuestaPdf.encabezado.puntoVenta}-{propuestaPdf.encabezado.numero}
-                  </strong>{' '}· {fmtFecha(propuestaPdf.encabezado.fecha)}
-                  {propuestaPdf.encabezado.cae && <> · CAE <span className={s.mono}>{propuestaPdf.encabezado.cae}</span></>}
-                  <button type="button" className={s.linkBtn} style={{ marginLeft: 8 }} onClick={usarEncabezadoPdf}>
-                    usar este encabezado
-                  </button>
-                </div>
-              )}
-
-              {propuestaPdf.renglones.some((x) => !x.productoId) && (
-                <div style={{ marginTop: 6 }}>
-                  <strong>Sin producto reconocido.</strong> Asociá cada uno con el producto del sistema
-                  (aunque tenga otro nombre) y <strong>se aprende al guardar</strong>: la próxima factura
-                  lo reconoce sola. Si es un artículo nuevo, primero se crea en Productos.
-                  <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
-                    {propuestaPdf.renglones.filter((x) => !x.productoId).map((x) => (
-                      <li key={x.codigo} style={{ marginBottom: 4 }}>
-                        <span className={s.mono}>{x.codigo}</span> {x.descripcion} — {money(x.importe)}
-                        {asociados[x.codigo] ? (
-                          <strong style={{ marginLeft: 8, color: 'var(--crm-color-success)' }}>
-                            → {asociados[x.codigo]} ✓
-                          </strong>
-                        ) : (
-                          <select
-                            style={{ marginLeft: 8, maxWidth: 260 }}
-                            defaultValue=""
-                            onChange={(e) => { if (e.target.value) asociarRenglon(x, e.target.value); }}
-                          >
-                            <option value="">Asociar con un producto…</option>
-                            {store.state.productos
-                              .filter((p) => (p.estado || 'activo') === 'activo')
-                              .slice()
-                              .sort((a, b) => a.nombre.localeCompare(b.nombre))
-                              .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                          </select>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {propuestaPdf.avisos?.length > 0 && (
-                <div style={{ marginTop: 6, color: 'var(--crm-color-warning)' }}>
-                  {propuestaPdf.avisos.map((a, i) => <div key={i}>· {a}</div>)}
-                </div>
-              )}
-
-              <details style={{ marginTop: 6 }}>
-                <summary className={s.hint} style={{ cursor: 'pointer', margin: 0 }}>Ver el texto extraído del PDF</summary>
-                <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'auto', margin: '6px 0 0' }}>
-                  {propuestaPdf.texto}
-                </pre>
-              </details>
-            </div>
-          )}
-          {propuestaPdf && !propuestaPdf.receta && (
-            <div style={{ marginTop: 8, color: 'var(--crm-color-warning)' }}>
-              {propuestaPdf.avisos?.map((a, i) => <div key={i}>· {a}</div>)}
-              {propuestaPdf.fuente && provId && (
-                <div style={{ marginTop: 6 }}>
-                  <Btn small variant="btn-primary" onClick={abrirAsistente}>Armar la estructura con el asistente</Btn>
-                </div>
-              )}
-              {propuestaPdf.texto && (
-                <details style={{ marginTop: 6 }}>
-                  <summary className={s.hint} style={{ cursor: 'pointer', margin: 0 }}>Ver el texto extraído</summary>
-                  <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'auto', margin: '6px 0 0' }}>
-                    {propuestaPdf.texto}
-                  </pre>
-                </details>
-              )}
-            </div>
-          )}
-        </div>
+      {/* LA LECTURA CON IA (0153): lo que leyó del papel, con lo que falta resolver. */}
+      {conIa && (
+        <PanelIa
+          propuesta={propuestaIa} cargando={cargandoIa} leyendo={iaLeyendo} eligiendo={eligiendoIa}
+          asociados={asociados} productos={store.state.productos}
+          onAplicar={() => cargarPropuesta({ aplicar: true, preguntar: true })}
+          onReleer={releerIa} onElegir={elegirIa} onAsociar={asociarRenglon} onUsarEncabezado={usarEncabezadoIa}
+        />
       )}
       {esConversion ? (
         <div className={s.hint} style={{ marginTop: 0 }}>

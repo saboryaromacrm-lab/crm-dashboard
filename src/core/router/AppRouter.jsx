@@ -19,6 +19,8 @@ import { RouteErrorBoundary } from './RouteErrorBoundary.jsx';
 const CashFlowMovil = lazy(() => import('@modules/gerencia/panels/cashflow/CashFlowMovil.jsx').then((m) => ({ default: m.CashFlowMovil })));
 /* Resultados para el celular (9/10/2026, 0152): para mirar el mes desde el teléfono. */
 const ResultadosMovil = lazy(() => import('@modules/gerencia/panels/resultados/ResultadosMovil.jsx').then((m) => ({ default: m.ResultadosMovil })));
+/* Facturas para el celular (9/10/2026, 0153): sacarle la foto al papel; la IA la lee. */
+const FacturasMovil = lazy(() => import('@modules/productos/panels/FacturasMovil.jsx').then((m) => ({ default: m.FacturasMovil })));
 
 /**
  * APPLICATION ROUTER
@@ -59,6 +61,11 @@ function buildRouter() {
           // Ídem (0152): el estado de resultados en el teléfono; solo `gerencia.resultados`.
           path: 'resultados',
           element: <ResultadosMovil />,
+        },
+        {
+          // Ídem (0153): subir facturas desde el teléfono; solo superadmin y admin.
+          path: 'facturas',
+          element: <FacturasMovil />,
         },
         {
           element: <MainLayout />,

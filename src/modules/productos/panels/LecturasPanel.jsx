@@ -1,7 +1,7 @@
 /**
  * PROCESAMIENTO DE FACTURAS — la bandeja de papeles subidos (Compras).
  * (Se llamaba "Por procesar" hasta el 28/9/2026.) Dos pestañas: la bandeja de
- * facturas y la guía de PROVEEDORES (cuáles ya tienen estructura de lectura).
+ * facturas y LECTURA CON IA (0153): el consumo, el tope y los últimos usos.
  * ============================================================================
  * Separa dos momentos que hasta ahora eran uno solo y no tienen por qué serlo:
  * **recibir el papel** y **cargar la factura**. La cajera saca la foto cuando
@@ -9,11 +9,11 @@
  * viernes. Ese desacople es lo que ahorra tiempo de verdad — el papel deja de
  * perderse entre el mostrador y el escritorio.
  *
- * El encabezado NO se tipea: sale del **QR de la RG 4892** que trae toda factura
- * electrónica, y que el navegador lee solo (CUIT, tipo, punto de venta, número,
- * fecha, total y CAE). El detalle de renglones sí se carga a mano, y ahí el
- * total del QR sirve de control: si los renglones cierran contra ese número, la
- * carga está demostrada.
+ * LA IA LEE EL PAPEL (0153): al subirlo, el servidor se lo manda a la IA
+ * (PDF, foto o escaneo) y vuelve con el encabezado, los renglones y el pie,
+ * con la cuenta controlada. El **QR de la RG 4892**, si se leyó, manda en el
+ * encabezado (es exacto) y su total es el control final. Nada se carga solo:
+ * la persona revisa en el alta y confirma.
  *
  * El semáforo lo calcula la API: **rojo frena** (no hay forma de resolverlo
  * solo: falta el proveedor, el número, la sucursal, o está duplicada),
@@ -28,7 +28,7 @@ import { money, fmtFecha } from '../domain/format.js';
 import { ESTADOS_LECTURA, TIPOS_COMPROBANTE } from '../domain/constants.js';
 import { Table, PanelHead, Stat, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
 import { TIPOS_ACEPTADOS, MAX_ENTRADA_MB, prepararFactura } from '../domain/leerFactura.js';
-import { FacturasProveedoresPanel } from './FacturasProveedoresPanel.jsx';
+import { LecturaIaPanel } from './LecturaIaPanel.jsx';
 
 const VISTAS = [
   { id: 'pendiente', label: 'Esperando' },
@@ -46,9 +46,26 @@ function etiquetaDoc(l) {
 
 const TAB_KEY = 'crm.facturas.tab';
 
+/** En qué anda la lectura con IA de una factura (y si la cuenta cerró). */
+function EstadoIa({ l }) {
+  const ia = l.iaResumen;
+  switch (l.iaEstado) {
+    case 'en_cola': return <span className={s.muted}>En cola…</span>;
+    case 'leyendo': return <span className={s.muted}>Leyendo…</span>;
+    case 'lista':
+      return ia?.cierra
+        ? <span title={`${ia.renglones} renglones`}><Pill pill="est-recibida" label="Leída ✓" /></span>
+        : <span title={(ia?.problemas || []).join(' · ')}><Pill pill="est-pendiente" label="Leída · revisar" /></span>;
+    case 'error': return <span title={ia?.error || ''}><Pill pill="est-cancelada" label="No se pudo leer" /></span>;
+    case 'tope': return <span title={ia?.error || ''}><Pill pill="est-pendiente" label="Tope del mes" /></span>;
+    default: return <span className={s.muted}>{l.paginas ? 'Sin leer' : '—'}</span>;
+  }
+}
+
 export function LecturasPanel() {
+  const { isAdmin } = useProductos();
   const [tab, setTab] = useState(() => {
-    try { return sessionStorage.getItem(TAB_KEY) || 'facturas'; } catch { return 'facturas'; }
+    try { return sessionStorage.getItem(TAB_KEY) === 'ia' ? 'ia' : 'facturas'; } catch { return 'facturas'; }
   });
   const elegir = (v) => {
     setTab(v);
@@ -64,9 +81,9 @@ export function LecturasPanel() {
         sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}
       >
         <Tab value="facturas" label="Facturas" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />
-        <Tab value="proveedores" label="Proveedores" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />
+        {isAdmin && <Tab value="ia" label="Lectura con IA" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />}
       </Tabs>
-      {tab === 'proveedores' ? <FacturasProveedoresPanel /> : <BandejaFacturas />}
+      {tab === 'ia' && isAdmin ? <LecturaIaPanel /> : <BandejaFacturas />}
     </div>
   );
 }
@@ -132,17 +149,39 @@ function BandejaFacturas() {
   const [arrastrando, setArrastrando] = useState(false);
   const inputRef = useRef(null);
 
-  const cargar = useCallback(async () => {
-    setCargando(true);
+  const cargar = useCallback(async ({ callado = false } = {}) => {
+    if (!callado) setCargando(true);
     try {
       setLecturas(await store.lecturasFactura(vista));
     } catch {
-      toast('No se pudo cargar la bandeja de facturas.', 'err');
+      if (!callado) toast('No se pudo cargar la bandeja de facturas.', 'err');
     } finally {
-      setCargando(false);
+      if (!callado) setCargando(false);
     }
   }, [store, vista, toast]);
   useEffect(() => { cargar(); }, [cargar]);
+
+  /* Mientras la IA lee (en cola o leyendo), la bandeja se actualiza sola cada 4 s. */
+  const leyendo = lecturas.some((l) => l.iaEstado === 'en_cola' || l.iaEstado === 'leyendo');
+  useEffect(() => {
+    if (!leyendo) return undefined;
+    const t = setInterval(() => cargar({ callado: true }), 4000);
+    return () => clearInterval(t);
+  }, [leyendo, cargar]);
+
+  const enVueloIa = useRef(false);
+  /** Leer con la IA estas facturas (o, sin ids, todas las pendientes sin leer). */
+  const leerConIa = async (ids) => {
+    if (enVueloIa.current) return;
+    enVueloIa.current = true;
+    try {
+      const r = await store.leerFacturasConIa(ids);
+      toast(r.encoladas ? `La IA está leyendo ${r.encoladas} factura(s).` : 'No había facturas para leer.', 'ok');
+      cargar({ callado: true });
+    } catch (e) {
+      toast(e?.data?.message || 'No se pudo mandar a leer.', 'err');
+    } finally { enVueloIa.current = false; }
+  };
 
   /*
    * Confirmar una factura crea un comprobante (que sí pasa por `_mutate`): al
@@ -185,10 +224,7 @@ function BandejaFacturas() {
     }
     setSubiendo(null);
     if (leidas || sinQr) {
-      const partes = [];
-      if (leidas) partes.push(`${leidas} con el encabezado leído del QR`);
-      if (sinQr) partes.push(`${sinQr} sin QR (encabezado a mano)`);
-      toast(`Listo · ${partes.join(' · ')}.`, 'ok');
+      toast(`Listo: ${leidas + sinQr} factura(s) subida(s). La IA las lee en segundo plano.`, 'ok');
     }
     setVista('pendiente');
     cargar();
@@ -250,9 +286,10 @@ function BandejaFacturas() {
         </td>
         <td>
           {etiquetaDoc(l)}
-          {!l.leido && <div className={s.hint} style={{ margin: 0 }}>sin QR</div>}
+          {!l.leido && <div className={s.hint} style={{ margin: 0 }}>{l.iaEstado === 'lista' ? 'leído por la IA' : 'sin QR'}</div>}
         </td>
         <td>{l.fecha ? fmtFecha(l.fecha) : '—'}</td>
+        <td><EstadoIa l={l} /></td>
         <td className={cx(s.num, s.mono)}>{Number(l.total) > 0 ? money(l.total) : '—'}</td>
         <td>
           {l.sucursalNombre || <span className={s.muted}>—</span>}
@@ -285,6 +322,9 @@ function BandejaFacturas() {
                 {l.listo ? 'Procesar' : 'Completar'}
               </Btn>
             )}
+            {l.estado === 'pendiente' && isAdmin && l.paginas > 0 && ['', 'error', 'tope'].includes(l.iaEstado || '') && (
+              <Btn small onClick={() => leerConIa([l.id])}>{l.iaEstado ? 'Reintentar IA' : 'Leer con IA'}</Btn>
+            )}
             {l.estado === 'pendiente' && isAdmin && (
               <Btn small onClick={() => descartar(l)}>Descartar</Btn>
             )}
@@ -301,11 +341,16 @@ function BandejaFacturas() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Procesamiento de facturas"
-        desc="Subí la factura cuando llega el camión; cargarla puede esperar. El encabezado sale del QR del papel y, si el proveedor tiene estructura, los renglones del PDF se leen solos. Una vez cargada, el archivo se borra."
+        desc="Subí las facturas (PDF, fotos o escaneos, de a una o en tanda): la IA las lee sola y deja la carga lista para revisar. Una vez cargada, el archivo se borra."
         actions={(
-          <Btn variant="btn-primary" onClick={() => inputRef.current?.click()} disabled={!!subiendo}>
-            {subiendo ? 'Subiendo…' : '+ Subir facturas'}
-          </Btn>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {isAdmin && vista === 'pendiente' && lecturas.some((l) => l.paginas > 0 && ['', 'error', 'tope'].includes(l.iaEstado || '')) && (
+              <Btn onClick={() => leerConIa()}>Leer las pendientes con IA</Btn>
+            )}
+            <Btn variant="btn-primary" onClick={() => inputRef.current?.click()} disabled={!!subiendo}>
+              {subiendo ? 'Subiendo…' : '+ Subir facturas'}
+            </Btn>
+          </div>
         )}
       />
 
@@ -335,12 +380,12 @@ function BandejaFacturas() {
         }}
       >
         <div style={{ fontWeight: 600 }}>
-          {subiendo ? `Leyendo el QR y guardando… ${subiendo}` : 'Arrastrá acá las fotos de las facturas'}
+          {subiendo ? `Guardando… ${subiendo}` : 'Arrastrá acá las facturas (o tocá para elegirlas)'}
         </div>
         <div className={s.hint} style={{ marginTop: 6 }}>
-          Fotos JPG/PNG/WebP o PDF, hasta {MAX_ENTRADA_MB} MB cada uno. Cada archivo es una factura
-          (la de varias hojas se arma agregando páginas desde su detalle). Del PDF no se lee el QR:
-          su encabezado se carga a mano.
+          PDF o fotos JPG/PNG/WebP, hasta {MAX_ENTRADA_MB} MB cada uno, todas juntas si querés. Cada archivo
+          es una factura (la de varias hojas se arma agregando páginas desde su detalle).
+          Desde el celular, para sacarle la foto: <strong>erp.saboryaroma.com/facturas</strong>.
         </div>
       </div>
 
@@ -377,12 +422,12 @@ function BandejaFacturas() {
 
       <Table
         cols={[
-          { h: 'Papel' }, { h: 'Proveedor' }, { h: 'Comprobante' }, { h: 'Fecha' },
+          { h: 'Papel' }, { h: 'Proveedor' }, { h: 'Comprobante' }, { h: 'Fecha' }, { h: 'IA' },
           { h: 'Total del papel', num: true }, { h: 'Recibió' }, { h: 'Estado' },
           { h: 'Acciones', cls: 'actions-col' },
         ]}
         empty={cargando ? 'Cargando…' : ({
-          pendiente: 'No hay facturas esperando. Subí las fotos y el encabezado se lee solo del QR.',
+          pendiente: 'No hay facturas esperando. Subilas y la IA las lee sola.',
           cargada: 'Todavía no se procesó ninguna factura de la bandeja.',
           descartada: 'Nada descartado.',
         }[vista])}
@@ -392,13 +437,13 @@ function BandejaFacturas() {
       </Table>
 
       <div className={s.hint}>
-        <strong>Lo que se lee del papel y lo que no.</strong> El QR de la factura es un dato exacto
-        —o se lee o no se lee— y de ahí salen proveedor, tipo, número, fecha, total y CAE. Los
-        renglones se leen solos de los <strong>PDF digitales</strong> de los proveedores con estructura
-        (pestaña Proveedores), <strong>en esta computadora</strong>: no le cuesta nada al sistema. De
-        las fotos, por ahora, se cargan a mano. En los dos casos el pie compara con el total del papel:
-        si cierra, la carga está verificada. <strong>Ese control mira la plata, no las cantidades</strong>:
-        una caja de 12 cargada como 1 unidad cierra igual, así que el número de bultos hay que mirarlo aparte.
+        <strong>Cómo lee la IA.</strong> Copia lo impreso (encabezado, renglones y pie) y el sistema
+        controla la cuenta: cada renglón (cantidad × precio − descuentos), la suma contra el subtotal y
+        el total. Si no cierra, la vuelve a leer sola con un modelo más fuerte; si igual no cierra,
+        queda en amarillo para revisar. El QR, cuando se lee, manda en el encabezado. Los productos los
+        reconoce el sistema con lo aprendido de cada proveedor. <strong>El control mira la plata, no las
+        cantidades</strong>: una caja de 12 cargada como 1 unidad cierra igual, así que los bultos hay que
+        mirarlos aparte.
       </div>
     </div>
   );
