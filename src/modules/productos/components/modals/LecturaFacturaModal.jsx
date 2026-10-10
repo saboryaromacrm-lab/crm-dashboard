@@ -11,14 +11,16 @@
  * puesto: los renglones se cargan ahí, y el pie compara contra el total del
  * papel para avisar si cierra.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { ModalShell } from '../Modal.jsx';
 import { money, fmtFecha } from '../../domain/format.js';
 import { TIPOS_COMPROBANTE } from '../../domain/constants.js';
 import { s } from '../ui.jsx';
-import { TIPOS_ACEPTADOS, prepararArchivo, esPdf } from '../../domain/leerFactura.js';
+import { prepararArchivo, esPdf } from '../../domain/leerFactura.js';
+
+const soloDigitos = (x) => String(x ?? '').replace(/\D/g, '');
 
 export function LecturaFacturaModal({ id }) {
   const { store, closeModal, toast, openModal } = useProductos();
@@ -44,7 +46,7 @@ export function LecturaFacturaModal({ id }) {
       setProveedorId(r.proveedorId ? String(r.proveedorId) : '');
       setSucursalId(r.sucursalId ? String(r.sucursalId) : '');
       setTipo(r.tipo || 'factura');
-      setLetra(r.letra || 'A');
+      setLetra(r.letra || (TIPOS_COMPROBANTE[r.tipo]?.noFiscal || r.tipo === 'remito' ? 'X' : 'A'));
       setPuntoVenta(r.puntoVenta || '0001');
       setNumero(r.numero != null ? String(r.numero) : '');
       setFecha(r.fecha ? String(r.fecha).slice(0, 10) : '');
@@ -92,6 +94,27 @@ export function LecturaFacturaModal({ id }) {
       },
     });
   };
+
+  /* EL PROVEEDOR YA EXISTE PERO SIN ESE CUIT (10/10/2026): se elige en el
+   * desplegable y se le guarda el del papel acá mismo. El servidor engancha
+   * también las otras facturas de la bandeja con ese CUIT. */
+  const enVuelo = useRef(false);
+  const elegido = store.state.proveedores.find((p) => p.id === Number(proveedorId));
+  const cuitElegido = soloDigitos(elegido?.cuit);
+  const ponerCuit = async () => {
+    if (enVuelo.current || !elegido) return;
+    enVuelo.current = true;
+    try {
+      const r = await store.editarProveedor(elegido.id, { nombre: elegido.nombre, cuit: l.cuit });
+      if (r.ok === false) throw new Error(r.error);
+      await guardar();
+      toast(`«${elegido.nombre}» quedó con el CUIT ${l.cuit}: sus próximas facturas se reconocen solas.`, 'ok');
+    } catch (e) {
+      toast(e?.data?.message || e?.message || 'No se pudo guardar el CUIT.', 'err');
+    } finally { enVuelo.current = false; }
+  };
+  const copiarCuit = () => navigator.clipboard.writeText(l.cuit)
+    .then(() => toast('CUIT copiado.', 'ok'), () => toast('No se pudo copiar.', 'err'));
 
   const patch = useMemo(() => ({
     proveedorId: proveedorId ? Number(proveedorId) : 0,
@@ -221,9 +244,10 @@ export function LecturaFacturaModal({ id }) {
         <div className={cx(s.callout, s.warn)}>
           Para poder cargarla falta <strong>{faltan.join(', ')}</strong>.
           {!l.proveedorId && l.cuit && (
-            <> El CUIT <span className={s.mono}>{l.cuit}</span> no está en ningún proveedor{l.ia?.encabezado?.razonSocialEmisor ? <> (el papel dice <strong>{l.ia.encabezado.razonSocialEmisor}</strong>)</> : ''}:
-              {' '}<button type="button" className={s.linkBtn} onClick={altaProveedor}>darlo de alta con los datos del papel</button>
-              {' '}y la próxima factura se reconoce sola.</>
+            <> El CUIT <span className={s.mono}>{l.cuit}</span> no está en ningún proveedor{l.ia?.encabezado?.razonSocialEmisor ? <> (el papel dice <strong>{l.ia.encabezado.razonSocialEmisor}</strong>)</> : ''}.
+              {' '}Si ya lo tenés, elegilo abajo en «Proveedor» y guardale este CUIT; si es nuevo,
+              {' '}<button type="button" className={s.linkBtn} onClick={altaProveedor}>darlo de alta con los datos del papel</button>.
+              {' '}Las próximas facturas se reconocen solas.</>
           )}
         </div>
       )}
@@ -283,15 +307,19 @@ export function LecturaFacturaModal({ id }) {
             )}
           </div>
         ))}
-        {editable && (
+        {/* Un PDF ya trae todas sus hojas y la IA las lee juntas. Solo una factura
+            sacada en VARIAS FOTOS necesita sumar la otra hoja: cada foto subida
+            sola es otra factura, y ninguna mitad cierra. */}
+        {editable && !(l.archivos || []).some((a) => esPdf({ type: a.mime })) && (
           <label
             className={cx(s.btn, s['btn-ghost'], s['btn-sm'])}
             style={{ alignSelf: 'center', cursor: 'pointer' }}
+            title="Si la factura tiene más de una hoja y la sacaste en varias fotos"
           >
-            + Agregar página
+            + Sumar otra hoja (foto)
             <input
               type="file"
-              accept={TIPOS_ACEPTADOS}
+              accept="image/jpeg,image/png,image/webp"
               hidden
               onChange={(e) => { agregarPagina(e.target.files?.[0]); e.target.value = ''; }}
             />
@@ -306,7 +334,19 @@ export function LecturaFacturaModal({ id }) {
             <option value="">— elegir —</option>
             {store.state.proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
-          {l.cuit && <div className={s.hint}>CUIT del papel: <span className={s.mono}>{l.cuit}</span></div>}
+          {l.cuit && (
+            <div className={s.hint}>
+              CUIT del papel: <span className={s.mono}>{l.cuit}</span>
+              {' '}<button type="button" className={s.linkBtn} onClick={copiarCuit}>Copiar</button>
+            </div>
+          )}
+          {editable && elegido && l.cuit && cuitElegido !== l.cuit && (cuitElegido
+            ? <div className={cx(s.callout, s.warn)} style={{ marginTop: 6 }}>«{elegido.nombre}» tiene otro CUIT (<span className={s.mono}>{cuitElegido}</span>): revisá que sea el proveedor de este papel.</div>
+            : (
+              <button type="button" className={cx(s.btn, s['btn-primary'], s['btn-sm'])} style={{ marginTop: 6, alignSelf: 'flex-start' }} onClick={ponerCuit}>
+                Guardarle el CUIT {l.cuit} a «{elegido.nombre}»
+              </button>
+            ))}
         </div>
         <div className={s.field}>
           <label>Sucursal que recibió <span className={s.req}>*</span></label>
@@ -318,7 +358,15 @@ export function LecturaFacturaModal({ id }) {
         </div>
         <div className={s.field}>
           <label>Tipo <span className={s.req}>*</span></label>
-          <select value={tipo} onChange={(e) => setTipo(e.target.value)} disabled={!editable}>
+          <select
+            value={tipo}
+            onChange={(e) => {
+              setTipo(e.target.value);
+              // La liquidación no es fiscal: letra X siempre (como en el alta).
+              if (TIPOS_COMPROBANTE[e.target.value]?.noFiscal) setLetra('X');
+            }}
+            disabled={!editable}
+          >
             {Object.keys(TIPOS_COMPROBANTE).map((k) => (
               <option key={k} value={k}>{TIPOS_COMPROBANTE[k].label}</option>
             ))}
@@ -326,7 +374,7 @@ export function LecturaFacturaModal({ id }) {
         </div>
         <div className={s.field}>
           <label>Letra</label>
-          <select value={letra} onChange={(e) => setLetra(e.target.value)} disabled={!editable}>
+          <select value={letra} onChange={(e) => setLetra(e.target.value)} disabled={!editable || !!TIPOS_COMPROBANTE[tipo]?.noFiscal}>
             {['A', 'B', 'C', 'X'].map((x) => <option key={x} value={x}>{x}</option>)}
           </select>
         </div>
@@ -388,7 +436,7 @@ function MiniaturaPapel({ store, archivo, indice }) {
   return (
     <div role="button" tabIndex={0} title="Abrir en grande" style={{ cursor: 'pointer' }} onClick={abrir} onKeyDown={(e) => e.key === 'Enter' && abrir()}>
       {esPdf({ type: archivo.mime })
-        ? <div style={marco}>PDF · página {indice + 1}</div>
+        ? <div style={marco}>PDF<br />(tocá para abrirlo)</div>
         : (url
           ? (
             <img

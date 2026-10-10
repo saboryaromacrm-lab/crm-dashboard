@@ -344,6 +344,7 @@ function BandejaFacturas() {
         desc="Subí las facturas (PDF, fotos o escaneos, de a una o en tanda): la IA las lee sola y deja la carga lista para revisar. Una vez cargada, el archivo se borra."
         actions={(
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Btn onClick={() => openModal('comoFuncionaIa')}>¿Cómo funciona?</Btn>
             {isAdmin && vista === 'pendiente' && lecturas.some((l) => l.paginas > 0 && ['', 'error', 'tope'].includes(l.iaEstado || '')) && (
               <Btn onClick={() => leerConIa()}>Leer las pendientes con IA</Btn>
             )}

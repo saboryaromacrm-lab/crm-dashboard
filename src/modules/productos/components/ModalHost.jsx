@@ -36,6 +36,7 @@ import { RedondearMarkupsModal } from './modals/RedondearMarkupsModal.jsx';
 import { MoverListaModal } from './modals/MoverListaModal.jsx';
 import { ActualizarClasificacionModal } from './modals/ActualizarClasificacionModal.jsx';
 import { LecturaFacturaModal } from './modals/LecturaFacturaModal.jsx';
+import { ComoFuncionaIaModal } from './modals/ComoFuncionaIaModal.jsx';
 import { HistorialPreciosModal, MargenesMasivosModal } from './modals/PreciosModals.jsx';
 import { CierreCoffitModal, MotivoCoffitModal, MovimientoCoffitModal } from './modals/CuentaCoffitModals.jsx';
 
@@ -231,6 +232,7 @@ const REGISTRY = {
   eliminarProveedor: EliminarProveedorModal,
   comprobanteForm: ComprobanteFormModal,
   lecturaFactura: LecturaFacturaModal,
+  comoFuncionaIa: ComoFuncionaIaModal,
   comprobanteDetalle: ComprobanteDetalleModal,
   mezclaCompra: MezclaCompraModal,
   anularComprobante: AnularComprobanteModal,

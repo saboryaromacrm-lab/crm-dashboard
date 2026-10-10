@@ -221,7 +221,7 @@ export const MANUAL = [
               '**Lo que el papel NO dice, se pregunta.** Sobre todo **en qué sucursal entró la mercadería**: eso lo sabe quien la recibió y no está escrito en ninguna parte de la factura. Se propone la sucursal del que subió la foto, pero es editable.',
               '**Los renglones los lee la IA** (desde el 9/10/2026, ver «Leer las facturas con IA»): PDF, fotos y escaneos. El encabezado que el QR no dio también sale de ahí.',
               '**Del PDF no se lee el QR** (solo de las fotos): su encabezado lo completa la IA al leerlo.',
-              '**Una factura de varias hojas es UNA sola factura** con varias páginas: se sube la primera y las demás se agregan desde su detalle con "+ Agregar página".',
+              '**Una factura de varias hojas es UNA sola factura** con varias páginas: un PDF ya trae todas; si la sacaste en varias fotos, se sube la primera y las demás se suman desde su detalle con "+ Sumar otra hoja (foto)", así la IA lee la factura entera.',
             ],
           },
           {
@@ -3541,7 +3541,7 @@ export const MANUAL = [
               '**Se lee sola al subirla** (se puede apagar en la pestaña «Lectura con IA»; ahí también está «Leer las pendientes con IA»). Corre en el servidor, de a dos por vez y en segundo plano: no frena nada.',
               '**La IA solo transcribe** lo impreso (encabezado, renglones, pie) en un formato fijo. **La cuenta la controla el sistema**: cada renglón (cantidad × precio − descuentos = importe), la suma contra el subtotal y subtotal − bonificación + IVA + percepciones = total; y si hubo QR, su total manda.',
               '**Primero el modelo barato (Haiku)**; si la cuenta no cierra, **se vuelve a leer sola con el fuerte (Sonnet)** y queda la lectura que mejor cierra. Si igual no cierra, queda en amarillo con lo que no da.',
-              '**El encabezado**: el QR, si se leyó, manda (es exacto). Si no, sale de lo leído; el proveedor se reconoce por el CUIT. **Si el CUIT no está**, la ficha de la factura ofrece **darlo de alta con los datos del papel** (vos confirmás).',
+              '**El encabezado**: el QR, si se leyó, manda (es exacto). Si no, sale de lo leído; el proveedor se reconoce por el CUIT. Un **papel interno** (sin CAE ni letra fiscal: «Factura interna», presupuesto, liquidación) se toma como **Liquidación (sin factura), letra X**, aunque diga «Factura». **«Leer de nuevo»** corrige lo que había puesto la IA, sin pisar lo corregido a mano ni lo del QR. **Si el CUIT no está**: si el proveedor ya existe, se elige en «Proveedor» y con **«Guardarle el CUIT»** queda puesto (también se engancha cualquier otra factura de ese CUIT que esté en la bandeja); si es nuevo, la ficha ofrece **darlo de alta con los datos del papel** (vos confirmás).',
               '**Los productos los reconoce el sistema**, no la IA: lo aprendido de facturas anteriores (código del papel → producto), el código del formato de compra o un nombre claramente igual. Lo que no reconoce se **asocia a mano** en el alta (con los parecidos primero) o con **«Que la IA elija»**, que elige solo entre esos candidatos y queda como sugerencia a aceptar. **Nunca crea productos ni proveedores sola.** Al guardar, lo asociado queda aprendido.',
               '**Siempre se revisa**: el alta se abre precargada (renglones, bonificación, percepciones) y se confirma como siempre, con los precios a confirmar de siempre.',
             ],
