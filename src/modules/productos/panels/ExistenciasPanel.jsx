@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Tabs, Tab } from '@mui/material';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money } from '../domain/format.js';
@@ -53,6 +54,19 @@ export function ExistenciasPanel() {
   const [tipoF, setTipoF] = useState('');
   const [conStockF, setConStockF] = useState(false);
   const fp = useFiltroProducto(store);
+  /* Desde Proveedores › Pedidos («Ver stock», 12/10/2026): `?ordenPedido=ID`
+   * filtra por ese proveedor y abre su orden de pedido. El parámetro se saca
+   * enseguida: volver atrás o recargar no la reabre. */
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const pid = params.get('ordenPedido');
+    if (!pid) return;
+    setProvF(pid);
+    openModal('ordenPedido', { proveedorId: pid });
+    const resto = new URLSearchParams(params);
+    resto.delete('ordenPedido');
+    setParams(resto, { replace: true });
+  }, [params, setParams, openModal]);
   const { productos, stock, proveedores, sucursales } = store.state;
   const delProveedor = useMemo(() => (provF
     ? new Set(productos.filter((p) => (p.formatosCompra || []).some((e) => String(e.proveedorId) === provF)).map((p) => p.id))

@@ -5,12 +5,14 @@
  * de la pizarra. Los datos se piden recién al abrir cada ventana.
  */
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Menu, MenuItem, ListItemIcon, Typography, Divider } from '@mui/material';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
 import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { cx } from '@shared/utils/classNames.js';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { provApi } from '../services/proveedores.api.js';
@@ -26,6 +28,14 @@ export function ProveedorMenu({ proveedorId, nombre }) {
   const cerrar = () => setAnchor(null);
   /* El estado de cuenta es otra sección: se ofrece solo si este usuario la tiene. */
   const veEdoc = (panels ?? []).some((p) => p.id === 'edoc');
+  /* «Ver stock» lleva a Almacén › Existencias con la orden de pedido de este
+   * proveedor abierta (12/10/2026, pedido del dueño). Sin esa sección, la
+   * ventanita de stock de siempre. */
+  const { can } = usePermissions();
+  const navigate = useNavigate();
+  const verStock = can('almacen.existencias')
+    ? () => navigate(`/almacen?panel=existencias&ordenPedido=${proveedorId}`)
+    : () => openModal('stockProveedor', { proveedorId, nombre });
   const ir = (fn) => () => { cerrar(); fn(); };
   return (
     <>
@@ -48,7 +58,7 @@ export function ProveedorMenu({ proveedorId, nombre }) {
           {nombre}
         </Typography>
         <Divider />
-        <MenuItem onClick={ir(() => openModal('stockProveedor', { proveedorId, nombre }))}>
+        <MenuItem onClick={ir(verStock)}>
           <ListItemIcon><Inventory2OutlinedIcon fontSize="small" /></ListItemIcon>
           Ver stock
         </MenuItem>
