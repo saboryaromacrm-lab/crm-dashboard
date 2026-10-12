@@ -1176,6 +1176,8 @@ function _cleanComprobante(o) {
       /* El renglón es para Coffit (0119). Faltaba acá: el tilde por renglón no
        * llegaba al servidor (12/10/2026). */
       paraCafeteria: it.paraCafeteria ? true : undefined,
+      /* El bulto con que se cargó (0161): el detalle lo muestra como la factura. */
+      porBulto: Number(it.porBulto) > 1 ? Number(it.porBulto) : undefined,
     })),
   };
 }

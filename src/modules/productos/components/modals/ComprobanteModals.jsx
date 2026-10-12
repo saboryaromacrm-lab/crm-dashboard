@@ -1595,6 +1595,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           codigoProveedor: it.codigoProveedor || undefined,
           descripcionPapel: it.descripcionPapel || undefined,
           guardarCodigo: it.guardarCodigo || undefined,
+          // Cómo vino (0161): el detalle lo muestra en bultos, como la factura. En modo unidad no hay bulto.
+          porBulto: it.modo === 'unidad' ? undefined : Number(it.porBulto) || undefined,
           paraCafeteria: deCoffit(it) || undefined,
         };
       });
@@ -3416,6 +3418,17 @@ export function ComprobanteDetalleModal({ id }) {
 
   const filas = c.items.map((it, i) => {
     const p = store.getProducto(it.productoId);
+    /*
+     * COMO LA FACTURA (12/10/2026, pedido del dueño): con el bulto con que se
+     * cargó (0161) y bultos enteros, «4 bultos × 14 u.» a $40.270,25 el
+     * bulto; abajo, chico, lo que entró al stock (56 u. a $2.876,45).
+     */
+    const granel = p?.tipo === 'granel';
+    const porBulto = Number(it.porBulto) || 0;
+    const bultos = porBulto > 1 ? it.cantidad / porBulto : 0;
+    const enBultos = bultos > 0 && Math.abs(bultos - Math.round(bultos)) < 1e-6;
+    const uni = granel ? 'kg' : 'u.';
+    const nombreBulto = (n) => (granel ? (n === 1 ? 'bolsa' : 'bolsas') : (n === 1 ? 'bulto' : 'bultos'));
     return (
       <tr key={i}>
         <td>
@@ -3424,8 +3437,23 @@ export function ComprobanteDetalleModal({ id }) {
           {it.paraCafeteria && <span className={s.hint} style={{ margin: 0 }}> · para Coffit</span>}
         </td>
         <td>{p ? store.presLabel(p, it.presentacionId) : '—'}</td>
-        <td className={s.num}>{num(it.cantidad, 3)}</td>
-        <td className={s.num}>{money(it.costoUnitario)}</td>
+        {enBultos ? (
+          <>
+            <td className={s.num}>
+              <strong>{Math.round(bultos)} {nombreBulto(Math.round(bultos))}</strong> × {num(porBulto, 3)} {uni}
+              <div className={s.hint} style={{ margin: 0 }}>{num(it.cantidad, 3)} {uni}</div>
+            </td>
+            <td className={s.num}>
+              <strong>{money(it.costoUnitario * porBulto)}</strong> /{nombreBulto(1)}
+              <div className={s.hint} style={{ margin: 0 }}>{money(it.costoUnitario)} /{uni}</div>
+            </td>
+          </>
+        ) : (
+          <>
+            <td className={s.num}>{num(it.cantidad, 3)}</td>
+            <td className={s.num}>{money(it.costoUnitario)}</td>
+          </>
+        )}
         <td className={s.num}>{num(it.descuento, 1)}%</td>
         <td className={s.num}>{num(it.iva, 1)}%</td>
         <td className={cx(s.num, s.mono)}>{money(it.subtotal)}</td>
@@ -3529,7 +3557,7 @@ export function ComprobanteDetalleModal({ id }) {
       )}
 
       <h3 className={s['card-title']}>Ítems</h3>
-      <Table cols={[{ h: 'Producto' }, { h: 'Present.' }, { h: 'Cant.', num: true }, { h: 'Costo u.', num: true }, { h: 'Desc.', num: true }, { h: 'IVA', num: true }, { h: 'Subtotal', num: true }]}>
+      <Table cols={[{ h: 'Producto' }, { h: 'Present.' }, { h: 'Cant.', num: true }, { h: 'Costo', num: true }, { h: 'Desc.', num: true }, { h: 'IVA', num: true }, { h: 'Subtotal', num: true }]}>
         {filas}
       </Table>
       {/* El pie, como lo lee el papel: así se puede cuadrar contra la factura. */}

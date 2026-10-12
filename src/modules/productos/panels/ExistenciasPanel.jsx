@@ -47,6 +47,11 @@ export function ExistenciasPanel() {
   const [prodF, setProdF] = useState('');
   const [estadoF, setEstadoF] = useState('');
   const [provF, setProvF] = useState('');
+  /* Tipo y «solo con stock» (12/10/2026, pedido del dueño): el tipo acota la
+   * tabla y la lista de productos; el tilde deja en esa lista solo lo que tiene
+   * stock disponible (en la sucursal elegida, o en cualquiera). */
+  const [tipoF, setTipoF] = useState('');
+  const [conStockF, setConStockF] = useState(false);
   const fp = useFiltroProducto(store);
   const { productos, stock, proveedores, sucursales } = store.state;
   const delProveedor = useMemo(() => (provF
@@ -57,6 +62,16 @@ export function ExistenciasPanel() {
     [proveedores],
   );
   const sinStock = estadoF === SIN_STOCK;
+  const conDisponible = useMemo(() => {
+    if (!conStockF || sinStock) return null;
+    const suc = sucF ? parseInt(sucF, 10) : null;
+    return new Set(stock.filter((st) => st.estado === 'disponible' && st.cantidad > 1e-9 && (!suc || st.sucursalId === suc)).map((st) => st.productoId));
+  }, [conStockF, sinStock, stock, sucF]);
+  /** Si el producto pasa los filtros de producto (buscador, marca, proveedor, tipo y «solo con stock»). */
+  const pasaProducto = (id) => {
+    if (!fp.coincide(id) || (delProveedor && !delProveedor.has(id)) || (conDisponible && !conDisponible.has(id))) return false;
+    return !tipoF || store.getProducto(id)?.tipo === tipoF;
+  };
   /* Sin stock: producto activo × sucursal activa con 0 o menos disponible (en kg el granel, con sus paquetes). */
   const faltantes = useMemo(() => {
     if (!sinStock) return [];
@@ -88,12 +103,11 @@ export function ExistenciasPanel() {
       if (sucF && st.sucursalId !== parseInt(sucF, 10)) return false;
       if (prodF && st.productoId !== parseInt(prodF, 10)) return false;
       if (estadoF && !sinStock && st.estado !== estadoF) return false;
-      if (delProveedor && !delProveedor.has(st.productoId)) return false;
-      return fp.coincide(st.productoId);
+      return pasaProducto(st.productoId);
     })
     .sort((a, b) => a.productoId - b.productoId || a.sucursalId - b.sucursalId);
 
-  const pag = usePaginado(entradas, 'existencias', `${sucF}|${prodF}|${estadoF}|${provF}|${fp.clave}`);
+  const pag = usePaginado(entradas, 'existencias', `${sucF}|${prodF}|${estadoF}|${provF}|${tipoF}|${conStockF}|${fp.clave}`);
 
   const filas = pag.visibles.map((st) => {
       const p = store.getProducto(st.productoId), su = store.getSucursal(st.sucursalId);
@@ -171,8 +185,17 @@ export function ExistenciasPanel() {
             </select>
             <select className={s['select-inline']} value={prodF} onChange={(e) => setProdF(e.target.value)}>
               <option value="">Todos los productos</option>
-              {productoOptions(store, false, null, (p) => String(p.id) === prodF || (fp.coincide(p.id) && (!delProveedor || delProveedor.has(p.id))))}
+              {productoOptions(store, false, null, (p) => String(p.id) === prodF || pasaProducto(p.id))}
             </select>
+            <select id="exist-tipo" className={s['select-inline']} value={tipoF} onChange={(e) => setTipoF(e.target.value)} aria-label="Tipo">
+              <option value="">Enteros y granel</option>
+              <option value="entero">Solo enteros</option>
+              <option value="granel">Solo granel</option>
+            </select>
+            <label className={s.hint} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, opacity: sinStock ? 0.5 : 1 }} title={sinStock ? 'No aplica con «Sin stock»' : 'La lista de productos muestra solo los que tienen stock disponible'}>
+              <input id="exist-con-stock" type="checkbox" checked={conStockF && !sinStock} disabled={sinStock} onChange={(e) => setConStockF(e.target.checked)} />
+              Solo con stock
+            </label>
             <select className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)}>
               <option value="">Todos los estados</option>
               {Object.keys(ESTADOS_STOCK).map((k) => <option key={k} value={k}>{ESTADOS_STOCK[k].label}</option>)}
