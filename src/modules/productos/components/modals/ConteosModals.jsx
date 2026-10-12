@@ -363,6 +363,8 @@ export function ConteoModal({ conteoId, alTerminar }) {
   const [confirmarAplicar, setConfirmarAplicar] = useState(false);
   const buscadorRef = useRef(null);
   const inputRefs = useRef({});
+  /** Al renglón se llegó escaneando: su Enter vuelve al buscador, no al renglón siguiente. */
+  const delLector = useRef(false);
 
   const recargar = useCallback(async () => {
     const r = await store.getConteo(conteoId);
@@ -455,22 +457,41 @@ export function ConteoModal({ conteoId, alTerminar }) {
     const match = items.filter((it) => codigoDe(it) && codigoDe(it) === cod);
     if (match.length === 1) {
       const el = inputRefs.current[match[0].id];
-      if (el) { el.focus(); el.select(); }
+      if (el) { delLector.current = true; el.focus(); el.select(); }
     }
   };
 
-  /** El Enter del renglón: PUT, tilde, y el foco vuelve al lector. */
+  /** Pone el cursor en el casillero de un renglón (o en el buscador si no hay), listo para escribir.
+   *  Después de que la tabla se redibuja (setTimeout, que corre también con la ventana en segundo plano). */
+  const enfocar = (id) => {
+    setTimeout(() => {
+      const el = id != null ? inputRefs.current[id] : null;
+      if (el) { el.focus(); el.select(); el.scrollIntoView({ block: 'nearest' }); } else buscadorRef.current?.focus();
+    }, 0);
+  };
+
+  /*
+   * EL ENTER DEL RENGLÓN (12/10/2026, pedido del dueño): guarda y el cursor
+   * pasa al casillero del PRÓXIMO renglón —el mismo orden que la hoja—, así
+   * se pasa la planilla de corrido sin tocar el mouse. Si al renglón se llegó
+   * con el LECTOR, vuelve al buscador para escanear el siguiente, como antes.
+   * Enter con el casillero vacío saltea el renglón sin guardar nada.
+   */
   const contar = async (it) => {
+    const i = visibles.findIndex((x) => x.id === it.id);
+    const siguiente = visibles[i + 1]?.id ?? null;
     const texto = cantidades[it.id];
-    if (texto == null || texto === '') return;
+    if (texto == null || texto === '') { delLector.current = false; enfocar(siguiente); return; }
     const v = Number(String(texto).replace(',', '.'));
     if (!(v >= 0)) { toast('La cantidad no puede ser negativa.', 'err'); return; }
     const r = await store.contarItemConteo(conteoId, it.id, v);
     if (!r.ok) { toast(r.error, 'err'); return; }
     setCantidades((x) => ({ ...x, [it.id]: undefined }));
-    setQ('');
+    const conLector = delLector.current;
+    delLector.current = false;
+    if (conLector) setQ('');
     await recargar();
-    buscadorRef.current?.focus();
+    enfocar(conLector ? null : siguiente);
   };
 
   const descontar = async (it) => {
