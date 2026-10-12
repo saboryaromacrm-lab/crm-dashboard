@@ -33,15 +33,16 @@ const codigoDeFormato = (prod, provId) => {
 };
 
 /*
- * EL SEMÁFORO DE LA FACTURA LEÍDA (12/10/2026, pedido del dueño): verde, el
- * código del papel coincide con el del producto (o ya se asoció antes, o lo
- * eligió quien carga); amarillo, la IA lo supone (por el nombre, o lo sugirió
- * y falta aceptar); rojo, hay que elegirlo.
+ * EL SEMÁFORO DE LA FACTURA LEÍDA (12/10/2026, pedido del dueño): verde, está
+ * cargado y el código del papel coincide con el del producto (o ya se asoció
+ * antes, o lo eligió quien carga); amarillo, está cargado con lo que la IA
+ * supuso por el nombre: revisarlo; rojo, NO está cargado (falta su importe en
+ * la factura): aceptar la sugerencia o elegir el producto.
  */
 const SEMAFORO = {
-  verde: { color: 'var(--crm-color-success)', titulo: 'listo' },
-  amarillo: { color: 'var(--crm-color-warning)', titulo: 'revisar' },
-  rojo: { color: 'var(--crm-color-danger)', titulo: 'elegir' },
+  verde: { color: 'var(--crm-color-success)', titulo: 'listos', explica: 'cargados y con el código que coincide (o ya asociados)' },
+  amarillo: { color: 'var(--crm-color-warning)', titulo: 'a revisar', explica: 'cargados con lo que la IA supuso por el nombre' },
+  rojo: { color: 'var(--crm-color-danger)', titulo: 'faltan cargar', explica: 'NO están en la factura: aceptá la sugerencia o elegí el producto' },
 };
 
 /**
@@ -51,9 +52,11 @@ const SEMAFORO = {
  * que sugiera la IA— y el detalle completo de lo leído.
  */
 function PanelIa({
-  propuesta: d, cargando, leyendo, eligiendo, porRenglon, productos, proveedor,
-  onAplicar, onReleer, onElegir, onAsociar, onGuardarCodigo, onUsarEncabezado,
+  propuesta: d, cargando, leyendo, eligiendo, porRenglon, usados, productos, proveedor,
+  onAplicar, onReleer, onElegir, onAsociar, onAceptarSugerencias, onGuardarCodigo, onUsarEncabezado,
 }) {
+  /** Qué colores se ven (tocando los contadores): null = todos. */
+  const [filtro, setFiltro] = useState(null);
   const estado = d?.estado ?? '';
   const renglones = d?.renglones ?? [];
   /*
@@ -94,7 +97,7 @@ function PanelIa({
     const delServidor = prod && String(x.productoId) === String(prod.id);
     let color;
     let porque;
-    if (!prod) { color = x.sugerido ? 'amarillo' : 'rojo'; porque = x.sugerido ? 'la IA lo sugiere' : 'elegí el producto'; }
+    if (!prod) { color = 'rojo'; porque = 'NO está cargado en la factura'; }
     else if (coincide) { color = 'verde'; porque = 'el código coincide'; }
     else if (delServidor && x.fuente === 'aprendido') { color = 'verde'; porque = 'ya lo asociaste en otra factura'; }
     else if (delServidor && x.fuente === 'catalogo') { color = 'verde'; porque = 'por el código del catálogo'; }
@@ -104,6 +107,10 @@ function PanelIa({
   });
   const cuenta = (c) => filas.filter((f) => f.color === c).length;
   const pendientesIa = filas.some((f) => !f.prod && f.x.candidatos?.length && !f.x.sugerido);
+  const sugeridos = filas.filter((f) => !f.prod && f.x.sugerido).map((f) => f.x);
+  const visibles = filtro ? filas.filter((f) => f.color === filtro) : filas;
+  /** Lo que ya está elegido en otro renglón no se vuelve a ofrecer (sí el propio). */
+  const libre = (it) => (p) => !usados.has(String(p.id)) || String(p.id) === String(it?.productoId);
   const usd = (n) => `USD ${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 4 })}`;
   const modelo = (m) => (/haiku/.test(m || '') ? 'Haiku' : /sonnet/.test(m || '') ? 'Sonnet' : m || '');
   const tono = estado === 'lista' ? (d.cierra ? s.ok : s.warn) : estado === 'error' || estado === 'tope' ? s.warn : s.info;
@@ -117,11 +124,8 @@ function PanelIa({
           {(estado === 'error' || estado === 'tope') && <><strong>La IA no pudo leerla:</strong> {d.error || 'error desconocido'}</>}
           {estado === 'lista' && (
             <>
-              <strong>{renglones.length} renglones leídos por la IA</strong> ·{' '}
-              {['verde', 'amarillo', 'rojo'].map((c) => (
-                <span key={c} style={{ color: SEMAFORO[c].color, fontWeight: 700, marginRight: 6 }}>● {cuenta(c)} {SEMAFORO[c].titulo}</span>
-              ))}
-              {' · '}{d.cierra ? <strong>la cuenta cierra</strong> : <strong>la cuenta no cierra: revisá</strong>}
+              <strong>{renglones.length} renglones leídos por la IA</strong>
+              {' · '}{d.cierra ? 'lo leído suma igual que el papel' : <strong>lo leído NO suma igual que el papel: revisá</strong>}
               <span className={s.muted}> · {modelo(d.modelo)} · {usd(d.costoUsd)}</span>
             </>
           )}
@@ -144,15 +148,44 @@ function PanelIa({
       {estado === 'lista' && renglones.length > 0 && (
         <div style={{ marginTop: 6 }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ flex: 1, minWidth: 220 }}>
-              <strong style={{ color: SEMAFORO.verde.color }}>Verde</strong>: el código de la factura coincide con el del producto (o ya lo asociaste).{' '}
-              <strong style={{ color: SEMAFORO.amarillo.color }}>Amarillo</strong>: la IA lo supone, revisalo.{' '}
-              <strong style={{ color: SEMAFORO.rojo.color }}>Rojo</strong>: elegí el producto. Lo que asocies <strong>se aprende al guardar</strong>.
-            </span>
+            {/* Los tres estados, tocables: filtran la lista (otro toque, se ven todos). */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+              {['verde', 'amarillo', 'rojo'].map((c) => {
+                const n = cuenta(c);
+                const activo = filtro === c;
+                return (
+                  <button
+                    key={c} type="button" disabled={!n && !activo} onClick={() => setFiltro(activo ? null : c)}
+                    title={SEMAFORO[c].explica}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, cursor: n ? 'pointer' : 'default',
+                      border: `2px solid ${SEMAFORO[c].color}`, fontWeight: 700, fontSize: 13, opacity: n || activo ? 1 : 0.45,
+                      background: activo ? SEMAFORO[c].color : `color-mix(in srgb, ${SEMAFORO[c].color} 10%, var(--crm-color-surface))`,
+                      color: activo ? '#fff' : SEMAFORO[c].color,
+                    }}
+                  >
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: activo ? '#fff' : SEMAFORO[c].color }} />
+                    {n} {SEMAFORO[c].titulo}
+                  </button>
+                );
+              })}
+              {filtro && <button type="button" className={s.linkBtn} onClick={() => setFiltro(null)}>ver todos</button>}
+            </div>
+            {sugeridos.length > 0 && (
+              <Btn small variant="btn-primary" onClick={() => onAceptarSugerencias(sugeridos)}>
+                Aceptar las {sugeridos.length} sugerencias de la IA
+              </Btn>
+            )}
             {pendientesIa && <Btn small onClick={onElegir} disabled={eligiendo}>{eligiendo ? 'Pensando…' : 'Que la IA elija'}</Btn>}
           </div>
+          <div className={s.hint} style={{ margin: '4px 0 0' }}>
+            {['verde', 'amarillo', 'rojo'].map((c) => (
+              <span key={c} style={{ marginRight: 10 }}><strong style={{ color: SEMAFORO[c].color }}>● {SEMAFORO[c].titulo}</strong>: {SEMAFORO[c].explica}.</span>
+            ))}
+            Lo que asocies <strong>se aprende al guardar</strong>.
+          </div>
           <ul style={{ listStyle: 'none', margin: '6px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {filas.map(({ x, it, prod, codProd, coincide, color, porque }) => {
+            {visibles.map(({ x, it, prod, codProd, coincide, color, porque }) => {
               const codigoPapel = String(x.codigo ?? '').trim();
               const otro = codigoPapel ? duenoDe.get(codigoPapel) : null;
               return (
@@ -175,6 +208,11 @@ function PanelIa({
                         <span style={{ color: SEMAFORO[color].color, fontWeight: 600 }}>{coincide ? '✓ ' : ''}{porque}</span>
                       </span>
                     )}
+                    {!prod && (
+                      <span style={{ color: SEMAFORO.rojo.color, fontWeight: 700 }}>
+                        {porque} ({money(x.importe || (x.cantidad * (x.costoBulto || x.precioUnitario || 0)))})
+                      </span>
+                    )}
                     {!prod && x.sugerido && (
                       <span>
                         La IA sugiere <strong>{x.sugerido.nombre}</strong>{' '}
@@ -189,16 +227,16 @@ function PanelIa({
                         onChange={(e) => { if (e.target.value) onAsociar(x, e.target.value); }}
                       >
                         <option value="">{prod ? 'Cambiar por…' : x.sugerido ? 'O elegí otro…' : 'Elegí el producto…'}</option>
-                        {parecidos(x).length > 0 && (
+                        {parecidos(x).filter(libre(it)).length > 0 && (
                           <optgroup label="Parecidos">
-                            {parecidos(x).map((c) => {
+                            {parecidos(x).filter(libre(it)).map((c) => {
                               const pc = productos.find((p) => p.id === c.id);
                               return <option key={c.id} value={c.id}>{pc ? etiqueta(pc) : c.nombre}</option>;
                             })}
                           </optgroup>
                         )}
                         <optgroup label={todos ? 'Todos los productos' : `Productos de ${proveedor.nombre}`}>
-                          {opciones.map((p) => <option key={p.id} value={p.id}>{etiqueta(p)}</option>)}
+                          {opciones.filter(libre(it)).map((p) => <option key={p.id} value={p.id}>{etiqueta(p)}</option>)}
                         </optgroup>
                       </select>
                     )}
@@ -1137,19 +1175,34 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * con el código del papel adentro. Al GUARDAR, ese par (código → producto)
    * queda aprendido y la próxima factura lo reconoce sola.
    */
+  /** La fila de un renglón del papel con el producto elegido (null si el producto no existe). */
+  const filaPara = (ren, prodId) => {
+    const prod = store.getProducto(parseInt(prodId, 10));
+    if (!prod?.id) return null;
+    const entry = (prod.formatosCompra || []).find((e) => e.proveedorId === parseInt(provId, 10));
+    return filaDeRenglon(ren, prod, entry ? entry.cantidad : (prod.tipo === 'entero' ? prod.unidadesPorBulto : 1));
+  };
+  /** Pone filas de renglones: la del renglón que ya estaba se reemplaza en su lugar; las nuevas van al final (las vacías de relleno se van). */
+  const ponerFilas = (filas) => setItems((prev) => filas.reduce(
+    (out, f) => (out.some((it) => it.renglonIa === f.renglonIa) ? out.map((it) => (it.renglonIa === f.renglonIa ? f : it)) : [...out, f]),
+    prev.filter((it) => it.productoId),
+  ));
   const asociarRenglon = (ren, prodId) => {
     /* «cambiar» en un verde: el renglón vuelve a pedir producto (se saca su fila). */
     if (prodId == null) { setItems((prev) => prev.filter((it) => it.renglonIa !== ren.i)); return; }
-    const prod = store.getProducto(parseInt(prodId, 10));
-    if (!prod?.id) return;
-    const entry = (prod.formatosCompra || []).find((e) => e.proveedorId === parseInt(provId, 10));
-    const fila = filaDeRenglon(ren, prod, entry ? entry.cantidad : (prod.tipo === 'entero' ? prod.unidadesPorBulto : 1));
-    // Si el renglón ya tenía fila, se reemplaza en su lugar; si no, se agrega (las vacías de relleno se van).
-    setItems((prev) => (prev.some((it) => it.renglonIa === ren.i)
-      ? prev.map((it) => (it.renglonIa === ren.i ? fila : it))
-      : [...prev.filter((it) => it.productoId), fila]));
-    toast(`${prod.nombre} asociado. Al guardar, queda aprendido para las próximas facturas.`, 'ok');
+    const fila = filaPara(ren, prodId);
+    if (!fila) return;
+    ponerFilas([fila]);
+    toast(`${store.getProducto(parseInt(prodId, 10)).nombre} asociado. Al guardar, queda aprendido para las próximas facturas.`, 'ok');
   };
+  /** «Aceptar las N sugerencias»: todas de una vez (siguen siendo revisables y cambiables). */
+  const aceptarSugerencias = (rens) => {
+    const filas = rens.map((r) => filaPara(r, r.sugerido.id)).filter(Boolean);
+    ponerFilas(filas);
+    toast(`${filas.length} sugerencia(s) aceptadas: ya suman en la factura.`, 'ok');
+  };
+  /** Los productos ya elegidos en algún renglón: no se vuelven a ofrecer para otro. */
+  const usados = useMemo(() => new Set(items.filter((it) => it.productoId).map((it) => String(it.productoId))), [items]);
   const guardarCodigoRenglon = (i, valor) => setItems((prev) => prev.map((it) => (it.renglonIa === i ? { ...it, guardarCodigo: valor } : it)));
   /** Cuál de los dos modales chicos del pie está abierto: null | 'bonificacion' | 'percepciones'. */
   const [modalPie, setModalPie] = useState(null);
@@ -1175,6 +1228,35 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   const difPapel = totalPapel > 0 ? r2(total - totalPapel) : 0;
   const tolerancia = Math.max(1, items.length * 0.05);
   const cierraConPapel = totalPapel > 0 && Math.abs(difPapel) <= tolerancia;
+  /*
+   * ¿POR QUÉ NO CIERRA? (12/10/2026, pedido del dueño): con la lectura de la
+   * IA se puede decir DÓNDE está la diferencia, renglón por renglón, en vez de
+   * un «faltan $X» a secas: lo que no se cargó, lo cargado distinto del papel,
+   * lo cargado de más, y el pie (bonificación, percepciones, IVA).
+   */
+  const porQueNoCierra = (() => {
+    if (!conIa || propuestaIa?.estado !== 'lista' || !(totalPapel > 0) || cierraConPapel) return null;
+    const rs = propuestaIa.renglones || [];
+    const netoPapel = (x) => r2(Number(x.importe) || (Number(x.cantidad) || 0) * (Number(x.costoBulto ?? x.precioUnitario) || 0) * (1 - (Number(x.dto) || 0) / 100));
+    const sinCargar = rs.filter((x) => !porRenglon.has(x.i));
+    const distintos = rs.filter((x) => porRenglon.has(x.i))
+      .map((x) => ({ x, papel: netoPapel(x), cargado: r2(calcRow(porRenglon.get(x.i)).neto) }))
+      .filter((dif) => Math.abs(dif.cargado - dif.papel) > 1);
+    const deMas = items.filter((it) => it.productoId && it.renglonIa == null);
+    const pie = propuestaIa.pie || {};
+    const sumaDe = (arr) => r2((arr || []).reduce((a, x) => a + (Number(x.importe) || 0), 0));
+    const comparar = (nombre, papel, cargado) => (Math.abs(papel - cargado) > 1 ? { nombre, papel, cargado } : null);
+    const pieDistinto = [
+      comparar('Bonificación', r2(Number(pie.bonifImporte) || 0), r2(bonifImporte)),
+      comparar('Percepciones', sumaDe(pie.percepciones), r2(percTotal)),
+      /* El IVA distinto es consecuencia de renglones que faltan o no coinciden: solo se señala si ellos están bien. */
+      !sinCargar.length && !distintos.length ? comparar('IVA', sumaDe(pie.ivas), r2(tot.iva)) : null,
+    ].filter(Boolean);
+    return {
+      sinCargar, netoSinCargar: r2(sinCargar.reduce((a, x) => a + netoPapel(x), 0)),
+      distintos, deMas, netoDeMas: r2(deMas.reduce((a, it) => a + calcRow(it).neto, 0)), pieDistinto,
+    };
+  })();
 
   /* ---------------- Cuánto queda debiéndose ---------------- */
 
@@ -1981,9 +2063,10 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       {conIa && (
         <PanelIa
           propuesta={propuestaIa} cargando={cargandoIa} leyendo={iaLeyendo} eligiendo={eligiendoIa}
-          porRenglon={porRenglon} productos={store.state.productos} proveedor={provElegido}
+          porRenglon={porRenglon} usados={usados} productos={store.state.productos} proveedor={provElegido}
           onAplicar={() => cargarPropuesta({ aplicar: true, preguntar: true })}
-          onReleer={releerIa} onElegir={elegirIa} onAsociar={asociarRenglon} onGuardarCodigo={guardarCodigoRenglon}
+          onReleer={releerIa} onElegir={elegirIa} onAsociar={asociarRenglon} onAceptarSugerencias={aceptarSugerencias}
+          onGuardarCodigo={guardarCodigoRenglon}
           onUsarEncabezado={usarEncabezadoIa}
         />
       )}
@@ -2465,6 +2548,35 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                 ? 'cierra'
                 : `${difPapel > 0 ? 'sobran' : 'faltan'} ${money(Math.abs(difPapel))}`}
             </strong>
+          </div>
+        )}
+        {porQueNoCierra && (
+          <div className={cx(s.callout, s.warn)} style={{ marginTop: 8, fontSize: 13 }}>
+            <strong>¿Por qué no cierra?</strong>
+            <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
+              {porQueNoCierra.sinCargar.length > 0 && (
+                <li>
+                  <strong>{porQueNoCierra.sinCargar.length} renglón(es) de la factura NO están cargados</strong> (en rojo, arriba):
+                  suman {money(porQueNoCierra.netoSinCargar)} sin IVA. Aceptá las sugerencias de la IA o elegí el producto.
+                </li>
+              )}
+              {porQueNoCierra.distintos.slice(0, 8).map(({ x, papel, cargado }) => (
+                <li key={x.i}>
+                  Renglón {x.i + 1} ({x.descripcion}): en la factura {money(papel)}, cargado {money(cargado)}
+                  {' '}— revisá cantidad, tamaño del bulto o costo.
+                </li>
+              ))}
+              {porQueNoCierra.distintos.length > 8 && <li>… y {porQueNoCierra.distintos.length - 8} renglón(es) más con importe distinto.</li>}
+              {porQueNoCierra.deMas.length > 0 && (
+                <li>{porQueNoCierra.deMas.length} renglón(es) cargados a mano que no vienen de la factura: {money(porQueNoCierra.netoDeMas)}.</li>
+              )}
+              {porQueNoCierra.pieDistinto.map((p) => (
+                <li key={p.nombre}>{p.nombre}: en la factura {money(p.papel)}, cargado {money(p.cargado)}.</li>
+              ))}
+              {!porQueNoCierra.sinCargar.length && !porQueNoCierra.distintos.length && !porQueNoCierra.deMas.length && !porQueNoCierra.pieDistinto.length && (
+                <li>Los renglones y el pie coinciden con lo leído: la diferencia está en el total del papel. Revisalo con «Ver el papel».</li>
+              )}
+            </ul>
           </div>
         )}
       </div>
