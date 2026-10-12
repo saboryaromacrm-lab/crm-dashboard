@@ -22,10 +22,12 @@ const deVista = (vista, i) => (vista === 'todas' ? true
   : vista === 'sinstock' ? i.tipo === TIPO_VENTA_SIN_STOCK
     : i.tipo !== TIPO_VENTA_SIN_STOCK);
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+/** Al abrir la sección se ven las pendientes (12/10/2026, pedido del dueño). */
+const ESTADO_INICIAL = 'pendiente';
 
 export function IncidenciasPanel() {
   const { store, isAdmin, can, act, openModal } = useProductos();
-  const [estadoF, setEstadoF] = useState('');
+  const [estadoF, setEstadoF] = useState(ESTADO_INICIAL);
   const [vista, setVista] = useState('sinstock');
   const [sucF, setSucF] = useState('');
   const [q, setQ] = useState('');
@@ -60,7 +62,7 @@ export function IncidenciasPanel() {
       .filter((i) => !t || norm(`${i.codigo} ${store.getProducto(i.productoId)?.nombre ?? ''} ${i.comprobante ?? ''} ${i.clienteNombre ?? ''}`).includes(t))
       .sort((a, b) => b.id - a.id);
   }, [deSucursal, vista, estadoF, q, store]);
-  const hayFiltro = !!(estadoF || sucF || q.trim());
+  const hayFiltro = !!(estadoF !== ESTADO_INICIAL || sucF || q.trim());
 
   const pag = usePaginado(incidencias, 'incidencias', `${vista}:${estadoF}:${sucF}:${q}`);
 
@@ -86,7 +88,9 @@ export function IncidenciasPanel() {
           )}
           <td>
             <IncidPill estado={i.estado} />
-            {i.sinControl && <div className={s.hint} style={{ margin: '2px 0 0' }}>anterior al control</div>}
+            {(i.sinControl || i.resolucion === 'anterior_control') && (
+              <div className={s.hint} style={{ margin: '2px 0 0' }}>{i.sinControl ? 'stock sin controlar' : 'cerrada: stock sin controlar'}</div>
+            )}
           </td>
           <td>{r ? r.nombre : '—'}</td>
           <td className={s['actions-col']}>
@@ -135,7 +139,7 @@ export function IncidenciasPanel() {
         />
         {hayFiltro && (
           <>
-            <Btn small onClick={() => { setEstadoF(''); setSucF(''); setQ(''); }}>Limpiar filtros</Btn>
+            <Btn small onClick={() => { setEstadoF(ESTADO_INICIAL); setSucF(''); setQ(''); }}>Limpiar filtros</Btn>
             <span className={s.hint} style={{ margin: 0 }}>{plural(incidencias.length, 'incidencia', 'incidencias')}</span>
           </>
         )}
@@ -196,11 +200,12 @@ function CerrarAnteriores({ n, sucursal, sucId, puede, store, act }) {
     <div className={cx(s.callout, s.warn)} style={{ display: 'flex', gap: 'var(--crm-space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
       <div style={{ flex: '1 1 320px' }}>
         {confirmando ? (
-          <><strong>Segunda confirmación.</strong> Se cierran {cuantas}{donde} como «anterior al control», <strong>sin tocar el stock</strong>.
+          <><strong>Segunda confirmación.</strong> Se cierran {cuantas}{donde} como «stock sin controlar», <strong>sin tocar el stock</strong>.
             No se borran: quedan en la historia, pero salen de la lista y del contador. No se deshace.</>
         ) : (
-          <><strong>{cuantas[0].toUpperCase() + cuantas.slice(1)}{donde}</strong> {n === 1 ? 'es' : 'son'} de antes del control de stock de su producto:
-            el sistema todavía no tenía el stock real, así que no {n === 1 ? 'sirve' : 'sirven'} para investigar.
+          <><strong>{cuantas[0].toUpperCase() + cuantas.slice(1)}{donde}</strong> {n === 1 ? 'es' : 'son'} de productos cuyo stock no estaba
+            controlado al venderse (nunca se contó o se contó después): el sistema no tenía el número real, así que
+            no {n === 1 ? 'sirve' : 'sirven'} para investigar.
             {!puede && ' Las puede cerrar el superadmin.'}</>
         )}
       </div>

@@ -50,8 +50,15 @@ export function PedidosPanel() {
         {t.productosProveedor > 0 && (
           <div className={s.hint} style={{ margin: '2px 0' }}>trae {t.productosProveedor} producto(s)</div>
         )}
+        {/* Una orden de pedido de Almacén trae la lista entera: en la tarjeta, las
+            primeras líneas (la nota completa al pasar el mouse y en «Notas»). */}
         {t.notas && (
-          <div className={s.hint} style={{ margin: '4px 0', whiteSpace: 'pre-wrap' }}>{t.notas}</div>
+          <div
+            className={s.hint} title={t.notas}
+            style={{ margin: '4px 0', whiteSpace: 'pre-wrap', display: '-webkit-box', WebkitLineClamp: 6, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+          >
+            {t.notas}
+          </div>
         )}
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', margin: '4px 0' }}>
           {t.estado === 'solicitado' && t.pedidoEnviado && <Pill pill="est-recibida" label="pedido enviado" />}

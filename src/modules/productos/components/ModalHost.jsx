@@ -13,6 +13,7 @@ import { RegistrarFraccionadoModal } from './modals/RegistrarFraccionadoModal.js
 import { TransferenciaModal, DetalleTransferModal, RecibirTransferModal, PrepararTransferModal } from './modals/TransferModals.jsx';
 import { IncidenciaModal, ResolverIncidenciaModal, DetalleIncidenciaModal } from './modals/IncidenciaModals.jsx';
 import { ConteoNuevoModal, ConteoModal } from './modals/ConteosModals.jsx';
+import { OrdenPedidoModal } from './modals/OrdenPedidoModal.jsx';
 import { ProveedorFormModal, DetalleProveedorModal } from './modals/ProveedorModals.jsx';
 import { ComprobanteFormModal, ComprobanteDetalleModal, AnularComprobanteModal, MezclaCompraModal } from './modals/ComprobanteModals.jsx';
 import {
@@ -282,6 +283,8 @@ const REGISTRY = {
   /* Control de stock (0066): el alta con filtros y la sesión de conteo. */
   conteoNuevo: ConteoNuevoModal,
   conteo: ConteoModal,
+  /* Orden de pedido a un proveedor (12/10/2026), desde Existencias. */
+  ordenPedido: OrdenPedidoModal,
 };
 
 /** Renderiza el modal activo según el estado del contexto. */

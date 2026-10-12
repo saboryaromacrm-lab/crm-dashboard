@@ -31,6 +31,54 @@ export function kgBolsa(p) {
 }
 
 /*
+ * LA ORDEN DE PEDIDO A UN PROVEEDOR (12/10/2026, pedido del dueño).
+ * ============================================================================
+ * Se le pide en SU formato: el bulto es la caja (o la bolsa del granel) del
+ * formato de compra de ESE proveedor —el que fija el precio, o el más viejo—;
+ * si no tiene, el bulto de la ficha. Sin ninguno, se pide por unidad (o kg).
+ */
+export function bultoDelProveedor(p, proveedorId) {
+  if (!p) return 0;
+  const suyos = (p.formatosCompra || []).filter((e) => Number(e.proveedorId) === Number(proveedorId));
+  const f = suyos.find((e) => e.usarParaPrecio) || [...suyos].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))[0];
+  const c = Number(f?.cantidad) || 0;
+  if (p.tipo === 'granel') return c > 1 ? c : 0;
+  if (c > 1 && Number.isInteger(c)) return c;
+  return (Number(p.unidadesPorBulto) || 0) > 1 ? Number(p.unidadesPorBulto) : 0;
+}
+
+/** Cómo se dice el bulto en el pedido: «bulto X10Un», «bolsa X25Kg» o nada. */
+export const bultoTexto = (p, n) => (n > 1 ? (p?.tipo === 'granel' ? `bolsa X${n}Kg` : `bulto X${n}Un`) : '');
+/** La unidad en que se pide un renglón: bultos, bolsas, u. o kg. */
+export const unidadPedido = (p, n, q) => {
+  if (n > 1) return p?.tipo === 'granel' ? (q === 1 ? 'bolsa' : 'bolsas') : (q === 1 ? 'bulto' : 'bultos');
+  return p?.tipo === 'granel' ? 'kg' : 'u.';
+};
+
+/**
+ * DISPONIBLE POR PRODUCTO Y SUCURSAL, en la unidad en que se le compra al
+ * proveedor: unidades en los enteros; kg en el granel, sumando lo ya
+ * fraccionado en paquetes (también es de esa bolsa). Una sola pasada por el
+ * stock: el `store.cant` busca fila por fila, y para miles de productos por
+ * sucursal sería lentísimo.
+ */
+export function indiceDisponible(stock, productos) {
+  const kgPaquete = new Map();
+  for (const p of productos) {
+    if (p.tipo === 'granel') for (const pr of p.presentaciones || []) kgPaquete.set(pr.id, Number(pr.tamKg) || 0);
+  }
+  const m = new Map();
+  for (const st of stock) {
+    if (st.estado !== 'disponible') continue;
+    const q = st.presentacionId ? st.cantidad * (kgPaquete.get(st.presentacionId) ?? 0) : st.cantidad;
+    if (!q) continue;
+    const k = `${st.productoId}:${st.sucursalId}`;
+    m.set(k, (m.get(k) ?? 0) + q);
+  }
+  return (productoId, sucursalId) => Math.round((m.get(`${productoId}:${sucursalId}`) ?? 0) * 1000) / 1000;
+}
+
+/*
  * PEDIR O MANDAR POR BULTO (6/10/2026, pedido del dueño). El bulto es una
  * FORMA DE ESCRIBIR, no otra unidad: el renglón guarda SIEMPRE unidades
  * (`cantidad`), así que el stock, el disponible, el costo, el remito y la

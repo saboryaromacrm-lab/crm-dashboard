@@ -292,8 +292,9 @@ export function DetalleIncidenciaModal({ id }) {
       )}
       {inc.motivo && <div className={s.callout}>{inc.motivo}</div>}
       {inc.resolucion && (
-        <div className={cx(s.callout, s.ok)}>
-          Resuelta: {ETIQUETA_RESOLUCION[inc.resolucion] || inc.resolucion}
+        /* Cerrada en bloque (0159) no es «resuelta» por nadie: se dice tal cual, sin el verde. */
+        <div className={cx(s.callout, inc.resolucion === 'anterior_control' ? s.info : s.ok)}>
+          {inc.resolucion === 'anterior_control' ? '' : 'Resuelta: '}{ETIQUETA_RESOLUCION[inc.resolucion] || inc.resolucion}
           {inc.fechaResolucion ? ` \u00b7 ${fmtFechaHora(inc.fechaResolucion)}` : ''}
         </div>
       )}

@@ -223,7 +223,7 @@ export const ETIQUETA_RESOLUCION = {
   ...RESOLUCIONES_RECEPCION_CAFE,
   venta_anulada: 'Se anuló la venta',
   controlado: 'Se volvió a controlar el stock después de la venta',
-  anterior_control: 'Anterior al control de stock (cerrada en bloque)',
+  anterior_control: 'Cerrada: el stock no estaba controlado',
   liberar: 'Liberado a disponible',
   merma: 'Baja por merma',
   defectuoso: 'Baja: producto defectuoso',

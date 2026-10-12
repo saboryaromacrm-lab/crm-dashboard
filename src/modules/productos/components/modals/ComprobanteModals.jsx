@@ -32,14 +32,30 @@ const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
  * renglones sin producto para asociar a mano —con los parecidos primero y lo
  * que sugiera la IA— y el detalle completo de lo leído.
  */
-function PanelIa({ propuesta: d, cargando, leyendo, eligiendo, asociados, productos, onAplicar, onReleer, onElegir, onAsociar, onUsarEncabezado }) {
+function PanelIa({ propuesta: d, cargando, leyendo, eligiendo, asociados, productos, proveedor, onAplicar, onReleer, onElegir, onAsociar, onUsarEncabezado }) {
   const estado = d?.estado ?? '';
   const renglones = d?.renglones ?? [];
   const sinProducto = renglones.filter((x) => !x.productoId);
+  /*
+   * SOLO LOS PRODUCTOS DEL PROVEEDOR DE LA FACTURA (12/10/2026, pedido del
+   * dueño): la lista entera hacía buscar entre miles. Lo de otros proveedores
+   * queda a un clic («ver todos»), para el artículo que se le compra a este
+   * por primera vez. Si el proveedor todavía no tiene productos, van todos.
+   */
+  const [verTodos, setVerTodos] = useState(false);
   const activos = useMemo(
     () => productos.filter((p) => (p.estado || 'activo') === 'activo').slice().sort((a, b) => a.nombre.localeCompare(b.nombre)),
     [productos],
   );
+  const delProveedor = useMemo(
+    () => (proveedor ? activos.filter((p) => (p.formatosCompra || []).some((e) => e.proveedorId === proveedor.id)) : []),
+    [activos, proveedor],
+  );
+  const todos = verTodos || !delProveedor.length;
+  const opciones = todos ? activos : delProveedor;
+  const idsProveedor = useMemo(() => new Set(delProveedor.map((p) => p.id)), [delProveedor]);
+  /** Los parecidos, también solo del proveedor (salvo «ver todos»). */
+  const parecidos = (x) => (todos ? x.candidatos ?? [] : (x.candidatos ?? []).filter((c) => idsProveedor.has(c.id)));
   const usd = (n) => `USD ${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 4 })}`;
   const modelo = (m) => (/haiku/.test(m || '') ? 'Haiku' : /sonnet/.test(m || '') ? 'Sonnet' : m || '');
   const tono = estado === 'lista' ? (d.cierra ? s.ok : s.warn) : estado === 'error' || estado === 'tope' ? s.warn : s.info;
@@ -105,13 +121,13 @@ function PanelIa({ propuesta: d, cargando, leyendo, eligiendo, asociados, produc
                       onChange={(e) => { if (e.target.value) onAsociar(x, e.target.value); }}
                     >
                       <option value="">{x.sugerido ? 'O elegí otro…' : 'Asociar con un producto…'}</option>
-                      {x.candidatos?.length > 0 && (
+                      {parecidos(x).length > 0 && (
                         <optgroup label="Parecidos">
-                          {x.candidatos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                          {parecidos(x).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                         </optgroup>
                       )}
-                      <optgroup label="Todos los productos">
-                        {activos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                      <optgroup label={todos ? 'Todos los productos' : `Productos de ${proveedor.nombre}`}>
+                        {opciones.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                       </optgroup>
                     </select>
                   </>
@@ -119,6 +135,12 @@ function PanelIa({ propuesta: d, cargando, leyendo, eligiendo, asociados, produc
               </li>
             ))}
           </ul>
+          {delProveedor.length > 0 && (
+            <label className={s.hint} style={{ margin: '2px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input type="checkbox" checked={verTodos} onChange={(e) => setVerTodos(e.target.checked)} />
+              Mostrar también productos de otros proveedores (para uno que le comprás por primera vez)
+            </label>
+          )}
         </div>
       )}
 
@@ -1864,7 +1886,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       {conIa && (
         <PanelIa
           propuesta={propuestaIa} cargando={cargandoIa} leyendo={iaLeyendo} eligiendo={eligiendoIa}
-          asociados={asociados} productos={store.state.productos}
+          asociados={asociados} productos={store.state.productos} proveedor={provElegido}
           onAplicar={() => cargarPropuesta({ aplicar: true, preguntar: true })}
           onReleer={releerIa} onElegir={elegirIa} onAsociar={asociarRenglon} onUsarEncabezado={usarEncabezadoIa}
         />

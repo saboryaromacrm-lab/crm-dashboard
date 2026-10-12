@@ -1053,6 +1053,13 @@ const avanzarIncidencia = (id) => _mutate(() => httpClient.post('/incidencias/' 
  * es cuánto hay EN LA GÓNDOLA, y el stock queda en ese número. */
 const resolverIncidencia = (id, resolucion, contado) => _mutate(() => httpClient.post('/incidencias/' + id + '/resolver',
   contado === undefined ? { resolucion } : { resolucion, contado }));
+/**
+ * La orden de pedido queda anotada en Proveedores › Pedidos (12/10/2026): la
+ * primera vez nace la tarjeta en «Pedido»; después se le actualiza la nota.
+ */
+const anotarPedidoProveedor = (pedidoId, proveedorId, notas) => _directo(() => (pedidoId
+  ? httpClient.patch(`/pedidos-proveedor/${pedidoId}`, { notas })
+  : httpClient.post('/pedidos-proveedor/directo', { proveedorId, notas })));
 /** Cierra en bloque las ventas sin stock anteriores al control de su producto (0159). Sin sucursal: todas. */
 const cerrarIncidenciasAnteriores = (sucursalId) => _mutate(() => httpClient.post('/incidencias/cerrar-anteriores',
   sucursalId ? { sucursalId } : {}));
@@ -1466,7 +1473,7 @@ export const inventoryStore = {
   editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
   historialFraccionamientos, exportarFraccionamientos,
   operadoresFraccion, crearOperadorFraccion, editarOperadorFraccion,
-  crearIncidencia, avanzarIncidencia, resolverIncidencia, cerrarIncidenciasAnteriores,
+  crearIncidencia, avanzarIncidencia, resolverIncidencia, cerrarIncidenciasAnteriores, anotarPedidoProveedor,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto, cambiarControlStock,
   sugerenciasArchivado, archivarLote,
   guardarPresentaciones, importarCatalogo, importarCostos, importarFormatosVenta, importacionesPorProveedor, moverLista, usoLista, borrarListasVacias, importarCostosEnTanda, crearProveedorEnTanda, actualizarClasificacion,
