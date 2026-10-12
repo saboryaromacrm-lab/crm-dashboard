@@ -1171,6 +1171,11 @@ function _cleanComprobante(o) {
        */
       codigoProveedor: it.codigoProveedor ? String(it.codigoProveedor) : undefined,
       descripcionPapel: it.descripcionPapel ? String(it.descripcionPapel) : undefined,
+      /* El código del papel pasa al formato del producto (12/10/2026). */
+      guardarCodigo: it.guardarCodigo ? true : undefined,
+      /* El renglón es para Coffit (0119). Faltaba acá: el tilde por renglón no
+       * llegaba al servidor (12/10/2026). */
+      paraCafeteria: it.paraCafeteria ? true : undefined,
     })),
   };
 }

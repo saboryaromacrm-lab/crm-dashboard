@@ -28,6 +28,9 @@ const leerUmbral = () => {
 const fmtN = (n) => String(Math.round(n * 1000) / 1000).replace('.', ',');
 const aNumero = (t) => Number(String(t ?? '').replace(',', '.'));
 const hoy = () => new Date().toLocaleDateString('es-AR');
+/* Cómo se presenta el pedido y cómo cierra (12/10/2026, pedido del dueño): quién pide —nombre y CUIT— y la fecha. */
+const QUIEN_PIDE = 'Lorenzo Lucas - 23356782429';
+const CIERRE = 'Por favor confirmar recibido.';
 
 export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: sucInicial = null }) {
   const { store, closeModal, toast, sucOperativa } = useProductos();
@@ -88,7 +91,7 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
     const n = aNumero(cant[x.id]);
     return `${conBulto(x)} — ${fmtN(n)} ${unidadPedido(x.p, x.bulto, n)}`;
   });
-  const mensaje = lineas.length ? [`Pedido · ${sucursal?.nombre ?? ''} · ${hoy()}`, '', ...lineas].join('\n') : '';
+  const mensaje = lineas.length ? [`Pedido - ${QUIEN_PIDE} - ${hoy()}`, '', ...lineas, '', CIERRE].join('\n') : '';
 
   const cambiarProveedor = (v) => { setProvId(v); setCant({}); setOrden([]); setQ(''); };
   const cambiarUmbral = (v) => {

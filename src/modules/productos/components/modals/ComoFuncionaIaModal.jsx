@@ -35,7 +35,7 @@ const PASOS = [
     titulo: 'Procesar: los productos',
     items: [
       'Se abre la carga con los renglones ya puestos. Los productos que el sistema conoce aparecen solos.',
-      'Los que no reconoce: asocialos con «Asociar con un producto…» (los parecidos van primero) o con «Que la IA elija». Lo que elige la IA es solo una sugerencia: hay que tocar «Aceptar».',
+      'Cada renglón viene con un color: verde, el código de la factura coincide con el del producto (o ya lo asociaste antes); amarillo, la IA lo supone, revisalo; rojo, elegí el producto entre los del proveedor (los parecidos van primero) o tocá «Que la IA elija» y después «Aceptar». Al asociar, podés tildar que el código de la factura quede como código de proveedor del producto: la próxima llega en verde.',
       'Si el artículo no existe en el sistema, primero se crea en Productos. La IA nunca crea productos ni proveedores.',
     ],
   },
