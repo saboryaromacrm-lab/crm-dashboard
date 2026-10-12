@@ -3,9 +3,11 @@
  * ============================================================================
  * Dos modales:
  *
- *  · `ConteoNuevoModal` — los FILTROS del alcance (marca, categoría,
- *    proveedor, tipo, solo con stock) con la vista previa de cuántos
- *    renglones nacen. El dueño cuenta por marca, no todo junto.
+ *  · `ConteoNuevoModal` — los FILTROS del alcance (una o varias marcas,
+ *    categoría, proveedor, tipo, solo con stock) con la vista previa de cuántos
+ *    renglones nacen. El dueño cuenta por marca, no todo junto. Lo que ya se
+ *    está contando en otro control queda afuera (y la marca sin nada libre ni
+ *    se ofrece).
  *
  *  · `ConteoModal` — la sesión. En curso es la pantalla de CONTAR, pensada
  *    para el lector: escanear → cae en el renglón → cantidad → Enter →
@@ -33,42 +35,81 @@ export function ConteoNuevoModal({ alCrear }) {
   const { store, isAdmin, closeModal, toast } = useProductos();
   const puedeAplicar = isAdmin || store.can('conteos_aplicar');
   const [f, setF] = useState({
-    responsable: '', nombre: '', marcaId: '', categoriaId: '', proveedorId: '', tipo: '',
+    responsable: '', nombre: '', marcaIds: [], categoriaId: '', proveedorId: '', tipo: '',
     // Por defecto destildados (10/10/2026, decisión del dueño): entra todo el alcance y se ve el sistema.
     soloConStock: false, ciego: false,
   });
   const [creando, setCreando] = useState(false);
+  const [ocupados, setOcupados] = useState(null);
   const set = (patch) => setF((x) => ({ ...x, ...patch }));
 
+  /* Lo que ya se está contando en la sucursal (en curso o cerrado sin aplicar):
+   * queda afuera del control nuevo, y la marca que no tiene nada libre ni se ofrece. */
+  useEffect(() => {
+    let vivo = true;
+    store.conteosOcupados().then((r) => {
+      if (!vivo) return;
+      if (r.ok) setOcupados(r.data);
+      else { toast(r.error, 'err'); setOcupados({ controles: [], formas: [] }); }
+    });
+    return () => { vivo = false; };
+  }, [store, toast]);
+
   /*
-   * VISTA PREVIA EN MEMORIA: el store ya tiene productos y stock, así que
-   * "cuántos renglones nacen" se estima acá con los mismos criterios que va a
-   * usar el servidor. Es estimación honesta (el server decide), pero evita
-   * abrir un control de 900 renglones creyendo que eran 40.
+   * LA VISTA PREVIA, EN MEMORIA: el store ya tiene productos y stock, así que
+   * se estima acá con los mismos criterios que usa el servidor (que decide).
+   * Una pasada por el catálogo da, por marca, cuántos renglones quedan libres y
+   * cuántos ya están en otro control; con eso se arma la lista de marcas y el
+   * total del botón.
    */
-  const preview = useMemo(() => {
-    let n = 0;
+  const analisis = useMemo(() => {
+    const enUso = new Map((ocupados?.formas ?? []).map(([p, pr, c]) => [`${p}:${pr || ''}`, c]));
+    const porMarca = new Map();
     for (const p of store.state.productos) {
       if (p.estado === 'archivado') continue;
-      if (f.marcaId && String(p.marcaId ?? '') !== String(f.marcaId)) continue;
       if (f.categoriaId && String(p.categoriaId ?? '') !== String(f.categoriaId)) continue;
       if (f.tipo && p.tipo !== f.tipo) continue;
       if (f.proveedorId && !(p.formatosCompra || []).some((e) => String(e.proveedorId) === String(f.proveedorId))) continue;
-      const formas = [null, ...(p.presentaciones || []).map((pr) => pr.id)];
-      for (const presId of formas) {
+      const k = p.marcaId ?? 0;
+      const m = porMarca.get(k) ?? { libres: 0, ocupadas: 0, controles: new Set() };
+      for (const presId of [null, ...(p.presentaciones || []).map((pr) => pr.id)]) {
         if (f.soloConStock && !(Math.abs(store.cant(p.id, store.state.ctx.sucursalId, presId, 'disponible')) > 1e-9)) continue;
-        n += 1;
+        const c = enUso.get(`${p.id}:${presId ?? ''}`);
+        if (c) { m.ocupadas += 1; m.controles.add(c); } else m.libres += 1;
       }
+      porMarca.set(k, m);
     }
-    return n;
-  }, [store, f]);
+    return porMarca;
+  }, [store, f.categoriaId, f.tipo, f.proveedorId, f.soloConStock, ocupados]);
+
+  /* Las marcas que todavía tienen algo para contar; las que no, ni aparecen. */
+  const marcas = useMemo(() => (store.state.catalogos?.marcas ?? [])
+    .map((m) => ({ ...m, ...(analisis.get(m.id) ?? { libres: 0, ocupadas: 0 }) }))
+    .filter((m) => m.libres > 0)
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')), [store, analisis]);
+  const ocultas = (store.state.catalogos?.marcas ?? []).filter((m) => (analisis.get(m.id)?.ocupadas ?? 0) > 0 && !(analisis.get(m.id)?.libres > 0)).length;
+  /* Una marca elegida que se quedó sin nada libre (cambió el tipo, por ejemplo) deja de contar sola. */
+  const elegidas = f.marcaIds.filter((id) => marcas.some((m) => m.id === id));
+
+  const resumen = useMemo(() => {
+    const claves = elegidas.length ? elegidas : [...analisis.keys()];
+    const r = { libres: 0, afuera: 0, controles: new Set() };
+    for (const k of claves) {
+      const m = analisis.get(k);
+      if (!m) continue;
+      r.libres += m.libres; r.afuera += m.ocupadas;
+      m.controles.forEach((c) => r.controles.add(c));
+    }
+    return r;
+  }, [analisis, elegidas]);
+  const controlesAfuera = (ocupados?.controles ?? []).filter((c) => resumen.controles.has(c.id));
 
   const crear = async () => {
     setCreando(true);
     const r = await store.crearConteo({
       responsable: f.responsable.trim(),
       nombre: f.nombre.trim() || undefined,
-      marcaId: f.marcaId ? Number(f.marcaId) : undefined,
+      marcaIds: elegidas.length ? elegidas : undefined,
       categoriaId: f.categoriaId ? Number(f.categoriaId) : undefined,
       proveedorId: f.proveedorId ? Number(f.proveedorId) : undefined,
       tipo: f.tipo || undefined,
@@ -77,11 +118,12 @@ export function ConteoNuevoModal({ alCrear }) {
     });
     setCreando(false);
     if (!r.ok) { toast(r.error, 'err'); return; }
-    toast(`Control abierto: ${r.data.total} renglones para contar.`, 'ok');
+    toast(`Control abierto: ${r.data.total} renglones para contar${r.data.afuera ? ` (${r.data.afuera} quedaron afuera: ya están en otro control)` : ''}.`, 'ok');
     closeModal();
     alCrear?.(r.data.id);
   };
 
+  const cargando = ocupados === null;
   return (
     <ModalShell
       title="Nuevo control de stock"
@@ -90,52 +132,63 @@ export function ConteoNuevoModal({ alCrear }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: creando ? 'Abriendo…' : `Abrir control (≈${preview} renglones)`, clase: 'btn-primary', onClick: crear, disabled: creando || preview === 0 || !f.responsable.trim() },
+        {
+          texto: creando ? 'Abriendo…' : cargando ? 'Revisando lo que ya se cuenta…' : `Abrir control (≈${resumen.libres} renglones)`,
+          clase: 'btn-primary', onClick: crear, disabled: creando || cargando || resumen.libres === 0 || !f.responsable.trim(),
+        },
       ]}
     >
       <div className={s['form-grid']}>
         {/* Quién responde por el conteo (0154): a mano, puede no tener usuario. Sale en la planilla. */}
         <div className={s.field}>
-          <label>Responsable <span className={s.req}>*</span></label>
-          <input value={f.responsable} maxLength={80} autoFocus placeholder="Ej: Juan Pérez" onChange={(e) => set({ responsable: e.target.value })} />
+          <label htmlFor="conteo-responsable">Responsable <span className={s.req}>*</span></label>
+          <input id="conteo-responsable" value={f.responsable} maxLength={80} autoFocus placeholder="Ej: Juan Pérez" onChange={(e) => set({ responsable: e.target.value })} />
         </div>
         <div className={s.field}>
-          <label>Nombre (opcional)</label>
-          <input value={f.nombre} placeholder="Ej: Góndola CUMANA" onChange={(e) => set({ nombre: e.target.value })} />
+          <label htmlFor="conteo-nombre">Nombre (opcional)</label>
+          <input id="conteo-nombre" value={f.nombre} placeholder="Ej: Góndola CUMANA" onChange={(e) => set({ nombre: e.target.value })} />
         </div>
       </div>
+
+      <SelectorMarcas
+        marcas={marcas} elegidas={elegidas} ocultas={ocultas} cargando={cargando}
+        onChange={(marcaIds) => set({ marcaIds })}
+      />
+
       <div className={s['form-grid']}>
         <div className={s.field}>
-          <label>Marca</label>
-          <select value={f.marcaId} onChange={(e) => set({ marcaId: e.target.value })}>
-            <option value="">Todas</option>
-            {(store.state.catalogos?.marcas ?? []).map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-          </select>
-        </div>
-        <div className={s.field}>
-          <label>Categoría</label>
-          <select value={f.categoriaId} onChange={(e) => set({ categoriaId: e.target.value })}>
+          <label htmlFor="conteo-categoria">Categoría</label>
+          <select id="conteo-categoria" value={f.categoriaId} onChange={(e) => set({ categoriaId: e.target.value })}>
             <option value="">Todas</option>
             {(store.state.catalogos?.categorias ?? []).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
           </select>
         </div>
         <div className={s.field}>
-          <label>Proveedor</label>
-          <select value={f.proveedorId} onChange={(e) => set({ proveedorId: e.target.value })}>
+          <label htmlFor="conteo-proveedor">Proveedor</label>
+          <select id="conteo-proveedor" value={f.proveedorId} onChange={(e) => set({ proveedorId: e.target.value })}>
             <option value="">Todos</option>
             {store.state.proveedores.filter((p) => p.proveeMercaderia !== false)
               .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
         </div>
         <div className={s.field}>
-          <label>Tipo</label>
-          <select value={f.tipo} onChange={(e) => set({ tipo: e.target.value })}>
+          <label htmlFor="conteo-tipo">Tipo</label>
+          <select id="conteo-tipo" value={f.tipo} onChange={(e) => set({ tipo: e.target.value })}>
             <option value="">Enteros y granel</option>
             <option value="entero">Solo enteros</option>
             <option value="granel">Solo granel</option>
           </select>
         </div>
       </div>
+
+      {resumen.afuera > 0 && (
+        <div className={cx(s.callout, s.info)}>
+          Quedan <strong>afuera {resumen.afuera} renglón(es)</strong> que ya se están contando en{' '}
+          {controlesAfuera.map((c, i) => (
+            <span key={c.id}>{i > 0 && ', '}<strong>«{c.nombre || `#${c.id}`}»</strong>{c.responsable ? ` (${c.responsable})` : ''}</span>
+          ))}. Un producto no puede estar en dos controles abiertos: se contaría y se ajustaría dos veces.
+        </div>
+      )}
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
         <input type="checkbox" checked={f.soloConStock} onChange={(e) => set({ soloConStock: e.target.checked })} style={{ marginTop: 2 }} />
@@ -160,6 +213,70 @@ export function ConteoNuevoModal({ alCrear }) {
         podés cerrar la ventana y retomarlo, y otra persona puede seguir donde dejaste.
       </div>
     </ModalShell>
+  );
+}
+
+/**
+ * VARIAS MARCAS EN UN CONTROL (12/10/2026). Ninguna tildada = todas. Se busca
+ * escribiendo (Enter tilda la primera que aparece) y las elegidas quedan arriba
+ * como etiquetas. Cada marca dice cuánto le queda para contar.
+ */
+function SelectorMarcas({ marcas, elegidas, ocultas, cargando, onChange }) {
+  const [q, setQ] = useState('');
+  const elegidasSet = new Set(elegidas);
+  const visibles = q.trim() ? marcas.filter((m) => norm(m.nombre).includes(norm(q))) : marcas;
+  const alternar = (id) => onChange(elegidasSet.has(id) ? elegidas.filter((x) => x !== id) : [...elegidas, id]);
+  const nombreDe = (id) => marcas.find((m) => m.id === id)?.nombre ?? `#${id}`;
+
+  return (
+    <div className={s.field}>
+      <label htmlFor="conteo-marcas-buscar">
+        Marcas {elegidas.length > 0 ? <strong>({elegidas.length} elegida{elegidas.length > 1 ? 's' : ''})</strong> : <span className={s.hint} style={{ margin: 0 }}>— ninguna tildada = todas</span>}
+      </label>
+      {elegidas.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+          {elegidas.map((id) => (
+            <button
+              key={id} type="button" onClick={() => alternar(id)} title="Sacar esta marca"
+              style={{ border: '1px solid var(--crm-color-primary)', background: 'var(--crm-color-primary-soft, #dcfce7)', color: 'var(--crm-color-text)', borderRadius: 999, padding: '2px 10px', fontSize: 12.5, cursor: 'pointer' }}
+            >
+              {nombreDe(id)} ×
+            </button>
+          ))}
+          <Btn small onClick={() => onChange([])}>Quitar todas</Btn>
+        </div>
+      )}
+      <input
+        id="conteo-marcas-buscar" value={q} placeholder={cargando ? 'Revisando lo que ya se cuenta…' : 'Buscar marca… (Enter tilda la primera)'}
+        disabled={cargando}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          if (visibles[0]) { alternar(visibles[0].id); setQ(''); }
+        }}
+      />
+      <div style={{ maxHeight: 210, overflowY: 'auto', border: '1px solid var(--crm-color-border)', borderRadius: 8, marginTop: 6 }}>
+        {visibles.map((m) => (
+          <label
+            key={m.id}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', cursor: 'pointer', borderBottom: '1px solid var(--crm-color-border)', background: elegidasSet.has(m.id) ? 'var(--crm-color-primary-soft, #f0fdf4)' : undefined }}
+          >
+            <input type="checkbox" checked={elegidasSet.has(m.id)} onChange={() => alternar(m.id)} />
+            <span style={{ flex: 1 }}>{m.nombre}</span>
+            <span className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
+              {m.libres} para contar{m.ocupadas > 0 ? ` · ${m.ocupadas} ya en otro control` : ''}
+            </span>
+          </label>
+        ))}
+        {!cargando && visibles.length === 0 && <div className={s.hint} style={{ padding: 10, margin: 0 }}>Ninguna marca con ese nombre tiene algo para contar.</div>}
+      </div>
+      {ocultas > 0 && (
+        <div className={s.hint} style={{ margin: '4px 0 0' }}>
+          {ocultas} marca{ocultas > 1 ? 's no aparecen' : ' no aparece'}: todo lo suyo (con estos filtros) ya se está contando en otro control.
+        </div>
+      )}
+    </div>
   );
 }
 

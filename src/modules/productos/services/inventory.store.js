@@ -990,6 +990,8 @@ const _directo = async (fn) => {
 };
 const listarConteos = () => _directo(() => httpClient.get('/conteos'));
 const crearConteo = (o) => _directo(() => httpClient.post('/conteos', o));
+/** Lo que ya se está contando en la sucursal: [producto, presentación (0 = madre), control]. */
+const conteosOcupados = () => _directo(() => httpClient.get('/conteos/ocupados'));
 const getConteo = (id) => _directo(() => httpClient.get(`/conteos/${id}`));
 /** `contado: null` devuelve el renglón a pendiente. */
 const contarItemConteo = (id, itemId, contado) => _directo(
@@ -1440,7 +1442,7 @@ export const inventoryStore = {
   opFraccionarRegistro, opCorregirFraccionado, opSimple, descartarEstado,
   avanzarTransferencia, cancelarTransferencia,
   abrirBorradorPedido, guardarBorradorPedido, enviarBorradorPedido, descartarBorradorPedido,
-  listarConteos, crearConteo, getConteo, contarItemConteo, cerrarConteo, reabrirConteo,
+  listarConteos, crearConteo, conteosOcupados, getConteo, contarItemConteo, cerrarConteo, reabrirConteo,
   marcarRecontarConteo, descartarConteo, aplicarConteo,
   editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
   historialFraccionamientos, exportarFraccionamientos,
