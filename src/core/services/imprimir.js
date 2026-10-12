@@ -673,50 +673,72 @@ export function cuerpoCartelGondola({
  *    que se termina copiando, y entonces el control no controla nada. La
  *    comparación la hace el sistema después, que para eso guarda el instante.
  *
- *  · **Los apartados SÍ van**, y en negrita. Es mercadería que está físicamente
- *    ahí pero ya separada para un envío: si el que cuenta la suma, la diferencia
- *    da un sobrante que no existe. La hoja tiene que decir "de estos, N no los
- *    cuentes" o repite en papel el error que la pantalla evita.
+ *  · **Ordenada por MARCA y con su columna** (12/10/2026, pedido del dueño):
+ *    se cuenta góndola por góndola, y en la góndola los productos están por
+ *    marca. Dentro de la marca, por nombre. Sin marca, al final.
+ *
+ *  · **Sin la columna «Apartados»** (12/10/2026, pedido del dueño): casi siempre
+ *    iba vacía. Lo apartado para un envío sigue avisándose, pero solo en el
+ *    renglón que lo tiene («⚠ N apartados: NO contar»): si el que cuenta los
+ *    suma, la diferencia da un sobrante que no existe.
  *
  * `filas` = renglones del conteo tal como los devuelve la API, más el `codigo`
- * que resuelve la pantalla desde el catálogo.
+ * y la `marca` que resuelve la pantalla desde el catálogo.
  */
 export function cuerpoPlanillaConteo({ titulo, alcance, sucursal, filas, impresa, hoja = '', responsable = '' }) {
-  const rows = filas.map((f) => `
+  const marcaDe = (f) => String(f.marca || '').trim();
+  const ordenadas = [...filas].sort((a, b) => (!marcaDe(a) - !marcaDe(b))
+    || marcaDe(a).localeCompare(marcaDe(b), 'es', { sensitivity: 'base' })
+    || String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' })
+    || String(a.presLabel || '').localeCompare(String(b.presLabel || ''), 'es', { numeric: true }));
+  const rows = ordenadas.map((f) => `
     <tr>
+      <td class="chica">${esc(marcaDe(f) || '—')}</td>
       <td>${esc(f.nombre)}${f.presLabel ? ` <strong>· ${esc(f.presLabel)}</strong>` : ''}${
-        f.recontar ? ' <strong>⟳ RECONTAR</strong>' : ''}</td>
+        f.recontar ? ' <strong>⟳ RECONTAR</strong>' : ''}${
+        f.apartados > 1e-9 ? ` <strong>⚠ ${esc(f.apartados)} apartado(s): NO contar</strong>` : ''}</td>
       <td class="chica">${esc(f.codigo || '')}</td>
       <td class="chica">${esc(f.unidad || '')}</td>
-      <td class="chica n">${f.apartados > 1e-9 ? `<strong>${esc(f.apartados)} ⚠</strong>` : '—'}</td>
       <td class="prep"></td>
       <td class="c">&#9744;</td>
     </tr>`).join('');
-  /* «HOJA 3 DE 5» (10/10/2026): en el margen de abajo de cada hoja, grande y en
-   * negro, para no mezclar ni perder hojas de una planilla larga. Es un recuadro
-   * del margen de la página (@page), así sale en todas sin calcular nada. Los
-   * tres de arriba, vacíos, sacan el encabezado que agrega el navegador (fecha
-   * y título): ocupando el margen, el navegador no pone el suyo. */
+  /* EN LOS MÁRGENES DE CADA HOJA (recuadros de @page: salen en todas sin
+   * calcular nada, y ocupándolos el navegador no pone su fecha, título ni URL):
+   *  · arriba a la derecha, grande y en negro: «HOJA 3 DE 5» y el RESPONSABLE
+   *    (10/10 y 12/10/2026), para no mezclar ni perder hojas ni dudar de quién
+   *    es cada una;
+   *  · abajo, «SUBIDO POR:» con la raya para firmar (12/10/2026): quién pasó
+   *    los números de esa hoja al sistema. Va en cada hoja porque se pueden
+   *    cargar por separado.
+   * El margen de arriba se agranda para que entren las dos líneas. */
+  const responsableCss = `"${String(responsable || '—').replace(/[\\"]/g, '\\$&').replace(/[\r\n]+/g, ' ').replace(/</g, '\\3C ').toUpperCase()}"`;
   return `
     <style>
       @page {
-        @top-left { content: ""; } @top-center { content: ""; } @top-right { content: ""; }
-        @bottom-center {
-          content: "HOJA " counter(page) " DE " counter(pages);
-          background: #000; color: #fff; font: 800 15pt system-ui, sans-serif; letter-spacing: 0.06em;
-          padding: 0 7mm; margin: 2.5mm 0;
+        margin-top: 24mm; margin-bottom: 18mm;
+        @top-left { content: ""; } @top-center { content: ""; }
+        @top-right {
+          content: "HOJA " counter(page) " DE " counter(pages) "\\A RESPONSABLE: " ${responsableCss};
+          white-space: pre; text-align: right; vertical-align: bottom;
+          background: #000; color: #fff; font: 800 14pt/1.25 system-ui, sans-serif; letter-spacing: 0.04em;
+          padding: 1.5mm 5mm; margin: 0 0 3mm;
           -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
+        @bottom-left {
+          content: "SUBIDO POR: ______________________________";
+          font: 700 12pt system-ui, sans-serif; color: #000; vertical-align: middle;
+        }
+        @bottom-center { content: ""; } @bottom-right { content: ""; }
       }
       tr { break-inside: avoid; }
     </style>
     <h1>${esc(titulo)} — control de stock</h1>
     <div class="sub">${esc(alcance)} · ${esc(sucursal)} · ${filas.length} renglón(es)${
       hoja ? ` · ${esc(hoja)}` : ''} · impresa ${esc(impresa)}</div>
-    <div class="sub">${responsable ? `Responsable: <strong>${esc(responsable)}</strong> &nbsp;&nbsp; ` : ''}<strong>Anotá lo que HAY en el estante.</strong> La columna
-      <strong>Apartados</strong> es mercadería ya separada para un envío: NO la cuentes.</div>
+    <div class="sub"><strong>Anotá lo que HAY en el estante.</strong>${
+      filas.some((f) => f.apartados > 1e-9) ? ' Lo marcado <strong>⚠ apartado</strong> ya está separado para un envío: NO lo cuentes.' : ''}</div>
     <table><thead><tr>
-      <th>Producto</th><th>Código</th><th>Unidad</th><th>Apartados</th><th>Contado</th><th>&#10003;</th>
+      <th>Marca</th><th>Producto</th><th>Código</th><th>Unidad</th><th>Contado</th><th>&#10003;</th>
     </tr></thead><tbody>${rows}</tbody></table>`;
 }
 

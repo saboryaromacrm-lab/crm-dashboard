@@ -357,6 +357,7 @@ export function ConteoModal({ conteoId, alTerminar }) {
   }), [items, vista]);
 
   const imprimirPlanilla = async () => {
+    const marcas = new Map((store.state.catalogos?.marcas ?? []).map((m) => [m.id, m.nombre]));
     const ok = await imprimirDocumento('planillaConteo', {
       titulo: data.nombre || `Control #${data.id}`,
       cuerpo: cuerpoPlanillaConteo({
@@ -367,7 +368,7 @@ export function ConteoModal({ conteoId, alTerminar }) {
         impresa: new Date().toLocaleString('es-AR'),
         hoja: vista === 'pendientes' ? 'pendientes de contar'
           : vista === 'contados' ? 'ya contados' : 'lista completa',
-        filas: paraImprimir.map((it) => ({ ...it, codigo: codigoDe(it) })),
+        filas: paraImprimir.map((it) => ({ ...it, codigo: codigoDe(it), marca: marcas.get(store.getProducto(it.productoId)?.marcaId) ?? '' })),
       }),
     });
     if (!ok) toast('El navegador bloqueó la ventana de impresión. Permitila y probá de nuevo.', 'err');

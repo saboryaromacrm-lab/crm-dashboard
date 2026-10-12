@@ -151,9 +151,9 @@ async function cuerpoMuestra(clave, empresa, impresion) {
       impresa: '18/08/2026 21:40',
       hoja: 'pendientes de contar',
       filas: [
-        { nombre: 'Avena Tradicional CUMANA x400g', presLabel: '', unidad: 'u', codigo: '7790040001234', apartados: 0 },
-        { nombre: 'Ajo en Polvo', presLabel: '500 g', unidad: 'u', codigo: '6850000001491', apartados: 12 },
-        { nombre: 'Ajo en Polvo', presLabel: '', unidad: 'kg', codigo: '', apartados: 0, recontar: true },
+        { marca: 'CUMANA', nombre: 'Avena Tradicional CUMANA x400g', presLabel: '', unidad: 'u', codigo: '7790040001234', apartados: 0 },
+        { marca: 'CUMANA', nombre: 'Ajo en Polvo', presLabel: '500 g', unidad: 'u', codigo: '6850000001491', apartados: 12 },
+        { marca: 'CUMANA', nombre: 'Ajo en Polvo', presLabel: '', unidad: 'kg', codigo: '', apartados: 0, recontar: true },
       ],
     });
   }
