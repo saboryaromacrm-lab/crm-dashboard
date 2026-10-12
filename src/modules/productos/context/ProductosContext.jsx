@@ -53,10 +53,11 @@ export function ProductosProvider({ children, panels = [], defaultPanel }) {
    * un resultado sincrónico como una Promise (las mutaciones contra la API son async).
    */
   const act = useCallback(
+    /* `okMsg` puede ser una función de la respuesta: el aviso dice lo que pasó de verdad. */
     async (resOrPromise, okMsg) => {
       const res = await resOrPromise;
       if (!res || !res.ok) { toast(res?.error || 'Ocurrió un error.', 'err'); return false; }
-      toast(okMsg || 'Listo.', 'ok');
+      toast((typeof okMsg === 'function' ? okMsg(res) : okMsg) || 'Listo.', 'ok');
       closeModal();
       return true;
     },

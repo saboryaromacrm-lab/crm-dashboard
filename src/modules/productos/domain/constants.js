@@ -185,6 +185,11 @@ export const TIPOS_INCIDENCIA = [
  */
 export const TIPO_VENTA_SIN_STOCK = 'venta_sin_stock';
 
+/** El agregado al aviso cuando un control o un ajuste cerró ventas sin stock abiertas de ese producto (0159). */
+export const avisoCerradasSolas = (n) => (n > 0
+  ? ` Se ${n === 1 ? 'cerró sola 1 venta sin stock' : `cerraron solas ${n} ventas sin stock`} de antes (el stock ya quedó en lo real).`
+  : '');
+
 /** Cómo se lee cada tipo en pantalla (los que no están, se muestran tal cual). */
 export const ETIQUETA_TIPO_INCIDENCIA = {
   [TIPO_VENTA_SIN_STOCK]: 'Venta sin stock',
@@ -217,6 +222,8 @@ export const ETIQUETA_RESOLUCION = {
   ...RESOLUCIONES_SIN_STOCK,
   ...RESOLUCIONES_RECEPCION_CAFE,
   venta_anulada: 'Se anuló la venta',
+  controlado: 'Se volvió a controlar el stock después de la venta',
+  anterior_control: 'Anterior al control de stock (cerrada en bloque)',
   liberar: 'Liberado a disponible',
   merma: 'Baja por merma',
   defectuoso: 'Baja: producto defectuoso',

@@ -807,7 +807,8 @@ async function _mutate(fn) {
 async function _mutateStock(fn) {
   try {
     const data = await fn();
-    if (data && Array.isArray(data.stock) && data.producto && data.producto.id != null) {
+    // Si la operación cerró ventas sin stock (un ajuste, 0159), va la foto entera: cambiaron las incidencias.
+    if (data && Array.isArray(data.stock) && data.producto && data.producto.id != null && !data.incidenciasCerradas) {
       _aplicarFotoProducto(data);
       // Lo que está mirando alguien (el historial de movimientos) se refresca
       // igual que antes: la operación acaba de escribir un movimiento nuevo.
@@ -1052,6 +1053,9 @@ const avanzarIncidencia = (id) => _mutate(() => httpClient.post('/incidencias/' 
  * es cuánto hay EN LA GÓNDOLA, y el stock queda en ese número. */
 const resolverIncidencia = (id, resolucion, contado) => _mutate(() => httpClient.post('/incidencias/' + id + '/resolver',
   contado === undefined ? { resolucion } : { resolucion, contado }));
+/** Cierra en bloque las ventas sin stock anteriores al control de su producto (0159). Sin sucursal: todas. */
+const cerrarIncidenciasAnteriores = (sucursalId) => _mutate(() => httpClient.post('/incidencias/cerrar-anteriores',
+  sucursalId ? { sucursalId } : {}));
 
 /**
  * Un `<input type="date">` entrega `yyyy-mm-dd`, que `new Date()` interpreta
@@ -1462,7 +1466,7 @@ export const inventoryStore = {
   editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
   historialFraccionamientos, exportarFraccionamientos,
   operadoresFraccion, crearOperadorFraccion, editarOperadorFraccion,
-  crearIncidencia, avanzarIncidencia, resolverIncidencia,
+  crearIncidencia, avanzarIncidencia, resolverIncidencia, cerrarIncidenciasAnteriores,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto, cambiarControlStock,
   sugerenciasArchivado, archivarLote,
   guardarPresentaciones, importarCatalogo, importarCostos, importarFormatosVenta, importacionesPorProveedor, moverLista, usoLista, borrarListasVacias, importarCostosEnTanda, crearProveedorEnTanda, actualizarClasificacion,

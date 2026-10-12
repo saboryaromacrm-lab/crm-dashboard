@@ -3,7 +3,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { fmtFechaHora } from '../../domain/format.js';
 import {
-  ETIQUETA_RESOLUCION, ETIQUETA_TIPO_INCIDENCIA, RESOLUCIONES_RECEPCION_CAFE, RESOLUCIONES_SIN_STOCK,
+  avisoCerradasSolas, ETIQUETA_RESOLUCION, ETIQUETA_TIPO_INCIDENCIA, RESOLUCIONES_RECEPCION_CAFE, RESOLUCIONES_SIN_STOCK,
   TIPOS_INCIDENCIA, TIPO_RECEPCION_CAFE, TIPO_VENTA_SIN_STOCK,
 } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
@@ -150,7 +150,7 @@ export function ResolverIncidenciaModal({ id }) {
     enVuelo.current = true;
     act(
       store.resolverIncidencia(id, res, necesitaConteo ? Number(contado) : undefined),
-      necesitaConteo ? 'Stock ajustado y incidencia resuelta.' : 'Incidencia resuelta.',
+      (r) => (necesitaConteo ? 'Stock ajustado y incidencia resuelta.' + avisoCerradasSolas(r.otrasCerradas) : 'Incidencia resuelta.'),
     ).finally(() => { enVuelo.current = false; setConfirmando(false); });
   };
   /** Lo que va a pasar con el stock, en palabras, para la segunda confirmación. */
@@ -215,7 +215,8 @@ export function ResolverIncidenciaModal({ id }) {
           <div className={s.hint}>
             El stock queda <strong>en ese número</strong>. No se le suma lo que faltaba: entre
             la venta y ahora pudo entrar mercadería, y sumar a ciegas dejaría el número peor
-            que antes. Queda un movimiento de ajuste con tu nombre.
+            que antes. Queda un movimiento de ajuste con tu nombre, y las otras ventas sin
+            stock abiertas de este producto acá se cierran solas.
           </div>
         </>
       )}

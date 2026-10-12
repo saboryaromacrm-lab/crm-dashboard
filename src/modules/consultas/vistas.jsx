@@ -278,6 +278,10 @@ export function CambiosPrecioVista({ compacto = false }) {
  * ------------------------------------------------------------------ */
 
 const FILTROS_STOCK = { q: '', proveedor: '', categoria: '', marca: '', soloConStock: false };
+const totalDe = (i) => (i.stockSucursales ?? []).reduce((a, x) => a + (x.cantidad || 0), 0);
+const stockEn = (item, sucursalId) => item.stockSucursales?.find((x) => x.sucursalId === sucursalId)?.cantidad ?? 0;
+/** El stock de la columna por la que se ordena: una sucursal o 'total'. */
+const stockDeColumna = (item, col) => (col === 'total' ? totalDe(item) : stockEn(item, col));
 
 export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
   /*
@@ -331,11 +335,6 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
   const marcas = useMemo(() => [...new Set(items.map((i) => i.marca).filter(Boolean))].sort(), [items]);
   const categorias = useMemo(() => [...new Set(items.map((i) => i.categoria).filter(Boolean))].sort(), [items]);
 
-  const totalDe = (i) => (i.stockSucursales ?? []).reduce((a, x) => a + (x.cantidad || 0), 0);
-
-  const stockEn = (item, sucursalId) =>
-    item.stockSucursales?.find((x) => x.sucursalId === sucursalId)?.cantidad ?? 0;
-
   const visibles = useMemo(() => {
     const n = norm(f.q);
     const prov = f.proveedor ? Number(f.proveedor) : null;
@@ -347,14 +346,17 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
       && (!f.soloConStock || totalDe(i) > 0)
     ));
     if (orden.col == null) return filtrados;
-    const cuanto = (i) => (orden.col === 'total' ? totalDe(i) : stockEn(i, orden.col));
     const signo = orden.dir === 'desc' ? -1 : 1;
     return filtrados
-      .map((i) => [cuanto(i), i])
+      .map((i) => [stockDeColumna(i, orden.col), i])
       .sort((a, b) => (a[0] - b[0]) * signo || a[1].nombre.localeCompare(b[1].nombre, 'es'))
       .map(([, i]) => i);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, f, orden]);
+  /* Con una columna elegida (12/10/2026, pedido del dueño): de lo que se ve, cuántos tienen stock (más de 0) ahí. */
+  const conStock = useMemo(
+    () => (orden.col == null ? 0 : visibles.filter((i) => stockDeColumna(i, orden.col) > 1e-9).length),
+    [visibles, orden.col],
+  );
 
   const hayFiltro = Object.keys(FILTROS_STOCK).some((k) => f[k] !== FILTROS_STOCK[k]);
   const pag = usePaginado(visibles, 'consultaExistencias', JSON.stringify([f, orden]));
@@ -407,6 +409,9 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
         cargando={datos === null}
         hayFiltro={hayFiltro}
         onLimpiar={() => setF(FILTROS_STOCK)}
+        extra={orden.col != null && (
+          <><strong>{conStock}</strong> con stock {orden.col === 'total' ? 'en total' : `en ${sucursales.find((x) => x.id === orden.col)?.nombre ?? ''}`}</>
+        )}
       />
 
       <div className={c.scroll}>

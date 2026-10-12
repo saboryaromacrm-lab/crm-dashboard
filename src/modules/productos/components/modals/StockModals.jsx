@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { num } from '../../domain/format.js';
-import { TIPOS_MOV } from '../../domain/constants.js';
+import { avisoCerradasSolas, TIPOS_MOV } from '../../domain/constants.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions, presentacionOptions } from '../selectOptions.jsx';
 import { s } from '../ui.jsx';
@@ -331,7 +331,7 @@ export function MovimientoModal({ prodId, sucId: sucInit, pre = {} }) {
         tipo, productoId: prod.id, sucursalId: parseInt(sucId, 10), presId: presNum,
         cantidad: Number(cant), signo: Number(dir), motivo: motivo.trim(),
       }),
-      'Movimiento registrado.',
+      (r) => 'Movimiento registrado.' + avisoCerradasSolas(r.incidenciasCerradas),
     ).finally(() => { enVuelo.current = false; setConfirmando(false); });
   };
   /* Cambiar cualquier dato vuelve a pedir la confirmación: se confirma lo que se ve. */

@@ -24,6 +24,7 @@ import { useProductos } from '../../context/ProductosContext.jsx';
 import {
   altoRenglonPlanilla, compararFilasPorMarca, cuerpoPlanillaConteo, hojasPlanilla, imprimirDocumento, medidorPlanilla,
 } from '@core/services/imprimir.js';
+import { avisoCerradasSolas } from '../../domain/constants.js';
 import { fmtTam, money } from '../../domain/format.js';
 import { MarcaEstadoModal } from '../CatalogoAdmin.jsx';
 import { norm } from '../CatalogoPicker.jsx';
@@ -49,14 +50,15 @@ export function ConteoNuevoModal({ alCrear }) {
   const [marcaEstado, setMarcaEstado] = useState(null);
   const set = (patch) => setF((x) => ({ ...x, ...patch }));
 
-  /* Lo que ya se está contando en la sucursal (en curso o cerrado sin aplicar):
-   * queda afuera del control nuevo, y la marca que no tiene nada libre ni se ofrece. */
+  /* Lo que ya se está contando en la sucursal (en curso o cerrado sin aplicar)
+   * y lo contado en un control aplicado hace pocos días: queda afuera del
+   * control nuevo, y la marca que no tiene nada libre ni se ofrece. */
   useEffect(() => {
     let vivo = true;
     store.conteosOcupados().then((r) => {
       if (!vivo) return;
       if (r.ok) setOcupados(r.data);
-      else { toast(r.error, 'err'); setOcupados({ controles: [], formas: [] }); }
+      else { toast(r.error, 'err'); setOcupados({ controles: [], formas: [], recientes: [] }); }
     });
     return () => { vivo = false; };
   }, [store, toast]);
@@ -74,6 +76,7 @@ export function ConteoNuevoModal({ alCrear }) {
   const marcasCatalogo = store.state.catalogos?.marcas ?? VACIO;
   const analisis = useMemo(() => {
     const enUso = new Map((ocupados?.formas ?? []).map(([p, pr, c]) => [`${p}:${pr || ''}`, c]));
+    const yaContadas = new Set((ocupados?.recientes ?? []).map(([p, pr]) => `${p}:${pr || ''}`));
     const nombreMarca = new Map(marcasCatalogo.map((m) => [m.id, m.nombre]));
     const porMarca = new Map();
     for (const p of productos) {
@@ -83,12 +86,14 @@ export function ConteoNuevoModal({ alCrear }) {
       if (f.proveedorId && !(p.formatosCompra || []).some((e) => String(e.proveedorId) === String(f.proveedorId))) continue;
       const k = p.marcaId ?? 0;
       const marca = nombreMarca.get(p.marcaId) ?? '';
-      const m = porMarca.get(k) ?? { marca, libres: 0, ocupadas: 0, controles: new Set(), filas: [] };
+      const m = porMarca.get(k) ?? { marca, libres: 0, ocupadas: 0, recientes: 0, controles: new Set(), filas: [] };
       for (const pr of [null, ...(p.presentaciones || [])]) {
         const presId = pr?.id ?? null;
         if (f.soloConStock && !(Math.abs(store.cant(p.id, store.state.ctx.sucursalId, presId, 'disponible')) > 1e-9)) continue;
-        const c = enUso.get(`${p.id}:${presId ?? ''}`);
-        if (c) { m.ocupadas += 1; m.controles.add(c); } else { m.libres += 1; m.filas.push({ marca, nombre: p.nombre, presLabel: pr ? fmtTam(Number(pr.tamKg)) : '' }); }
+        const clave = `${p.id}:${presId ?? ''}`;
+        const c = enUso.get(clave);
+        if (yaContadas.has(clave)) m.recientes += 1;
+        else if (c) { m.ocupadas += 1; m.controles.add(c); } else { m.libres += 1; m.filas.push({ marca, nombre: p.nombre, presLabel: pr ? fmtTam(Number(pr.tamKg)) : '' }); }
       }
       porMarca.set(k, m);
     }
@@ -99,20 +104,30 @@ export function ConteoNuevoModal({ alCrear }) {
 
   /* Las marcas que todavía tienen algo para contar; las que no, ni aparecen. */
   const marcas = useMemo(() => marcasCatalogo
-    .map((m) => ({ ...m, ...(analisis.get(m.id) ?? { libres: 0, ocupadas: 0 }) }))
+    .map((m) => ({ ...m, ...(analisis.get(m.id) ?? { libres: 0, ocupadas: 0, recientes: 0 }) }))
     .filter((m) => m.libres > 0)
     .sort((a, b) => COLADOR.compare(a.nombre, b.nombre)), [marcasCatalogo, analisis]);
-  const ocultas = marcasCatalogo.filter((m) => (analisis.get(m.id)?.ocupadas ?? 0) > 0 && !(analisis.get(m.id)?.libres > 0)).length;
+  /* Las que no aparecen, por qué: todo lo suyo en otro control, o ya contado hace poco. */
+  const ocultas = useMemo(() => {
+    const r = { enControl: 0, recientes: 0 };
+    for (const m of marcasCatalogo) {
+      const a = analisis.get(m.id);
+      if (!a || a.libres > 0) continue;
+      if (a.ocupadas > 0) r.enControl += 1;
+      else if (a.recientes > 0) r.recientes += 1;
+    }
+    return r;
+  }, [marcasCatalogo, analisis]);
   /* Una marca elegida que se quedó sin nada libre (cambió el tipo, por ejemplo) deja de contar sola. */
   const elegidas = f.marcaIds.filter((id) => marcas.some((m) => m.id === id));
 
   const resumen = useMemo(() => {
     const claves = elegidas.length ? elegidas : [...analisis.keys()];
-    const r = { libres: 0, afuera: 0, controles: new Set() };
+    const r = { libres: 0, afuera: 0, recientes: 0, controles: new Set() };
     for (const k of claves) {
       const m = analisis.get(k);
       if (!m) continue;
-      r.libres += m.libres; r.afuera += m.ocupadas;
+      r.libres += m.libres; r.afuera += m.ocupadas; r.recientes += m.recientes;
       m.controles.forEach((c) => r.controles.add(c));
     }
     return r;
@@ -158,7 +173,11 @@ export function ConteoNuevoModal({ alCrear }) {
     });
     setCreando(false);
     if (!r.ok) { toast(r.error, 'err'); return; }
-    toast(`Control abierto: ${r.data.total} renglones para contar${r.data.afuera ? ` (${r.data.afuera} quedaron afuera: ya están en otro control)` : ''}.`, 'ok');
+    const afuera = [
+      r.data.afuera && `${r.data.afuera} ya ${r.data.afuera === 1 ? 'está' : 'están'} en otro control`,
+      r.data.recientes && `${r.data.recientes} ya se ${r.data.recientes === 1 ? 'contó' : 'contaron'} hace poco`,
+    ].filter(Boolean);
+    toast(`Control abierto: ${r.data.total} renglones para contar${afuera.length ? ` (quedaron afuera: ${afuera.join('; ')})` : ''}.`, 'ok');
     closeModal();
     alCrear?.(r.data.id);
   };
@@ -192,7 +211,7 @@ export function ConteoNuevoModal({ alCrear }) {
       </div>
 
       <SelectorMarcas
-        marcas={marcas} elegidas={elegidas} ocultas={ocultas} cargando={cargando} entran={hojas.entran}
+        marcas={marcas} elegidas={elegidas} ocultas={ocultas} dias={ocupados?.dias ?? 7} cargando={cargando} entran={hojas.entran}
         onChange={(marcaIds) => set({ marcaIds })} onEstado={isAdmin ? setMarcaEstado : null}
       />
       {marcaEstado && (
@@ -240,6 +259,12 @@ export function ConteoNuevoModal({ alCrear }) {
           {controlesAfuera.map((c, i) => (
             <span key={c.id}>{i > 0 && ', '}<strong>«{c.nombre || `#${c.id}`}»</strong>{c.responsable ? ` (${c.responsable})` : ''}</span>
           ))}. Un producto no puede estar en dos controles abiertos: se contaría y se ajustaría dos veces.
+        </div>
+      )}
+      {resumen.recientes > 0 && (
+        <div className={cx(s.callout, s.info)}>
+          Quedan <strong>afuera {resumen.recientes} renglón(es)</strong> que ya se contaron en un control aplicado
+          en los últimos {ocupados?.dias ?? 7} días.
         </div>
       )}
 
@@ -298,7 +323,7 @@ function ResumenHojas({ hojas, renglones, marcas, conMarcas }) {
   );
 }
 
-function SelectorMarcas({ marcas, elegidas, ocultas, cargando, entran, onChange, onEstado }) {
+function SelectorMarcas({ marcas, elegidas, ocultas, dias, cargando, entran, onChange, onEstado }) {
   const [q, setQ] = useState('');
   const elegidasSet = new Set(elegidas);
   const visibles = q.trim() ? marcas.filter((m) => norm(m.nombre).includes(norm(q))) : marcas;
@@ -310,6 +335,10 @@ function SelectorMarcas({ marcas, elegidas, ocultas, cargando, entran, onChange,
       <label htmlFor="conteo-marcas-buscar">
         Marcas {elegidas.length > 0 ? <strong>({elegidas.length} elegida{elegidas.length > 1 ? 's' : ''})</strong> : <span className={s.hint} style={{ margin: 0 }}>— ninguna tildada = todas</span>}
       </label>
+      <div className={s.hint} style={{ margin: '-2px 0 6px' }}>
+        No aparece lo que ya está en otro control (abierto o cerrado sin aplicar) ni lo contado en un control
+        aplicado en los últimos {dias} días; pasado ese plazo, vuelve solo.
+      </div>
       {elegidas.length > 0 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
           {elegidas.map((id) => (
@@ -346,7 +375,7 @@ function SelectorMarcas({ marcas, elegidas, ocultas, cargando, entran, onChange,
             </span>
             <span className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
               {entran?.has(m.id) && !elegidasSet.has(m.id) && <strong style={{ color: 'var(--crm-color-success)' }}>✓ entra sin otra hoja · </strong>}
-              {m.libres} para contar{m.ocupadas > 0 ? ` · ${m.ocupadas} ya en otro control` : ''}
+              {m.libres} para contar{m.ocupadas > 0 ? ` · ${m.ocupadas} ya en otro control` : ''}{m.recientes > 0 ? ` · ${m.recientes} ya contados` : ''}
             </span>
             {/* Inhabilitar sin salir del control (12/10/2026): el botón no tilda la marca. */}
             {onEstado && (
@@ -358,9 +387,12 @@ function SelectorMarcas({ marcas, elegidas, ocultas, cargando, entran, onChange,
         ))}
         {!cargando && visibles.length === 0 && <div className={s.hint} style={{ padding: 10, margin: 0 }}>Ninguna marca con ese nombre tiene algo para contar.</div>}
       </div>
-      {ocultas > 0 && (
+      {(ocultas.enControl > 0 || ocultas.recientes > 0) && (
         <div className={s.hint} style={{ margin: '4px 0 0' }}>
-          {ocultas} marca{ocultas > 1 ? 's no aparecen' : ' no aparece'}: todo lo suyo (con estos filtros) ya se está contando en otro control.
+          No aparecen (con estos filtros):
+          {ocultas.enControl > 0 && <> {ocultas.enControl} marca{ocultas.enControl > 1 ? 's' : ''} que ya se está{ocultas.enControl > 1 ? 'n' : ''} contando en otro control</>}
+          {ocultas.enControl > 0 && ocultas.recientes > 0 && ' y'}
+          {ocultas.recientes > 0 && <> {ocultas.recientes} marca{ocultas.recientes > 1 ? 's' : ''} ya contada{ocultas.recientes > 1 ? 's' : ''} en los últimos {dias} días</>}.
         </div>
       )}
     </div>
@@ -560,8 +592,8 @@ export function ConteoModal({ conteoId, alTerminar }) {
     setConfirmarAplicar(false);
     const r = await accion(() => store.aplicarConteo(conteoId));
     if (!r) return;
-    const avisos = r.avisos ?? r.data?.avisos ?? [];
-    toast(`Aplicado: ${r.ajustes ?? r.data?.ajustes ?? 0} ajustes.${avisos.length ? ` ⚠ ${avisos.length} avisos.` : ''}`, avisos.length ? 'err' : 'ok');
+    const avisos = r.avisos ?? [];
+    toast(`Aplicado: ${r.ajustes ?? 0} ajustes.${avisoCerradasSolas(r.incidenciasCerradas)}${avisos.length ? ` ⚠ ${avisos.length} avisos.` : ''}`, avisos.length ? 'err' : 'ok');
     await recargar();
     alTerminar?.();
   };
