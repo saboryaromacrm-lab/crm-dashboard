@@ -8,12 +8,17 @@
  * La acción que evita que esto se vuelva un basural es **Fusionar**: sin ella,
  * el día que entren "Coca Cola" y "Coca-Cola" no hay forma de arreglarlo sin
  * tocar la base a mano.
+ *
+ * 12/10/2026 (pedido del dueño): buscador y filtros (estado, uso, y la categoría
+ * en subcategorías), orden alfabético por defecto, cuántos productos usan cada
+ * una, y el alta en un solo botón «+ Nueva…» que abre su ventanita.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { httpClient } from '@core/services/httpClient.js';
 import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@modules/gastos/components/segundaConfirmacion.jsx';
 import { useProductos } from '../context/ProductosContext.jsx';
+import { norm } from './CatalogoPicker.jsx';
 import { ModalShell } from './Modal.jsx';
 import { Btn, s } from './ui.jsx';
 
@@ -88,12 +93,102 @@ const META = {
   etiquetas: { titulo: 'Etiquetas', singular: 'etiqueta', placeholder: 'Ej: SIN TACC' },
 };
 
+/** Qué productos usan cada valor del catálogo (sin los archivados). */
+const USO = {
+  marcas: (p) => [p.marcaId],
+  categorias: (p) => [p.categoriaId],
+  subcategorias: (p) => [p.subcategoriaId],
+  etiquetas: (p) => p.etiquetas || [],
+};
+const ORDEN = {
+  az: (a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }),
+  za: (a, b) => b.nombre.localeCompare(a.nombre, 'es', { sensitivity: 'base' }),
+  mas: (a, b) => b.productos - a.productos || ORDEN.az(a, b),
+  menos: (a, b) => a.productos - b.productos || ORDEN.az(a, b),
+};
+
+/**
+ * EL ALTA, en su ventanita: el nombre (y el color en etiquetas, la categoría en
+ * subcategorías). Avisa si ya existe una igual —sin importar mayúsculas ni
+ * tildes— antes de crear un duplicado que después hay que fusionar.
+ */
+function NuevoCatalogoModal({ tipo, meta, todas, categorias, categoriaInicial, onCerrar, store, toast }) {
+  const [nombre, setNombre] = useState('');
+  const [color, setColor] = useState('#2e7d32');
+  const [categoriaId, setCategoriaId] = useState(categoriaInicial ?? null);
+  const [creando, setCreando] = useState(false);
+  const enVuelo = useRef(false);
+  const igual = nombre.trim()
+    ? todas.find((x) => norm(x.nombre) === norm(nombre.trim()) && (tipo !== 'subcategorias' || x.categoriaId === categoriaId))
+    : null;
+  const falta = !nombre.trim() || (tipo === 'subcategorias' && !categoriaId) || !!igual;
+
+  const crear = async () => {
+    if (falta || enVuelo.current) return;
+    enVuelo.current = true; setCreando(true);
+    const body = { nombre: nombre.trim() };
+    if (tipo === 'subcategorias') body.categoriaId = categoriaId;
+    if (tipo === 'etiquetas') body.color = color;
+    try {
+      const r = await store.crearCatalogo(tipo, body);
+      if (r && r.ok === false) { toast(r.error || 'No se pudo.', 'err'); return; }
+      toast(`${meta.singular[0].toUpperCase()}${meta.singular.slice(1)} «${body.nombre}» creada.`, 'ok');
+      onCerrar();
+    } finally { enVuelo.current = false; setCreando(false); }
+  };
+
+  return (
+    <ModalShell
+      title={`Nueva ${meta.singular}`}
+      onClose={onCerrar}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: onCerrar },
+        { texto: creando ? 'Creando…' : 'Crear', clase: 'btn-primary', onClick: crear, disabled: falta || creando },
+      ]}
+    >
+      {tipo === 'subcategorias' && (
+        <div className={s.field}>
+          <label htmlFor="catalogo-nuevo-categoria">Categoría <span className={s.req}>*</span></label>
+          <select id="catalogo-nuevo-categoria" value={categoriaId ?? ''} onChange={(e) => setCategoriaId(Number(e.target.value) || null)}>
+            <option value="">— Elegí la categoría —</option>
+            {[...categorias].sort(ORDEN.az).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <div className={s.field} style={{ flex: 1, marginBottom: 0 }}>
+          <label htmlFor="catalogo-nuevo-nombre">Nombre <span className={s.req}>*</span></label>
+          <input
+            id="catalogo-nuevo-nombre" autoFocus value={nombre} placeholder={meta.placeholder}
+            onChange={(e) => setNombre(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); crear(); } }}
+          />
+        </div>
+        {tipo === 'etiquetas' && (
+          <div className={s.field} style={{ marginBottom: 0, width: 74 }}>
+            <label htmlFor="catalogo-nuevo-color">Color</label>
+            <input id="catalogo-nuevo-color" type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ padding: 3, height: 38 }} />
+          </div>
+        )}
+      </div>
+      {igual && (
+        <div className={cx(s.callout, s.warn)} style={{ marginTop: 8 }}>
+          Ya existe «{igual.nombre}»{igual.activa ? '' : ' (inactiva: podés reactivarla)'}. No hace falta crearla de nuevo.
+        </div>
+      )}
+    </ModalShell>
+  );
+}
+
 export function CatalogoAdmin({ tipo }) {
   const { store, toast } = useProductos();
   const meta = META[tipo];
 
-  const [nuevo, setNuevo] = useState('');
-  const [color, setColor] = useState('#2e7d32');
+  const [creandoNueva, setCreandoNueva] = useState(false);
+  const [q, setQ] = useState('');
+  const [estado, setEstado] = useState('');           // '' | 'activas' | 'inactivas'
+  const [uso, setUso] = useState('');                 // '' | 'con' | 'sin'
+  const [orden, setOrden] = useState('az');
   const [catFiltro, setCatFiltro] = useState(null);   // solo subcategorías
   const [editId, setEditId] = useState(null);
   const [editTxt, setEditTxt] = useState('');
@@ -104,12 +199,30 @@ export function CatalogoAdmin({ tipo }) {
   const categorias = store.state.catalogos.categorias;
   const todas = store.state.catalogos[tipo] || [];
 
-  // En subcategorías la lista solo tiene sentido dentro de una categoría: sin
-  // el filtro se mezclan "Tradicionales" de Alfajores y de Galletitas.
+  /* Cuántos productos (sin los archivados) usan cada valor: dice qué se puede
+   * eliminar y qué conviene fusionar. */
+  const usoPorId = useMemo(() => {
+    const m = new Map();
+    for (const p of store.state.productos) {
+      if (p.estado === 'archivado') continue;
+      for (const id of USO[tipo](p)) if (id != null) m.set(id, (m.get(id) ?? 0) + 1);
+    }
+    return m;
+  }, [store.state.productos, tipo]);
+
+  // En subcategorías se filtra además por categoría: sin eso se mezclan
+  // "Tradicionales" de Alfajores y de Galletitas.
   const filas = useMemo(() => {
-    if (tipo !== 'subcategorias') return todas;
-    return catFiltro ? todas.filter((x) => x.categoriaId === catFiltro) : todas;
-  }, [todas, tipo, catFiltro]);
+    const t = norm(q.trim());
+    return todas
+      .map((x) => ({ ...x, productos: usoPorId.get(x.id) ?? 0 }))
+      .filter((x) => (tipo !== 'subcategorias' || !catFiltro || x.categoriaId === catFiltro)
+        && (!estado || (estado === 'activas' ? x.activa : !x.activa))
+        && (!uso || (uso === 'con' ? x.productos > 0 : x.productos === 0))
+        && (!t || norm(x.nombre).includes(t)))
+      .sort(ORDEN[orden]);
+  }, [todas, usoPorId, tipo, catFiltro, estado, uso, q, orden]);
+  const hayFiltro = !!(q.trim() || estado || uso || catFiltro);
 
   const nombreCategoria = (id) => categorias.find((c) => c.id === id)?.nombre ?? '—';
 
@@ -119,20 +232,6 @@ export function CatalogoAdmin({ tipo }) {
     if (r && r.ok === false) { toast(r.error || 'No se pudo.', 'err'); return null; }
     toast(okMsg, 'ok');
     return r;
-  };
-
-  const agregar = async () => {
-    const nombre = nuevo.trim();
-    if (!nombre) return;
-    if (tipo === 'subcategorias' && !catFiltro) {
-      toast('Elegí primero la categoría a la que pertenece.', 'err');
-      return;
-    }
-    const body = { nombre };
-    if (tipo === 'subcategorias') body.categoriaId = catFiltro;
-    if (tipo === 'etiquetas') body.color = color;
-    const r = await correr(store.crearCatalogo(tipo, body), `${meta.singular} creada.`);
-    if (r) setNuevo('');
   };
 
   const renombrar = async (fila) => {
@@ -168,42 +267,43 @@ export function CatalogoAdmin({ tipo }) {
     if (r) { setFusionId(null); setFusionHacia(''); }
   };
 
-  /** Candidatas a destino de la fusión: las demás de la misma categoría. */
+  /** Candidatas a destino de la fusión: las demás de la misma categoría, por nombre. */
   const destinos = (fila) => todas.filter((x) => x.id !== fila.id
-    && (tipo !== 'subcategorias' || x.categoriaId === fila.categoriaId));
+    && (tipo !== 'subcategorias' || x.categoriaId === fila.categoriaId)).sort(ORDEN.az);
 
   return (
     <div>
-      {tipo === 'subcategorias' && (
-        <div className={s.field}>
-          <label>Categoría</label>
-          <select value={catFiltro ?? ''} onChange={(e) => setCatFiltro(Number(e.target.value) || null)}>
-            <option value="">— Todas —</option>
-            {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+      <div className={s.toolbar} style={{ marginBottom: 12 }}>
+        <input
+          id={`catalogo-buscar-${tipo}`} type="search" value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder={`Buscar ${meta.singular}…`} style={{ minWidth: 220 }}
+        />
+        {tipo === 'subcategorias' && (
+          <select className={s['select-inline']} value={catFiltro ?? ''} onChange={(e) => setCatFiltro(Number(e.target.value) || null)} aria-label="Categoría">
+            <option value="">Todas las categorías</option>
+            {[...categorias].sort(ORDEN.az).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
           </select>
-          <div className={s.hint} style={{ margin: '6px 0 0' }}>
-            Para dar de alta hay que elegir una: la subcategoría siempre cuelga de una categoría.
-          </div>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 14 }}>
-        <div className={s.field} style={{ flex: 1, marginBottom: 0 }}>
-          <label>Nueva {meta.singular}</label>
-          <input
-            value={nuevo}
-            onChange={(e) => setNuevo(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } }}
-            placeholder={meta.placeholder}
-          />
-        </div>
-        {tipo === 'etiquetas' && (
-          <div className={s.field} style={{ marginBottom: 0, width: 74 }}>
-            <label>Color</label>
-            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ padding: 3, height: 38 }} />
-          </div>
         )}
-        <Btn variant="btn-primary" onClick={agregar}>Agregar</Btn>
+        <select className={s['select-inline']} value={estado} onChange={(e) => setEstado(e.target.value)} aria-label="Estado">
+          <option value="">Activas e inactivas</option>
+          <option value="activas">Solo activas</option>
+          <option value="inactivas">Solo {tipo === 'marcas' ? 'inhabilitadas' : 'inactivas'}</option>
+        </select>
+        <select className={s['select-inline']} value={uso} onChange={(e) => setUso(e.target.value)} aria-label="Uso">
+          <option value="">Con y sin productos</option>
+          <option value="con">Con productos</option>
+          <option value="sin">Sin productos</option>
+        </select>
+        <select className={s['select-inline']} value={orden} onChange={(e) => setOrden(e.target.value)} aria-label="Orden">
+          <option value="az">A → Z</option>
+          <option value="za">Z → A</option>
+          <option value="mas">Más productos primero</option>
+          <option value="menos">Menos productos primero</option>
+        </select>
+        {hayFiltro && <Btn small onClick={() => { setQ(''); setEstado(''); setUso(''); setCatFiltro(null); }}>Limpiar</Btn>}
+        <span className={s.hint} style={{ margin: 0 }}>{filas.length === todas.length ? `${todas.length} en total` : `${filas.length} de ${todas.length}`}</span>
+        <span style={{ flex: 1 }} />
+        <Btn variant="btn-primary" onClick={() => setCreandoNueva(true)}>+ Nueva {meta.singular}</Btn>
       </div>
 
       <table className={s.table}>
@@ -211,13 +311,14 @@ export function CatalogoAdmin({ tipo }) {
           <tr>
             <th>Nombre</th>
             {tipo === 'subcategorias' && <th>Categoría</th>}
+            <th className={s.num}>Productos</th>
             <th>Estado</th>
             <th className={s['actions-col']}>Acciones</th>
           </tr>
         </thead>
         <tbody>
           {filas.length === 0 && (
-            <tr><td colSpan={4} className={s['empty-state']}>Sin {meta.titulo.toLowerCase()}.</td></tr>
+            <tr><td colSpan={5} className={s['empty-state']}>{hayFiltro ? 'Ninguna con esos filtros.' : `Sin ${meta.titulo.toLowerCase()}.`}</td></tr>
           )}
           {filas.map((f) => (
             <tr key={f.id} style={{ opacity: f.activa ? 1 : 0.55 }}>
@@ -238,6 +339,7 @@ export function CatalogoAdmin({ tipo }) {
                 )}
               </td>
               {tipo === 'subcategorias' && <td className={s.muted}>{nombreCategoria(f.categoriaId)}</td>}
+              <td className={s.num}>{f.productos || <span className={s.muted}>0</span>}</td>
               <td>{f.activa ? <span className={s.badge}>activa</span> : <span className={s.muted}>inactiva</span>}</td>
               <td className={s['actions-col']}>
                 {fusionId === f.id ? (
@@ -266,6 +368,13 @@ export function CatalogoAdmin({ tipo }) {
           ))}
         </tbody>
       </table>
+
+      {creandoNueva && (
+        <NuevoCatalogoModal
+          tipo={tipo} meta={meta} todas={todas} categorias={categorias} categoriaInicial={catFiltro}
+          store={store} toast={toast} onCerrar={() => setCreandoNueva(false)}
+        />
+      )}
 
       {marcaModal && (
         <MarcaEstadoModal fila={marcaModal} store={store} toast={toast} onCerrar={() => setMarcaModal(null)} onHecho={() => setMarcaModal(null)} />

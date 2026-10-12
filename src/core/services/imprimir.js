@@ -660,6 +660,73 @@ export function cuerpoCartelGondola({
   return una.repeat(n);
 }
 
+/*
+ * CUÁNTAS HOJAS OCUPA LA PLANILLA (12/10/2026, pedido del dueño: que no se
+ * imprima una hoja entera por un renglón). Es la geometría de la hoja A4 de
+ * abajo, en píxeles, comprobada imprimiendo a PDF con Chrome:
+ *  · un renglón mide 7 + 7 de relleno + 1 de borde, más lo más alto entre la
+ *    casilla ✓ (16 px × 1,45) y las líneas de texto (13 px × 1,45 cada una);
+ *  · el texto se parte por palabras en sus columnas: Producto ≈ 321 px y
+ *    Marca ≈ 87 px de ancho útil;
+ *  · entra ≈ 983 px de renglones por hoja (25 de una línea), y en la primera,
+ *    con el encabezado, ≈ 770 (20 de una línea).
+ * Es una estimación: el que corta de verdad es el navegador.
+ */
+const PLANILLA = {
+  primera: 770, siguientes: 983, linea: 13 * 1.45, minimo: 16 * 1.45, extra: 15,
+  anchoProducto: 0.49 * 688 - 16, anchoMarca: 0.15 * 688 - 16,
+};
+const ALTO_SIMPLE = PLANILLA.minimo + PLANILLA.extra;
+
+/** Mide con la letra de la hoja (canvas del navegador); sin navegador, por letras. */
+export function medidorPlanilla() {
+  const ctx = typeof document !== 'undefined' ? document.createElement('canvas').getContext('2d') : null;
+  if (!ctx) return (texto, negrita) => String(texto).length * (negrita ? 7 : 6.4);
+  return (texto, negrita) => { ctx.font = `${negrita ? 700 : 400} 13px system-ui, sans-serif`; return ctx.measureText(String(texto)).width; };
+}
+
+/** Cuántas líneas ocupa un texto partido por palabras en ese ancho. */
+function lineasEn(trozos, ancho, medir) {
+  let lineas = 1; let usado = 0;
+  for (const { texto, negrita } of trozos) {
+    for (const palabra of String(texto).split(/\s+/).filter(Boolean)) {
+      const w = medir(palabra, negrita);
+      const conEspacio = usado ? usado + medir(' ', negrita) + w : w;
+      if (usado && conEspacio > ancho) { lineas += 1; usado = w; } else usado = conEspacio;
+    }
+  }
+  return lineas;
+}
+
+/** El alto de un renglón de la planilla, en píxeles. */
+export function altoRenglonPlanilla(f, medir = medidorPlanilla()) {
+  const producto = [{ texto: f.nombre || '' }];
+  if (f.presLabel) producto.push({ texto: `· ${f.presLabel}`, negrita: true });
+  if (f.recontar) producto.push({ texto: '⟳ RECONTAR', negrita: true });
+  if (f.apartados > 1e-9) producto.push({ texto: `⚠ ${f.apartados} apartado(s): NO contar`, negrita: true });
+  const lineas = Math.max(
+    lineasEn(producto, PLANILLA.anchoProducto, medir),
+    lineasEn([{ texto: String(f.marca || '').trim() || '—' }], PLANILLA.anchoMarca, medir),
+  );
+  return Math.max(PLANILLA.minimo, lineas * PLANILLA.linea) + PLANILLA.extra;
+}
+
+/**
+ * Las hojas que ocupan esos renglones (altos en píxeles, en el orden en que se
+ * imprimen): un renglón no se parte; si no entra, pasa entero a la siguiente.
+ * Devuelve cuántas hojas, cuántos renglones van en cada una y cuántos renglones
+ * de una línea le entran todavía a la última.
+ */
+export function hojasPlanilla(altos = []) {
+  if (!altos.length) return { hojas: 0, porHoja: [], libres: 0 };
+  const porHoja = [0]; let capacidad = PLANILLA.primera; let usado = 0;
+  for (const a of altos) {
+    if (usado + a > capacidad + 1e-6) { porHoja.push(0); capacidad = PLANILLA.siguientes; usado = 0; }
+    usado += a; porHoja[porHoja.length - 1] += 1;
+  }
+  return { hojas: porHoja.length, porHoja, libres: Math.max(0, Math.floor((capacidad - usado) / ALTO_SIMPLE + 1e-6)) };
+}
+
 /**
  * EL ORDEN DE LA PLANILLA, compartido con la pantalla de conteo (12/10/2026):
  * marca → producto → tamaño, lo sin marca al final. Así el que pasa los números

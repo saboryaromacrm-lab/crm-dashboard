@@ -21,8 +21,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
-import { compararFilasPorMarca, cuerpoPlanillaConteo, imprimirDocumento } from '@core/services/imprimir.js';
-import { money } from '../../domain/format.js';
+import {
+  altoRenglonPlanilla, compararFilasPorMarca, cuerpoPlanillaConteo, hojasPlanilla, imprimirDocumento, medidorPlanilla,
+} from '@core/services/imprimir.js';
+import { fmtTam, money } from '../../domain/format.js';
 import { norm } from '../CatalogoPicker.jsx';
 import { ModalShell } from '../Modal.jsx';
 import { Table, Btn, s } from '../ui.jsx';
@@ -62,8 +64,10 @@ export function ConteoNuevoModal({ alCrear }) {
    * cuántos ya están en otro control; con eso se arma la lista de marcas y el
    * total del botón.
    */
+  const medir = useMemo(() => medidorPlanilla(), []);
   const analisis = useMemo(() => {
     const enUso = new Map((ocupados?.formas ?? []).map(([p, pr, c]) => [`${p}:${pr || ''}`, c]));
+    const nombreMarca = new Map((store.state.catalogos?.marcas ?? []).map((m) => [m.id, m.nombre]));
     const porMarca = new Map();
     for (const p of store.state.productos) {
       if (p.estado === 'archivado') continue;
@@ -71,16 +75,20 @@ export function ConteoNuevoModal({ alCrear }) {
       if (f.tipo && p.tipo !== f.tipo) continue;
       if (f.proveedorId && !(p.formatosCompra || []).some((e) => String(e.proveedorId) === String(f.proveedorId))) continue;
       const k = p.marcaId ?? 0;
-      const m = porMarca.get(k) ?? { libres: 0, ocupadas: 0, controles: new Set() };
-      for (const presId of [null, ...(p.presentaciones || []).map((pr) => pr.id)]) {
+      const marca = nombreMarca.get(p.marcaId) ?? '';
+      const m = porMarca.get(k) ?? { marca, libres: 0, ocupadas: 0, controles: new Set(), filas: [] };
+      for (const pr of [null, ...(p.presentaciones || [])]) {
+        const presId = pr?.id ?? null;
         if (f.soloConStock && !(Math.abs(store.cant(p.id, store.state.ctx.sucursalId, presId, 'disponible')) > 1e-9)) continue;
         const c = enUso.get(`${p.id}:${presId ?? ''}`);
-        if (c) { m.ocupadas += 1; m.controles.add(c); } else m.libres += 1;
+        if (c) { m.ocupadas += 1; m.controles.add(c); } else { m.libres += 1; m.filas.push({ marca, nombre: p.nombre, presLabel: pr ? fmtTam(Number(pr.tamKg)) : '' }); }
       }
       porMarca.set(k, m);
     }
+    /* Lo que ocupa cada marca en la planilla, ya en el orden en que se imprime. */
+    for (const m of porMarca.values()) m.altos = m.filas.sort(compararFilasPorMarca).map((x) => altoRenglonPlanilla(x, medir));
     return porMarca;
-  }, [store, f.categoriaId, f.tipo, f.proveedorId, f.soloConStock, ocupados]);
+  }, [store, f.categoriaId, f.tipo, f.proveedorId, f.soloConStock, ocupados, medir]);
 
   /* Las marcas que todavía tienen algo para contar; las que no, ni aparecen. */
   const marcas = useMemo(() => (store.state.catalogos?.marcas ?? [])
@@ -103,6 +111,31 @@ export function ConteoNuevoModal({ alCrear }) {
     return r;
   }, [analisis, elegidas]);
   const controlesAfuera = (ocupados?.controles ?? []).filter((c) => resumen.controles.has(c.id));
+
+  /*
+   * LAS HOJAS DE LA PLANILLA (12/10/2026, pedido del dueño): cuántas ocupa lo
+   * elegido y cuánto le queda libre a la última, y qué marcas entrarían SIN
+   * sumar una hoja — para completar las hojas en vez de imprimir una entera
+   * por un renglón. Es la misma geometría que la planilla impresa.
+   */
+  const claveElegidas = elegidas.join(',');
+  const hojas = useMemo(() => {
+    const altosDe = (claves) => claves
+      .map((k) => analisis.get(k)).filter(Boolean)
+      .sort((a, b) => compararFilasPorMarca({ marca: a.marca }, { marca: b.marca }))
+      .flatMap((m) => m.altos);
+    const ids = claveElegidas ? claveElegidas.split(',').map(Number) : [];
+    const actual = hojasPlanilla(altosDe(ids.length ? ids : [...analisis.keys()]));
+    /* Con alguna marca elegida: cuáles se pueden sumar sin otra hoja. */
+    const entran = new Set();
+    if (ids.length && actual.libres > 0) {
+      for (const [k, m] of analisis) {
+        if (!k || ids.includes(k) || !m.libres) continue;
+        if (hojasPlanilla(altosDe([...ids, k])).hojas === actual.hojas) entran.add(k);
+      }
+    }
+    return { ...actual, entran };
+  }, [analisis, claveElegidas]);
 
   const crear = async () => {
     setCreando(true);
@@ -133,7 +166,8 @@ export function ConteoNuevoModal({ alCrear }) {
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
         {
-          texto: creando ? 'Abriendo…' : cargando ? 'Revisando lo que ya se cuenta…' : `Abrir control (≈${resumen.libres} renglones)`,
+          texto: creando ? 'Abriendo…' : cargando ? 'Revisando lo que ya se cuenta…'
+            : `Abrir control (≈${resumen.libres} renglones · ${hojas.hojas} hoja${hojas.hojas === 1 ? '' : 's'})`,
           clase: 'btn-primary', onClick: crear, disabled: creando || cargando || resumen.libres === 0 || !f.responsable.trim(),
         },
       ]}
@@ -151,9 +185,10 @@ export function ConteoNuevoModal({ alCrear }) {
       </div>
 
       <SelectorMarcas
-        marcas={marcas} elegidas={elegidas} ocultas={ocultas} cargando={cargando}
+        marcas={marcas} elegidas={elegidas} ocultas={ocultas} cargando={cargando} entran={hojas.entran}
         onChange={(marcaIds) => set({ marcaIds })}
       />
+      {!cargando && resumen.libres > 0 && <ResumenHojas hojas={hojas} renglones={resumen.libres} marcas={marcas} conMarcas={elegidas.length > 0} />}
 
       <div className={s['form-grid']}>
         <div className={s.field}>
@@ -221,7 +256,31 @@ export function ConteoNuevoModal({ alCrear }) {
  * escribiendo (Enter tilda la primera que aparece) y las elegidas quedan arriba
  * como etiquetas. Cada marca dice cuánto le queda para contar.
  */
-function SelectorMarcas({ marcas, elegidas, ocultas, cargando, onChange }) {
+/**
+ * CUÁNTAS HOJAS SE VAN A IMPRIMIR, chico y debajo de las marcas: hoja por
+ * hoja, cuánto le queda a la última y qué marcas entran sin otra hoja. Si la
+ * última sale casi vacía, lo avisa: es el papel que se tira.
+ */
+function ResumenHojas({ hojas, renglones, marcas, conMarcas }) {
+  const ultima = hojas.porHoja[hojas.porHoja.length - 1] ?? 0;
+  const casiVacia = hojas.hojas > 1 && ultima <= 3;
+  const sugeridas = marcas.filter((m) => hojas.entran.has(m.id)).sort((a, b) => b.libres - a.libres).slice(0, 4);
+  return (
+    <div className={cx(s.callout, casiVacia ? s.warn : s.info)} style={{ margin: '-4px 0 0', padding: '6px 10px', fontSize: 12.5 }}>
+      📄 <strong>{renglones} renglones → {hojas.hojas} hoja{hojas.hojas === 1 ? '' : 's'}</strong>
+      {hojas.hojas > 1 && <> ({hojas.porHoja.join(' + ')})</>}
+      {hojas.libres > 0
+        ? <>. A la hoja {hojas.hojas} le {hojas.libres === 1 ? 'entra' : 'entran'} <strong>{hojas.libres} {hojas.libres === 1 ? 'renglón' : 'renglones'} más</strong>.</>
+        : '. Hojas completas.'}
+      {casiVacia && <> <strong>La última hoja sale con {ultima} {ultima === 1 ? 'renglón' : 'renglones'}</strong>: sumá una marca que entre o sacá una chica.</>}
+      {conMarcas && sugeridas.length > 0 && (
+        <> Entran sin otra hoja: {sugeridas.map((m) => `${m.nombre} (${m.libres})`).join(', ')}{hojas.entran.size > sugeridas.length ? ` y ${hojas.entran.size - sugeridas.length} más (marcadas ✓ en la lista)` : ''}.</>
+      )}
+    </div>
+  );
+}
+
+function SelectorMarcas({ marcas, elegidas, ocultas, cargando, entran, onChange }) {
   const [q, setQ] = useState('');
   const elegidasSet = new Set(elegidas);
   const visibles = q.trim() ? marcas.filter((m) => norm(m.nombre).includes(norm(q))) : marcas;
@@ -265,6 +324,7 @@ function SelectorMarcas({ marcas, elegidas, ocultas, cargando, onChange }) {
             <input type="checkbox" checked={elegidasSet.has(m.id)} onChange={() => alternar(m.id)} />
             <span style={{ flex: 1 }}>{m.nombre}</span>
             <span className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
+              {entran?.has(m.id) && !elegidasSet.has(m.id) && <strong style={{ color: 'var(--crm-color-success)' }}>✓ entra sin otra hoja · </strong>}
               {m.libres} para contar{m.ocupadas > 0 ? ` · ${m.ocupadas} ya en otro control` : ''}
             </span>
           </label>
@@ -365,6 +425,11 @@ export function ConteoModal({ conteoId, alTerminar }) {
     if (vista === 'contados') return it.contado != null;
     return true;
   }), [items, vista]);
+  /* Cuántas hojas va a salir la planilla (la misma cuenta que en el alta). */
+  const hojasImprimir = useMemo(() => {
+    const medir = medidorPlanilla();
+    return hojasPlanilla(paraImprimir.map((it) => altoRenglonPlanilla(it, medir))).hojas;
+  }, [paraImprimir]);
 
   const imprimirPlanilla = async () => {
     const ok = await imprimirDocumento('planillaConteo', {
@@ -520,7 +585,7 @@ export function ConteoModal({ conteoId, alTerminar }) {
               {/* Imprime la pestaña elegida, no el buscador: el número del botón
                   es el del papel. */}
               <Btn small variant="btn-ghost" onClick={imprimirPlanilla} disabled={paraImprimir.length === 0}>
-                🖨 Imprimir planilla ({paraImprimir.length})
+                🖨 Imprimir planilla ({paraImprimir.length} · {hojasImprimir} hoja{hojasImprimir === 1 ? '' : 's'})
               </Btn>
             </div>
             {/* La pestaña Pendientes muestra también lo marcado "recontar":
