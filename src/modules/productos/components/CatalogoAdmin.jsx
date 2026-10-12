@@ -20,14 +20,14 @@ import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@m
 import { useProductos } from '../context/ProductosContext.jsx';
 import { norm } from './CatalogoPicker.jsx';
 import { ModalShell } from './Modal.jsx';
-import { Btn, s } from './ui.jsx';
+import { Btn, Paginador, s, usePaginado } from './ui.jsx';
 
 /**
  * INHABILITAR / HABILITAR UNA MARCA (0135, pedido del dueño): sus productos
  * acompañan. Antes de hacerlo se muestra cuántos cambian y se confirma dos
  * veces — es sacar mercadería de la venta y de las compras de una vez.
  */
-function MarcaEstadoModal({ fila, onCerrar, onHecho, store, toast }) {
+export function MarcaEstadoModal({ fila, onCerrar, onHecho, store, toast }) {
   const activar = !fila.activa;
   const [imp, setImp] = useState(null);
   const [error, setError] = useState('');
@@ -100,12 +100,16 @@ const USO = {
   subcategorias: (p) => [p.subcategoriaId],
   etiquetas: (p) => p.etiquetas || [],
 };
+/* UN comparador para todo el módulo: `localeCompare` con opciones arma uno
+ * nuevo en cada comparación, y ordenar 400 nombres son miles de comparaciones. */
+const COLADOR = new Intl.Collator('es', { sensitivity: 'base' });
 const ORDEN = {
-  az: (a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }),
-  za: (a, b) => b.nombre.localeCompare(a.nombre, 'es', { sensitivity: 'base' }),
+  az: (a, b) => COLADOR.compare(a.nombre, b.nombre),
+  za: (a, b) => COLADOR.compare(b.nombre, a.nombre),
   mas: (a, b) => b.productos - a.productos || ORDEN.az(a, b),
   menos: (a, b) => a.productos - b.productos || ORDEN.az(a, b),
 };
+const VACIO = [];
 
 /**
  * EL ALTA, en su ventanita: el nombre (y el color en etiquetas, la categoría en
@@ -197,7 +201,8 @@ export function CatalogoAdmin({ tipo }) {
   const [marcaModal, setMarcaModal] = useState(null);
 
   const categorias = store.state.catalogos.categorias;
-  const todas = store.state.catalogos[tipo] || [];
+  // Estable entre dibujos: el store la reemplaza entera cuando cambia, así los useMemo la reconocen.
+  const todas = store.state.catalogos[tipo] ?? VACIO;
 
   /* Cuántos productos (sin los archivados) usan cada valor: dice qué se puede
    * eliminar y qué conviene fusionar. */
@@ -223,6 +228,16 @@ export function CatalogoAdmin({ tipo }) {
       .sort(ORDEN[orden]);
   }, [todas, usoPorId, tipo, catFiltro, estado, uso, q, orden]);
   const hayFiltro = !!(q.trim() || estado || uso || catFiltro);
+  // Se dibuja de a una página: 400 renglones con sus botones en cada tecla del buscador era lo que la trababa.
+  const pag = usePaginado(filas, `catalogo-${tipo}`, `${q}|${estado}|${uso}|${orden}|${catFiltro ?? ''}`);
+  /* ¿Hay con quién fusionarla? Se cuenta una vez por grupo (la categoría, en
+   * subcategorías), no recorriendo la lista entera en cada renglón. */
+  const porGrupo = useMemo(() => {
+    const m = new Map();
+    for (const x of todas) { const k = tipo === 'subcategorias' ? x.categoriaId : 0; m.set(k, (m.get(k) ?? 0) + 1); }
+    return m;
+  }, [todas, tipo]);
+  const puedeFusionar = (fila) => (porGrupo.get(tipo === 'subcategorias' ? fila.categoriaId : 0) ?? 0) > 1;
 
   const nombreCategoria = (id) => categorias.find((c) => c.id === id)?.nombre ?? '—';
 
@@ -267,7 +282,7 @@ export function CatalogoAdmin({ tipo }) {
     if (r) { setFusionId(null); setFusionHacia(''); }
   };
 
-  /** Candidatas a destino de la fusión: las demás de la misma categoría, por nombre. */
+  /** Candidatas a destino de la fusión (solo para el renglón que se está fusionando): las demás de su grupo, por nombre. */
   const destinos = (fila) => todas.filter((x) => x.id !== fila.id
     && (tipo !== 'subcategorias' || x.categoriaId === fila.categoriaId)).sort(ORDEN.az);
 
@@ -320,7 +335,7 @@ export function CatalogoAdmin({ tipo }) {
           {filas.length === 0 && (
             <tr><td colSpan={5} className={s['empty-state']}>{hayFiltro ? 'Ninguna con esos filtros.' : `Sin ${meta.titulo.toLowerCase()}.`}</td></tr>
           )}
-          {filas.map((f) => (
+          {pag.visibles.map((f) => (
             <tr key={f.id} style={{ opacity: f.activa ? 1 : 0.55 }}>
               <td>
                 {editId === f.id ? (
@@ -354,7 +369,7 @@ export function CatalogoAdmin({ tipo }) {
                 ) : (
                   <div className={s['row-actions']}>
                     <Btn small onClick={() => { setEditId(f.id); setEditTxt(f.nombre); }}>Renombrar</Btn>
-                    {destinos(f).length > 0 && (
+                    {puedeFusionar(f) && (
                       <Btn small onClick={() => { setFusionId(f.id); setFusionHacia(''); }}>Fusionar</Btn>
                     )}
                     <Btn small onClick={() => alternarActiva(f)}>
@@ -368,6 +383,7 @@ export function CatalogoAdmin({ tipo }) {
           ))}
         </tbody>
       </table>
+      <Paginador pag={pag} />
 
       {creandoNueva && (
         <NuevoCatalogoModal

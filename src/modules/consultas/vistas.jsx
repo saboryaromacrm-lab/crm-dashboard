@@ -72,7 +72,10 @@ function BarraEstado({ visibles, total, cargando, hayFiltro, onLimpiar, extra })
   );
 }
 
-/** Cabecera de dos niveles: fila de grupos + fila de columnas. */
+/**
+ * Cabecera de dos niveles: fila de grupos + fila de columnas. Una columna con
+ * `onClick` se puede ordenar (`orden`: 'desc' | 'asc' | null).
+ */
 function Cabecera({ grupos, columnas }) {
   return (
     <thead>
@@ -83,8 +86,14 @@ function Cabecera({ grupos, columnas }) {
       </tr>
       <tr className={c.colFila}>
         {columnas.map((col, i) => (
-          <th key={i} className={cx(col.num && c.num, col.grupo && c.grupo, col.cls && c[col.cls])}>
-            {col.h}
+          <th
+            key={i}
+            className={cx(col.num && c.num, col.grupo && c.grupo, col.cls && c[col.cls], col.onClick && c.ordenable, col.orden && c.colActiva)}
+            onClick={col.onClick}
+            title={col.titulo}
+            aria-sort={col.orden ? (col.orden === 'desc' ? 'descending' : 'ascending') : undefined}
+          >
+            {col.h}{col.orden ? (col.orden === 'desc' ? ' ▼' : ' ▲') : ''}
           </th>
         ))}
       </tr>
@@ -282,6 +291,14 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
   const [error, setError] = useState('');
   const [f, setF] = useState(FILTROS_STOCK);
   const set = (patch) => setF((x) => ({ ...x, ...patch }));
+  /*
+   * ORDENAR POR EL STOCK DE UNA SUCURSAL (12/10/2026, pedido del dueño): clic
+   * en su nombre = de mayor a menor; otro clic = de menor a mayor; el tercero
+   * vuelve al orden de siempre. La columna elegida queda resaltada.
+   */
+  const [orden, setOrden] = useState({ col: null, dir: 'desc' });
+  const ordenarPor = (col) => setOrden((o) => (o.col !== col ? { col, dir: 'desc' } : o.dir === 'desc' ? { col, dir: 'asc' } : { col: null, dir: 'desc' }));
+  const ordenDe = (col) => (orden.col === col ? orden.dir : null);
 
   useEffect(() => {
     let vivo = true;
@@ -316,24 +333,32 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
 
   const totalDe = (i) => (i.stockSucursales ?? []).reduce((a, x) => a + (x.cantidad || 0), 0);
 
+  const stockEn = (item, sucursalId) =>
+    item.stockSucursales?.find((x) => x.sucursalId === sucursalId)?.cantidad ?? 0;
+
   const visibles = useMemo(() => {
     const n = norm(f.q);
     const prov = f.proveedor ? Number(f.proveedor) : null;
-    return items.filter((i) => (
+    const filtrados = items.filter((i) => (
       (!n || norm(i.nombre).includes(n) || (i.codigoBarras ?? '').includes(f.q) || (i.codigo ?? '').includes(f.q))
       && (!prov || (i.proveedorIds ?? []).includes(prov))
       && (!f.marca || i.marca === f.marca)
       && (!f.categoria || i.categoria === f.categoria)
       && (!f.soloConStock || totalDe(i) > 0)
     ));
-  }, [items, f]);
+    if (orden.col == null) return filtrados;
+    const cuanto = (i) => (orden.col === 'total' ? totalDe(i) : stockEn(i, orden.col));
+    const signo = orden.dir === 'desc' ? -1 : 1;
+    return filtrados
+      .map((i) => [cuanto(i), i])
+      .sort((a, b) => (a[0] - b[0]) * signo || a[1].nombre.localeCompare(b[1].nombre, 'es'))
+      .map(([, i]) => i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, f, orden]);
 
   const hayFiltro = Object.keys(FILTROS_STOCK).some((k) => f[k] !== FILTROS_STOCK[k]);
-  const pag = usePaginado(visibles, 'consultaExistencias', JSON.stringify(f));
+  const pag = usePaginado(visibles, 'consultaExistencias', JSON.stringify([f, orden]));
   const nCols = 2 + sucursales.length + 2 + 1;
-
-  const stockEn = (item, sucursalId) =>
-    item.stockSucursales?.find((x) => x.sucursalId === sucursalId)?.cantidad ?? 0;
 
   return (
     <div className={c.consulta}>
@@ -394,8 +419,11 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
             ]}
             columnas={[
               { h: 'Código' }, { h: 'Producto' },
-              ...sucursales.map((su, i) => ({ h: su.nombre, num: true, grupo: i === 0 })),
-              { h: 'Total', num: true, cls: 'totalCol' },
+              ...sucursales.map((su, i) => ({
+                h: su.nombre, num: true, grupo: i === 0,
+                onClick: () => ordenarPor(su.id), orden: ordenDe(su.id), titulo: `Ordenar por el stock de ${su.nombre}`,
+              })),
+              { h: 'Total', num: true, cls: 'totalCol', onClick: () => ordenarPor('total'), orden: ordenDe('total'), titulo: 'Ordenar por el stock total' },
               { h: 'Mostrador', num: true, grupo: true }, { h: 'Otras listas' },
             ]}
           />
@@ -438,13 +466,13 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
                       // El cero se atenúa: lo que HAY tiene que saltar a la vista.
                       <td
                         key={su.id}
-                        className={cx(c.num, c.mono, idx === 0 && c.grupo, q <= 0 && c.cero)}
+                        className={cx(c.num, c.mono, idx === 0 && c.grupo, q <= 0 && c.cero, orden.col === su.id && c.colActiva)}
                       >
                         {num(q)}{i.unidad === 'kg' ? ' kg' : ''}
                       </td>
                     );
                   })}
-                  <td className={cx(c.num, c.mono, c.total, c.totalCol, total <= 0 && c.cero)}>
+                  <td className={cx(c.num, c.mono, c.total, c.totalCol, total <= 0 && c.cero, orden.col === 'total' && c.colActiva)}>
                     {num(total)}{i.unidad === 'kg' ? ' kg' : ''}
                   </td>
                   {/* PRECIO FINAL, con el IVA adentro (19/8/2026, decisión del

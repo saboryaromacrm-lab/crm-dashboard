@@ -25,6 +25,7 @@ import {
   altoRenglonPlanilla, compararFilasPorMarca, cuerpoPlanillaConteo, hojasPlanilla, imprimirDocumento, medidorPlanilla,
 } from '@core/services/imprimir.js';
 import { fmtTam, money } from '../../domain/format.js';
+import { MarcaEstadoModal } from '../CatalogoAdmin.jsx';
 import { norm } from '../CatalogoPicker.jsx';
 import { ModalShell } from '../Modal.jsx';
 import { Table, Btn, s } from '../ui.jsx';
@@ -43,6 +44,9 @@ export function ConteoNuevoModal({ alCrear }) {
   });
   const [creando, setCreando] = useState(false);
   const [ocupados, setOcupados] = useState(null);
+  /* La marca que se va a inhabilitar desde acá (12/10/2026): la misma ventana
+   * de Catálogos, con lo que cambia en sus productos y doble confirmación. */
+  const [marcaEstado, setMarcaEstado] = useState(null);
   const set = (patch) => setF((x) => ({ ...x, ...patch }));
 
   /* Lo que ya se está contando en la sucursal (en curso o cerrado sin aplicar):
@@ -65,11 +69,14 @@ export function ConteoNuevoModal({ alCrear }) {
    * total del botón.
    */
   const medir = useMemo(() => medidorPlanilla(), []);
+  /* Lo del store que usa el alta: cambia cuando se inhabilita una marca desde acá. */
+  const productos = store.state.productos;
+  const marcasCatalogo = store.state.catalogos?.marcas ?? VACIO;
   const analisis = useMemo(() => {
     const enUso = new Map((ocupados?.formas ?? []).map(([p, pr, c]) => [`${p}:${pr || ''}`, c]));
-    const nombreMarca = new Map((store.state.catalogos?.marcas ?? []).map((m) => [m.id, m.nombre]));
+    const nombreMarca = new Map(marcasCatalogo.map((m) => [m.id, m.nombre]));
     const porMarca = new Map();
-    for (const p of store.state.productos) {
+    for (const p of productos) {
       if (p.estado === 'archivado') continue;
       if (f.categoriaId && String(p.categoriaId ?? '') !== String(f.categoriaId)) continue;
       if (f.tipo && p.tipo !== f.tipo) continue;
@@ -88,14 +95,14 @@ export function ConteoNuevoModal({ alCrear }) {
     /* Lo que ocupa cada marca en la planilla, ya en el orden en que se imprime. */
     for (const m of porMarca.values()) m.altos = m.filas.sort(compararFilasPorMarca).map((x) => altoRenglonPlanilla(x, medir));
     return porMarca;
-  }, [store, f.categoriaId, f.tipo, f.proveedorId, f.soloConStock, ocupados, medir]);
+  }, [store, productos, marcasCatalogo, f.categoriaId, f.tipo, f.proveedorId, f.soloConStock, ocupados, medir]);
 
   /* Las marcas que todavía tienen algo para contar; las que no, ni aparecen. */
-  const marcas = useMemo(() => (store.state.catalogos?.marcas ?? [])
+  const marcas = useMemo(() => marcasCatalogo
     .map((m) => ({ ...m, ...(analisis.get(m.id) ?? { libres: 0, ocupadas: 0 }) }))
     .filter((m) => m.libres > 0)
-    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')), [store, analisis]);
-  const ocultas = (store.state.catalogos?.marcas ?? []).filter((m) => (analisis.get(m.id)?.ocupadas ?? 0) > 0 && !(analisis.get(m.id)?.libres > 0)).length;
+    .sort((a, b) => COLADOR.compare(a.nombre, b.nombre)), [marcasCatalogo, analisis]);
+  const ocultas = marcasCatalogo.filter((m) => (analisis.get(m.id)?.ocupadas ?? 0) > 0 && !(analisis.get(m.id)?.libres > 0)).length;
   /* Una marca elegida que se quedó sin nada libre (cambió el tipo, por ejemplo) deja de contar sola. */
   const elegidas = f.marcaIds.filter((id) => marcas.some((m) => m.id === id));
 
@@ -186,8 +193,19 @@ export function ConteoNuevoModal({ alCrear }) {
 
       <SelectorMarcas
         marcas={marcas} elegidas={elegidas} ocultas={ocultas} cargando={cargando} entran={hojas.entran}
-        onChange={(marcaIds) => set({ marcaIds })}
+        onChange={(marcaIds) => set({ marcaIds })} onEstado={isAdmin ? setMarcaEstado : null}
       />
+      {marcaEstado && (
+        <MarcaEstadoModal
+          fila={marcaEstado} store={store} toast={toast}
+          onCerrar={() => setMarcaEstado(null)}
+          onHecho={() => {
+            // Inhabilitada, deja de estar tildada; habilitada, queda como estaba.
+            if (marcaEstado.activa) set({ marcaIds: f.marcaIds.filter((id) => id !== marcaEstado.id) });
+            setMarcaEstado(null);
+          }}
+        />
+      )}
       {!cargando && resumen.libres > 0 && <ResumenHojas hojas={hojas} renglones={resumen.libres} marcas={marcas} conMarcas={elegidas.length > 0} />}
 
       <div className={s['form-grid']}>
@@ -280,7 +298,7 @@ function ResumenHojas({ hojas, renglones, marcas, conMarcas }) {
   );
 }
 
-function SelectorMarcas({ marcas, elegidas, ocultas, cargando, entran, onChange }) {
+function SelectorMarcas({ marcas, elegidas, ocultas, cargando, entran, onChange, onEstado }) {
   const [q, setQ] = useState('');
   const elegidasSet = new Set(elegidas);
   const visibles = q.trim() ? marcas.filter((m) => norm(m.nombre).includes(norm(q))) : marcas;
@@ -322,11 +340,20 @@ function SelectorMarcas({ marcas, elegidas, ocultas, cargando, entran, onChange 
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', cursor: 'pointer', borderBottom: '1px solid var(--crm-color-border)', background: elegidasSet.has(m.id) ? 'var(--crm-color-primary-soft, #f0fdf4)' : undefined }}
           >
             <input type="checkbox" checked={elegidasSet.has(m.id)} onChange={() => alternar(m.id)} />
-            <span style={{ flex: 1 }}>{m.nombre}</span>
+            <span style={{ flex: 1 }}>
+              {m.nombre}
+              {!m.activa && <span className={s.hint} style={{ margin: '0 0 0 6px' }}>· inhabilitada</span>}
+            </span>
             <span className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
               {entran?.has(m.id) && !elegidasSet.has(m.id) && <strong style={{ color: 'var(--crm-color-success)' }}>✓ entra sin otra hoja · </strong>}
               {m.libres} para contar{m.ocupadas > 0 ? ` · ${m.ocupadas} ya en otro control` : ''}
             </span>
+            {/* Inhabilitar sin salir del control (12/10/2026): el botón no tilda la marca. */}
+            {onEstado && (
+              <Btn small onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEstado(m); }}>
+                {m.activa ? 'Inhabilitar' : 'Habilitar'}
+              </Btn>
+            )}
           </label>
         ))}
         {!cargando && visibles.length === 0 && <div className={s.hint} style={{ padding: 10, margin: 0 }}>Ninguna marca con ese nombre tiene algo para contar.</div>}
@@ -339,6 +366,10 @@ function SelectorMarcas({ marcas, elegidas, ocultas, cargando, entran, onChange 
     </div>
   );
 }
+
+/* Un comparador para las listas de marcas (más rápido que `localeCompare` con opciones). */
+const COLADOR = new Intl.Collator('es', { sensitivity: 'base' });
+const VACIO = [];
 
 /** El gris claro de las filas cebradas: un tinte del texto, así sirve en tema claro y oscuro. */
 const CEBRA = 'color-mix(in srgb, var(--crm-color-text) 6%, transparent)';
@@ -475,14 +506,16 @@ export function ConteoModal({ conteoId, alTerminar }) {
    * pasa al casillero del PRÓXIMO renglón —el mismo orden que la hoja—, así
    * se pasa la planilla de corrido sin tocar el mouse. Si al renglón se llegó
    * con el LECTOR, vuelve al buscador para escanear el siguiente, como antes.
-   * Enter con el casillero vacío saltea el renglón sin guardar nada.
+   * Enter con el casillero VACÍO cuenta 0 —no hay ninguno— y pasa al siguiente
+   * (pedido del dueño); si el renglón ya tenía una cantidad, no la pisa: pasa.
    */
   const contar = async (it) => {
     const i = visibles.findIndex((x) => x.id === it.id);
     const siguiente = visibles[i + 1]?.id ?? null;
     const texto = cantidades[it.id];
-    if (texto == null || texto === '') { delLector.current = false; enfocar(siguiente); return; }
-    const v = Number(String(texto).replace(',', '.'));
+    const vacio = texto == null || String(texto).trim() === '';
+    if (vacio && it.contado != null) { delLector.current = false; enfocar(siguiente); return; }
+    const v = vacio ? 0 : Number(String(texto).replace(',', '.'));
     if (!(v >= 0)) { toast('La cantidad no puede ser negativa.', 'err'); return; }
     const r = await store.contarItemConteo(conteoId, it.id, v);
     if (!r.ok) { toast(r.error, 'err'); return; }

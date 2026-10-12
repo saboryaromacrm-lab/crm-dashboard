@@ -885,11 +885,26 @@ const guardarListasPresentacion = (presId, o) => _mutate(() => httpClient.put('/
  * juego de métodos para los cuatro: el backend resuelve las diferencias, acá
  * no hay razón para escribir lo mismo cuatro veces.
  */
-const crearCatalogo = (tipo, o) => _mutate(() => httpClient.post('/catalogos/' + tipo, o));
-const editarCatalogo = (tipo, id, o) => _mutate(() => httpClient.patch('/catalogos/' + tipo + '/' + id, o));
-const eliminarCatalogo = (tipo, id) => _mutate(() => httpClient.delete('/catalogos/' + tipo + '/' + id));
+/**
+ * LOS CAMBIOS DE CATÁLOGO (marcas, categorías…) no escriben movimientos ni
+ * comprobantes: alcanza con volver a mirar el snapshot —que con su ETag baja
+ * solo la parte que cambió— sin repedir las secciones abiertas (12/10/2026).
+ */
+async function _mutateCatalogo(fn) {
+  try {
+    const data = await fn();
+    mergeState(await cargarSnapshot());
+    emit();
+    return Object.assign({ ok: true }, (data && typeof data === 'object') ? data : {});
+  } catch (e) {
+    return _fallo(e);
+  }
+}
+const crearCatalogo = (tipo, o) => _mutateCatalogo(() => httpClient.post('/catalogos/' + tipo, o));
+const editarCatalogo = (tipo, id, o) => _mutateCatalogo(() => httpClient.patch('/catalogos/' + tipo + '/' + id, o));
+const eliminarCatalogo = (tipo, id) => _mutateCatalogo(() => httpClient.delete('/catalogos/' + tipo + '/' + id));
 const fusionarCatalogo = (tipo, id, haciaId) =>
-  _mutate(() => httpClient.post('/catalogos/' + tipo + '/' + id + '/fusionar', { haciaId }));
+  _mutateCatalogo(() => httpClient.post('/catalogos/' + tipo + '/' + id + '/fusionar', { haciaId }));
 
 /** Siguiente código propio libre, para el botón "Crear un código". */
 const siguienteCodigo = () => httpClient.get('/productos/siguiente-codigo');

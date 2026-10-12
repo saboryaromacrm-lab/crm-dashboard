@@ -175,6 +175,27 @@
 .total { font-weight: 700; }
 .totalCol { background: color-mix(in srgb, var(--crm-color-text) 4%, transparent); }
 
+/*
+ * ORDENAR POR SUCURSAL (12/10/2026): el encabezado se puede tocar, y la
+ * columna elegida se resalta con un degradé verde suave de arriba a abajo en
+ * cada celda. Va con `background-image` y con la especificidad de la regla del
+ * hover, declarada después: así pasar el mouse por la fila no apaga el resalte.
+ * Los ceros de esa columna no se apagan con opacidad (se iría el degradé): se
+ * aclara solo el número.
+ */
+.ordenable { cursor: pointer; user-select: none; }
+.ordenable:hover { color: var(--crm-color-primary); }
+.colFila th.colActiva {
+  color: var(--crm-color-primary);
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--crm-color-primary) 10%, transparent), color-mix(in srgb, var(--crm-color-primary) 22%, transparent));
+  box-shadow: inset 0 -2px var(--crm-color-primary);
+}
+.tabla tbody tr td.colActiva {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--crm-color-primary) 6%, transparent), color-mix(in srgb, var(--crm-color-primary) 14%, transparent));
+  font-weight: 700;
+}
+.tabla tbody tr td.colActiva.cero { opacity: 1; color: color-mix(in srgb, var(--crm-color-text) 35%, transparent); font-weight: 400; }
+
 /* ---------------- Precios y variación ---------------- */
 
 .precioBase { font-weight: 700; font-size: 13.5px; }
