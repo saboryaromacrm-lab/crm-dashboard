@@ -21,7 +21,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
-import { cuerpoPlanillaConteo, imprimirDocumento } from '@core/services/imprimir.js';
+import { compararFilasPorMarca, cuerpoPlanillaConteo, imprimirDocumento } from '@core/services/imprimir.js';
 import { money } from '../../domain/format.js';
 import { norm } from '../CatalogoPicker.jsx';
 import { ModalShell } from '../Modal.jsx';
@@ -280,6 +280,9 @@ function SelectorMarcas({ marcas, elegidas, ocultas, cargando, onChange }) {
   );
 }
 
+/** El gris claro de las filas cebradas: un tinte del texto, así sirve en tema claro y oscuro. */
+const CEBRA = 'color-mix(in srgb, var(--crm-color-text) 6%, transparent)';
+
 /* ------------------------------------------------------------------ *
  * La sesión: contar / revisar / aplicar
  * ------------------------------------------------------------------ */
@@ -309,7 +312,14 @@ export function ConteoModal({ conteoId, alTerminar }) {
   useEffect(() => { recargar(); }, [recargar]);
 
   const enCurso = data?.estado === 'en_curso';
-  const items = data?.items ?? [];
+  /* Con su MARCA y en el orden de la planilla impresa (marca → producto →
+   * tamaño): quien pasa la hoja al sistema la sigue renglón por renglón. */
+  const items = useMemo(() => {
+    const marcas = new Map((store.state.catalogos?.marcas ?? []).map((m) => [m.id, m.nombre]));
+    return (data?.items ?? [])
+      .map((it) => ({ ...it, marca: marcas.get(store.getProducto(it.productoId)?.marcaId) ?? '' }))
+      .sort(compararFilasPorMarca);
+  }, [data, store]);
 
   /*
    * EL BUSCADOR ES EL LECTOR. Un lector USB tipea el código y manda Enter: si
@@ -357,7 +367,6 @@ export function ConteoModal({ conteoId, alTerminar }) {
   }), [items, vista]);
 
   const imprimirPlanilla = async () => {
-    const marcas = new Map((store.state.catalogos?.marcas ?? []).map((m) => [m.id, m.nombre]));
     const ok = await imprimirDocumento('planillaConteo', {
       titulo: data.nombre || `Control #${data.id}`,
       cuerpo: cuerpoPlanillaConteo({
@@ -368,7 +377,7 @@ export function ConteoModal({ conteoId, alTerminar }) {
         impresa: new Date().toLocaleString('es-AR'),
         hoja: vista === 'pendientes' ? 'pendientes de contar'
           : vista === 'contados' ? 'ya contados' : 'lista completa',
-        filas: paraImprimir.map((it) => ({ ...it, codigo: codigoDe(it), marca: marcas.get(store.getProducto(it.productoId)?.marcaId) ?? '' })),
+        filas: paraImprimir.map((it) => ({ ...it, codigo: codigoDe(it) })),
       }),
     });
     if (!ok) toast('El navegador bloqueó la ventana de impresión. Permitila y probá de nuevo.', 'err');
@@ -534,37 +543,31 @@ export function ConteoModal({ conteoId, alTerminar }) {
         )}
 
         <div style={{ overflow: 'auto', flex: 1 }}>
+          {/* CONTADO PEGADO AL PRODUCTO (12/10/2026, pedido del dueño): marca,
+              producto y el casillero uno al lado del otro, lo demás a la derecha
+              y una columna vacía que se come el resto del ancho, así el ojo no
+              cruza la pantalla para saber de qué renglón es el número. Filas
+              cebradas en gris claro, y el mismo orden que la planilla impresa. */}
           <Table
             cols={enCurso ? [
-              { h: 'Producto' }, ...(verSistema ? [{ h: 'Sistema', num: true }] : []),
-              { h: 'Apartados', num: true }, { h: 'Contado', num: true }, { h: '', cls: 'actions-col' },
+              { h: 'Marca' }, { h: 'Producto' }, { h: 'Contado', num: true }, { h: '', cls: 'actions-col' },
+              ...(verSistema ? [{ h: 'Sistema', num: true }] : []), { h: 'Apartados', num: true }, { h: '' },
             ] : [
-              { h: 'Producto' }, { h: 'Contado', num: true },
+              { h: 'Marca' }, { h: 'Producto' }, { h: 'Contado', num: true },
               ...(conDiferencias ? [{ h: 'Sistema', num: true }, { h: 'Diferencia', num: true }, { h: '$', num: true }] : []),
-              { h: 'Contó' }, ...(conDiferencias && data.estado === 'cerrado' ? [{ h: '', cls: 'actions-col' }] : []),
+              { h: 'Contó' }, ...(conDiferencias && data.estado === 'cerrado' ? [{ h: '', cls: 'actions-col' }] : []), { h: '' },
             ]}
             empty={enCurso && vista === 'pendientes' ? '¡Todo contado! Pasá a "Cerrar el control".' : 'Nada por acá.'}
           >
-            {(enCurso ? visibles : (conDiferencias ? [...conDif, ...contadas.filter((i) => Math.abs(i.diferencia ?? 0) <= 1e-9), ...sinContar] : items)).map((it) => (
-              <tr key={it.id} style={it.recontar ? { background: 'color-mix(in srgb, var(--crm-color-danger) 8%, transparent)' } : undefined}>
-                <td>
+            {(enCurso ? visibles : (conDiferencias ? [...conDif, ...contadas.filter((i) => Math.abs(i.diferencia ?? 0) <= 1e-9), ...sinContar] : items)).map((it, i) => (
+              <tr key={it.id} style={{ background: it.recontar ? 'color-mix(in srgb, var(--crm-color-danger) 8%, transparent)' : (i % 2 ? CEBRA : undefined) }}>
+                <td className={s.muted} style={{ whiteSpace: 'nowrap' }}>{it.marca || '—'}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
                   <strong>{it.nombre}</strong>
                   {it.presLabel && <strong> · {it.presLabel}</strong>}
                   <span className={s.muted}> ({it.unidad})</span>
                   {it.recontar && <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-danger)' }}>⚠ Volver a contar</div>}
                 </td>
-
-                {verSistema && (
-                  <td className={cx(s.num, s.mono)}>{it.virtual != null ? it.virtual : <span className={s.muted}>—</span>}</td>
-                )}
-
-                {enCurso && (
-                  <td className={cx(s.num, s.mono)}>
-                    {it.apartados > 1e-9
-                      ? <span title="Separado para envíos: NO lo cuentes">{it.apartados} ⚠</span>
-                      : <span className={s.muted}>—</span>}
-                  </td>
-                )}
 
                 <td className={cx(s.num, s.mono)}>
                   {enCurso ? (
@@ -581,6 +584,26 @@ export function ConteoModal({ conteoId, alTerminar }) {
                     it.contado != null ? `${it.contado} ${it.unidad}` : <span className={s.muted}>sin contar</span>
                   )}
                 </td>
+
+                {enCurso && (
+                  <td className={s['actions-col']}>
+                    {it.contado != null
+                      ? <><span title={`Contado por ${store.getUsuario(it.contadoPor)?.nombre ?? '—'}`}>✓</span>{' '}<Btn small onClick={() => descontar(it)}>Deshacer</Btn></>
+                      : null}
+                  </td>
+                )}
+
+                {verSistema && (
+                  <td className={cx(s.num, s.mono)}>{it.virtual != null ? it.virtual : <span className={s.muted}>—</span>}</td>
+                )}
+
+                {enCurso && (
+                  <td className={cx(s.num, s.mono)}>
+                    {it.apartados > 1e-9
+                      ? <span title="Separado para envíos: NO lo cuentes">{it.apartados} ⚠</span>
+                      : <span className={s.muted}>—</span>}
+                  </td>
+                )}
 
                 {!enCurso && conDiferencias && (
                   <>
@@ -601,15 +624,7 @@ export function ConteoModal({ conteoId, alTerminar }) {
                   </>
                 )}
 
-                {!enCurso && <td>{store.getUsuario(it.contadoPor)?.nombre ?? '—'}</td>}
-
-                {enCurso && (
-                  <td className={s['actions-col']}>
-                    {it.contado != null
-                      ? <><span title={`Contado por ${store.getUsuario(it.contadoPor)?.nombre ?? '—'}`}>✓</span>{' '}<Btn small onClick={() => descontar(it)}>Deshacer</Btn></>
-                      : null}
-                  </td>
-                )}
+                {!enCurso && <td style={{ whiteSpace: 'nowrap' }}>{store.getUsuario(it.contadoPor)?.nombre ?? '—'}</td>}
 
                 {!enCurso && conDiferencias && data.estado === 'cerrado' && (
                   <td className={s['actions-col']}>
@@ -620,6 +635,8 @@ export function ConteoModal({ conteoId, alTerminar }) {
                     )}
                   </td>
                 )}
+
+                <td style={{ width: '100%' }} />
               </tr>
             ))}
           </Table>

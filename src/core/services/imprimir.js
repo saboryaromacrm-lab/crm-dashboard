@@ -661,6 +661,20 @@ export function cuerpoCartelGondola({
 }
 
 /**
+ * EL ORDEN DE LA PLANILLA, compartido con la pantalla de conteo (12/10/2026):
+ * marca → producto → tamaño, lo sin marca al final. Así el que pasa los números
+ * del papel al sistema los encuentra en el mismo orden. Cada fila trae `marca`.
+ */
+export function compararFilasPorMarca(a, b) {
+  const ma = String(a.marca || '').trim();
+  const mb = String(b.marca || '').trim();
+  return (!ma - !mb)
+    || ma.localeCompare(mb, 'es', { sensitivity: 'base' })
+    || String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' })
+    || String(a.presLabel || '').localeCompare(String(b.presLabel || ''), 'es', { numeric: true });
+}
+
+/**
  * PLANILLA DEL CONTROL DE STOCK — la hoja que se lleva a la góndola.
  *
  * Es la MISMA función que alimenta la vista previa de Sistema y la impresora.
@@ -686,60 +700,63 @@ export function cuerpoCartelGondola({
  * y la `marca` que resuelve la pantalla desde el catálogo.
  */
 export function cuerpoPlanillaConteo({ titulo, alcance, sucursal, filas, impresa, hoja = '', responsable = '' }) {
-  const marcaDe = (f) => String(f.marca || '').trim();
-  const ordenadas = [...filas].sort((a, b) => (!marcaDe(a) - !marcaDe(b))
-    || marcaDe(a).localeCompare(marcaDe(b), 'es', { sensitivity: 'base' })
-    || String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' })
-    || String(a.presLabel || '').localeCompare(String(b.presLabel || ''), 'es', { numeric: true }));
-  const rows = ordenadas.map((f) => `
+  const rows = [...filas].sort(compararFilasPorMarca).map((f) => `
     <tr>
-      <td class="chica">${esc(marcaDe(f) || '—')}</td>
+      <td>${esc(String(f.marca || '').trim() || '—')}</td>
       <td>${esc(f.nombre)}${f.presLabel ? ` <strong>· ${esc(f.presLabel)}</strong>` : ''}${
         f.recontar ? ' <strong>⟳ RECONTAR</strong>' : ''}${
         f.apartados > 1e-9 ? ` <strong>⚠ ${esc(f.apartados)} apartado(s): NO contar</strong>` : ''}</td>
-      <td class="chica">${esc(f.codigo || '')}</td>
-      <td class="chica">${esc(f.unidad || '')}</td>
-      <td class="prep"></td>
+      <td class="prep"><span class="unidad">${esc(f.unidad || '')}</span></td>
       <td class="c">&#9744;</td>
+      <td class="cod">${esc(f.codigo || '')}</td>
     </tr>`).join('');
-  /* EN LOS MÁRGENES DE CADA HOJA (recuadros de @page: salen en todas sin
-   * calcular nada, y ocupándolos el navegador no pone su fecha, título ni URL):
-   *  · arriba a la derecha, grande y en negro: «HOJA 3 DE 5» y el RESPONSABLE
-   *    (10/10 y 12/10/2026), para no mezclar ni perder hojas ni dudar de quién
-   *    es cada una;
-   *  · abajo, «SUBIDO POR:» con la raya para firmar (12/10/2026): quién pasó
-   *    los números de esa hoja al sistema. Va en cada hoja porque se pueden
+  /* EN EL MARGEN DE ABAJO DE CADA HOJA (recuadros de @page: salen en todas sin
+   * calcular nada). Los de arriba, vacíos, sacan el encabezado que agrega el
+   * navegador (fecha y título): ocupando el margen, el navegador no pone el suyo.
+   *  · al centro, grande y en negro: «HOJA 3 DE 5» (10/10/2026), para no mezclar
+   *    ni perder hojas de una planilla larga;
+   *  · a la izquierda, «SUBIDO POR:» con la raya para firmar (12/10/2026): quién
+   *    pasó los números de esa hoja al sistema. Va en cada hoja porque se pueden
    *    cargar por separado.
-   * El margen de arriba se agranda para que entren las dos líneas. */
-  const responsableCss = `"${String(responsable || '—').replace(/[\\"]/g, '\\$&').replace(/[\r\n]+/g, ' ').replace(/</g, '\\3C ').toUpperCase()}"`;
+   * (12/10/2026: «HOJA X DE Y» y el responsable arriba a la derecha se probaron
+   * y se volvió atrás, a pedido del dueño.) */
   return `
     <style>
       @page {
-        margin-top: 24mm; margin-bottom: 18mm;
-        @top-left { content: ""; } @top-center { content: ""; }
-        @top-right {
-          content: "HOJA " counter(page) " DE " counter(pages) "\\A RESPONSABLE: " ${responsableCss};
-          white-space: pre; text-align: right; vertical-align: bottom;
-          background: #000; color: #fff; font: 800 14pt/1.25 system-ui, sans-serif; letter-spacing: 0.04em;
-          padding: 1.5mm 5mm; margin: 0 0 3mm;
+        @top-left { content: ""; } @top-center { content: ""; } @top-right { content: ""; }
+        @bottom-left {
+          content: "SUBIDO POR: ____________________";
+          font: 700 11pt system-ui, sans-serif; color: #000; vertical-align: middle;
+        }
+        @bottom-center {
+          content: "HOJA " counter(page) " DE " counter(pages);
+          background: #000; color: #fff; font: 800 15pt system-ui, sans-serif; letter-spacing: 0.06em;
+          padding: 0 7mm; margin: 2.5mm 0;
           -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
-        @bottom-left {
-          content: "SUBIDO POR: ______________________________";
-          font: 700 12pt system-ui, sans-serif; color: #000; vertical-align: middle;
-        }
-        @bottom-center { content: ""; } @bottom-right { content: ""; }
+        @bottom-right { content: ""; }
       }
       tr { break-inside: avoid; }
+      /* CONTADO PEGADO AL PRODUCTO y filas cebradas (12/10/2026): el ojo va del
+       * nombre al casillero sin cruzar la hoja ni saltar de renglón. Anchos
+       * fijos para que el casillero quede siempre en el mismo lugar. */
+      table.planilla { table-layout: fixed; }
+      table.planilla tbody tr:nth-child(even) td {
+        background: #ececec; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+      }
+      table.planilla td.prep { border: 1.5px solid #000; background: #fff !important; position: relative; }
+      table.planilla .unidad { position: absolute; right: 4px; bottom: 2px; font-size: 9pt; color: #777; }
+      table.planilla .cod { font-size: 9pt; color: #555; white-space: nowrap; overflow: hidden; }
     </style>
     <h1>${esc(titulo)} — control de stock</h1>
     <div class="sub">${esc(alcance)} · ${esc(sucursal)} · ${filas.length} renglón(es)${
       hoja ? ` · ${esc(hoja)}` : ''} · impresa ${esc(impresa)}</div>
-    <div class="sub"><strong>Anotá lo que HAY en el estante.</strong>${
+    <div class="sub">${responsable ? `Responsable: <strong>${esc(responsable)}</strong> &nbsp;&nbsp; ` : ''}<strong>Anotá lo que HAY en el estante.</strong>${
       filas.some((f) => f.apartados > 1e-9) ? ' Lo marcado <strong>⚠ apartado</strong> ya está separado para un envío: NO lo cuentes.' : ''}</div>
-    <table><thead><tr>
-      <th>Marca</th><th>Producto</th><th>Código</th><th>Unidad</th><th>Contado</th><th>&#10003;</th>
-    </tr></thead><tbody>${rows}</tbody></table>`;
+    <table class="planilla">
+      <colgroup><col style="width:15%"><col style="width:49%"><col style="width:15%"><col style="width:5%"><col style="width:16%"></colgroup>
+      <thead><tr><th>Marca</th><th>Producto</th><th>Contado</th><th>&#10003;</th><th>Código</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
 }
 
 /* ==================================================================== *
