@@ -76,6 +76,86 @@ function AplicarSinFactura({ proveedorId, sucio }) {
   );
 }
 
+/**
+ * «COMISIÓN % A TODOS SUS PRODUCTOS» (0157, pedido del dueño). La comisión que el
+ * proveedor cobra aparte y sin factura va a la COMISIÓN de todos sus formatos de
+ * compra (no al flete, que queda como está). No se guarda en la ficha: se aplica
+ * a lo que hay hoy (un producto nuevo de este proveedor se vuelve a aplicar).
+ * Muestra cuántos cambian y pide confirmar; solo un administrador.
+ */
+const pctTxt = (x) => `${(Number(x) || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })} %`;
+
+function AplicarComision({ proveedorId }) {
+  const { toast } = useProveedores();
+  const { esAdmin } = usePermissions();
+  const [pct, setPct] = useState('');
+  const [vista, setVista] = useState(null);
+  const [ocupado, setOcupado] = useState(false);
+  const enVuelo = useRef(false);
+  if (!esAdmin) return null;
+  /* A centésimos, como lo guarda el servidor: así la vista previa cuenta lo mismo que se aplica. */
+  const n = Math.round(Number(String(pct).replace(',', '.')) * 100) / 100;
+  const valido = pct !== '' && Number.isFinite(n) && n >= 0 && n <= 100;
+
+  const preguntar = async () => {
+    setOcupado(true);
+    try { setVista(await provApi.comisionProductos(proveedorId)); }
+    catch (e) { toast(e?.data?.message || 'No se pudo leer sus productos.', 'err'); }
+    finally { setOcupado(false); }
+  };
+  const aplicar = async () => {
+    if (enVuelo.current) return;
+    enVuelo.current = true; setOcupado(true);
+    try {
+      const r = await provApi.aplicarComision(proveedorId, n);
+      toast(r.productos ? `${r.productos} producto(s) quedaron con ${pctTxt(r.comision)} de comisión. Su costo y su góndola ya se recalcularon.` : `Todos sus productos ya tenían ${pctTxt(r.comision)}.`, 'ok');
+      setVista(null);
+    } catch (e) {
+      toast(e?.data?.message || 'No se pudo aplicar.', 'err');
+    } finally { enVuelo.current = false; setOcupado(false); }
+  };
+  const cambian = vista ? vista.productos - (vista.comisiones.find((x) => Math.abs(x.comision - n) < 0.005)?.productos ?? 0) : 0;
+
+  return (
+    <div className={s.field}>
+      <label htmlFor="comision-proveedor">Comisión % a todos sus productos</label>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <input
+          id="comision-proveedor" type="number" min="0" max="100" step="0.01" style={{ width: 110 }}
+          value={pct} onChange={(e) => { setPct(e.target.value); setVista(null); }} placeholder="Ej: 5.94"
+        />
+        <Btn small disabled={!valido || ocupado} onClick={preguntar}>Aplicar…</Btn>
+      </div>
+      <div className={s.hint} style={{ margin: '6px 0 0' }}>
+        Lo que cobra aparte y sin factura sobre lo comprado sin IVA (su comisión de fin de mes). Va entera al costo de
+        sus productos y recalcula la góndola; el flete no se toca y las facturas nuevas no la pisan.
+      </div>
+      {vista && (
+        <div className={s.callout} style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+          {cambian ? (
+            <>
+              <span>
+                ¿Poner <strong>{pctTxt(n)}</strong> de comisión a <strong>{cambian} de sus {vista.productos} producto(s)</strong>?
+                {vista.comisiones.length > 0 && <> Hoy: {vista.comisiones.map((x) => `${x.productos} con ${pctTxt(x.comision)}`).join(' · ')}.</>}
+                {' '}Se recalcula su costo y su góndola, y queda en la Auditoría y en el historial de costos (se puede deshacer).
+              </span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <Btn small variant="btn-primary" disabled={ocupado} onClick={aplicar}>{ocupado ? 'Aplicando…' : 'Sí, aplicar'}</Btn>
+                <Btn small disabled={ocupado} onClick={() => setVista(null)}>No</Btn>
+              </div>
+            </>
+          ) : (
+            <span>
+              {vista.productos ? `Sus ${vista.productos} producto(s) ya tienen ${pctTxt(n)}: no hay nada que cambiar.` : 'Este proveedor no tiene productos con formato de compra.'}{' '}
+              <Btn small onClick={() => setVista(null)}>Cerrar</Btn>
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FichaProveedorModal({ proveedorId, onChange }) {
   const { getProveedor, act, closeModal, toast } = useProveedores();
   const editando = !!proveedorId;
@@ -86,7 +166,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
     condicionIva: 'responsable_inscripto',
     proveeMercaderia: true, proveeGastos: false, letraGasto: '',
     condicionCompra: 'factura', medioHabitual: '', diasPago: '', modoCuenta: 'facturas',
-    porcSinFactura: '',
+    porcSinFactura: '', facturaMensual: false,
     minimoTransferencia: '',
   });
   const [cuentas, setCuentas] = useState([{ cbuAlias: '', titular: '', descripcion: '' }]);
@@ -104,6 +184,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       diasPago: original.diasPago ?? '',
       modoCuenta: original.modoCuenta ?? 'facturas',
       porcSinFactura: original.porcSinFactura ? String(original.porcSinFactura) : '',
+      facturaMensual: !!original.facturaMensual,
       minimoTransferencia: Number(original.minimoTransferencia) > 0 ? String(original.minimoTransferencia) : '',
     });
   }, [original]);
@@ -147,6 +228,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       diasPago: f.diasPago === '' ? null : Number(f.diasPago),
       modoCuenta: f.modoCuenta,
       porcSinFactura: porcForm,
+      facturaMensual: f.facturaMensual,
       minimoTransferencia: f.minimoTransferencia === '' ? 0 : Number(f.minimoTransferencia),
     };
     const res = await act(
@@ -200,6 +282,17 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
           <select value={f.condicionCompra} onChange={set('condicionCompra')}>
             {Object.entries(CONDICIONES_COMPRA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
+          {/* 0158: entrega con remitos sin IVA y hace las facturas de todo el mes juntas. */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <input id="factura-mensual" type="checkbox" checked={f.facturaMensual} onChange={setBool('facturaMensual')} />
+            Junta los remitos y factura a fin de mes
+          </label>
+          {f.facturaMensual && (
+            <div className={s.hint} style={{ margin: '4px 0 0' }}>
+              Cada entrega se carga como remito o liquidación (sin IVA: es lo que le pagás). Sus facturas van en su
+              estado de cuenta › <strong>Facturas del mes</strong>: entran al IVA sin volver a sumar mercadería ni deuda.
+            </div>
+          )}
         </div>
         <div className={s.field}>
           <label>Sin factura %</label>
@@ -221,6 +314,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
             />
           )}
         </div>
+        {editando && <AplicarComision proveedorId={proveedorId} />}
         <div className={s.field}>
           <label>Cómo cobra habitualmente</label>
           {/* Cta cte y Echeq son los DIFERIDOS: la factura confirmada genera

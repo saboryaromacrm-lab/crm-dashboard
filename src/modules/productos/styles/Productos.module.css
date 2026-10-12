@@ -259,6 +259,9 @@
 .table tbody tr.clickable:hover { background: var(--crm-color-surface-2); }
 .num { text-align: right; }
 .actions-col { text-align: right; white-space: nowrap; }
+/* El título de una columna numérica va alineado con sus números: `.table thead th`
+   pesa más que `.num` y lo dejaba a la izquierda, lejos de su columna. */
+.table thead th.num, .table thead th.actions-col { text-align: right; }
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
 .empty-state { padding: 40px 20px; text-align: center; color: var(--crm-color-text-secondary); font-size: var(--crm-font-size-sm); }
 .muted { color: var(--crm-color-text-secondary); }

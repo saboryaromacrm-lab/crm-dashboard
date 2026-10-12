@@ -413,7 +413,7 @@ function CatalogoProductos() {
           {controlF === 'sin' && ' Sin control: se venden, fraccionan y mueven aunque no haya stock (el stock se sigue registrando y puede quedar en negativo).'}
           {controlF === 'propio' && ' Tienen el control elegido en su ficha: no siguen a las llaves generales de Ventas › Configuración.'}
           {controlF && ' Se cambia en el detalle de cada producto (pestaña Resumen).'}
-          {imagenF && ' Las fotos se cargan en Web › Productos del sitio (de a una o en lote).'}
+          {imagenF && ' Las fotos se cargan en Tienda online › Productos del sitio (de a una o en lote).'}
           {isAdmin && ' «Exportar CSV» alcanza solo a los filtrados.'}
         </div>
       )}

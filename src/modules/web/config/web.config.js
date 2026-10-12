@@ -1,5 +1,5 @@
 /**
- * WEB — menú interno del módulo.
+ * TIENDA ONLINE (ex «Web») — menú interno del módulo.
  * ============================================================================
  * `permiso` es la clave de SECCIÓN del catálogo de permisos: el manifiesto
  * deriva de acá qué claves hacen visible el módulo, y la página filtra el
@@ -9,10 +9,13 @@ import StorefrontIcon from '@mui/icons-material/Storefront';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import ImageIcon from '@mui/icons-material/Image';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
+import HowToRegIcon from '@mui/icons-material/HowToReg';
 
 export const WEB_SECCIONES = [
   { id: 'productos', label: 'Productos del sitio', icon: StorefrontIcon, permiso: 'web.productos' },
   { id: 'ofertas', label: 'Ofertas del sitio', icon: LocalOfferIcon, permiso: 'web.ofertas' },
   { id: 'contenido', label: 'Contenido del sitio', icon: ImageIcon, permiso: 'web.contenido' },
   { id: 'estadisticas', label: 'Estadísticas', icon: QueryStatsIcon, permiso: 'web.estadisticas' },
+  /* Quién puede comprar (0155): pedidos de ingreso por DNI. La llave conserva el nombre con que nació. */
+  { id: 'accesos', label: 'Accesos a la tienda online', icon: HowToRegIcon, permiso: 'ventas.accesos_tienda', badge: 'accesos' },
 ];

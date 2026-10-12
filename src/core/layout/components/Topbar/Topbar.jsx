@@ -23,6 +23,7 @@ import { useUI } from '@core/context/UIContext.jsx';
 import { useAuth } from '@core/auth/AuthContext.jsx';
 import { useThemeMode } from '@core/theme/ThemeModeContext.jsx';
 import { useBreakpoint } from '@core/hooks/useBreakpoint.js';
+import { env } from '@core/config/env.js';
 import { GlobalSearch } from './GlobalSearch.jsx';
 import styles from './Topbar.module.css';
 
@@ -88,6 +89,12 @@ export function Topbar() {
         >
           {isDesktop && !sidebarCollapsed ? <MenuOpenIcon /> : <MenuIcon />}
         </IconButton>
+        {/* Probando en la computadora: a la vista siempre, para no confundirlo con producción. */}
+        {env.apiLocal && (
+          <span className={styles.modoLocal} title={`Datos de esta computadora (${env.apiBaseUrl}), no los de producción`}>
+            MODO LOCAL
+          </span>
+        )}
         <div className={styles.search}>
           <GlobalSearch />
         </div>

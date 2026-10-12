@@ -5,6 +5,7 @@ import { SolicitarPedidosModal, PedidoNotasModal } from './modals/PedidosModals.
 import { CompromisoModal, PagarCompromisoModal } from './modals/CompromisosModals.jsx';
 import { EcheqModal } from './modals/EcheqsModals.jsx';
 import { AjusteModal, BorrarAjusteModal } from './modals/EdocModals.jsx';
+import { FacturasMesModal } from './modals/FacturasMesModal.jsx';
 import { PagoProveedorModal, AnularPagoModal } from './modals/PagosModals.jsx';
 import { AnularPagoPropioModal, CuentaDisponibleModal, PagoPropioModal, ResumenCuentaModal } from './modals/CuentasDisponiblesModals.jsx';
 import { StockProveedorModal, IngresosProveedorModal } from './ProveedorMenu.jsx';
@@ -22,6 +23,8 @@ const MODALS = {
   echeq: EcheqModal,
   ajuste: AjusteModal,
   borrarAjuste: BorrarAjusteModal,
+  // El proveedor que junta los remitos y factura a fin de mes (0158).
+  facturasMes: FacturasMesModal,
   pagoProveedor: PagoProveedorModal,
   anularPago: AnularPagoModal,
   // Cuentas disponibles (0095): el balde y su resumen para el proveedor.

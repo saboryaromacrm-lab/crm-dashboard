@@ -22,7 +22,8 @@
  * Todo lo demás del producto (nombre, precio, stock, etiquetas) se maneja en
  * Compras › Productos — a propósito: una sola fuente de verdad por dato.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { httpClient } from '@core/services/httpClient.js';
 import { appConfig } from '@core/config/app.config.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
@@ -33,6 +34,8 @@ import { WEB_SECCIONES } from '../config/web.config.js';
 import { SubirImagenBtn } from '../components/SubirImagenBtn.jsx';
 import { SubirFotosLoteModal } from '../components/SubirFotosLoteModal.jsx';
 import { RafagaFotosModal } from '../components/RafagaFotosModal.jsx';
+import { AccesosTiendaPanel } from '../components/AccesosTiendaPanel.jsx';
+import { accesosTienda, sinSuscripcion } from '@core/services/accesosTienda.js';
 import { PRESETS_IMAGEN } from '../services/imagenes.js';
 
 const money = (n) => new Intl.NumberFormat('es-AR', {
@@ -1011,26 +1014,32 @@ function CartelBienvenida({ web, setWeb, recargar, avisar }) {
  * ==================================================================== */
 
 /**
- * Página del módulo Web. Las secciones van en un SUB-SIDEBAR a la izquierda,
+ * Página del módulo Tienda online (ex «Web»). Las secciones van en un SUB-SIDEBAR a la izquierda,
  * como en el resto de los módulos: el sistema tiene un solo patrón de
  * navegación interna y este no es la excepción.
  *
  * A diferencia de Ventas o Gastos no hace falta un contexto: el catálogo del
- * sitio es UNA sola llamada (`GET /tienda/catalogo` — el mismo endpoint que
- * consume la tienda, así lo que se ve acá es literalmente lo que ve el
- * cliente), y las secciones que necesitan más lo piden por su cuenta.
+ * sitio es UNA sola llamada (`GET /web/catalogo`: el mismo catálogo que ve un
+ * cliente habilitado, con precios), y las secciones que necesitan más lo piden
+ * por su cuenta.
  */
 export function WebPage() {
   const { can } = usePermissions();
   const secciones = useMemo(() => WEB_SECCIONES.filter((x) => can(x.permiso)), [can]);
+  /* `?seccion=accesos` abre esa sección (el cartel de pedidos de ingreso), también con la página ya abierta. */
+  const pedida = useSearchParams()[0].get('seccion');
   const [seccion, setSeccion] = useState(secciones[0]?.id ?? 'productos');
+  useEffect(() => { if (pedida) setSeccion(pedida); }, [pedida]);
   const [catalogo, setCatalogo] = useState(null);
   const [error, setError] = useState(null);
   const [aviso, setAviso] = useState(null);
+  /* El globito de «Accesos a la tienda online»: solo si el rol ve la sección (si no, un 403 por minuto). */
+  const veAccesos = secciones.some((x) => x.id === 'accesos');
+  const pedidosIngreso = useSyncExternalStore(veAccesos ? accesosTienda.subscribe : sinSuscripcion, accesosTienda.count, accesosTienda.count);
 
   const recargar = useCallback(async () => {
     try {
-      setCatalogo(await httpClient.get('/tienda/catalogo'));
+      setCatalogo(await httpClient.get('/web/catalogo'));
       setError(null);
     } catch (e) {
       setError(e?.data?.message || 'No se pudo conectar con la API.');
@@ -1052,7 +1061,7 @@ export function WebPage() {
   if (!secciones.length) {
     return (
       <div>
-        <PageHeader title="Web" subtitle="Administración de la tienda mayorista online" />
+        <PageHeader title="Tienda online" subtitle="Administración de la tienda mayorista online" />
         <div className={cx(s.callout, s.warn)}>Tu rol no tiene ninguna sección del sitio habilitada.</div>
       </div>
     );
@@ -1065,12 +1074,12 @@ export function WebPage() {
   return (
     <div>
       <PageHeader
-        title="Web"
-        subtitle="La tienda mayorista online: qué se ve, qué se destaca, con qué imágenes y cómo viene andando"
+        title="Tienda online"
+        subtitle="La tienda mayorista online: qué se ve, qué se destaca, con qué imágenes, quién puede comprar y cómo viene andando"
       />
 
       <div className={s.shell}>
-        <nav className={s.subnav} aria-label="Secciones de Web">
+        <nav className={s.subnav} aria-label="Secciones de Tienda online">
           {secciones.map((x) => {
             const Icon = x.icon;
             return (
@@ -1082,6 +1091,7 @@ export function WebPage() {
               >
                 <span className={s.subnavIcon}><Icon fontSize="small" /></span>
                 <span className={s.subnavLabel}>{x.label}</span>
+                {x.badge === 'accesos' && pedidosIngreso > 0 && <span className={s.subnavBadge}>{pedidosIngreso}</span>}
               </button>
             );
           })}
@@ -1107,6 +1117,7 @@ export function WebPage() {
                 {activa === 'ofertas' && <OfertasWebPanel avisar={avisar} />}
                 {activa === 'contenido' && <ContenidoPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />}
                 {activa === 'estadisticas' && <EstadisticasPanel avisar={avisar} />}
+                {activa === 'accesos' && <AccesosTiendaPanel avisar={avisar} />}
               </>
             )}
         </div>

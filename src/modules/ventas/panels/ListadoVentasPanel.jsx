@@ -64,6 +64,59 @@ function FilaReparto({ color, nombre, importe, pct, detalle }) {
   );
 }
 
+/** Una fila de barra: nombre, barra al % y el importe con su % y los tickets. */
+function FilaBarra({ nombre, pct, importe, ventas, color = 'var(--crm-color-primary)' }) {
+  return (
+    <>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={nombre}>{nombre}</span>
+      <span style={{ height: 10, background: 'var(--crm-color-surface-2, rgba(0,0,0,.05))', borderRadius: 4, overflow: 'hidden' }}>
+        <span style={{ display: 'block', height: '100%', width: `${Math.max(0, Math.min(100, pct ?? 0))}%`, background: color, borderRadius: '0 4px 4px 0' }} />
+      </span>
+      <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+        <strong>{money(importe)}</strong> · <strong>{pct == null ? '—' : `${num(pct, 1)}%`}</strong>
+        <span className={s.hint} style={{ margin: 0 }}> · {num(ventas, 0)} tk</span>
+      </span>
+    </>
+  );
+}
+
+const GRILLA_BARRA = { display: 'grid', gridTemplateColumns: 'minmax(90px, 1fr) minmax(60px, 2fr) auto', gap: 10, alignItems: 'center' };
+
+/**
+ * POR MODALIDAD (12/10/2026, pedido del dueño): cada modalidad con su % del
+ * total; tocándola se despliegan sus listas, con su % DENTRO de la modalidad.
+ */
+function PorModalidad({ modalidades }) {
+  const [abiertas, setAbiertas] = useState(() => new Set());
+  const alternar = (k) => setAbiertas((xs) => { const n = new Set(xs); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  if (!modalidades?.length) return <div className={s.hint}>Sin ventas en el período.</div>;
+  return modalidades.map((m) => {
+    const k = m.modalidadId ?? 'sin';
+    const abierta = abiertas.has(k);
+    return (
+      <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <button
+          type="button" onClick={() => alternar(k)} aria-expanded={abierta}
+          style={{ ...GRILLA_BARRA, width: '100%', padding: 0, border: 0, background: 'none', cursor: 'pointer', textAlign: 'left', font: 'inherit', color: 'inherit' }}
+          title={abierta ? 'Ocultar sus listas' : 'Ver sus listas de precios'}
+        >
+          <FilaBarra nombre={`${abierta ? '▾' : '▸'} ${m.nombre}`} pct={m.pct} importe={m.importe} ventas={m.ventas} />
+        </button>
+        {abierta && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, margin: '0 0 6px 16px', paddingLeft: 10, borderLeft: '2px solid var(--crm-color-border)' }}>
+            {m.listas.map((l) => (
+              <div key={l.listaId ?? 'sin'} style={GRILLA_BARRA}>
+                <FilaBarra nombre={l.nombre} pct={l.pct} importe={l.importe} ventas={l.ventas} color="var(--crm-color-primary-soft, #86efac)" />
+              </div>
+            ))}
+            <div className={s.hint} style={{ margin: 0 }}>% de cada lista dentro de {m.nombre}.</div>
+          </div>
+        )}
+      </div>
+    );
+  });
+}
+
 /** Un color fijo por medio de pago: el color sigue al medio, no a su puesto en el ranking. */
 const COLOR_MEDIO = {
   efectivo: '#16a34a', transferencia: '#2563eb', tarjeta_debito: '#7c3aed', tarjeta_credito: '#db2777',
@@ -467,20 +520,9 @@ export function ListadoVentasPanel() {
             />
           </div>
           <div className={s.card} style={{ padding: '10px 14px', flex: '2 1 320px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span className={s['mini-label']}>POR LISTA DE PRECIOS</span>
-            {t.porLista?.length ? t.porLista.map((x) => (
-              <div key={x.listaId ?? 'sin'} style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 1fr) minmax(60px, 2fr) auto', gap: 10, alignItems: 'center' }}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={x.nombre}>{x.nombre}</span>
-                <span style={{ height: 10, background: 'var(--crm-color-surface-2, rgba(0,0,0,.05))', borderRadius: 4, overflow: 'hidden' }}>
-                  <span style={{ display: 'block', height: '100%', width: `${Math.max(0, Math.min(100, x.pct ?? 0))}%`, background: 'var(--crm-color-primary)', borderRadius: '0 4px 4px 0' }} />
-                </span>
-                <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                  <strong>{money(x.importe)}</strong> · <strong>{x.pct == null ? '—' : `${num(x.pct, 1)}%`}</strong>
-                  <span className={s.hint} style={{ margin: 0 }}> · {num(x.ventas, 0)} tk</span>
-                </span>
-              </div>
-            )) : <div className={s.hint}>Sin ventas en el período.</div>}
-            <div className={s.hint} style={{ margin: 0 }}>Mercadería con IVA; recargos y envíos no son de ninguna lista. Un ticket con renglones de dos listas cuenta en las dos.</div>
+            <span className={s['mini-label']}>POR MODALIDAD</span>
+            <PorModalidad modalidades={t.porModalidad} />
+            <div className={s.hint} style={{ margin: 0 }}>Mercadería con IVA; recargos y envíos no son de ninguna lista. Tocá una modalidad para ver sus listas de precios. Un ticket con renglones de dos modalidades cuenta en las dos.</div>
           </div>
         </div>
       )}

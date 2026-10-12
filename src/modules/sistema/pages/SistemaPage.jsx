@@ -147,6 +147,7 @@ async function cuerpoMuestra(clave, empresa, impresion) {
       titulo: 'Góndola CUMANA',
       alcance: 'Marca CUMANA · solo con stock',
       sucursal: 'Distribuidora',
+      responsable: 'Juan Pérez',
       impresa: '18/08/2026 21:40',
       hoja: 'pendientes de contar',
       filas: [

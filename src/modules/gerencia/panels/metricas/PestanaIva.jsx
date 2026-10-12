@@ -141,6 +141,7 @@ export function PestanaIva({ qs, version }) {
           ]} />
           <Fila color={C_FACT} nombre="Con factura A (neto)" importe={c.facturaA.neto} detalle={`${c.facturaA.comprobantes} facturas${c.facturaA.notas ? ` · ${c.facturaA.notas} NC` : ''} · IVA ${money(c.facturaA.iva)}`} />
           <Fila color={C_FACT} nombre="Con factura B / C" importe={c.facturaBC.total} detalle={`${c.facturaBC.comprobantes} · su IVA no se descuenta`} />
+          {c.facturasMes?.comprobantes > 0 && <Fila nombre="… de las cuales, facturas del mes (entregas pagadas sin IVA)" importe={c.facturasMes.neto} detalle={`${c.facturasMes.comprobantes} · IVA ${money(c.facturasMes.iva)}`} />}
           <Fila nombre={<strong>Total con factura</strong>} importe={c.facturado} pct={c.pct.facturado} />
           <Fila color={C_SIN} nombre="Sin factura (liquidaciones)" importe={c.sinFactura.total} pct={c.pct.sinFactura} detalle={`${c.sinFactura.comprobantes}`} />
           {c.remitos.comprobantes > 0 && <Fila nombre="Remitos todavía sin facturar (aparte)" importe={c.remitos.total} detalle={`${c.remitos.comprobantes}`} />}

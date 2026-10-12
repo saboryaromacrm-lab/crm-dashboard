@@ -205,7 +205,7 @@ export function ProductoFormModal({ prodId }) {
       soloCafeteria,
       origenCafeteria,
     };
-    if (!ed && f.proveedorId) {
+    if (!ed && f.proveedorId && !origenCafeteria) {
       o.proveedorId = parseInt(f.proveedorId, 10);
       o.costoInicial = Number(f.costoInicial) || 0;
       o.codigoProveedor = f.codigoProveedor.trim();
@@ -311,7 +311,8 @@ export function ProductoFormModal({ prodId }) {
             <span className={s['t-sub']}>
               La medialuna, el sándwich, el café molido: entran al stock por Almacén › Coffit ›
               «Nos mandó», con el costo que declara Coffit, y se venden en el mostrador como
-              cualquier otro producto. No lleva formato de compra ni proveedor.
+              cualquier otro producto. Queda con proveedor <strong>COFFIT</strong> para verlo y filtrarlo,
+              pero no se compra con factura.
             </span>
           </span>
         </label>
@@ -514,7 +515,17 @@ export function ProductoFormModal({ prodId }) {
         )}
 
         {/* --- Etapa 2 (solo alta): con quién llega --- */}
-        {!ed && paso === 2 && (
+        {/* Lo que elabora Coffit no elige proveedor: queda con COFFIT solo (10/10/2026). */}
+        {!ed && paso === 2 && origenCafeteria && (
+          <div className={cx(s.callout, s.info)}>
+            <strong>Proveedor: COFFIT</strong>, automático. Lo que elabora Coffit queda con ese proveedor para
+            verlo y filtrarlo; no se compra con factura: entra por los envíos de Coffit con el costo que ella declara.
+            {!store.state.proveedores.some((p) => p.nombre.trim().toLowerCase() === 'coffit') && (
+              <> Todavía no hay un proveedor llamado <strong>COFFIT</strong>: cuando lo crees en Proveedores, se le asigna solo.</>
+            )}
+          </div>
+        )}
+        {!ed && paso === 2 && !origenCafeteria && (
           <>
             <div className={cx(s.callout, s.info)}>
               <strong>{f.nombre.trim() || 'El producto'}</strong> nace con su Formato de Compra: el

@@ -38,6 +38,9 @@ export const provApi = {
   /** El «Sin factura %» de la ficha a todos sus productos (9/10/2026): vista previa y aplicar. */
   sinFacturaProductos: (id) => httpClient.get(`/productos/sin-factura-proveedor/${id}`),
   aplicarSinFactura: (id) => httpClient.post(`/productos/sin-factura-proveedor/${id}`, {}),
+  /* Comisión % a todos sus productos (0157). */
+  comisionProductos: (id) => httpClient.get(`/productos/comision-proveedor/${id}`),
+  aplicarComision: (id, comision) => httpClient.post(`/productos/comision-proveedor/${id}`, { comision }),
   eliminarProveedor: (id) => httpClient.delete(`/proveedores/${id}`),
   cuentas: (id) => httpClient.get(`/proveedores/${id}/cuentas`),
   guardarCuentas: (id, cuentas) => httpClient.put(`/proveedores/${id}/cuentas`, { cuentas }),
@@ -85,6 +88,10 @@ export const provApi = {
   borrarAjuste: (id, motivo) => httpClient.delete(`/proveedores-edoc/ajustes/${id}`, { body: { motivo } }),
   conciliar: (proveedorId) => httpClient.post(`/proveedores-edoc/${proveedorId}/conciliar`),
   desconciliar: (proveedorId) => httpClient.delete(`/proveedores-edoc/${proveedorId}/conciliar`),
+  /* Las facturas del mes (0158): el proveedor que junta los remitos y factura a fin de mes. */
+  facturasMes: (proveedorId, mes) => httpClient.get(`/facturas-mes/${proveedorId}${mes ? `?mes=${mes}` : ''}`),
+  cargarFacturasMes: (proveedorId, data) => httpClient.post(`/facturas-mes/${proveedorId}`, data),
+  anularFacturasMes: (id, motivo) => httpClient.post(`/facturas-mes/anular/${id}`, { motivo }),
 
   /*
    * PAGOS. No hay endpoint propio del módulo a propósito: el pago a proveedor

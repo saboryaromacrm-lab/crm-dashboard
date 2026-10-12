@@ -7,6 +7,7 @@ import { OrdenesWebAlert } from './components/OrdenesWebAlert.jsx';
 import { PedidosCafeAlert } from './components/PedidosCafeAlert.jsx';
 import { PreciosAlert } from './components/PreciosAlert.jsx';
 import { CajasAbiertasBanner } from './components/CajasAbiertasBanner.jsx';
+import { AccesosTiendaBanner } from './components/AccesosTiendaBanner.jsx';
 import { DireccionViejaBanner } from './components/DireccionViejaBanner.jsx';
 import { ConsultasRapidas } from '@modules/consultas/ConsultasRapidas.jsx';
 import { useUI } from '@core/context/UIContext.jsx';
@@ -54,6 +55,8 @@ export function MainLayout() {
         {/* Persistente (no se va solo): una caja de un local olvidada abierta. Solo el superadmin lo ve. */}
         <DireccionViejaBanner />
         <CajasAbiertasBanner />
+        {/* Pedidos de ingreso a la tienda mayorista esperando (0155). */}
+        <AccesosTiendaBanner />
 
         <main className={styles.content} id="main-content">
           <div className={styles.contentInner}>

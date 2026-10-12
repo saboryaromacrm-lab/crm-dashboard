@@ -1189,7 +1189,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       const esFinal = entry?.modoCosto === 'final';
       const descFacturaRow = (1 - (1 - (Number(it.descuento) || 0) / 100) * factorBonif) * 100;
       const costoCargado = !entry ? null
-        : esFinal ? store.costosFormato(entry, prod.iva).costoNetoUnitario
+        // La MERCADERÍA (sin la comisión del proveedor, 0157): es lo que dice el papel.
+        : esFinal ? (({ costoBruto, cantidad }) => costoBruto / cantidad)(store.costosFormato(entry, prod.iva))
           : entry.costo / Math.max(entry.cantidad || 1, 1e-9);
       const costoComparable = esFinal ? costo * (1 - descFacturaRow / 100) : costo;
       const dif = costoCargado != null && costo > 0 ? costoComparable - costoCargado : 0;
@@ -1659,6 +1660,14 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
             <div className={s.hint} style={{ margin: '6px 0 0' }}>
               Sin IVA, sin percepciones y sin CAE. Suma stock y deuda igual que una
               factura, pero <strong>no va a ningún libro</strong>.
+            </div>
+          )}
+          {/* 0158: sus facturas van en «Facturas del mes»; la API también lo frena. */}
+          {provSel?.facturaMensual && (tipo === 'factura' || esConversion) && (
+            <div className={cx(s.callout, s.warn)} style={{ margin: '6px 0 0' }}>
+              {provSel.nombre} junta los remitos y factura a fin de mes: sus facturas se cargan en su estado de
+              cuenta › <strong>Facturas del mes</strong> (acá entrarían otra vez la mercadería y la deuda). Cada
+              entrega, como remito o liquidación.
             </div>
           )}
         </div>

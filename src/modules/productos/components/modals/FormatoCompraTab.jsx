@@ -47,14 +47,32 @@ function Paso({ label, valor, fuerte, tenue }) {
  * flete incluidos (28/9/2026, pedido del dueño: es el número que compara con su
  * otro sistema, el "Unit. en $"). Con parte sin factura, esa parte no lleva IVA:
  * lo pagado es el desembolso al proveedor más el flete (que sí viene facturado).
- * En modo "costo final" es lo cargado, tal cual.
+ * En modo "costo final" es lo cargado, tal cual. La comisión del proveedor
+ * (0157) se suma entera: se paga sin factura.
  */
 function costoFinalUnitarioDe(c, fila, iva) {
-  if (fila.modoCosto === 'final' || !(c.porcSinFactura > 0)) return c.costoFinalUnitario;
+  if (fila.modoCosto === 'final' || !(c.porcSinFactura > 0)) return c.costoFinalUnitario + c.costoComisionUnitario;
   const q = c.porcSinFactura / 100;
   const fleteNominal = c.costoBruto * ((Number(fila.flete) || 0) / 100);
   const fleteBolsillo = fleteNominal * ((1 - q) * (1 + (Number(iva) || 0) / 100) + q);
-  return (c.desembolso + fleteBolsillo) / (c.cantidad || 1);
+  return (c.desembolso + fleteBolsillo + c.costoComision) / (c.cantidad || 1);
+}
+
+/** El campo de la comisión (0157): el mismo en los dos modos del costo. */
+function CampoComision({ fila, set, disabled }) {
+  return (
+    <div className={s.field}>
+      <label>Comisión %</label>
+      <input
+        type="number" min="0" max="100" step="0.01" value={fila.comision} placeholder="0" disabled={disabled}
+        onChange={(e) => set({ comision: e.target.value })}
+      />
+      <div className={s.hint} style={{ margin: '6px 0 0' }}>
+        Lo que el proveedor cobra <strong>aparte y sin factura</strong> (ej. su comisión de fin de mes), sobre la
+        mercadería sin IVA. Va <strong>entera al costo</strong>: no tiene IVA que recuperar. No es el flete.
+      </div>
+    </div>
+  );
 }
 
 function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores, esAdmin, abierto, onToggle }) {
@@ -63,6 +81,8 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
   const porLista = fila.modoCosto !== 'final';
   const unidad = prod.tipo === 'granel' ? '/kg' : '/u';
   const sinFactura = c.porcSinFactura > 0;
+  /* Hay IVA que se absorbe al vender: el de la mercadería sin factura y/o el de la comisión (0157). */
+  const absorbe = sinFactura || c.costoComision > 0;
   const finalUnitario = costoFinalUnitarioDe(c, fila, prod.iva);
   const set = (patch) => onChange(i, patch);
   /*
@@ -131,7 +151,7 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
           <div className={s['mini-label']}>Costo final unitario</div>
           <strong className={s.mono}>{money(finalUnitario)} {unidad}</strong>
           <div className={s.hint} style={{ margin: 0 }}>
-            {sinFactura ? 'base del precio' : 'neto'} {money(c.costoPrecioUnitario)} {unidad}
+            {absorbe ? 'base del precio' : 'neto'} {money(c.costoPrecioUnitario)} {unidad}
           </div>
         </div>
 
@@ -220,6 +240,7 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
                     misma cuenta (25/8, como el sistema anterior): viene facturado, así que su IVA vuelve como crédito.
                   </div>
                 </div>
+                <CampoComision fila={fila} set={set} disabled={!esAdmin} />
               </div>
             </>
           ) : (
@@ -242,9 +263,10 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
                   Si lo cambiás, el costo neto se conserva y lo que pagás por el bulto se recalcula con el reparto nuevo.
                 </div>
               </div>
+              <CampoComision fila={fila} set={set} disabled={!esAdmin} />
               <div className={cx(s.callout, s.warn)}>
                 En este modo <strong>los descuentos y el flete no se aplican</strong>: se toma el
-                número tal como viene y el neto se deriva sacándole el IVA de la parte facturada.
+                número tal como viene y el neto se deriva sacándole el IVA de la parte facturada. La comisión sí.
               </div>
             </>
           )}
@@ -269,15 +291,21 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
                   de lo que se paga aparte. */}
               <Paso
                 label={`Flete (${num(fila.flete || 0, 2)}%${sinFactura ? ', en neto' : ''})`}
-                valor={`+ ${money(c.costoNeto - c.costoBruto)}`}
+                valor={`+ ${money(c.costoNeto - c.costoComision - c.costoBruto)}`}
               />
             </>
           ) : (
             <Paso label="Costo final cargado" valor={money(c.costoFinal)} />
           )}
 
-          <Paso label="Costo neto (con flete)" valor={money(c.costoNeto)} fuerte />
-          {sinFactura ? (
+          {c.costoComision > 0 ? (
+            <>
+              <Paso label={porLista ? 'Costo neto (con flete)' : 'Costo neto de la mercadería'} valor={money(c.costoNeto - c.costoComision)} />
+              <Paso label={`Comisión (${num(fila.comision || 0, 2)}%, sin factura)`} valor={`+ ${money(c.costoComision)}`} />
+              <Paso label="Costo neto (con comisión)" valor={money(c.costoNeto)} fuerte />
+            </>
+          ) : <Paso label="Costo neto (con flete)" valor={money(c.costoNeto)} fuerte />}
+          {absorbe ? (
             <>
               {/* El desglose del truco: el absorbido (que es SOLO de la
                   mercadería — el IVA del flete no se pierde, vuelve como
@@ -285,11 +313,17 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
                   cada canilla: proveedor y fletero. La del fletero muestra lo
                   PAGADO (el bruto), no su neto — es la plata que se va, y con
                   la del proveedor reconstruyen `base × (1+IVA)`. */}
-              <Paso label={`Sin factura (${num(c.porcSinFactura, 2)}%, solo mercadería)`} valor={`− ${money(c.ivaAbsorbido)}`} />
+              <Paso
+                label={sinFactura
+                  ? `IVA que absorbés (${num(c.porcSinFactura, 2)}% sin factura${c.costoComision > 0 ? ' y la comisión' : ''})`
+                  : 'IVA que absorbés (la comisión no tiene crédito)'}
+                valor={`− ${money(c.ivaAbsorbido)}`}
+              />
               <Paso label="Base del precio (bulto)" valor={money(c.costoPrecio)} fuerte />
               <Paso label="Le pagás al proveedor" valor={money(c.desembolso)} tenue />
               {(() => {
-                const fleteNominal = c.costoBruto * ((Number(fila.flete) || 0) / 100);
+                /* En «costo final» el flete no entra: el que haya quedado en la fila no se paga. */
+                const fleteNominal = porLista ? c.costoBruto * ((Number(fila.flete) || 0) / 100) : 0;
                 if (fleteNominal <= 0.005) return null;
                 const q = c.porcSinFactura / 100;
                 const fleteBolsillo = fleteNominal * ((1 - q) * (1 + (Number(prod.iva) || 0) / 100) + q);
@@ -301,6 +335,7 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
                   />
                 );
               })()}
+              {c.costoComision > 0 && <Paso label="Y la comisión (sin factura)" valor={money(c.costoComision)} tenue />}
             </>
           ) : (
             <>
@@ -314,8 +349,8 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
             <div className={s['mini-label']}>Costo final unitario</div>
             <strong className={s.mono}>{money(finalUnitario)} {unidad}</strong>
             <div className={s.hint} style={{ margin: '4px 0 0' }}>
-              {sinFactura
-                ? <>Lo que pagás por {unidad === '/kg' ? 'kilo' : 'unidad'} (proveedor + flete). El precio se calcula
+              {absorbe
+                ? <>Lo que pagás por {unidad === '/kg' ? 'kilo' : 'unidad'} ({['proveedor', porLista && Number(fila.flete) > 0 && 'flete', c.costoComision > 0 && 'comisión'].filter(Boolean).join(' + ')}). El precio se calcula
                   desde la <strong>base del precio: {money(c.costoPrecioUnitario)} {unidad}</strong> — el costo real es{' '}
                   {money(c.costoNetoUnitario)} {unidad} y la diferencia ({money(c.ivaAbsorbidoUnitario)} {unidad}) es IVA
                   que absorbés al vender.</>
@@ -354,6 +389,7 @@ export function FormatoCompraTab({ prod: p }) {
       descuento3: String(e.descuento3 ?? ''),
       descuento4: String(e.descuento4 ?? ''),
       flete: String(e.flete ?? ''),
+      comision: e.comision ? String(e.comision) : '',
       modoCosto: e.modoCosto ?? 'lista',
       costoFinal: String(e.costoFinal ?? ''),
       porcSinFactura: e.porcSinFactura ? String(e.porcSinFactura) : '',
@@ -389,7 +425,7 @@ export function FormatoCompraTab({ prod: p }) {
     setRows((r) => [...r, {
       _k: k,
       proveedorId: pv.id, codigoProveedor: '', cantidad: '1',
-      costo: '', descuento: '', descuento2: '', descuento3: '', descuento4: '', flete: '',
+      costo: '', descuento: '', descuento2: '', descuento3: '', descuento4: '', flete: '', comision: '',
       modoCosto: 'lista', costoFinal: '', porcSinFactura: porc ? String(porc) : '',
       usarParaPrecio: r.length === 0,
     }]);

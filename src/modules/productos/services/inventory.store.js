@@ -154,12 +154,33 @@ function descuentoEfectivo(e) {
   return (1 - factor) * 100;
 }
 
+/**
+ * LA COMISIÓN DEL PROVEEDOR (0157) — espejo de `conComision` de pricing.ts: %
+ * SIN FACTURA sobre la mercadería sin IVA. Entra entera al costo real; a la base
+ * del precio, ÷ factor (su IVA lo absorbe el negocio). No toca costoFinal ni
+ * desembolso (la mercadería y su papel).
+ */
+function conComision(r, mercaderia, pct, factorIva) {
+  const k = mercaderia * Math.min(Math.max(Number(pct) || 0, 0), 100) / 100;
+  if (!(k > 0)) return r;
+  const costoNeto = r.costoNeto + k;
+  const costoPrecio = r.costoPrecio + k / factorIva;
+  const ivaAbsorbido = r.ivaAbsorbido + k - k / factorIva;
+  return {
+    ...r, costoComision: k, costoComisionUnitario: k / r.cantidad,
+    costoNeto, costoNetoUnitario: costoNeto / r.cantidad,
+    costoPrecio, costoPrecioUnitario: costoPrecio / r.cantidad,
+    ivaAbsorbido, ivaAbsorbidoUnitario: ivaAbsorbido / r.cantidad,
+  };
+}
+
 function costosFormato(e, iva) {
   const vacio = {
     cantidad: 1, costoLista: 0, costoListaUnitario: 0, descuentoEfectivo: 0,
     costoBruto: 0, costoNeto: 0, costoFinal: 0, costoNetoUnitario: 0, costoFinalUnitario: 0,
     porcSinFactura: 0, costoPrecio: 0, costoPrecioUnitario: 0,
     ivaAbsorbido: 0, ivaAbsorbidoUnitario: 0, desembolso: 0, desembolsoUnitario: 0,
+    costoComision: 0, costoComisionUnitario: 0,
   };
   if (!e) return vacio;
   // Una cantidad en 0 dividiría por cero y dejaría los precios en Infinity.
@@ -201,13 +222,14 @@ function costosFormato(e, iva) {
     // facturada trae IVA adentro. Sin flete acá: queda fuera del cálculo.
     const costoFinal = Number(e.costoFinal) || 0;
     const costoNeto = costoFinal / ((1 - q) * factorIva + q);
-    return {
+    return conComision({
       cantidad, costoLista: 0, costoListaUnitario: 0, descuentoEfectivo: 0,
       costoBruto: costoNeto, costoNeto, costoFinal,
       costoNetoUnitario: costoNeto / cantidad,
       costoFinalUnitario: costoFinal / cantidad,
       ...partir(costoNeto, 0),
-    };
+      costoComision: 0, costoComisionUnitario: 0,
+    }, costoNeto, e.comision, factorIva);
   }
 
   const costoLista = Number(e.costo) || 0;
@@ -218,7 +240,7 @@ function costosFormato(e, iva) {
   const flete = costoBruto * ((Number(e.flete) || 0) / 100);
   const costoNeto = costoBruto + flete * ratio;
   const costoFinal = costoNeto * factorIva;
-  return {
+  return conComision({
     cantidad,
     costoLista,
     costoListaUnitario: costoLista / cantidad,
@@ -231,7 +253,8 @@ function costosFormato(e, iva) {
     // La mercadería es el bruto (post descuentos); el flete va NOMINAL — el
     // ratio se lo aplica `partir` adentro, junto con la mercadería.
     ...partir(costoBruto, flete),
-  };
+    costoComision: 0, costoComisionUnitario: 0,
+  }, costoBruto, e.comision, factorIva);
 }
 
 /**

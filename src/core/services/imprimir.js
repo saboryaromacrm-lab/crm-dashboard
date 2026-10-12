@@ -681,7 +681,7 @@ export function cuerpoCartelGondola({
  * `filas` = renglones del conteo tal como los devuelve la API, más el `codigo`
  * que resuelve la pantalla desde el catálogo.
  */
-export function cuerpoPlanillaConteo({ titulo, alcance, sucursal, filas, impresa, hoja = '' }) {
+export function cuerpoPlanillaConteo({ titulo, alcance, sucursal, filas, impresa, hoja = '', responsable = '' }) {
   const rows = filas.map((f) => `
     <tr>
       <td>${esc(f.nombre)}${f.presLabel ? ` <strong>· ${esc(f.presLabel)}</strong>` : ''}${
@@ -692,12 +692,28 @@ export function cuerpoPlanillaConteo({ titulo, alcance, sucursal, filas, impresa
       <td class="prep"></td>
       <td class="c">&#9744;</td>
     </tr>`).join('');
+  /* «HOJA 3 DE 5» (10/10/2026): en el margen de abajo de cada hoja, grande y en
+   * negro, para no mezclar ni perder hojas de una planilla larga. Es un recuadro
+   * del margen de la página (@page), así sale en todas sin calcular nada. Los
+   * tres de arriba, vacíos, sacan el encabezado que agrega el navegador (fecha
+   * y título): ocupando el margen, el navegador no pone el suyo. */
   return `
+    <style>
+      @page {
+        @top-left { content: ""; } @top-center { content: ""; } @top-right { content: ""; }
+        @bottom-center {
+          content: "HOJA " counter(page) " DE " counter(pages);
+          background: #000; color: #fff; font: 800 15pt system-ui, sans-serif; letter-spacing: 0.06em;
+          padding: 0 7mm; margin: 2.5mm 0;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        }
+      }
+      tr { break-inside: avoid; }
+    </style>
     <h1>${esc(titulo)} — control de stock</h1>
     <div class="sub">${esc(alcance)} · ${esc(sucursal)} · ${filas.length} renglón(es)${
       hoja ? ` · ${esc(hoja)}` : ''} · impresa ${esc(impresa)}</div>
-    <div class="sub">Contó: ______________________ &nbsp;&nbsp; Fecha y hora: ______________
-      &nbsp;&nbsp; <strong>Anotá lo que HAY en el estante.</strong> La columna
+    <div class="sub">${responsable ? `Responsable: <strong>${esc(responsable)}</strong> &nbsp;&nbsp; ` : ''}<strong>Anotá lo que HAY en el estante.</strong> La columna
       <strong>Apartados</strong> es mercadería ya separada para un envío: NO la cuentes.</div>
     <table><thead><tr>
       <th>Producto</th><th>Código</th><th>Unidad</th><th>Apartados</th><th>Contado</th><th>&#10003;</th>

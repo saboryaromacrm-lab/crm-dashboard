@@ -33,8 +33,9 @@ export function ConteoNuevoModal({ alCrear }) {
   const { store, isAdmin, closeModal, toast } = useProductos();
   const puedeAplicar = isAdmin || store.can('conteos_aplicar');
   const [f, setF] = useState({
-    nombre: '', marcaId: '', categoriaId: '', proveedorId: '', tipo: '',
-    soloConStock: true, ciego: true,
+    responsable: '', nombre: '', marcaId: '', categoriaId: '', proveedorId: '', tipo: '',
+    // Por defecto destildados (10/10/2026, decisión del dueño): entra todo el alcance y se ve el sistema.
+    soloConStock: false, ciego: false,
   });
   const [creando, setCreando] = useState(false);
   const set = (patch) => setF((x) => ({ ...x, ...patch }));
@@ -65,6 +66,7 @@ export function ConteoNuevoModal({ alCrear }) {
   const crear = async () => {
     setCreando(true);
     const r = await store.crearConteo({
+      responsable: f.responsable.trim(),
       nombre: f.nombre.trim() || undefined,
       marcaId: f.marcaId ? Number(f.marcaId) : undefined,
       categoriaId: f.categoriaId ? Number(f.categoriaId) : undefined,
@@ -88,14 +90,21 @@ export function ConteoNuevoModal({ alCrear }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: creando ? 'Abriendo…' : `Abrir control (≈${preview} renglones)`, clase: 'btn-primary', onClick: crear, disabled: creando || preview === 0 },
+        { texto: creando ? 'Abriendo…' : `Abrir control (≈${preview} renglones)`, clase: 'btn-primary', onClick: crear, disabled: creando || preview === 0 || !f.responsable.trim() },
       ]}
     >
       <div className={s['form-grid']}>
+        {/* Quién responde por el conteo (0154): a mano, puede no tener usuario. Sale en la planilla. */}
+        <div className={s.field}>
+          <label>Responsable <span className={s.req}>*</span></label>
+          <input value={f.responsable} maxLength={80} autoFocus placeholder="Ej: Juan Pérez" onChange={(e) => set({ responsable: e.target.value })} />
+        </div>
         <div className={s.field}>
           <label>Nombre (opcional)</label>
           <input value={f.nombre} placeholder="Ej: Góndola CUMANA" onChange={(e) => set({ nombre: e.target.value })} />
         </div>
+      </div>
+      <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Marca</label>
           <select value={f.marcaId} onChange={(e) => set({ marcaId: e.target.value })}>
@@ -103,8 +112,6 @@ export function ConteoNuevoModal({ alCrear }) {
             {(store.state.catalogos?.marcas ?? []).map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
           </select>
         </div>
-      </div>
-      <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Categoría</label>
           <select value={f.categoriaId} onChange={(e) => set({ categoriaId: e.target.value })}>
@@ -239,6 +246,7 @@ export function ConteoModal({ conteoId, alTerminar }) {
         titulo: data.nombre || `Control #${data.id}`,
         alcance: data.alcance,
         sucursal: store.getSucursal(data.sucursalId)?.nombre ?? '',
+        responsable: data.responsable,
         impresa: new Date().toLocaleString('es-AR'),
         hoja: vista === 'pendientes' ? 'pendientes de contar'
           : vista === 'contados' ? 'ya contados' : 'lista completa',
@@ -316,6 +324,8 @@ export function ConteoModal({ conteoId, alTerminar }) {
 
   /* ---------- Reporte (cerrado/aplicado, con la llave) ---------- */
   const conDiferencias = data.puedeVerVirtual && data.estado !== 'en_curso';
+  /* Control NO ciego: mientras se cuenta se ve lo que dice el sistema (la API lo manda solo en ese caso). */
+  const verSistema = enCurso && !data.ciego;
   const contadas = items.filter((i) => i.contado != null);
   const sinContar = items.filter((i) => i.contado == null);
   const conDif = conDiferencias ? contadas.filter((i) => Math.abs(i.diferencia ?? 0) > 1e-9) : [];
@@ -347,7 +357,7 @@ export function ConteoModal({ conteoId, alTerminar }) {
   return (
     <ModalShell
       title={data.nombre || `Control #${data.id}`}
-      subtitle={`${data.alcance} · ${store.getSucursal(data.sucursalId)?.nombre ?? ''} · ${data.contados} de ${data.total} contados${data.ciego ? ' · ciego' : ''}`}
+      subtitle={`${data.alcance} · ${store.getSucursal(data.sucursalId)?.nombre ?? ''}${data.responsable ? ` · Responsable: ${data.responsable}` : ''} · ${data.contados} de ${data.total} contados${data.ciego ? ' · ciego' : ''}`}
       size="xl"
       onClose={() => { closeModal(); alTerminar?.(); }}
       footer={footer}
@@ -408,7 +418,8 @@ export function ConteoModal({ conteoId, alTerminar }) {
         <div style={{ overflow: 'auto', flex: 1 }}>
           <Table
             cols={enCurso ? [
-              { h: 'Producto' }, { h: 'Apartados', num: true }, { h: 'Contado', num: true }, { h: '', cls: 'actions-col' },
+              { h: 'Producto' }, ...(verSistema ? [{ h: 'Sistema', num: true }] : []),
+              { h: 'Apartados', num: true }, { h: 'Contado', num: true }, { h: '', cls: 'actions-col' },
             ] : [
               { h: 'Producto' }, { h: 'Contado', num: true },
               ...(conDiferencias ? [{ h: 'Sistema', num: true }, { h: 'Diferencia', num: true }, { h: '$', num: true }] : []),
@@ -424,6 +435,10 @@ export function ConteoModal({ conteoId, alTerminar }) {
                   <span className={s.muted}> ({it.unidad})</span>
                   {it.recontar && <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-danger)' }}>⚠ Volver a contar</div>}
                 </td>
+
+                {verSistema && (
+                  <td className={cx(s.num, s.mono)}>{it.virtual != null ? it.virtual : <span className={s.muted}>—</span>}</td>
+                )}
 
                 {enCurso && (
                   <td className={cx(s.num, s.mono)}>

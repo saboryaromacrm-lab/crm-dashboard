@@ -117,6 +117,12 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
   const usaEfectivo = modo === 'simple'
     ? medio === 'efectivo'
     : formas.some((x) => x.medio === 'efectivo' && Number(x.importe) > 0);
+  /* Si la plata sale por banco, a mano el CBU/alias del proveedor para copiarlo (10/10/2026). */
+  const porBanco = (m) => m === 'transferencia' || m === 'deposito';
+  const usaBanco = modo === 'simple' ? porBanco(medio) : formas.some((x) => porBanco(x.medio));
+  const { data: cuentasBanco, error: errorCuentas } = useResource(`cuentas-banco:${proveedor.id}`, () => provApi.cuentas(proveedor.id), { enabled: usaBanco });
+  const copiarCuenta = (c) => navigator.clipboard.writeText(c.cbuAlias)
+    .then(() => toast(`Copiado: ${c.cbuAlias}`, 'ok'), () => toast('No se pudo copiar al portapapeles.', 'err'));
   const sumaFormas = r2(formas.reduce((a, x) => a + (Number(x.importe) || 0), 0));
   const setForma = (i, k) => (e) => setFormas((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)));
   const alternar = (d) => setTildados((m) => {
@@ -476,6 +482,25 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
             </span>
           </div>
         </>
+      )}
+
+      {usaBanco && (
+        <div className={s.field}>
+          <label>Para transferirle</label>
+          {errorCuentas ? <div className={s.hint} style={{ margin: 0 }}>No se pudieron traer sus cuentas: {errorCuentas}</div>
+            : cuentasBanco == null ? <div className={s.hint} style={{ margin: 0 }}>Cargando sus cuentas…</div>
+            : cuentasBanco.length === 0 ? (
+              <div className={s.hint} style={{ margin: 0 }}>No tiene CBU ni alias cargado: se carga en su ficha (Proveedores › Padrón).</div>
+            ) : cuentasBanco.map((c) => (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+                <span className={s.mono} style={{ fontWeight: 700, fontSize: 15 }}>{c.cbuAlias}</span>
+                <Btn small onClick={() => copiarCuenta(c)}>Copiar</Btn>
+                {(c.titular || c.descripcion) && (
+                  <span className={s.hint} style={{ margin: 0 }}>{[c.titular, c.descripcion].filter(Boolean).join(' · ')}</span>
+                )}
+              </div>
+            ))}
+        </div>
       )}
 
       {usaEfectivo && (

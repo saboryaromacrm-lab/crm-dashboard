@@ -59,6 +59,7 @@ export function ConteosPanel() {
           <strong>{f.contados}</strong> de {f.total}
         </td>
         <td>{new Date(f.creadoEn).toLocaleDateString('es-AR')}</td>
+        <td><strong>{f.responsable || '—'}</strong></td>
         <td>{store.getUsuario(f.usuarioId)?.nombre ?? '—'}</td>
       </tr>
     );
@@ -75,7 +76,7 @@ export function ConteosPanel() {
       <div>
         <div className={s['section-title']}>En curso y para revisar</div>
         <Table
-          cols={[{ h: 'Control' }, { h: 'Sucursal' }, { h: 'Estado' }, { h: 'Contados', num: true }, { h: 'Fecha' }, { h: 'Abierto por' }]}
+          cols={[{ h: 'Control' }, { h: 'Sucursal' }, { h: 'Estado' }, { h: 'Contados', num: true }, { h: 'Fecha' }, { h: 'Responsable' }, { h: 'Abierto por' }]}
           empty={filas === null ? 'Cargando…' : 'No hay controles abiertos. "+ Nuevo control" para arrancar uno.'}
         >
           {abiertas.map((f) => <Fila key={f.id} f={f} />)}
@@ -86,7 +87,7 @@ export function ConteosPanel() {
         <div>
           <div className={s['section-title']}>Historial</div>
           <Table
-            cols={[{ h: 'Control' }, { h: 'Sucursal' }, { h: 'Estado' }, { h: 'Contados', num: true }, { h: 'Fecha' }, { h: 'Abierto por' }]}
+            cols={[{ h: 'Control' }, { h: 'Sucursal' }, { h: 'Estado' }, { h: 'Contados', num: true }, { h: 'Fecha' }, { h: 'Responsable' }, { h: 'Abierto por' }]}
             pag={pag}
           >
             {pag.visibles.map((f) => <Fila key={f.id} f={f} />)}

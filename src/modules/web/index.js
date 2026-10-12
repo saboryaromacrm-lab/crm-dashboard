@@ -2,6 +2,7 @@ import LanguageIcon from '@mui/icons-material/Language';
 import { defineModule } from '@core/modules/defineModule.js';
 import { WebPage } from './pages/WebPage.jsx';
 import { WEB_SECCIONES } from './config/web.config.js';
+import { accesosTienda } from '@core/services/accesosTienda.js';
 
 /**
  * WEB — manifiesto del módulo.
@@ -16,14 +17,19 @@ import { WEB_SECCIONES } from './config/web.config.js';
  */
 export const webModule = defineModule({
   id: 'web',
-  name: 'Web',
-  description: 'El sitio mayorista: productos publicados, destacados, imágenes y banners.',
+  name: 'Tienda online',
+  description: 'La tienda mayorista online: productos publicados, destacados, imágenes, banners y quién puede comprar.',
   icon: LanguageIcon,
   enabled: true,
   basePath: '/web',
   permissions: WEB_SECCIONES.map((x) => x.permiso),
-  navigation: { showInSidebar: true, group: 'catalog', order: 45 },
+  navigation: {
+    showInSidebar: true, group: 'catalog', order: 45,
+    // Pendientes del sidebar: los pedidos de ingreso a la tienda (solo para quien tiene la sección).
+    badgeCount: () => accesosTienda.count(),
+    badgeSubscribe: (listener) => accesosTienda.subscribe(listener),
+  },
   routes: [
-    { path: '', Component: WebPage, handle: { crumb: 'Web' } },
+    { path: '', Component: WebPage, handle: { crumb: 'Tienda online' } },
   ],
 });

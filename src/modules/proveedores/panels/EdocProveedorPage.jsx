@@ -28,6 +28,8 @@ const KIND = {
   pago: { label: 'Pago', pill: 'est-recibida' },
   ajuste_debe: { label: 'Ajuste DEBE', pill: 'est-pendiente' },
   ajuste_haber: { label: 'Ajuste HABER', pill: 'est-recibida' },
+  // La factura del mes (0158): el papel fiscal de las entregas, en cero.
+  factura_mes: { label: 'Factura del mes', pill: null },
 };
 
 /**
@@ -68,7 +70,7 @@ const FILTROS = [
  * cancela, que es como sucede: se factura y luego se paga.
  */
 const ORDEN_KIND = {
-  comprobante: 0, gasto: 1, ajuste_debe: 2, nc: 3, ajuste_haber: 4, pago: 5,
+  comprobante: 0, gasto: 1, ajuste_debe: 2, nc: 3, ajuste_haber: 4, pago: 5, factura_mes: 6,
 };
 /*
  * Se compara por DÍA y no por la hora del timestamp, a propósito: la hora que
@@ -95,6 +97,8 @@ const pasaFiltroTipo = (m, f) => {
   // La NC de un gasto (27/9/2026) sale con las NC y también con los gastos.
   if (f === 'nc' && m.kind === 'nc_gasto') return true;
   if (f === 'gasto' && m.kind === 'nc_gasto') return true;
+  // La factura del mes (0158) es un papel más del proveedor, aunque vaya en cero.
+  if (f === 'comprobante' && m.kind === 'factura_mes') return true;
   return m.kind === f;
 };
 
@@ -205,6 +209,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
         actions={(
           <>
             <Btn variant="btn-primary" onClick={() => abrirPago()}>Registrar un pago</Btn>
+            {p.facturaMensual && <Btn onClick={() => openModal('facturasMes', { proveedorId, onDone: refrescar })}>Facturas del mes</Btn>}
             <Btn onClick={() => openModal('ajuste', { proveedorId, onDone: refrescar })}>+ Ajuste</Btn>
             <Btn onClick={() => openModal('ficha', { proveedorId })}>Ver ficha</Btn>
             {p.conciliadoHasta
@@ -361,7 +366,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
                   "12:00 a. m." que no pasó. */}
               <td>{fmtFecha(m.fecha)}</td>
               <td>
-                <Pill pill={k.pill} label={tag || k.label} /> {resto}
+                <Pill pill={k.pill} label={m.kind === 'factura_mes' ? k.label : (tag || k.label)} /> {m.kind === 'factura_mes' ? m.etiqueta.replace(/^Factura /, '') : resto}
                 {m.detalle && <div className={s.hint} style={{ margin: 0 }}>{m.detalle}</div>}
                 {(m.formas?.length ?? 0) > 1 && (
                   <div className={s.hint} style={{ margin: 0 }}>
