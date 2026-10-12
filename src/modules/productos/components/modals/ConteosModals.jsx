@@ -404,6 +404,15 @@ const COLADOR = new Intl.Collator('es', { sensitivity: 'base' });
 const VACIO = [];
 
 /** El gris claro de las filas cebradas: un tinte del texto, así sirve en tema claro y oscuro. */
+/** Para contar: sin número todavía, o marcado «volvé a contar». */
+const esPendiente = (it) => it.contado == null || it.recontar;
+/** Una copia del objeto sin esa clave (estado por renglón). */
+const sinClave = (o, k) => {
+  if (!(k in o)) return o;
+  const r = { ...o };
+  delete r[k];
+  return r;
+};
 const CEBRA = 'color-mix(in srgb, var(--crm-color-text) 6%, transparent)';
 
 /* ------------------------------------------------------------------ *
@@ -428,11 +437,30 @@ export function ConteoModal({ conteoId, alTerminar }) {
   const inputRefs = useRef({});
   /** Al renglón se llegó escaneando: su Enter vuelve al buscador, no al renglón siguiente. */
   const delLector = useRef(false);
+  /*
+   * CARGA RÁPIDA SIN PERDER UN NÚMERO (12/10/2026, pedido del dueño: pasa la
+   * hoja tecleando cantidad + Enter de corrido). El cursor pasa al renglón
+   * siguiente EN EL ACTO y el guardado va por detrás: antes esperaba la
+   * respuesta del servidor, y lo que se tecleaba en ese medio segundo caía en
+   * el renglón anterior (y un Enter le pisaba el número).
+   *  · `guardando`: renglón → cantidad en viaje (se ve ⏳ y no deja cerrar).
+   *  · `fallidos`: renglón → por qué no se guardó (queda en rojo con el número).
+   *  · `cadena`: los guardados de UN renglón van en fila, así el último manda.
+   *  · `generacion`: una recarga que salió antes de un guardado no lo pisa.
+   */
+  const [guardando, setGuardando] = useState({});
+  const [fallidos, setFallidos] = useState({});
+  const cadena = useRef({});
+  const generacion = useRef(0);
+  /* Los renglones de «Pendientes» quedan QUIETOS mientras se cuenta (no se van
+   * al contarlos): la pantalla sigue siendo la hoja. Se toman al entrar. */
+  const [fijos, setFijos] = useState(null);
 
   const recargar = useCallback(async () => {
+    const g = generacion.current;
     const r = await store.getConteo(conteoId);
     if (!r.ok) { toast(r.error, 'err'); closeModal(); return; }
-    setData(r.data);
+    if (g === generacion.current) setData(r.data);
   }, [store, conteoId, toast, closeModal]);
   useEffect(() => { recargar(); }, [recargar]);
 
@@ -443,8 +471,19 @@ export function ConteoModal({ conteoId, alTerminar }) {
     const marcas = new Map((store.state.catalogos?.marcas ?? []).map((m) => [m.id, m.nombre]));
     return (data?.items ?? [])
       .map((it) => ({ ...it, marca: marcas.get(store.getProducto(it.productoId)?.marcaId) ?? '' }))
-      .sort(compararFilasPorMarca);
+      .sort(compararFilasPorMarca)
+      /* N°: su lugar en el control entero. Es el mismo en la hoja impresa y en cualquier pestaña. */
+      .map((it, i) => ({ ...it, n: i + 1 }));
   }, [data, store]);
+  useEffect(() => {
+    if (vista === 'pendientes' && fijos === null && data) setFijos(new Set(items.filter(esPendiente).map((it) => it.id)));
+  }, [vista, fijos, data, items]);
+  const cambiarVista = (v) => { setVista(v); setFijos(null); };
+  const contados = items.filter((it) => it.contado != null).length;
+  const enViaje = Object.keys(guardando).length;
+  const sinGuardar = Object.keys(fallidos).length;
+  /* Un número escrito sin su Enter todavía no está guardado. */
+  const escritos = Object.values(cantidades).filter((t) => t != null && String(t).trim() !== '').length;
 
   /*
    * EL BUSCADOR ES EL LECTOR. Un lector USB tipea el código y manda Enter: si
@@ -464,14 +503,14 @@ export function ConteoModal({ conteoId, alTerminar }) {
   const visibles = useMemo(() => {
     const ql = norm(q);
     return items.filter((it) => {
-      if (vista === 'pendientes' && it.contado != null && !it.recontar) return false;
+      if (vista === 'pendientes' && !(fijos ? fijos.has(it.id) : esPendiente(it))) return false;
       if (vista === 'contados' && it.contado == null) return false;
       if (!ql) return true;
       return norm(it.nombre).includes(ql) || norm(it.presLabel).includes(ql)
         || codigoDe(it).includes(q.trim());
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, q, vista]);
+  }, [items, q, vista, fijos]);
 
   /*
    * LA PLANILLA — el papel que se lleva a la góndola.
@@ -486,7 +525,7 @@ export function ConteoModal({ conteoId, alTerminar }) {
    * `cuerpoPlanillaConteo`.
    */
   const paraImprimir = useMemo(() => items.filter((it) => {
-    if (vista === 'pendientes') return it.contado == null || it.recontar;
+    if (vista === 'pendientes') return esPendiente(it);
     if (vista === 'contados') return it.contado != null;
     return true;
   }), [items, vista]);
@@ -524,13 +563,21 @@ export function ConteoModal({ conteoId, alTerminar }) {
     }
   };
 
-  /** Pone el cursor en el casillero de un renglón (o en el buscador si no hay), listo para escribir.
-   *  Después de que la tabla se redibuja (setTimeout, que corre también con la ventana en segundo plano). */
+  /**
+   * Pone el cursor en el casillero de un renglón (o en el buscador si no hay), listo para escribir.
+   * EN EL ACTO (12/10/2026): el renglón siguiente ya está dibujado (la lista no se mueve al
+   * contar), y así la próxima tecla cae ahí sí o sí, por rápido que se teclee. Solo si todavía
+   * no está (la tabla se está redibujando) espera al dibujo.
+   */
   const enfocar = (id) => {
-    setTimeout(() => {
-      const el = id != null ? inputRefs.current[id] : null;
-      if (el) { el.focus(); el.select(); el.scrollIntoView({ block: 'nearest' }); } else buscadorRef.current?.focus();
-    }, 0);
+    const poner = () => {
+      const el = id != null ? inputRefs.current[id] : buscadorRef.current;
+      if (!el?.isConnected) return false;
+      el.focus();
+      if (id != null) { el.select(); el.scrollIntoView({ block: 'nearest' }); }
+      return true;
+    };
+    if (!poner()) setTimeout(poner, 0);
   };
 
   /*
@@ -541,28 +588,67 @@ export function ConteoModal({ conteoId, alTerminar }) {
    * Enter con el casillero VACÍO cuenta 0 —no hay ninguno— y pasa al siguiente
    * (pedido del dueño); si el renglón ya tenía una cantidad, no la pisa: pasa.
    */
-  const contar = async (it) => {
+  const contar = (it) => {
     const i = visibles.findIndex((x) => x.id === it.id);
     const siguiente = visibles[i + 1]?.id ?? null;
     const texto = cantidades[it.id];
     const vacio = texto == null || String(texto).trim() === '';
-    if (vacio && it.contado != null) { delLector.current = false; enfocar(siguiente); return; }
+    if (vacio && (it.contado != null || guardando[it.id] != null) && !fallidos[it.id]) {
+      delLector.current = false; enfocar(siguiente); return;
+    }
     const v = vacio ? 0 : Number(String(texto).replace(',', '.'));
-    if (!(v >= 0)) { toast('La cantidad no puede ser negativa.', 'err'); return; }
-    const r = await store.contarItemConteo(conteoId, it.id, v);
-    if (!r.ok) { toast(r.error, 'err'); return; }
-    setCantidades((x) => ({ ...x, [it.id]: undefined }));
+    if (!Number.isFinite(v) || v < 0) { toast(`${it.nombre}: «${texto}» no es una cantidad.`, 'err'); return; }
+    if (it.unidad !== 'kg' && !Number.isInteger(v)) { toast(`${it.nombre} se cuenta entero: ${texto} no es una cantidad posible.`, 'err'); return; }
     const conLector = delLector.current;
     delLector.current = false;
     if (conLector) setQ('');
-    await recargar();
     enfocar(conLector ? null : siguiente);
+    guardar(it, v);
+  };
+
+  /** Guarda un renglón por detrás. Lo de la respuesta se aplica a ese renglón solo (sin recargar todo). */
+  const guardar = (it, v) => {
+    generacion.current += 1;
+    setGuardando((x) => ({ ...x, [it.id]: v }));
+    setCantidades((x) => ({ ...x, [it.id]: undefined }));
+    setFallidos((x) => sinClave(x, it.id));
+    const previo = cadena.current[it.id] ?? Promise.resolve();
+    const esta = previo.then(async () => {
+      const r = await store.contarItemConteo(conteoId, it.id, v);
+      if (r.ok) {
+        setData((d) => d && { ...d, items: d.items.map((x) => (x.id === it.id ? { ...x, ...r.data, contadoPor: store.state.ctx.usuarioId } : x)) });
+      } else {
+        setFallidos((x) => ({ ...x, [it.id]: r.error }));
+        setCantidades((x) => (x[it.id] == null ? { ...x, [it.id]: String(v) } : x));
+        toast(`N° ${it.n} · ${it.nombre}: no se guardó — ${r.error}`, 'err');
+      }
+    });
+    cadena.current[it.id] = esta;
+    esta.finally(() => {
+      if (cadena.current[it.id] !== esta) return;
+      delete cadena.current[it.id];
+      setGuardando((x) => sinClave(x, it.id));
+    });
   };
 
   const descontar = async (it) => {
     const r = await store.contarItemConteo(conteoId, it.id, null);
     if (!r.ok) { toast(r.error, 'err'); return; }
     await recargar();
+  };
+
+  /** Flechas ↑/↓ en un casillero: van al renglón de arriba/abajo (nunca cambian el número). */
+  const moverDesde = (it, paso) => {
+    const i = visibles.findIndex((x) => x.id === it.id);
+    const otro = visibles[i + paso];
+    if (otro) enfocar(otro.id);
+  };
+  /** Salir de la pantalla con algo guardándose o sin guardar perdería un número: se avisa. */
+  const salir = () => {
+    if (enViaje) { toast('Esperá un segundo: se están guardando cantidades.', 'err'); return; }
+    if (sinGuardar) { toast(`Hay ${sinGuardar} renglón(es) en rojo que NO se guardaron: corregilos antes de salir.`, 'err'); return; }
+    if (escritos) { toast(`Hay ${escritos} casillero(s) con un número escrito SIN Enter: no se guardaron. Apretá Enter en cada uno (o borralos).`, 'err'); return; }
+    closeModal(); alTerminar?.();
   };
 
   const accion = async (fn, msgOk) => {
@@ -577,6 +663,7 @@ export function ConteoModal({ conteoId, alTerminar }) {
   };
 
   const cerrarControl = async () => {
+    if (enViaje || sinGuardar || escritos) { salir(); return; }
     const pendientes = items.filter((i) => i.contado == null).length;
     const r = await accion(() => store.cerrarConteo(conteoId));
     if (!r) return;
@@ -610,17 +697,19 @@ export function ConteoModal({ conteoId, alTerminar }) {
   const faltante = conDif.filter((i) => (i.diferencia ?? 0) < 0).reduce((a, i) => a + (i.diferenciaPlata ?? 0), 0);
   const sobrante = conDif.filter((i) => (i.diferencia ?? 0) > 0).reduce((a, i) => a + (i.diferenciaPlata ?? 0), 0);
   const movidos = conDiferencias ? contadas.filter((i) => i.seMovio) : [];
+  /* Al terminar (12/10/2026, pedido del dueño): cuántos renglones se contaron con algo (más de 0). */
+  const conStock = contadas.filter((i) => i.contado > 1e-9).length;
 
   const footer = [];
   if (enCurso) {
-    footer.push({ texto: 'Cerrar y seguir después', clase: 'btn-ghost', onClick: () => { closeModal(); alTerminar?.(); } });
-    footer.push({ texto: ocupado ? '…' : 'Cerrar el control', clase: 'btn-primary', onClick: cerrarControl, disabled: ocupado || data.contados === 0 });
+    footer.push({ texto: 'Cerrar y seguir después', clase: 'btn-ghost', onClick: salir });
+    footer.push({ texto: ocupado ? '…' : 'Cerrar el control', clase: 'btn-primary', onClick: cerrarControl, disabled: ocupado || contados === 0 });
   } else if (data.estado === 'cerrado') {
     footer.push({ texto: 'Volver', clase: 'btn-ghost', onClick: () => { closeModal(); alTerminar?.(); } });
     /* Reabrir es del que revisa (la API lo exige): si no, el que contaba podía
      * cambiar números después de la revisión. */
     if (puedeAplicar) {
-      footer.push({ texto: 'Reabrir para seguir contando', clase: 'btn-ghost', onClick: () => accion(() => store.reabrirConteo(conteoId)).then((r) => r && recargar()), disabled: ocupado });
+      footer.push({ texto: 'Reabrir para seguir contando', clase: 'btn-ghost', onClick: () => accion(() => store.reabrirConteo(conteoId)).then((r) => r && recargar().then(() => setFijos(null))), disabled: ocupado });
       footer.push({ texto: 'Descartar', clase: 'btn-delete', onClick: () => accion(() => store.descartarConteo(conteoId), 'Control descartado.').then((r) => { if (r) { closeModal(); alTerminar?.(); } }), disabled: ocupado });
       if (confirmarAplicar) footer.push({ texto: 'No, revisar', clase: 'btn-ghost', onClick: () => setConfirmarAplicar(false), disabled: ocupado });
       footer.push({
@@ -635,9 +724,9 @@ export function ConteoModal({ conteoId, alTerminar }) {
   return (
     <ModalShell
       title={data.nombre || `Control #${data.id}`}
-      subtitle={`${data.alcance} · ${store.getSucursal(data.sucursalId)?.nombre ?? ''}${data.responsable ? ` · Responsable: ${data.responsable}` : ''} · ${data.contados} de ${data.total} contados${data.ciego ? ' · ciego' : ''}`}
+      subtitle={`${data.alcance} · ${store.getSucursal(data.sucursalId)?.nombre ?? ''}${data.responsable ? ` · Responsable: ${data.responsable}` : ''} · ${contados} de ${data.total} contados${data.ciego ? ' · ciego' : ''}`}
       size="xl"
-      onClose={() => { closeModal(); alTerminar?.(); }}
+      onClose={salir}
       footer={footer}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 16, overflow: 'hidden', flex: 1 }}>
@@ -664,8 +753,8 @@ export function ConteoModal({ conteoId, alTerminar }) {
                 style={{ flex: 1, minWidth: 240, padding: '9px 12px', border: '1px solid var(--crm-color-border)', borderRadius: 'var(--crm-radius-sm)', background: 'var(--crm-color-surface)', color: 'var(--crm-color-text)' }}
               />
               {['pendientes', 'contados', 'todos'].map((v) => (
-                <Btn key={v} small variant={vista === v ? 'btn-primary' : 'btn-ghost'} onClick={() => setVista(v)}>
-                  {v === 'pendientes' ? `Pendientes (${data.total - data.contados})` : v === 'contados' ? `Contados (${data.contados})` : 'Todos'}
+                <Btn key={v} small variant={vista === v ? 'btn-primary' : 'btn-ghost'} onClick={() => cambiarVista(v)}>
+                  {v === 'pendientes' ? `Pendientes (${data.total - contados})` : v === 'contados' ? `Contados (${contados})` : 'Todos'}
                 </Btn>
               ))}
               {/* Imprime la pestaña elegida, no el buscador: el número del botón
@@ -676,14 +765,25 @@ export function ConteoModal({ conteoId, alTerminar }) {
             </div>
             {/* La pestaña Pendientes muestra también lo marcado "recontar":
                 para el contador ES trabajo pendiente, venga de donde venga. */}
+            {sinGuardar > 0 && (
+              <div className={cx(s.callout, s.danger)}>
+                <strong>{sinGuardar} renglón(es) NO se guardaron</strong> (en rojo, con el número que pusiste):
+                revisalos y apretá Enter de nuevo en cada uno.
+              </div>
+            )}
           </>
         )}
 
-        {conDiferencias && (
+        {!enCurso && (
           <div className={s.toolbar} style={{ gap: 16 }}>
-            <span>Faltante: <strong style={{ color: 'var(--crm-color-danger)' }}>{money(Math.abs(faltante))}</strong></span>
-            <span>Sobrante: <strong style={{ color: 'var(--crm-color-success)' }}>{money(sobrante)}</strong></span>
-            <span>Neto: <strong>{money(sobrante + faltante)}</strong></span>
+            {conDiferencias && (
+              <>
+                <span>Faltante: <strong style={{ color: 'var(--crm-color-danger)' }}>{money(Math.abs(faltante))}</strong></span>
+                <span>Sobrante: <strong style={{ color: 'var(--crm-color-success)' }}>{money(sobrante)}</strong></span>
+                <span>Neto: <strong>{money(sobrante + faltante)}</strong></span>
+              </>
+            )}
+            <span title="Renglones contados con más de 0">Con stock: <strong>{conStock}</strong> de {items.length}</span>
             {sinContar.length > 0 && <span className={s.muted}>Sin contar: {sinContar.length} (quedan como están)</span>}
             {movidos.length > 0 && (
               <span style={{ color: 'var(--crm-color-danger)', fontWeight: 700 }}>
@@ -701,17 +801,18 @@ export function ConteoModal({ conteoId, alTerminar }) {
               cebradas en gris claro, y el mismo orden que la planilla impresa. */}
           <Table
             cols={enCurso ? [
-              { h: 'Marca' }, { h: 'Producto' }, { h: 'Contado', num: true }, { h: '', cls: 'actions-col' },
+              { h: 'N°', num: true }, { h: 'Marca' }, { h: 'Producto' }, { h: 'Contado', num: true }, { h: '', cls: 'actions-col' },
               ...(verSistema ? [{ h: 'Sistema', num: true }] : []), { h: 'Apartados', num: true }, { h: '' },
             ] : [
-              { h: 'Marca' }, { h: 'Producto' }, { h: 'Contado', num: true },
+              { h: 'N°', num: true }, { h: 'Marca' }, { h: 'Producto' }, { h: 'Contado', num: true },
               ...(conDiferencias ? [{ h: 'Sistema', num: true }, { h: 'Diferencia', num: true }, { h: '$', num: true }] : []),
               { h: 'Contó' }, ...(conDiferencias && data.estado === 'cerrado' ? [{ h: '', cls: 'actions-col' }] : []), { h: '' },
             ]}
             empty={enCurso && vista === 'pendientes' ? '¡Todo contado! Pasá a "Cerrar el control".' : 'Nada por acá.'}
           >
             {(enCurso ? visibles : (conDiferencias ? [...conDif, ...contadas.filter((i) => Math.abs(i.diferencia ?? 0) <= 1e-9), ...sinContar] : items)).map((it, i) => (
-              <tr key={it.id} style={{ background: it.recontar ? 'color-mix(in srgb, var(--crm-color-danger) 8%, transparent)' : (i % 2 ? CEBRA : undefined) }}>
+              <tr key={it.id} style={{ background: it.recontar || fallidos[it.id] ? 'color-mix(in srgb, var(--crm-color-danger) 12%, transparent)' : (i % 2 ? CEBRA : undefined) }}>
+                <td className={cx(s.num, s.mono)} style={{ fontWeight: 700 }}>{it.n}</td>
                 <td className={s.muted} style={{ whiteSpace: 'nowrap' }}>{it.marca || '—'}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <strong>{it.nombre}</strong>
@@ -722,14 +823,23 @@ export function ConteoModal({ conteoId, alTerminar }) {
 
                 <td className={cx(s.num, s.mono)}>
                   {enCurso ? (
+                    /* Casillero de TEXTO (12/10/2026): uno numérico cambiaba el número con
+                       la ruedita del mouse o las flechas sin que se note. Las flechas
+                       ↑/↓ acá mueven de renglón; solo entran dígitos y una coma. */
                     <input
                       ref={(el) => { inputRefs.current[it.id] = el; }}
-                      type="number" step={it.unidad === 'kg' ? 'any' : '1'} min="0"
+                      type="text" inputMode="decimal" autoComplete="off" aria-label={`Contado N° ${it.n}`}
                       value={cantidades[it.id] ?? ''}
-                      placeholder={it.contado != null ? String(it.contado) : ''}
-                      onChange={(e) => setCantidades((x) => ({ ...x, [it.id]: e.target.value }))}
-                      onKeyDown={(e) => { if (e.key === 'Enter') contar(it); }}
-                      style={{ width: 92, padding: '6px 8px', textAlign: 'right', border: '1px solid var(--crm-color-border)', borderRadius: 'var(--crm-radius-sm)', background: 'var(--crm-color-surface)', color: 'var(--crm-color-text)' }}
+                      placeholder={guardando[it.id] != null ? String(guardando[it.id]) : it.contado != null ? String(it.contado) : ''}
+                      onChange={(e) => {
+                        const t = e.target.value.replace(/[^\d.,]/g, '');
+                        setCantidades((x) => ({ ...x, [it.id]: t }));
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); contar(it); }
+                        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moverDesde(it, e.key === 'ArrowDown' ? 1 : -1); }
+                      }}
+                      style={{ width: 92, padding: '6px 8px', textAlign: 'right', border: `1px solid ${fallidos[it.id] ? 'var(--crm-color-danger)' : 'var(--crm-color-border)'}`, borderRadius: 'var(--crm-radius-sm)', background: 'var(--crm-color-surface)', color: 'var(--crm-color-text)' }}
                     />
                   ) : (
                     it.contado != null ? `${it.contado} ${it.unidad}` : <span className={s.muted}>sin contar</span>
@@ -738,9 +848,13 @@ export function ConteoModal({ conteoId, alTerminar }) {
 
                 {enCurso && (
                   <td className={s['actions-col']}>
-                    {it.contado != null
-                      ? <><span title={`Contado por ${store.getUsuario(it.contadoPor)?.nombre ?? '—'}`}>✓</span>{' '}<Btn small onClick={() => descontar(it)}>Deshacer</Btn></>
-                      : null}
+                    {fallidos[it.id]
+                      ? <span title={fallidos[it.id]} style={{ color: 'var(--crm-color-danger)', fontWeight: 700 }}>⚠ no se guardó</span>
+                      : guardando[it.id] != null
+                        ? <span title="Guardando…">⏳</span>
+                        : it.contado != null
+                          ? <><span title={`Contado por ${store.getUsuario(it.contadoPor)?.nombre ?? '—'}`}>✓</span>{' '}<Btn small onClick={() => descontar(it)}>Deshacer</Btn></>
+                          : null}
                   </td>
                 )}
 

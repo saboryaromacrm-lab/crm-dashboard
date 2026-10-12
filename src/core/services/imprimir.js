@@ -666,15 +666,15 @@ export function cuerpoCartelGondola({
  * abajo, en píxeles, comprobada imprimiendo a PDF con Chrome:
  *  · un renglón mide 7 + 7 de relleno + 1 de borde, más lo más alto entre la
  *    casilla ✓ (16 px × 1,45) y las líneas de texto (13 px × 1,45 cada una);
- *  · el texto se parte por palabras en sus columnas: Producto ≈ 321 px y
- *    Marca ≈ 87 px de ancho útil;
+ *  · el texto se parte por palabras en sus columnas: Producto ≈ 294 px y
+ *    Marca ≈ 87 px de ancho útil (con la columna N°, 12/10/2026);
  *  · entra ≈ 983 px de renglones por hoja (25 de una línea), y en la primera,
  *    con el encabezado, ≈ 770 (20 de una línea).
  * Es una estimación: el que corta de verdad es el navegador.
  */
 const PLANILLA = {
   primera: 770, siguientes: 983, linea: 13 * 1.45, minimo: 16 * 1.45, extra: 15,
-  anchoProducto: 0.49 * 688 - 16, anchoMarca: 0.15 * 688 - 16,
+  anchoProducto: 0.45 * 688 - 16, anchoMarca: 0.15 * 688 - 16,
 };
 const ALTO_SIMPLE = PLANILLA.minimo + PLANILLA.extra;
 
@@ -767,8 +767,13 @@ export function compararFilasPorMarca(a, b) {
  * y la `marca` que resuelve la pantalla desde el catálogo.
  */
 export function cuerpoPlanillaConteo({ titulo, alcance, sucursal, filas, impresa, hoja = '', responsable = '' }) {
-  const rows = [...filas].sort(compararFilasPorMarca).map((f) => `
+  /* N° (12/10/2026, pedido del dueño): el número del renglón en el control,
+   * el MISMO que muestra la pantalla de conteo al lado de cada producto. Así
+   * se comprueba de un vistazo que el número del papel va al renglón correcto,
+   * aunque la hoja sea solo de pendientes. Sin `n`, el orden de la hoja. */
+  const rows = [...filas].sort(compararFilasPorMarca).map((f, i) => `
     <tr>
+      <td class="n">${esc(f.n ?? i + 1)}</td>
       <td>${esc(String(f.marca || '').trim() || '—')}</td>
       <td>${esc(f.nombre)}${f.presLabel ? ` <strong>· ${esc(f.presLabel)}</strong>` : ''}${
         f.recontar ? ' <strong>⟳ RECONTAR</strong>' : ''}${
@@ -814,6 +819,7 @@ export function cuerpoPlanillaConteo({ titulo, alcance, sucursal, filas, impresa
       table.planilla td.prep { border: 1.5px solid #000; background: #fff !important; position: relative; }
       table.planilla .unidad { position: absolute; right: 4px; bottom: 2px; font-size: 9pt; color: #777; }
       table.planilla .cod { font-size: 9pt; color: #555; white-space: nowrap; overflow: hidden; }
+      table.planilla .n { padding-left: 1px; padding-right: 1px; text-align: center; font-weight: 700; font-size: 9pt; }
     </style>
     <h1>${esc(titulo)} — control de stock</h1>
     <div class="sub">${esc(alcance)} · ${esc(sucursal)} · ${filas.length} renglón(es)${
@@ -821,8 +827,8 @@ export function cuerpoPlanillaConteo({ titulo, alcance, sucursal, filas, impresa
     <div class="sub">${responsable ? `Responsable: <strong>${esc(responsable)}</strong> &nbsp;&nbsp; ` : ''}<strong>Anotá lo que HAY en el estante.</strong>${
       filas.some((f) => f.apartados > 1e-9) ? ' Lo marcado <strong>⚠ apartado</strong> ya está separado para un envío: NO lo cuentes.' : ''}</div>
     <table class="planilla">
-      <colgroup><col style="width:15%"><col style="width:49%"><col style="width:15%"><col style="width:5%"><col style="width:16%"></colgroup>
-      <thead><tr><th>Marca</th><th>Producto</th><th>Contado</th><th>&#10003;</th><th>Código</th></tr></thead>
+      <colgroup><col style="width:4%"><col style="width:15%"><col style="width:45%"><col style="width:15%"><col style="width:5%"><col style="width:16%"></colgroup>
+      <thead><tr><th class="n">N°</th><th>Marca</th><th>Producto</th><th>Contado</th><th>&#10003;</th><th>Código</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
 }
 
