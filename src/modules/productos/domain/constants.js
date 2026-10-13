@@ -112,6 +112,13 @@ export const ESTADOS_PEDIDO_CAFE = {
  */
 export const ESTADOS_STOCK_VIVO = ['disponible', 'comprometido', 'retenido', 'en_transito'];
 
+/** Las acciones en lote de Existencias (13/10/2026): ver `AccionLoteModal`. */
+export const ACCIONES_LOTE = {
+  baja: 'Dar de baja del catálogo',
+  marca: 'Cambiar marca',
+  categoria: 'Cambiar categoría',
+};
+
 /* CICLO DE VIDA DEL PRODUCTO. Dos decisiones distintas, no un interruptor:
  * discontinuado = no se compra más pero SE SIGUE VENDIENDO hasta agotar;
  * archivado = fuera de catálogo (no se compra ni se vende). Ver la 0051. */

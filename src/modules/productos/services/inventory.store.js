@@ -872,6 +872,9 @@ const sugerenciasArchivado = () => httpClient.get('/productos/sugerencias/archiv
 const archivarLote = (ids, motivo) => _mutate(
   () => httpClient.post('/productos/archivar-lote', { ids, motivo: motivo || undefined }),
 );
+/* Acciones en lote de Existencias (13/10/2026): baja del catálogo y marca / categoría. */
+const bajaLote = (ids, motivo) => _mutate(() => httpClient.post('/productos/baja-lote', { ids, motivo: motivo || undefined }));
+const clasificarLote = (ids, cambios) => _mutate(() => httpClient.post('/productos/clasificar-lote', { ids, ...cambios }));
 const guardarPresentaciones = (prodId, presentaciones) => _mutate(() => httpClient.put('/productos/' + prodId + '/presentaciones', { presentaciones }));
 const guardarFormatosCompra = (prodId, formatos) => _mutate(() => httpClient.put('/productos/' + prodId + '/formatos-compra', { formatos }));
 const guardarListasProducto = (prodId, o) => _mutate(() => httpClient.put('/productos/' + prodId + '/listas', o));
@@ -1537,7 +1540,7 @@ export const inventoryStore = {
   crearIncidencia, avanzarIncidencia, resolverIncidencia, cerrarIncidenciasAnteriores, anotarPedidoProveedor, ultimoPedido, guardarUltimoPedido,
   datosBajos, refrescarBajos, analisisBajos, bajosRojos, guardarStockMinimo,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto, cambiarControlStock,
-  sugerenciasArchivado, archivarLote,
+  sugerenciasArchivado, archivarLote, bajaLote, clasificarLote,
   guardarPresentaciones, importarCatalogo, importarCostos, importarFormatosVenta, importacionesPorProveedor, moverLista, usoLista, borrarListasVacias, importarCostosEnTanda, crearProveedorEnTanda, actualizarClasificacion,
   crearCatalogo, editarCatalogo, eliminarCatalogo, fusionarCatalogo, siguienteCodigo, siguienteEan,
   crearProveedor, editarProveedor, eliminarProveedor,

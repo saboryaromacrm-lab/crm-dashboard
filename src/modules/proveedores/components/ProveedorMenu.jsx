@@ -3,6 +3,7 @@
  * el nombre de una tarjeta de Pedidos y se abren los atajos — su stock, su
  * estado de cuenta, sus últimos ingresos y su WhatsApp (13/10) — para decidir
  * el pedido sin salir de la pizarra. Los datos se piden recién al abrir cada ventana.
+ * En el padrón (`soloPedido`, 13/10) ofrece solo crear la orden de pedido e ir a WhatsApp.
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -10,6 +11,7 @@ import { Menu, MenuItem, ListItemIcon, Typography, Divider } from '@mui/material
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
 import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
+import PostAddOutlinedIcon from '@mui/icons-material/PostAddOutlined';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { cx } from '@shared/utils/classNames.js';
@@ -24,7 +26,7 @@ const TIPO = { factura: 'Factura', remito: 'Remito', liquidacion: 'Liquidación'
 const cant = (n, tipo) => `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 3 })}${tipo === 'granel' ? ' kg' : ''}`;
 const nroDe = (c) => `${TIPO[c.tipo] ?? c.tipo}${c.tipo === 'factura' ? ` ${c.letra}` : ''} ${c.puntoVenta}-${String(c.numero ?? 0).padStart(8, '0')}`;
 
-export function ProveedorMenu({ proveedorId, nombre }) {
+export function ProveedorMenu({ proveedorId, nombre, soloPedido = false }) {
   const { openModal, goPanel, panels, getProveedor } = useProveedores();
   const [anchor, setAnchor] = useState(null);
   /* El celular de la ficha en el formato de WhatsApp (el mismo que usa la orden de pedido): solo con el menú abierto. */
@@ -37,9 +39,9 @@ export function ProveedorMenu({ proveedorId, nombre }) {
    * ventanita de stock de siempre. */
   const { can } = usePermissions();
   const navigate = useNavigate();
-  const verStock = can('almacen.existencias')
-    ? () => navigate(`/almacen?panel=existencias&ordenPedido=${proveedorId}`)
-    : () => openModal('stockProveedor', { proveedorId, nombre });
+  const puedeOrden = can('almacen.existencias');
+  const crearOrden = () => navigate(`/almacen?panel=existencias&ordenPedido=${proveedorId}`);
+  const verStock = puedeOrden ? crearOrden : () => openModal('stockProveedor', { proveedorId, nombre });
   const ir = (fn) => () => { cerrar(); fn(); };
   return (
     <>
@@ -48,7 +50,7 @@ export function ProveedorMenu({ proveedorId, nombre }) {
         onClick={(e) => setAnchor(e.currentTarget)}
         aria-haspopup="menu"
         aria-expanded={!!anchor}
-        title="Ver stock, estado de cuenta e ingresos"
+        title={soloPedido ? 'Crear orden de pedido o ir a WhatsApp' : 'Ver stock, estado de cuenta e ingresos'}
         style={{
           all: 'unset', cursor: 'pointer', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 2,
           textDecoration: 'underline', textDecorationColor: 'var(--crm-color-border, #ccc)', textUnderlineOffset: 3,
@@ -62,20 +64,30 @@ export function ProveedorMenu({ proveedorId, nombre }) {
           {nombre}
         </Typography>
         <Divider />
-        <MenuItem onClick={ir(verStock)}>
-          <ListItemIcon><Inventory2OutlinedIcon fontSize="small" /></ListItemIcon>
-          Ver stock
-        </MenuItem>
-        {veEdoc && (
+        {soloPedido && puedeOrden && (
+          <MenuItem onClick={ir(crearOrden)}>
+            <ListItemIcon><PostAddOutlinedIcon fontSize="small" /></ListItemIcon>
+            Crear orden de pedido
+          </MenuItem>
+        )}
+        {!soloPedido && (
+          <MenuItem onClick={ir(verStock)}>
+            <ListItemIcon><Inventory2OutlinedIcon fontSize="small" /></ListItemIcon>
+            Ver stock
+          </MenuItem>
+        )}
+        {!soloPedido && veEdoc && (
           <MenuItem onClick={ir(() => goPanel('edoc', { proveedorId }))}>
             <ListItemIcon><AccountBalanceWalletOutlinedIcon fontSize="small" /></ListItemIcon>
             Ver estado de cuenta
           </MenuItem>
         )}
-        <MenuItem onClick={ir(() => openModal('ingresosProveedor', { proveedorId, nombre }))}>
-          <ListItemIcon><LocalShippingOutlinedIcon fontSize="small" /></ListItemIcon>
-          Ver sus últimos ingresos
-        </MenuItem>
+        {!soloPedido && (
+          <MenuItem onClick={ir(() => openModal('ingresosProveedor', { proveedorId, nombre }))}>
+            <ListItemIcon><LocalShippingOutlinedIcon fontSize="small" /></ListItemIcon>
+            Ver sus últimos ingresos
+          </MenuItem>
+        )}
         {/* Se abre en el mismo clic: si no, el navegador lo toma como ventana emergente y la bloquea. */}
         <MenuItem disabled={!whatsapp} onClick={ir(() => window.open(`https://wa.me/${whatsapp}`, '_blank', 'noopener'))}>
           <ListItemIcon><WhatsAppIcon fontSize="small" sx={{ color: '#25D366' }} /></ListItemIcon>

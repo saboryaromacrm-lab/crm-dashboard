@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { errorMsg, provApi, MEDIOS_HABITUALES, CONDICIONES_COMPRA } from '../services/proveedores.api.js';
 import { Btn, PanelHead, Pill, Table, usePaginado, s } from '../components/ui.jsx';
+import { ProveedorMenu } from '../components/ProveedorMenu.jsx';
 
 /**
  * EL PADRÓN — la ficha única del sistema (0068). Los ABM chicos que vivían en
@@ -100,7 +101,8 @@ export function PadronPanel() {
           return (
             <tr key={p.id}>
               <td>
-                {p.nombre}
+                {/* Clic en el nombre (13/10): crear la orden de pedido o ir a su WhatsApp. */}
+                <ProveedorMenu proveedorId={p.id} nombre={p.nombre} soloPedido />
                 {p.cuit && <div className={s.hint} style={{ margin: 0 }}>{p.cuit}</div>}
               </td>
               <td>{CONDICIONES_COMPRA[p.condicionCompra] ?? '—'}</td>

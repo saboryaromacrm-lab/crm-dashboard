@@ -36,6 +36,7 @@ import { ImportarFormatosVentaModal } from './modals/ImportarFormatosVentaModal.
 import { RedondearMarkupsModal } from './modals/RedondearMarkupsModal.jsx';
 import { MoverListaModal } from './modals/MoverListaModal.jsx';
 import { ActualizarClasificacionModal } from './modals/ActualizarClasificacionModal.jsx';
+import { AccionLoteModal } from './modals/AccionLoteModal.jsx';
 import { LecturaFacturaModal } from './modals/LecturaFacturaModal.jsx';
 import { ComoFuncionaIaModal } from './modals/ComoFuncionaIaModal.jsx';
 import { HistorialPreciosModal, MargenesMasivosModal } from './modals/PreciosModals.jsx';
@@ -285,6 +286,7 @@ const REGISTRY = {
   conteo: ConteoModal,
   /* Orden de pedido a un proveedor (12/10/2026), desde Existencias. */
   ordenPedido: OrdenPedidoModal,
+  accionLote: AccionLoteModal,
 };
 
 /** Renderiza el modal activo según el estado del contexto. */
