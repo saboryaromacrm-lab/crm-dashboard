@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, Tab } from '@mui/material';
+import { proveedoresDelFiltro, SOLO_LOCALES } from '@shared/utils/proveedorLocal.js';
+import { OpcionLocales } from '@shared/components/OpcionLocales.jsx';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money } from '../domain/format.js';
 import { ESTADOS_STOCK } from '../domain/constants.js';
@@ -68,9 +70,10 @@ export function ExistenciasPanel() {
     setParams(resto, { replace: true });
   }, [params, setParams, openModal]);
   const { productos, stock, proveedores, sucursales } = store.state;
-  const delProveedor = useMemo(() => (provF
-    ? new Set(productos.filter((p) => (p.formatosCompra || []).some((e) => String(e.proveedorId) === provF)).map((p) => p.id))
-    : null), [productos, provF]);
+  const delProveedor = useMemo(() => {
+    const ids = proveedoresDelFiltro(provF, proveedores);
+    return ids && new Set(productos.filter((p) => (p.formatosCompra || []).some((e) => ids.has(e.proveedorId))).map((p) => p.id));
+  }, [productos, proveedores, provF]);
   const proveedoresMerc = useMemo(
     () => proveedores.filter((p) => p.proveeMercaderia).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
     [proveedores],
@@ -170,7 +173,7 @@ export function ExistenciasPanel() {
         title="Existencias"
         desc="La foto y la película del stock: lo que hay por Producto × Sucursal × Presentación × Estado, y en Movimientos el registro de toda alta o baja."
         actions={(
-          <Btn variant="btn-primary" onClick={() => openModal('ordenPedido', { proveedorId: provF, sucursalId: sucF ? parseInt(sucF, 10) : null })}>
+          <Btn variant="btn-primary" onClick={() => openModal('ordenPedido', { proveedorId: provF === SOLO_LOCALES ? '' : provF, sucursalId: sucF ? parseInt(sucF, 10) : null })}>
             Crear orden de pedido
           </Btn>
         )}
@@ -191,6 +194,7 @@ export function ExistenciasPanel() {
             <FiltroProductoControles f={fp} id="exist" />
             <select id="exist-proveedor" className={s['select-inline']} value={provF} onChange={(e) => setProvF(e.target.value)} aria-label="Proveedor">
               <option value="">Todos los proveedores</option>
+              <OpcionLocales proveedores={proveedoresMerc} />
               {proveedoresMerc.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
             <select className={s['select-inline']} value={sucF} onChange={(e) => setSucF(e.target.value)}>

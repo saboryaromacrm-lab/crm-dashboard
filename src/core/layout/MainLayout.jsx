@@ -6,6 +6,7 @@ import { MobileNavDrawer } from './components/Sidebar/MobileNavDrawer.jsx';
 import { OrdenesWebAlert } from './components/OrdenesWebAlert.jsx';
 import { PedidosCafeAlert } from './components/PedidosCafeAlert.jsx';
 import { PreciosAlert } from './components/PreciosAlert.jsx';
+import { AvisoStock } from './components/AvisoStock.jsx';
 import { CajasAbiertasBanner } from './components/CajasAbiertasBanner.jsx';
 import { AccesosTiendaBanner } from './components/AccesosTiendaBanner.jsx';
 import { DireccionViejaBanner } from './components/DireccionViejaBanner.jsx';
@@ -81,6 +82,9 @@ export function MainLayout() {
       {/* Idem para los cambios de precio: el cajero tiene el catálogo en memoria
           y sin este aviso seguiría cobrando el precio viejo. */}
       <PreciosAlert />
+
+      {/* El cartel rojo del stock: al abrir y cada 2 h, para todos menos el superadmin. */}
+      <AvisoStock />
     </div>
   );
 }

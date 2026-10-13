@@ -164,7 +164,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
   const [f, setF] = useState({
     nombre: '', cuit: '', email: '', telefono: '', direccion: '',
     condicionIva: 'responsable_inscripto',
-    proveeMercaderia: true, proveeGastos: false, letraGasto: '',
+    proveeMercaderia: true, proveeGastos: false, esLocal: false, letraGasto: '',
     condicionCompra: 'factura', medioHabitual: '', diasPago: '', modoCuenta: 'facturas',
     porcSinFactura: '', facturaMensual: false,
     minimoTransferencia: '',
@@ -178,6 +178,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       telefono: original.telefono ?? '', direccion: original.direccion ?? '',
       condicionIva: original.condicionIva ?? 'responsable_inscripto',
       proveeMercaderia: !!original.proveeMercaderia, proveeGastos: !!original.proveeGastos,
+      esLocal: !!original.esLocal,
       letraGasto: original.letraGasto ?? '',
       condicionCompra: original.condicionCompra ?? 'factura',
       medioHabitual: original.medioHabitual ?? '',
@@ -222,6 +223,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       telefono: f.telefono.trim(), direccion: f.direccion.trim(),
       condicionIva: f.condicionIva,
       proveeMercaderia: f.proveeMercaderia, proveeGastos: f.proveeGastos,
+      esLocal: f.esLocal,
       letraGasto: f.letraGasto,
       condicionCompra: f.condicionCompra,
       medioHabitual: f.medioHabitual,
@@ -356,6 +358,11 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
           <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input type="checkbox" checked={f.proveeGastos} onChange={setBool('proveeGastos')} />
             Factura gastos (aparece en Gastos)
+          </label>
+          {/* 0164: solo una marca para filtrar (Proveedores, Pedidos, Productos, Existencias, Bajos en stock). */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input id="prov-es-local" type="checkbox" checked={f.esLocal} onChange={setBool('esLocal')} />
+            Proveedor local (de mi localidad)
           </label>
         </div>
         <div className={s.field}>

@@ -21,13 +21,16 @@ export function PadronPanel() {
   const { proveedores, openModal, recargar, toast } = useProveedores();
   const [buscar, setBuscar] = useState('');
   const [soloPendientes, setSoloPendientes] = useState(false);
+  /* 0164: '' todos · 'si' solo locales · 'no' solo de afuera. */
+  const [localF, setLocalF] = useState('');
 
   const filas = useMemo(() => {
     const t = buscar.trim().toLowerCase();
     return proveedores
       .filter((p) => !t || p.nombre.toLowerCase().includes(t) || (p.cuit ?? '').includes(t))
-      .filter((p) => !soloPendientes || !p.migracionLista);
-  }, [proveedores, buscar, soloPendientes]);
+      .filter((p) => !soloPendientes || !p.migracionLista)
+      .filter((p) => !localF || !!p.esLocal === (localF === 'si'));
+  }, [proveedores, buscar, soloPendientes, localF]);
 
   const eliminar = async (p) => {
     // eslint-disable-next-line no-alert
@@ -47,10 +50,11 @@ export function PadronPanel() {
   };
 
   const pendientes = proveedores.filter((p) => !p.migracionLista).length;
+  const locales = proveedores.filter((p) => p.esLocal).length;
 
   // Paginado de servidor no hace falta: el padrón entero ya viene en memoria.
   // Los filtros van en la clave para volver a la página 1 al cambiarlos.
-  const pag = usePaginado(filas, 'padron', `${buscar}|${soloPendientes}`);
+  const pag = usePaginado(filas, 'padron', `${buscar}|${soloPendientes}|${localF}`);
 
   return (
     <div>
@@ -69,6 +73,11 @@ export function PadronPanel() {
           type="search" placeholder="Buscar por nombre o CUIT…" value={buscar}
           onChange={(e) => setBuscar(e.target.value)} style={{ minWidth: 280 }}
         />
+        <select id="padron-local" value={localF} onChange={(e) => setLocalF(e.target.value)} aria-label="Localidad">
+          <option value="">Locales y de afuera</option>
+          <option value="si">Solo locales ({locales})</option>
+          <option value="no">Solo de afuera ({proveedores.length - locales})</option>
+        </select>
         <label className={s.hint} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, cursor: 'pointer', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={soloPendientes} onChange={(e) => setSoloPendientes(e.target.checked)} />
           Solo migración pendiente ({pendientes})
@@ -105,6 +114,7 @@ export function PadronPanel() {
                 <div style={{ display: 'flex', gap: 4 }}>
                   {p.proveeMercaderia && <Pill label="mercadería" />}
                   {p.proveeGastos && <Pill label="gastos" />}
+                  {p.esLocal && <Pill pill="est-recibida" label="local" />}
                 </div>
               </td>
               <td>

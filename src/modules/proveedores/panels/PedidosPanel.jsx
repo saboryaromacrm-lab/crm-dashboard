@@ -26,9 +26,12 @@ function diasDesde(fecha) {
 }
 
 export function PedidosPanel() {
-  const { openModal, toast, recargarContadores } = useProveedores();
+  const { openModal, toast, recargarContadores, getProveedor } = useProveedores();
   const [vista, setVista] = useState('pizarra');
+  /* 0164: la pizarra solo con los proveedores de la localidad. */
+  const [soloLocales, setSoloLocales] = useState(false);
   const { data: tarjetas, reload } = useResource('prov-kanban', provApi.kanban);
+  const visibles = (tarjetas ?? []).filter((t) => !soloLocales || getProveedor(t.proveedorId)?.esLocal);
 
   const mutar = async (promesa, ok) => {
     try {
@@ -114,6 +117,12 @@ export function PedidosPanel() {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Btn small variant={vista === 'pizarra' ? 'btn-primary' : undefined} onClick={() => setVista('pizarra')}>Pizarra</Btn>
             <Btn small variant={vista === 'ingresos' ? 'btn-primary' : undefined} onClick={() => setVista('ingresos')}>Ingresos</Btn>
+            {vista === 'pizarra' && (
+              <label className={s.hint} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <input id="pedidos-locales" type="checkbox" checked={soloLocales} onChange={(e) => setSoloLocales(e.target.checked)} />
+                Solo proveedores locales
+              </label>
+            )}
             {vista === 'pizarra' && <BotonesAlta openModal={openModal} onChange={reload} />}
           </div>
         }
@@ -121,7 +130,7 @@ export function PedidosPanel() {
       {vista === 'pizarra' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
           {COLUMNAS.map((col) => {
-            const filas = (tarjetas ?? []).filter((t) => t.estado === col.estado);
+            const filas = visibles.filter((t) => t.estado === col.estado);
             return (
               <div key={col.estado}>
                 <div className={s['section-title']}>

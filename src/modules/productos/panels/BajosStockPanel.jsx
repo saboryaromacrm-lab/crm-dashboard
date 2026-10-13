@@ -30,6 +30,7 @@ export function BajosStockPanel() {
   const [tipo, setTipo] = useState('');
   const [color, setColor] = useState('');
   const [soloCtrl, setSoloCtrl] = useState(false);
+  const [soloLocales, setSoloLocales] = useState(false);
   const [abierto, setAbierto] = useState(null);
   const [verBien, setVerBien] = useState(false);
   const [minimos, setMinimos] = useState({});
@@ -48,7 +49,9 @@ export function BajosStockPanel() {
   }, [suc, store, toast]);
 
   const datos = suc ? otros : store.state.bajos;
-  const { proveedores } = store.analisisBajos(datos, soloCtrl, tipo);
+  const { proveedores: analizados } = store.analisisBajos(datos, soloCtrl, tipo);
+  /* 0164: los colores y la lista, solo con los proveedores de la localidad. */
+  const proveedores = soloLocales ? analizados.filter((g) => store.getProveedor(g.id)?.esLocal) : analizados;
   const nombreProv = (id) => (id ? store.getProveedor(id)?.nombre ?? `Proveedor #${id}` : 'Sin proveedor');
   const marcaDe = useMemo(() => new Map((store.state.catalogos?.marcas ?? []).map((m) => [m.id, m.nombre])), [store.state.catalogos]);
 
@@ -97,6 +100,10 @@ export function BajosStockPanel() {
         <label className={s.hint} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }} title="Solo productos que ya pasaron por un control de stock o un ajuste en esa sucursal">
           <input id="bajos-controlados" type="checkbox" checked={soloCtrl} onChange={(e) => setSoloCtrl(e.target.checked)} />
           Solo productos ya controlados
+        </label>
+        <label className={s.hint} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input id="bajos-locales" type="checkbox" checked={soloLocales} onChange={(e) => setSoloLocales(e.target.checked)} />
+          Solo proveedores locales
         </label>
       </div>
 

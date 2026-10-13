@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
+import { proveedoresDelFiltro } from '@shared/utils/proveedorLocal.js';
+import { OpcionLocales } from '@shared/components/OpcionLocales.jsx';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { FormatosPorProveedorPanel } from './FormatosPorProveedorPanel.jsx';
 import { ActualizarImportarPanel } from './ActualizarImportarPanel.jsx';
@@ -169,7 +171,7 @@ function CatalogoProductos() {
 
   const productos = useMemo(() => {
     const ql = norm(q);
-    const provId = proveedorId ? Number(proveedorId) : null;
+    const provIds = proveedoresDelFiltro(proveedorId, store.state.proveedores);
     const lista = store.state.productos.filter((p) => {
       const est = p.estado || 'activo';
       if (estadoF === 'vigentes' && est === 'archivado') return false;
@@ -177,7 +179,7 @@ function CatalogoProductos() {
       if (sinHijos ? !faltanFraccionados(p) : sinBulto ? !faltaBulto(p) : tipo && p.tipo !== tipo) return false;
       if (marca && p.marca !== marca) return false;
       if (categoria && p.categoria !== categoria) return false;
-      if (provId && !(p.formatosCompra || []).some((e) => e.proveedorId === provId)) return false;
+      if (provIds && !(p.formatosCompra || []).some((e) => provIds.has(e.proveedorId))) return false;
       if (imagenF === 'con' && !p.tieneImagen) return false;
       if (imagenF === 'sin' && p.tieneImagen) return false;
       if (controlF) {
@@ -199,7 +201,7 @@ function CatalogoProductos() {
       : lista;
     // `configVentas`: el control efectivo depende de las llaves generales.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.state.productos, store.state.configVentas, q, tipo, sinHijos, sinBulto, kgDe, marca, categoria, proveedorId, estadoF, controlF, imagenF]);
+  }, [store.state.productos, store.state.proveedores, store.state.configVentas, q, tipo, sinHijos, sinBulto, kgDe, marca, categoria, proveedorId, estadoF, controlF, imagenF]);
 
   /*
    * CADA FRACCIONADO ES UNA FILA PROPIA (decisión del dueño, 9/8/2026): el
@@ -357,6 +359,7 @@ function CatalogoProductos() {
         </select>
         <select className={s['select-inline']} value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
           <option value="">Todos los proveedores</option>
+          <OpcionLocales proveedores={store.state.proveedores.filter((p) => p.proveeMercaderia !== false)} />
           {store.state.proveedores
             .filter((p) => p.proveeMercaderia !== false)
             .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
