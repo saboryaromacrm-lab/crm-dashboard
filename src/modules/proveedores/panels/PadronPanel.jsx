@@ -101,8 +101,8 @@ export function PadronPanel() {
           return (
             <tr key={p.id}>
               <td>
-                {/* Clic en el nombre (13/10): crear la orden de pedido o ir a su WhatsApp. */}
-                <ProveedorMenu proveedorId={p.id} nombre={p.nombre} soloPedido />
+                {/* Clic en el nombre (13/10): la orden de pedido, su estado de cuenta o su WhatsApp. */}
+                <ProveedorMenu proveedorId={p.id} nombre={p.nombre} enPadron />
                 {p.cuit && <div className={s.hint} style={{ margin: 0 }}>{p.cuit}</div>}
               </td>
               <td>{CONDICIONES_COMPRA[p.condicionCompra] ?? '—'}</td>

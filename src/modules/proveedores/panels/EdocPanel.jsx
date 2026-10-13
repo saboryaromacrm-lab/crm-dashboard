@@ -19,7 +19,8 @@ import { EdocProveedorPage } from './EdocProveedorPage.jsx';
 export function EdocPanel() {
   const { panelParams } = useProveedores();
   const [buscar, setBuscar] = useState('');
-  const [soloDeuda, setSoloDeuda] = useState(true);
+  /* Todos de entrada (13/10/2026, pedido del dueño): el tilde deja solo los que tienen saldo. */
+  const [soloDeuda, setSoloDeuda] = useState(false);
   const [verId, setVerId] = useState(panelParams?.proveedorId ?? null);
   const { data, reload } = useResource('edoc-global', provApi.edoc);
 
@@ -30,13 +31,13 @@ export function EdocPanel() {
     if (panelParams?.proveedorId) setVerId(panelParams.proveedorId);
   }, [panelParams?.proveedorId]);
 
+  const conSaldo = useMemo(() => (data ?? []).filter((f) => Math.abs(f.saldo) > 0.009), [data]);
   const filas = useMemo(() => {
-    let out = data ?? [];
-    if (soloDeuda) out = out.filter((f) => Math.abs(f.saldo) > 0.009);
+    let out = soloDeuda ? conSaldo : (data ?? []);
     const t = buscar.trim().toLowerCase();
     if (t) out = out.filter((f) => f.nombre.toLowerCase().includes(t));
     return out;
-  }, [data, buscar, soloDeuda]);
+  }, [data, conSaldo, buscar, soloDeuda]);
 
   const totales = useMemo(() => ({
     saldo: filas.reduce((a, f) => a + f.saldo, 0),
@@ -67,15 +68,16 @@ export function EdocPanel() {
         <Stat label="Proveedores vencidos" value={totales.vencidos} accent={totales.vencidos ? 'accent-red' : undefined} />
       </div>
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <input
           type="search" placeholder="Buscar proveedor…" value={buscar}
           onChange={(e) => setBuscar(e.target.value)}
         />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <input type="checkbox" checked={soloDeuda} onChange={(e) => setSoloDeuda(e.target.checked)} />
-          Solo con saldo
+          Solo con saldo ({conSaldo.length} de {(data ?? []).length})
         </label>
+        <span className={s.hint} style={{ margin: 0 }}>Los que solo facturan gastos no están acá: su cuenta se abre desde su nombre en Proveedores.</span>
       </div>
 
       <Table
