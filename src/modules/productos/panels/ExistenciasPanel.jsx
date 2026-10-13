@@ -1,18 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, Tab } from '@mui/material';
-import { cx } from '@shared/utils/classNames.js';
 import { proveedoresDelFiltro, SOLO_LOCALES } from '@shared/utils/proveedorLocal.js';
 import { OpcionLocales } from '@shared/components/OpcionLocales.jsx';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money } from '../domain/format.js';
-import { ACCIONES_LOTE, ESTADOS_STOCK } from '../domain/constants.js';
+import { ESTADOS_STOCK } from '../domain/constants.js';
 import { indiceDisponible } from '../domain/bulto.js';
 import { sucursalOptions, productoOptions } from '../components/selectOptions.jsx';
 import { FiltroProductoControles } from '../components/FiltroProducto.jsx';
 import { useFiltroProducto } from '../hooks/useFiltroProducto.js';
 import { Table, PanelHead, TipoBadge, StockPill, Pill, Btn, usePaginado, s } from '../components/ui.jsx';
 import { HistorialPanel } from './HistorialPanel.jsx';
+import { BarraLote, CasillaLote, CasillaTodos } from '../components/AccionesLote.jsx';
+import { useSeleccionLote } from '../hooks/useSeleccionLote.js';
 
 /**
  * Existencias es consulta, con UNA excepción: el AJUSTE por fila (19/8/2026,
@@ -58,8 +59,7 @@ export function ExistenciasPanel() {
    * producto en varias sucursales o presentaciones se tilda una vez) y se les
    * aplica una acción. La misma llave que editar la ficha y darla de baja. */
   const puedeLote = store.can('compras.productos');
-  const [sel, setSel] = useState(() => new Set());
-  const [accionLote, setAccionLote] = useState('');
+  const { sel, alternar, limpiar } = useSeleccionLote();
   /* Tirar lo vencido pide `merma`; lo defectuoso, `defectuoso` — las mismas
    * llaves que marcarlo así. */
   const puedeDescartar = (estado) => (estado === 'vencido' ? store.can('merma') : estado === 'defectuoso' ? store.can('defectuoso') : false);
@@ -173,23 +173,12 @@ export function ExistenciasPanel() {
 
   const idsPagina = [...new Set(pag.visibles.map((st) => st.productoId))];
   const idsFiltro = useMemo(() => [...new Set(entradas.map((st) => st.productoId))], [entradas]);
-  const marcadosPagina = idsPagina.filter((id) => sel.has(id)).length;
-  const alternar = (lista, poner) => setSel((prev) => {
-    const nuevo = new Set(prev);
-    for (const id of lista) { if (poner) nuevo.add(id); else nuevo.delete(id); }
-    return nuevo;
-  });
-  const aplicarLote = () => openModal('accionLote', { accion: accionLote, ids: [...sel], onDone: () => { setSel(new Set()); setAccionLote(''); } });
 
   const filas = pag.visibles.map((st) => {
       const p = store.getProducto(st.productoId), su = store.getSucursal(st.sucursalId);
       return (
         <tr key={st.id}>
-          {puedeLote && (
-            <td style={{ width: 36 }}>
-              <input type="checkbox" checked={sel.has(st.productoId)} onChange={(e) => alternar([st.productoId], e.target.checked)} aria-label={`Elegir ${p.nombre}`} />
-            </td>
-          )}
+          {puedeLote && <CasillaLote sel={sel} id={st.productoId} nombre={p.nombre} alternar={alternar} />}
           <td>{p.nombre} <TipoBadge prod={p} /></td>
           <td>{su.nombre}</td>
           <td>{store.presLabel(p, st.presentacionId)}</td>
@@ -285,32 +274,10 @@ export function ExistenciasPanel() {
               ))}
             </select>
           </div>
-          {puedeLote && sel.size > 0 && (
-            <div className={cx(s.callout, s.info)} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <strong>{sel.size} producto(s) elegido(s)</strong>
-              {idsFiltro.length > sel.size && idsFiltro.some((id) => !sel.has(id)) && (
-                <Btn small variant="btn-ghost" onClick={() => alternar(idsFiltro, true)}>Elegir los {idsFiltro.length} del filtro</Btn>
-              )}
-              <select id="exist-lote-accion" className={s['select-inline']} value={accionLote} onChange={(e) => setAccionLote(e.target.value)} aria-label="Acción en lote">
-                <option value="">Acciones en lote…</option>
-                {Object.entries(ACCIONES_LOTE).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-              </select>
-              <Btn small variant="btn-primary" onClick={aplicarLote} disabled={!accionLote}>Aplicar</Btn>
-              <Btn small variant="btn-ghost" onClick={() => setSel(new Set())}>Quitar selección</Btn>
-            </div>
-          )}
+          {puedeLote && <BarraLote id="exist-lote-accion" sel={sel} idsFiltro={idsFiltro} alternar={alternar} limpiar={limpiar} />}
           <Table
             cols={[
-              ...(puedeLote ? [{
-                h: (
-                  <input
-                    type="checkbox" aria-label="Elegir todos los de esta página"
-                    checked={idsPagina.length > 0 && marcadosPagina === idsPagina.length}
-                    ref={(el) => { if (el) el.indeterminate = marcadosPagina > 0 && marcadosPagina < idsPagina.length; }}
-                    onChange={(e) => alternar(idsPagina, e.target.checked)}
-                  />
-                ),
-              }] : []),
+              ...(puedeLote ? [{ h: <CasillaTodos sel={sel} ids={idsPagina} alternar={alternar} /> }] : []),
               { h: 'Producto' }, { h: 'Sucursal' }, { h: 'Present.' },
               { h: 'Estado' }, { h: 'Cantidad', num: true }, { h: 'Valor', num: true },
               { h: '', cls: 'actions-col' },

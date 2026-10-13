@@ -7,6 +7,8 @@ import { OpcionLocales } from '@shared/components/OpcionLocales.jsx';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { FormatosPorProveedorPanel } from './FormatosPorProveedorPanel.jsx';
 import { ActualizarImportarPanel } from './ActualizarImportarPanel.jsx';
+import { BarraLote, CasillaLote, CasillaTodos } from '../components/AccionesLote.jsx';
+import { useSeleccionLote } from '../hooks/useSeleccionLote.js';
 import { num } from '../domain/format.js';
 import { ESTADOS_PRODUCTO } from '../domain/constants.js';
 import { bultoDe } from '../domain/bulto.js';
@@ -133,6 +135,9 @@ function AvisoParaArchivar() {
 
 function CatalogoProductos() {
   const { store, isAdmin, openModal } = useProductos();
+  /* Acciones en lote (13/10/2026): las mismas que en Almacén › Existencias. */
+  const puedeLote = store.can('compras.productos');
+  const { sel, alternar, limpiar } = useSeleccionLote();
   const [q, setQ] = useState('');
   const [tipo, setTipo] = useState('');
   const [marca, setMarca] = useState('');
@@ -263,12 +268,16 @@ function CatalogoProductos() {
   );
 
   const pag = usePaginado(filasLista, 'productos', `${q}|${tipo}|${marca}|${categoria}|${proveedorId}|${estadoF}|${controlF}|${imagenF}`);
+  /* Se eligen productos: los renglones de fraccionados no llevan casilla. */
+  const idsPagina = pag.visibles.filter((f) => !f.pr).map((f) => f.p.id);
+  const idsFiltro = useMemo(() => productos.map((p) => p.id), [productos]);
 
   const filas = pag.visibles.map(({ clave, p, pr }) => {
     if (pr) {
       const disp = store.suma({ productoId: p.id, presentacionId: pr.id, estado: 'disponible' });
       return (
         <tr key={clave} className={s.clickable} onClick={() => openModal('fraccionado', { prodId: p.id, presId: pr.id })}>
+          {puedeLote && <td />}
           <td className={s.muted}>{p.id}</td>
           <td>
             <span className={s.muted}>↳ </span>{p.nombre} · {store.presLabel(p, pr.id)}
@@ -290,6 +299,7 @@ function CatalogoProductos() {
       : store.suma({ productoId: p.id, estado: 'disponible' });
     return (
       <tr key={clave} className={s.clickable} onClick={() => openModal('detalleProducto', { prodId: p.id })}>
+        {puedeLote && <CasillaLote sel={sel} id={p.id} nombre={p.nombre} alternar={alternar} />}
         <td>{p.id}</td>
         <td>
           {p.nombre}
@@ -420,8 +430,10 @@ function CatalogoProductos() {
           {isAdmin && ' «Exportar CSV» alcanza solo a los filtrados.'}
         </div>
       )}
+      {puedeLote && <BarraLote id="prod-lote-accion" sel={sel} idsFiltro={idsFiltro} alternar={alternar} limpiar={limpiar} />}
       <Table
         cols={[
+          ...(puedeLote ? [{ h: <CasillaTodos sel={sel} ids={idsPagina} alternar={alternar} /> }] : []),
           { h: 'ID' }, { h: 'Producto' }, { h: 'Marca' }, { h: 'Tipo' }, { h: 'Categoría' },
           { h: 'IVA', num: true }, { h: 'Disp. (base)', num: true },
           { h: 'Acciones', cls: 'actions-col' },

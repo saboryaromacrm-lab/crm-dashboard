@@ -4,7 +4,8 @@ import { compararFilasPorMarca } from '@core/services/imprimir.js';
 import { telefonoWa } from '@modules/ventas/domain/constants.js';
 import { useBreakpoint } from '@core/hooks/useBreakpoint.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
-import { bultoDelProveedor, bultoTexto, indiceDisponible, unidadPedido } from '../../domain/bulto.js';
+import { bultoDelProveedor, bultoTexto, estimarPedido, indiceDisponible, unidadPedido } from '../../domain/bulto.js';
+import { money } from '../../domain/format.js';
 import { norm } from '../CatalogoPicker.jsx';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
@@ -44,6 +45,8 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   /* Vacío por defecto (13/10/2026, pedido del dueño): se ven todos los productos del proveedor. */
   const [umbral, setUmbral] = useState('');
   const [categoria, setCategoria] = useState('');
+  /** El orden por stock: null = el de la góndola, 'desc' = de mayor a menor, 'asc' = de menor a mayor. */
+  const [ordenStock, setOrdenStock] = useState(null);
   const [q, setQ] = useState('');
   /** productoId → lo tecleado; `orden`: los productos en el orden en que se cargaron (así sale el mensaje). */
   const [cant, setCant] = useState(() => Object.fromEntries(Object.entries(sugeridos ?? {}).map(([id, n]) => [id, String(n)])));
@@ -61,6 +64,8 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   const guardado = useRef('');
   const inputs = useRef({});
   const puedeAnotar = store.can('proveedores.pedidos');
+  /* Los costos los ve el mismo que los ve en la carga inicial (`verCostos` del servidor). */
+  const verCostos = store.can('precios') || store.can('compras.productos');
 
   const { productos, stock, proveedores: todosProv, catalogos } = store.state;
   const proveedores = useMemo(
@@ -99,13 +104,15 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   const tope = aNumero(umbral);
   const filas = useMemo(() => {
     const t = norm(q.trim());
-    return delProveedor
+    const lista = delProveedor
       .map((x) => ({ ...x, stock: disponible(x.id, Number(sucId)) }))
       /* Lo que ya tiene cantidad cargada se queda a la vista aunque cambie el «menor a». */
       .filter((x) => ((tope > 0 ? x.stock < tope : true) || aNumero(cant[x.id]) > 0)
         && (!categoria || x.p.categoria === categoria)
         && (!t || norm(`${x.nombre} ${x.marca}`).includes(t)));
-  }, [delProveedor, disponible, sucId, tope, categoria, q, cant]);
+    /* Tocar «Stock» ordena de mayor a menor, otra vez de menor a mayor, y otra vuelve al orden de la góndola. */
+    return ordenStock ? lista.sort((a, b) => (a.stock - b.stock) * (ordenStock === 'asc' ? 1 : -1)) : lista;
+  }, [delProveedor, disponible, sucId, tope, categoria, q, cant, ordenStock]);
 
   const conBulto = (x) => [x.nombre, bultoTexto(x.p, x.bulto)].filter(Boolean).join(' ');
   /** Cuánto haría falta para llegar al «menor a»: en bultos (o en la unidad, sin bulto). */
@@ -115,10 +122,12 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
     return Math.ceil(x.bulto > 1 ? falta / x.bulto : falta);
   };
 
-  const lineas = orden.map((id) => porId.get(id)).filter(Boolean).map((x) => {
-    const n = aNumero(cant[x.id]);
-    return `${conBulto(x)} — ${fmtN(n)} ${unidadPedido(x.p, x.bulto, n)}`;
-  });
+  const pedidos = orden.map((id) => porId.get(id)).filter(Boolean).map((x) => ({ x, n: aNumero(cant[x.id]) }));
+  const lineas = pedidos.map(({ x, n }) => `${conBulto(x)} — ${fmtN(n)} ${unidadPedido(x.p, x.bulto, n)}`);
+  /* Cuánto suma, a costo (13/10/2026): solo para mirar, no va en el mensaje. Solo quien ve costos. */
+  const estimado = verCostos && proveedor
+    ? estimarPedido(pedidos.map(({ x, n }) => ({ p: x.p, bulto: x.bulto, cantidad: n })), proveedor.id, store.costosFormato)
+    : null;
   const armado = lineas.length ? [`Pedido - ${QUIEN_PIDE} - ${hoy()}`, '', ...lineas, '', CIERRE].join('\n') : '';
   /** Lo que se ve, se copia, se manda y se anota. */
   const mensaje = editado ? editado.texto : armado;
@@ -236,7 +245,16 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                 <thead>
                   <tr>
                     <th style={TH_FIJO}>Producto</th><th className={s.num} style={TH_FIJO}>A pedir</th>
-                    <th className={s.num} style={TH_FIJO}>Stock</th><th className={s.num} style={TH_FIJO}>Sugerido</th>
+                    <th className={s.num} style={TH_FIJO} aria-sort={ordenStock === 'asc' ? 'ascending' : ordenStock === 'desc' ? 'descending' : 'none'}>
+                      <button
+                        type="button" id="orden-ordenar-stock" title="Ordenar por stock"
+                        onClick={() => setOrdenStock((o) => (o === 'desc' ? 'asc' : o === 'asc' ? null : 'desc'))}
+                        style={{ all: 'unset', cursor: 'pointer', textDecoration: 'underline dotted' }}
+                      >
+                        Stock{ordenStock === 'desc' ? ' ▼' : ordenStock === 'asc' ? ' ▲' : ' ⇅'}
+                      </button>
+                    </th>
+                    <th className={s.num} style={TH_FIJO}>Sugerido</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -327,6 +345,15 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                       : 'Mensaje editado a mano: se copia y se manda así.'}
                   </span>
                   <Btn small onClick={() => setEditado(null)}>Volver a armarlo desde la lista</Btn>
+                </div>
+              )}
+              {estimado && lineas.length > 0 && (
+                <div id="orden-estimado" className={cx(s.callout, s.ok)} style={{ margin: 0 }}>
+                  <div>Estimado a costo: <strong>{money(estimado.aPagar)}</strong> a pagar</div>
+                  <div className={s.hint} style={{ margin: '2px 0 0' }}>
+                    {money(estimado.neto)} sin IVA · con el costo cargado para este proveedor. Solo para vos: no va en el mensaje.
+                    {estimado.sinCosto > 0 && ` ${estimado.sinCosto} renglón(es) sin costo cargado no suman.`}
+                  </div>
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

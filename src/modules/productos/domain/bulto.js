@@ -37,11 +37,15 @@ export function kgBolsa(p) {
  * formato de compra de ESE proveedor —el que fija el precio, o el más viejo—;
  * si no tiene, el bulto de la ficha. Sin ninguno, se pide por unidad (o kg).
  */
+/** El formato de compra de ESE proveedor: el que fija el precio, o el más viejo (null si no le compra). */
+export function formatoDelProveedor(p, proveedorId) {
+  const suyos = (p?.formatosCompra || []).filter((e) => Number(e.proveedorId) === Number(proveedorId));
+  return suyos.find((e) => e.usarParaPrecio) || [...suyos].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))[0] || null;
+}
+
 export function bultoDelProveedor(p, proveedorId) {
   if (!p) return 0;
-  const suyos = (p.formatosCompra || []).filter((e) => Number(e.proveedorId) === Number(proveedorId));
-  const f = suyos.find((e) => e.usarParaPrecio) || [...suyos].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))[0];
-  const c = Number(f?.cantidad) || 0;
+  const c = Number(formatoDelProveedor(p, proveedorId)?.cantidad) || 0;
   if (p.tipo === 'granel') return c > 1 ? c : 0;
   if (c > 1 && Number.isInteger(c)) return c;
   return (Number(p.unidadesPorBulto) || 0) > 1 ? Number(p.unidadesPorBulto) : 0;
@@ -115,3 +119,28 @@ export const bultosPartidos = (items, getProducto) => items.filter((it) => {
   return n > 1 && c > 0 && !Number.isInteger(Math.round((c / n) * 1000) / 1000);
 }).length;
 
+/**
+ * CUÁNTO SUMA LA ORDEN, ESTIMADO A COSTO (13/10/2026, pedido del dueño): solo
+ * para mirar, no va en el mensaje. Por renglón, lo pedido en unidades (bultos ×
+ * bulto, o unidades / kg) por el costo unitario del formato de ese proveedor.
+ *   · aPagar: lo que se le paga — con IVA lo facturado, sin IVA lo «sin
+ *     factura», más la comisión si cobra.
+ *   · neto: el costo sin IVA.
+ *   · sinCosto: renglones cuyo formato no tiene costo cargado (no suman).
+ * `costos(formato, iva)` es `costosFormato` del store.
+ */
+export function estimarPedido(renglones, proveedorId, costos) {
+  let aPagar = 0;
+  let neto = 0;
+  let sinCosto = 0;
+  for (const { p, bulto, cantidad } of renglones) {
+    if (!(cantidad > 0)) continue;
+    const f = formatoDelProveedor(p, proveedorId);
+    const c = f ? costos(f, p.iva) : null;
+    if (!c || !(c.costoNetoUnitario > 0)) { sinCosto += 1; continue; }
+    const unidades = cantidad * (bulto > 1 ? bulto : 1);
+    aPagar += unidades * (c.desembolsoUnitario + (c.costoComisionUnitario || 0));
+    neto += unidades * c.costoNetoUnitario;
+  }
+  return { aPagar, neto, sinCosto };
+}

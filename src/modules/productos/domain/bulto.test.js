@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BULTO, bultoDe, bultoOfrecible, valorPresentacion, cambioPresentacion, bultosDe, unidadesDeBultos, bultosPartidos, kgBolsa,
-  bultoDelProveedor, bultoTexto, unidadPedido, indiceDisponible,
+  bultoDelProveedor, bultoTexto, unidadPedido, indiceDisponible, estimarPedido,
 } from './bulto.js';
 
 const BRACEMA = { id: 1, tipo: 'entero', unidadesPorBulto: 1, formatosCompra: [{ id: 7, cantidad: 6 }, { id: 9, cantidad: 20, usarParaPrecio: true }] };
@@ -107,4 +107,21 @@ test('indiceDisponible: solo lo disponible; el granel suma sus paquetes en kg', 
   assert.equal(d(1, 2), -2, 'el negativo se ve');
   assert.equal(d(2, 1), 6, '3 kg sueltos + 6 paquetes de 0,5 kg');
   assert.equal(d(3, 1), 0, 'sin fila: 0');
+});
+
+test('estimarPedido: bultos × bulto × costo del formato de ESE proveedor; sin costo no suma', () => {
+  /* Costo de mentira: el formato trae su costo unitario y lo «a pagar» es 1,21 veces. */
+  const costos = (f) => ({ costoNetoUnitario: f.u, desembolsoUnitario: f.u * 1.21, costoComisionUnitario: 0 });
+  const yerba = { iva: 21, formatosCompra: [{ id: 1, proveedorId: 7, cantidad: 12, u: 1000 }, { id: 2, proveedorId: 8, cantidad: 12, u: 5 }] };
+  const aceite = { iva: 21, formatosCompra: [{ id: 3, proveedorId: 7, cantidad: 1, u: 500 }] };
+  const sinCosto = { iva: 21, formatosCompra: [{ id: 4, proveedorId: 7, cantidad: 6, u: 0 }] };
+  const r = estimarPedido([
+    { p: yerba, bulto: 12, cantidad: 2 },   // 24 u. × 1000 = 24.000
+    { p: aceite, bulto: 0, cantidad: 3 },   // 3 u. × 500 = 1.500
+    { p: sinCosto, bulto: 6, cantidad: 1 }, // sin costo: avisa y no suma
+    { p: aceite, bulto: 0, cantidad: 0 },   // nada pedido: no cuenta
+  ], 7, costos);
+  assert.equal(r.neto, 25500);
+  assert.ok(Math.abs(r.aPagar - 25500 * 1.21) < 1e-6);
+  assert.equal(r.sinCosto, 1);
 });
