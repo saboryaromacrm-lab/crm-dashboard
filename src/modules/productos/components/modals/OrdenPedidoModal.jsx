@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { compararFilasPorMarca } from '@core/services/imprimir.js';
 import { telefonoWa } from '@modules/ventas/domain/constants.js';
+import { useBreakpoint } from '@core/hooks/useBreakpoint.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { bultoDelProveedor, bultoTexto, indiceDisponible, unidadPedido } from '../../domain/bulto.js';
 import { norm } from '../CatalogoPicker.jsx';
@@ -12,22 +13,24 @@ import { Btn, s } from '../ui.jsx';
 /**
  * ORDEN DE PEDIDO A UN PROVEEDOR (12/10/2026, pedido del dueño)
  * ============================================================================
- * Desde Almacén › Existencias: los productos del proveedor con menos stock que
- * «X» en la sucursal elegida, con el bulto en que se le compran. Se cargan los
+ * Desde Almacén › Existencias: los productos del proveedor (todos, o los que
+ * tienen menos stock que «X» en la sucursal elegida; filtrables por categoría),
+ * con el bulto en que se le compran. Se cargan los
  * bultos a pedir y al costado se va armando el mensaje, renglón por renglón en
  * el orden en que se cargaron, listo para copiar o mandar por WhatsApp al
- * teléfono de la ficha del proveedor. Al copiar o enviar queda anotado en
+ * teléfono de la ficha del proveedor. El mensaje se puede retocar a mano (13/10):
+ * desde ahí manda lo escrito y la lista ya no lo pisa. Lo copiado o mandado
+ * queda como «pedido anterior» de ese proveedor (uno solo, 0165) para verlo la
+ * próxima vez. Al copiar o enviar queda anotado en
  * Proveedores › Pedidos (la tarjeta nace en «Pedido» y después se actualiza).
  *
  * No toca stock ni deuda: la mercadería entra cuando llega la factura.
  */
-const CLAVE_UMBRAL = 'ordenPedido.umbral';
-const leerUmbral = () => {
-  try { const n = Number(localStorage.getItem(CLAVE_UMBRAL)); return n > 0 ? n : 10; } catch { return 10; }
-};
 const fmtN = (n) => String(Math.round(n * 1000) / 1000).replace('.', ',');
 const aNumero = (t) => Number(String(t ?? '').replace(',', '.'));
 const hoy = () => new Date().toLocaleDateString('es-AR');
+/** El encabezado de la tabla queda fijo arriba al bajar por la lista. */
+const TH_FIJO = { position: 'sticky', top: 0, zIndex: 1 };
 /* Cómo se presenta el pedido y cómo cierra (12/10/2026, pedido del dueño): quién pide —nombre y CUIT— y la fecha. */
 const QUIEN_PIDE = 'Lorenzo Lucas - 23356782429';
 const CIERRE = 'Por favor confirmar recibido.';
@@ -35,17 +38,27 @@ const CIERRE = 'Por favor confirmar recibido.';
 /** `sugeridos`: { productoId: cantidad } — lo que manda Bajos en stock, ya cargado y en ese orden. */
 export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: sucInicial = null, sugeridos = null }) {
   const { store, closeModal, toast, sucOperativa } = useProductos();
+  const { isDesktop } = useBreakpoint();
   const [provId, setProvId] = useState(provInicial ? String(provInicial) : '');
   const [sucId, setSucId] = useState(String(sucInicial || sucOperativa() || ''));
-  const [umbral, setUmbral] = useState(() => String(leerUmbral()));
+  /* Vacío por defecto (13/10/2026, pedido del dueño): se ven todos los productos del proveedor. */
+  const [umbral, setUmbral] = useState('');
+  const [categoria, setCategoria] = useState('');
   const [q, setQ] = useState('');
   /** productoId → lo tecleado; `orden`: los productos en el orden en que se cargaron (así sale el mensaje). */
   const [cant, setCant] = useState(() => Object.fromEntries(Object.entries(sugeridos ?? {}).map(([id, n]) => [id, String(n)])));
   const [orden, setOrden] = useState(() => Object.keys(sugeridos ?? {}).map(Number));
+  /** El mensaje retocado a mano: `{ texto, base }` (`base` = cómo lo armaba la lista al empezar a editar), o null = se arma solo. */
+  const [editado, setEditado] = useState(null);
+  /** El pedido anterior a este proveedor, como estaba al abrir (lo de esta vez se ve la próxima): { provId, pedido } . */
+  const [anterior, setAnterior] = useState(null);
+  const [verAnterior, setVerAnterior] = useState(false);
   /** La tarjeta de Proveedores › Pedidos de esta orden: { id, provId, notas }. */
   const anotado = useRef(null);
   const [anotadoVisto, setAnotadoVisto] = useState(false);
   const cola = useRef(Promise.resolve());
+  /** Lo último que se guardó como «pedido anterior» en esta ventana: copiar dos veces lo mismo no repite el envío. */
+  const guardado = useRef('');
   const inputs = useRef({});
   const puedeAnotar = store.can('proveedores.pedidos');
 
@@ -59,6 +72,15 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   const sucursal = store.getSucursal(Number(sucId));
   const disponible = useMemo(() => indiceDisponible(stock, productos), [stock, productos]);
 
+  useEffect(() => {
+    setVerAnterior(false);
+    if (!provId) return undefined;
+    let vivo = true;
+    store.ultimoPedido(provId).then((r) => { if (vivo) setAnterior({ provId, pedido: r.ok ? r.data?.pedido ?? null : null }); });
+    return () => { vivo = false; };
+  }, [provId, store]);
+  const pedidoAnterior = anterior?.provId === provId ? anterior.pedido : null;
+
   /* Los productos activos del proveedor, con su bulto y en el orden de la góndola (marca → nombre). */
   const delProveedor = useMemo(() => {
     if (!provId) return [];
@@ -69,6 +91,10 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
       .sort(compararFilasPorMarca);
   }, [productos, catalogos, provId]);
   const porId = useMemo(() => new Map(delProveedor.map((x) => [x.id, x])), [delProveedor]);
+  const categorias = useMemo(
+    () => [...new Set(delProveedor.map((x) => x.p.categoria).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
+    [delProveedor],
+  );
 
   const tope = aNumero(umbral);
   const filas = useMemo(() => {
@@ -77,8 +103,9 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
       .map((x) => ({ ...x, stock: disponible(x.id, Number(sucId)) }))
       /* Lo que ya tiene cantidad cargada se queda a la vista aunque cambie el «menor a». */
       .filter((x) => ((tope > 0 ? x.stock < tope : true) || aNumero(cant[x.id]) > 0)
+        && (!categoria || x.p.categoria === categoria)
         && (!t || norm(`${x.nombre} ${x.marca}`).includes(t)));
-  }, [delProveedor, disponible, sucId, tope, q, cant]);
+  }, [delProveedor, disponible, sucId, tope, categoria, q, cant]);
 
   const conBulto = (x) => [x.nombre, bultoTexto(x.p, x.bulto)].filter(Boolean).join(' ');
   /** Cuánto haría falta para llegar al «menor a»: en bultos (o en la unidad, sin bulto). */
@@ -92,14 +119,13 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
     const n = aNumero(cant[x.id]);
     return `${conBulto(x)} — ${fmtN(n)} ${unidadPedido(x.p, x.bulto, n)}`;
   });
-  const mensaje = lineas.length ? [`Pedido - ${QUIEN_PIDE} - ${hoy()}`, '', ...lineas, '', CIERRE].join('\n') : '';
+  const armado = lineas.length ? [`Pedido - ${QUIEN_PIDE} - ${hoy()}`, '', ...lineas, '', CIERRE].join('\n') : '';
+  /** Lo que se ve, se copia, se manda y se anota. */
+  const mensaje = editado ? editado.texto : armado;
+  const listaCambio = !!editado && editado.base !== armado;
 
-  const cambiarProveedor = (v) => { setProvId(v); setCant({}); setOrden([]); setQ(''); };
-  const cambiarUmbral = (v) => {
-    setUmbral(v);
-    const n = aNumero(v);
-    if (n > 0) { try { localStorage.setItem(CLAVE_UMBRAL, String(n)); } catch { /* sin almacenamiento: se usa igual */ } }
-  };
+  const cambiarProveedor = (v) => { setProvId(v); setCant({}); setOrden([]); setQ(''); setCategoria(''); setEditado(null); };
+  const editar = (texto) => setEditado((e) => ({ texto, base: e?.base ?? armado }));
   /** Enteros (bultos, unidades, bolsas); kg con coma solo en el granel sin bolsa. */
   const cargar = (x, texto) => {
     const decimales = x.p.tipo === 'granel' && !(x.bulto > 1);
@@ -145,24 +171,37 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
     });
   };
 
+  /** Lo copiado o mandado pasa a ser el «pedido anterior» de este proveedor (pisa al que había). */
+  const guardarComoUltimo = () => {
+    const clave = `${proveedor.id}:${mensaje}`;
+    if (guardado.current === clave) return;
+    guardado.current = clave;
+    store.guardarUltimoPedido(proveedor.id, mensaje).then((r) => {
+      if (r.ok) return;
+      guardado.current = '';
+      toast(`No se guardó como último pedido: ${r.error}`, 'err');
+    });
+  };
   const copiarPedido = async () => {
-    if (await copiar(mensaje, 'el pedido')) anotar('Pedido copiado.');
+    if (await copiar(mensaje, 'el pedido')) { guardarComoUltimo(); anotar('Pedido copiado.'); }
   };
   const enviarWhatsApp = () => {
     // Se abre en el mismo clic (si no, el navegador lo toma como ventana emergente y la bloquea).
     window.open(`https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener');
+    guardarComoUltimo();
     anotar('WhatsApp abierto con el pedido.');
   };
 
   return (
     <ModalShell
       title="Orden de pedido"
-      subtitle="Lo que tiene menos stock que el número elegido, en el bulto en que se le compra al proveedor"
+      subtitle="Los productos del proveedor (o los que tienen menos stock que el número elegido), en el bulto en que se le compran"
       size="xl"
       onClose={closeModal}
       footer={[{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }]}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 16, flex: 1, overflow: 'hidden' }}>
+      {/* En pantalla grande la lista scrollea sola y el pedido queda al costado; en una chica va todo junto, uno abajo del otro. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 16, flex: 1, minHeight: 0, overflow: isDesktop ? 'hidden' : 'auto' }}>
         <div className={s.toolbar}>
           <select id="orden-proveedor" className={s['select-inline']} value={provId} onChange={(e) => cambiarProveedor(e.target.value)} aria-label="Proveedor">
             <option value="">Elegí el proveedor…</option>
@@ -174,21 +213,31 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
           <label className={s.hint} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
             Stock menor a
             <input
-              id="orden-umbral" inputMode="decimal" value={umbral} onChange={(e) => cambiarUmbral(e.target.value.replace(/[^\d.,]/g, ''))}
-              style={{ width: 70, textAlign: 'right' }}
+              id="orden-umbral" inputMode="decimal" value={umbral} onChange={(e) => setUmbral(e.target.value.replace(/[^\d.,]/g, ''))}
+              placeholder="Todos" style={{ width: 70, textAlign: 'right' }}
             />
           </label>
+          <select id="orden-categoria" className={s['select-inline']} value={categoria} onChange={(e) => setCategoria(e.target.value)} aria-label="Categoría" disabled={!categorias.length}>
+            <option value="">Todas las categorías</option>
+            {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
           <input id="orden-buscar" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto o marca…" style={{ minWidth: 200 }} />
         </div>
 
         {!proveedor ? (
           <div className={cx(s.callout, s.info)}>Elegí el proveedor para ver qué le falta pedir.</div>
         ) : (
-          <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0, flexWrap: 'wrap' }}>
-            <div style={{ flex: '2 1 520px', minHeight: 0, overflow: 'auto' }}>
+          <div style={isDesktop
+            ? { display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)', gridTemplateRows: 'minmax(0, 1fr)', gap: 16, flex: 1, minHeight: 0 }
+            : { display: 'flex', flexDirection: 'column', gap: 16 }}
+          >
+            <div style={isDesktop ? { overflow: 'auto', minHeight: 0 } : undefined}>
               <table className={s.table} style={{ width: '100%' }}>
                 <thead>
-                  <tr><th>Producto</th><th className={s.num}>Stock</th><th className={s.num}>Sugerido</th><th className={s.num}>A pedir</th></tr>
+                  <tr>
+                    <th style={TH_FIJO}>Producto</th><th className={s.num} style={TH_FIJO}>A pedir</th>
+                    <th className={s.num} style={TH_FIJO}>Stock</th><th className={s.num} style={TH_FIJO}>Sugerido</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {filas.map((x) => {
@@ -204,14 +253,6 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                             <Btn small onClick={() => copiar(conBulto(x)).then((ok) => ok && toast(`Copiado: ${conBulto(x)}`, 'ok'))} title="Copiar nombre y bulto">📋</Btn>
                           </div>
                         </td>
-                        <td className={cx(s.num, s.mono)} style={{ color: x.stock <= 0 ? 'var(--crm-color-danger)' : undefined }}>
-                          {fmtN(x.stock)} {x.p.tipo === 'granel' ? 'kg' : 'u.'}
-                        </td>
-                        <td className={s.num}>
-                          {sug > 0 && (
-                            <Btn small onClick={() => cargar(x, String(sug))} title="Usar la sugerencia">{sug} {unidadPedido(x.p, x.bulto, sug)}</Btn>
-                          )}
-                        </td>
                         <td className={s.num} style={{ whiteSpace: 'nowrap' }}>
                           <input
                             ref={(el) => { inputs.current[x.id] = el; }}
@@ -226,27 +267,71 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                           />
                           <span className={s.hint} style={{ margin: '0 0 0 4px' }}>{uni}</span>
                         </td>
+                        <td className={cx(s.num, s.mono)} style={{ color: x.stock <= 0 ? 'var(--crm-color-danger)' : undefined }}>
+                          {fmtN(x.stock)} {x.p.tipo === 'granel' ? 'kg' : 'u.'}
+                        </td>
+                        <td className={s.num}>
+                          {sug > 0 && (
+                            <Btn small onClick={() => cargar(x, String(sug))} title="Usar la sugerencia">{sug} {unidadPedido(x.p, x.bulto, sug)}</Btn>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
                   {filas.length === 0 && (
                     <tr><td colSpan={4} className={s.hint}>
-                      {delProveedor.length ? `Ningún producto de ${proveedor.nombre} tiene menos de ${umbral} en ${sucursal?.nombre ?? 'esa sucursal'}.` : `${proveedor.nombre} no tiene productos activos cargados.`}
+                      {!delProveedor.length
+                        ? `${proveedor.nombre} no tiene productos activos cargados.`
+                        : tope > 0
+                          ? `Ningún producto de ${proveedor.nombre} con esos filtros tiene menos de ${umbral} en ${sucursal?.nombre ?? 'esa sucursal'}.`
+                          : 'Ningún producto con esos filtros.'}
                     </td></tr>
                   )}
                 </tbody>
               </table>
             </div>
 
-            <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
-              <div className={s['section-title']} style={{ margin: 0 }}>Pedido ({lineas.length} {lineas.length === 1 ? 'renglón' : 'renglones'})</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <div className={s['section-title']} style={{ margin: 0, flex: 1 }}>Pedido ({lineas.length} {lineas.length === 1 ? 'renglón' : 'renglones'})</div>
+                {pedidoAnterior && (
+                  <Btn small variant={verAnterior ? 'btn-primary' : undefined} onClick={() => setVerAnterior((v) => !v)}>
+                    {verAnterior ? 'Ocultar pedido anterior' : 'Ver pedido anterior'}
+                  </Btn>
+                )}
+              </div>
+              {pedidoAnterior && verAnterior && (
+                <div className={cx(s.callout, s.info)} style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <strong style={{ flex: 1 }}>
+                      Pedido anterior · {new Date(pedidoAnterior.fecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      {pedidoAnterior.usuario ? ` · ${pedidoAnterior.usuario}` : ''}
+                    </strong>
+                    <Btn small onClick={() => copiar(pedidoAnterior.texto, 'el pedido anterior').then((ok) => ok && toast('Pedido anterior copiado.', 'ok'))}>📋 Copiar</Btn>
+                  </div>
+                  <pre id="orden-anterior" style={{ margin: 0, maxHeight: 180, overflow: 'auto', whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 12.5, lineHeight: 1.45, color: 'var(--crm-color-text)' }}>
+                    {pedidoAnterior.texto}
+                  </pre>
+                </div>
+              )}
               <textarea
-                id="orden-mensaje" readOnly value={mensaje} placeholder="Cargá cantidades en «A pedir» y el pedido se arma acá, renglón por renglón."
+                id="orden-mensaje" value={mensaje} onChange={(e) => editar(e.target.value)}
+                placeholder="Cargá cantidades en «A pedir» y el pedido se arma acá, renglón por renglón. También lo podés escribir o retocar a mano."
                 style={{ flex: 1, minHeight: 220, resize: 'none', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.5 }}
               />
+              {editado && (
+                <div className={cx(s.callout, listaCambio ? s.warn : s.info)} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ flex: 1, minWidth: 180 }}>
+                    {listaCambio
+                      ? 'Cambiaste cantidades después de editar el mensaje: lo editado no las tiene.'
+                      : 'Mensaje editado a mano: se copia y se manda así.'}
+                  </span>
+                  <Btn small onClick={() => setEditado(null)}>Volver a armarlo desde la lista</Btn>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <Btn variant="btn-primary" onClick={copiarPedido} disabled={!lineas.length}>📋 Copiar pedido</Btn>
-                <Btn onClick={enviarWhatsApp} disabled={!lineas.length || !telefono} title={telefono ? `Abre el chat con ${proveedor.nombre}` : ''}>
+                <Btn variant="btn-primary" onClick={copiarPedido} disabled={!mensaje.trim()}>📋 Copiar pedido</Btn>
+                <Btn onClick={enviarWhatsApp} disabled={!mensaje.trim() || !telefono} title={telefono ? `Abre el chat con ${proveedor.nombre}` : ''}>
                   Enviar por WhatsApp
                 </Btn>
               </div>

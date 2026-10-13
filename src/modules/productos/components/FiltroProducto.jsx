@@ -1,7 +1,9 @@
 /** El buscador y la marca de `useFiltroProducto`, para la barra de filtros. */
 import { s } from './ui.jsx';
 
-export function FiltroProductoControles({ f, id }) {
+/** `marcas`: la lista a ofrecer (por defecto, todas); la elegida queda aunque no esté. */
+export function FiltroProductoControles({ f, id, marcas = f.marcas }) {
+  const lista = f.marca && !marcas.includes(f.marca) ? [f.marca, ...marcas] : marcas;
   return (
     <>
       <input
@@ -10,7 +12,7 @@ export function FiltroProductoControles({ f, id }) {
       />
       <select id={`${id}-marca`} className={s['select-inline']} value={f.marca} onChange={(e) => f.setMarca(e.target.value)} aria-label="Marca">
         <option value="">Todas las marcas</option>
-        {f.marcas.map((m) => <option key={m} value={m}>{m}</option>)}
+        {lista.map((m) => <option key={m} value={m}>{m}</option>)}
       </select>
     </>
   );

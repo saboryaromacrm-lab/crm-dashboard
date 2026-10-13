@@ -1,8 +1,8 @@
 /**
  * EL NOMBRE DEL PROVEEDOR CON SU MENÚ (5/10/2026, pedido del dueño): clic en
- * el nombre de una tarjeta de Pedidos y se abren tres atajos — su stock, su
- * estado de cuenta y sus últimos ingresos — para decidir el pedido sin salir
- * de la pizarra. Los datos se piden recién al abrir cada ventana.
+ * el nombre de una tarjeta de Pedidos y se abren los atajos — su stock, su
+ * estado de cuenta, sus últimos ingresos y su WhatsApp (13/10) — para decidir
+ * el pedido sin salir de la pizarra. Los datos se piden recién al abrir cada ventana.
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -10,9 +10,11 @@ import { Menu, MenuItem, ListItemIcon, Typography, Divider } from '@mui/material
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
 import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { cx } from '@shared/utils/classNames.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
+import { telefonoWa } from '@modules/ventas/domain/constants.js';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { provApi } from '../services/proveedores.api.js';
@@ -23,8 +25,10 @@ const cant = (n, tipo) => `${Number(n).toLocaleString('es-AR', { maximumFraction
 const nroDe = (c) => `${TIPO[c.tipo] ?? c.tipo}${c.tipo === 'factura' ? ` ${c.letra}` : ''} ${c.puntoVenta}-${String(c.numero ?? 0).padStart(8, '0')}`;
 
 export function ProveedorMenu({ proveedorId, nombre }) {
-  const { openModal, goPanel, panels } = useProveedores();
+  const { openModal, goPanel, panels, getProveedor } = useProveedores();
   const [anchor, setAnchor] = useState(null);
+  /* El celular de la ficha en el formato de WhatsApp (el mismo que usa la orden de pedido): solo con el menú abierto. */
+  const whatsapp = anchor ? telefonoWa(getProveedor(proveedorId)?.telefono) : '';
   const cerrar = () => setAnchor(null);
   /* El estado de cuenta es otra sección: se ofrece solo si este usuario la tiene. */
   const veEdoc = (panels ?? []).some((p) => p.id === 'edoc');
@@ -71,6 +75,11 @@ export function ProveedorMenu({ proveedorId, nombre }) {
         <MenuItem onClick={ir(() => openModal('ingresosProveedor', { proveedorId, nombre }))}>
           <ListItemIcon><LocalShippingOutlinedIcon fontSize="small" /></ListItemIcon>
           Ver sus últimos ingresos
+        </MenuItem>
+        {/* Se abre en el mismo clic: si no, el navegador lo toma como ventana emergente y la bloquea. */}
+        <MenuItem disabled={!whatsapp} onClick={ir(() => window.open(`https://wa.me/${whatsapp}`, '_blank', 'noopener'))}>
+          <ListItemIcon><WhatsAppIcon fontSize="small" sx={{ color: '#25D366' }} /></ListItemIcon>
+          {whatsapp ? 'Ir a WhatsApp' : 'WhatsApp: sin celular en la ficha'}
         </MenuItem>
       </Menu>
     </>

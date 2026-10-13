@@ -37,9 +37,19 @@ import { HistorialPanel } from './HistorialPanel.jsx';
  * productos activos con 0 o menos disponible (no tienen fila de stock, por eso
  * se arman aparte); y «Crear orden de pedido» abre la lista para pedirle al
  * proveedor lo que está por debajo de un número.
+ *
+ * FILTROS QUE SE ACOMODAN SOLOS (13/10/2026, pedido del dueño): un solo filtro
+ * de stock (con / sin / los dos, con cuántos hay) y cada desplegable ofrece lo
+ * que tiene resultados con los demás filtros puestos. Todo sale de UNA pasada
+ * por las filas (ver `filtrar`).
  */
-/** El estado «Sin stock» del filtro: no es un estado de una fila, es la falta de ella. */
+/** El estado de las filas «sin stock»: no es un estado de una fila, es la falta de ella. */
 const SIN_STOCK = 'sin_stock';
+/** El filtro de stock: con (lo que hay; por defecto), sin (0 o menos disponible) o los dos. */
+const OPCIONES_STOCK = [['con', 'Con stock'], ['sin', 'Sin stock'], ['', 'Con y sin stock']];
+const cruza = (a, b) => { for (const x of a) if (b.has(x)) return true; return false; };
+const alfabetico = (a, b) => a.localeCompare(b, 'es');
+
 export function ExistenciasPanel() {
   const { store, openModal } = useProductos();
   const puedeAjustar = store.can('inventario');
@@ -50,12 +60,10 @@ export function ExistenciasPanel() {
   const [prodF, setProdF] = useState('');
   const [estadoF, setEstadoF] = useState('');
   const [provF, setProvF] = useState('');
-  /* Tipo y «solo con stock» (12/10/2026, pedido del dueño): el tipo acota la
-   * tabla y la lista de productos; el tilde deja en esa lista solo lo que tiene
-   * stock disponible (en la sucursal elegida, o en cualquiera). */
   const [tipoF, setTipoF] = useState('');
-  const [conStockF, setConStockF] = useState(false);
+  const [stockF, setStockF] = useState('con');
   const fp = useFiltroProducto(store);
+  const { marca: marcaF, coincideTexto } = fp;
   /* Desde Proveedores › Pedidos («Ver stock», 12/10/2026): `?ordenPedido=ID`
    * filtra por ese proveedor y abre su orden de pedido. El parámetro se saca
    * enseguida: volver atrás o recargar no la reabre. */
@@ -70,30 +78,19 @@ export function ExistenciasPanel() {
     setParams(resto, { replace: true });
   }, [params, setParams, openModal]);
   const { productos, stock, proveedores, sucursales } = store.state;
-  const delProveedor = useMemo(() => {
-    const ids = proveedoresDelFiltro(provF, proveedores);
-    return ids && new Set(productos.filter((p) => (p.formatosCompra || []).some((e) => ids.has(e.proveedorId))).map((p) => p.id));
-  }, [productos, proveedores, provF]);
   const proveedoresMerc = useMemo(
-    () => proveedores.filter((p) => p.proveeMercaderia).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+    () => proveedores.filter((p) => p.proveeMercaderia).sort((a, b) => alfabetico(a.nombre, b.nombre)),
     [proveedores],
   );
-  const sinStock = estadoF === SIN_STOCK;
-  const conDisponible = useMemo(() => {
-    if (!conStockF || sinStock) return null;
-    const suc = sucF ? parseInt(sucF, 10) : null;
-    return new Set(stock.filter((st) => st.estado === 'disponible' && st.cantidad > 1e-9 && (!suc || st.sucursalId === suc)).map((st) => st.productoId));
-  }, [conStockF, sinStock, stock, sucF]);
-  /** Si el producto pasa los filtros de producto (buscador, marca, proveedor, tipo y «solo con stock»). */
-  const pasaProducto = (id) => {
-    if (!fp.coincide(id) || (delProveedor && !delProveedor.has(id)) || (conDisponible && !conDisponible.has(id))) return false;
-    return !tipoF || store.getProducto(id)?.tipo === tipoF;
-  };
+  /* Por producto, una sola vez: tipo, marca y de qué proveedores es (sus formatos de compra). */
+  const infoProd = useMemo(() => new Map(productos.map((p) => [p.id, {
+    tipo: p.tipo, marca: p.marca || '', provs: new Set((p.formatosCompra || []).map((e) => e.proveedorId)),
+  }])), [productos]);
+  const conStock = useMemo(() => stock.filter((st) => st.cantidad > 1e-9), [stock]);
   /* Sin stock: producto activo × sucursal activa con 0 o menos disponible (en kg el granel, con sus paquetes). */
   const faltantes = useMemo(() => {
-    if (!sinStock) return [];
     const disponible = indiceDisponible(stock, productos);
-    const sucs = sucursales.filter((su) => su.activa !== false && (!sucF || su.id === parseInt(sucF, 10)));
+    const sucs = sucursales.filter((su) => su.activa !== false);
     const out = [];
     for (const p of productos) {
       if (p.estado !== 'activo') continue;
@@ -103,7 +100,57 @@ export function ExistenciasPanel() {
       }
     }
     return out;
-  }, [sinStock, stock, productos, sucursales, sucF]);
+  }, [stock, productos, sucursales]);
+  const provIds = useMemo(() => proveedoresDelFiltro(provF, proveedores), [provF, proveedores]);
+
+  /*
+   * UNA PASADA para la tabla y para todos los desplegables. Cada fila anota el
+   * filtro que la deja afuera: si no la deja afuera ninguno, va a la tabla; si
+   * la deja afuera UNO solo, igual cuenta para las opciones de ESE filtro. Así
+   * cada desplegable ofrece lo que hay con todos los demás filtros puestos.
+   */
+  const filtrar = useMemo(() => {
+    const suc = sucF ? Number(sucF) : null;
+    const prod = prodF ? Number(prodF) : null;
+    const pruebas = [
+      ['stock', (r) => !stockF || (stockF === 'sin') === (r.estado === SIN_STOCK)],
+      ['suc', (r) => !suc || r.sucursalId === suc],
+      ['prod', (r) => !prod || r.productoId === prod],
+      ['estado', (r) => !estadoF || r.estado === estadoF],
+      ['tipo', (r, i) => !tipoF || i?.tipo === tipoF],
+      ['prov', (r, i) => !provIds || (!!i && cruza(i.provs, provIds))],
+      ['marca', (r, i) => !marcaF || i?.marca === marcaF],
+      ['texto', (r) => coincideTexto(r.productoId)],
+    ];
+    const op = { stock: { con: 0, sin: 0 }, estado: new Map(), prod: new Set(), prov: new Set(), marca: new Set() };
+    const salen = [];
+    for (const lista of [conStock, faltantes]) {
+      for (const r of lista) {
+        const info = infoProd.get(r.productoId);
+        let falla = null;
+        let fallas = 0;
+        for (const [k, ok] of pruebas) {
+          if (ok(r, info)) continue;
+          falla = k;
+          if (++fallas > 1) break;
+        }
+        if (fallas > 1) continue;
+        if (!falla) salen.push(r);
+        const sin = r.estado === SIN_STOCK;
+        if (!falla || falla === 'stock') op.stock[sin ? 'sin' : 'con'] += 1;
+        if ((!falla || falla === 'estado') && !sin) op.estado.set(r.estado, (op.estado.get(r.estado) ?? 0) + 1);
+        if (!falla || falla === 'prod') op.prod.add(r.productoId);
+        if (info && (!falla || falla === 'prov')) for (const id of info.provs) op.prov.add(id);
+        if (info?.marca && (!falla || falla === 'marca')) op.marca.add(info.marca);
+      }
+    }
+    salen.sort((a, b) => a.productoId - b.productoId || a.sucursalId - b.sucursalId);
+    return { entradas: salen, op, marcas: [...op.marca].sort(alfabetico) };
+  }, [conStock, faltantes, infoProd, stockF, sucF, prodF, estadoF, tipoF, provIds, marcaF, coincideTexto]);
+  const { entradas, op } = filtrar;
+  const provsVisibles = proveedoresMerc.filter((p) => op.prov.has(p.id) || String(p.id) === provF);
+  const cambiarStock = (v) => { setStockF(v); if (v === 'sin') setEstadoF(''); };
+
   /* La FOTO y la PELÍCULA como pestañas de la misma pantalla (27/8, pedido del
    * dueño). `movsPreset.k` cuenta los clics en "Movs." y va en la key del
    * historial embebido: sin remount, los useState del filtro no releerían el
@@ -115,16 +162,7 @@ export function ExistenciasPanel() {
     setTab('movs');
   };
 
-  const entradas = (sinStock ? faltantes : stock.filter((st) => st.cantidad > 1e-9))
-    .filter((st) => {
-      if (sucF && st.sucursalId !== parseInt(sucF, 10)) return false;
-      if (prodF && st.productoId !== parseInt(prodF, 10)) return false;
-      if (estadoF && !sinStock && st.estado !== estadoF) return false;
-      return pasaProducto(st.productoId);
-    })
-    .sort((a, b) => a.productoId - b.productoId || a.sucursalId - b.sucursalId);
-
-  const pag = usePaginado(entradas, 'existencias', `${sucF}|${prodF}|${estadoF}|${provF}|${tipoF}|${conStockF}|${fp.clave}`);
+  const pag = usePaginado(entradas, 'existencias', `${sucF}|${prodF}|${estadoF}|${provF}|${tipoF}|${stockF}|${fp.clave}`);
 
   const filas = pag.visibles.map((st) => {
       const p = store.getProducto(st.productoId), su = store.getSucursal(st.sucursalId);
@@ -191,11 +229,11 @@ export function ExistenciasPanel() {
       ) : (
         <>
           <div className={s.toolbar}>
-            <FiltroProductoControles f={fp} id="exist" />
+            <FiltroProductoControles f={fp} id="exist" marcas={filtrar.marcas} />
             <select id="exist-proveedor" className={s['select-inline']} value={provF} onChange={(e) => setProvF(e.target.value)} aria-label="Proveedor">
               <option value="">Todos los proveedores</option>
-              <OpcionLocales proveedores={proveedoresMerc} />
-              {proveedoresMerc.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              <OpcionLocales proveedores={provsVisibles} />
+              {provsVisibles.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
             <select className={s['select-inline']} value={sucF} onChange={(e) => setSucF(e.target.value)}>
               <option value="">Todas las sucursales</option>
@@ -203,21 +241,26 @@ export function ExistenciasPanel() {
             </select>
             <select className={s['select-inline']} value={prodF} onChange={(e) => setProdF(e.target.value)}>
               <option value="">Todos los productos</option>
-              {productoOptions(store, false, null, (p) => String(p.id) === prodF || pasaProducto(p.id))}
+              {productoOptions(store, false, null, (p) => String(p.id) === prodF || op.prod.has(p.id))}
             </select>
             <select id="exist-tipo" className={s['select-inline']} value={tipoF} onChange={(e) => setTipoF(e.target.value)} aria-label="Tipo">
               <option value="">Enteros y granel</option>
               <option value="entero">Solo enteros</option>
               <option value="granel">Solo granel</option>
             </select>
-            <label className={s.hint} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, opacity: sinStock ? 0.5 : 1 }} title={sinStock ? 'No aplica con «Sin stock»' : 'La lista de productos muestra solo los que tienen stock disponible'}>
-              <input id="exist-con-stock" type="checkbox" checked={conStockF && !sinStock} disabled={sinStock} onChange={(e) => setConStockF(e.target.checked)} />
-              Solo con stock
-            </label>
-            <select className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)}>
+            <select id="exist-stock" className={s['select-inline']} value={stockF} onChange={(e) => cambiarStock(e.target.value)} aria-label="Stock" title="Sin stock: 0 o menos disponible">
+              {OPCIONES_STOCK.map(([v, label]) => (
+                <option key={v} value={v}>{label} ({v ? op.stock[v] : op.stock.con + op.stock.sin})</option>
+              ))}
+            </select>
+            <select
+              id="exist-estado" className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)} aria-label="Estado"
+              disabled={stockF === 'sin'} title={stockF === 'sin' ? 'Lo que no tiene stock no tiene estado' : undefined}
+            >
               <option value="">Todos los estados</option>
-              {Object.keys(ESTADOS_STOCK).map((k) => <option key={k} value={k}>{ESTADOS_STOCK[k].label}</option>)}
-              <option value={SIN_STOCK}>Sin stock (0 o menos)</option>
+              {Object.keys(ESTADOS_STOCK).filter((k) => op.estado.has(k) || k === estadoF).map((k) => (
+                <option key={k} value={k}>{ESTADOS_STOCK[k].label} ({op.estado.get(k) ?? 0})</option>
+              ))}
             </select>
           </div>
           <Table
@@ -226,7 +269,7 @@ export function ExistenciasPanel() {
               { h: 'Estado' }, { h: 'Cantidad', num: true }, { h: 'Valor', num: true },
               { h: '', cls: 'actions-col' },
             ]}
-            empty={sinStock ? 'Ningún producto sin stock con esos filtros.' : 'Sin existencias con esos filtros.'}
+            empty={stockF === 'sin' ? 'Ningún producto sin stock con esos filtros.' : 'Sin existencias con esos filtros.'}
             pag={pag}
           >
             {filas}

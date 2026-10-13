@@ -19,26 +19,33 @@ export function useFiltroProducto(store) {
     [productos],
   );
 
-  /** `coincide(productoId, nombre)`: el nombre es el del renglón, por si el producto ya no está en el catálogo. */
-  const coincide = useMemo(() => {
+  const porId = useMemo(() => new Map(productos.map((p) => [p.id, p])), [productos]);
+
+  /** `coincideTexto(productoId, nombre)`: solo la búsqueda. El nombre es el del renglón, por si el producto ya no está en el catálogo. */
+  const coincideTexto = useMemo(() => {
     const ql = norm(q);
     const qCod = q.trim();
-    if (!ql && !marca) return () => true;
-    const porId = new Map(productos.map((p) => [p.id, p]));
+    if (!ql) return () => true;
     const memo = new Map();
     return (productoId, nombre) => {
       if (memo.has(productoId)) return memo.get(productoId);
       const p = porId.get(productoId);
-      const ok = (!marca || p?.marca === marca) && (!ql || (p
+      const ok = p
         ? norm(p.nombre).includes(ql) || norm(p.marca).includes(ql)
           || (p.codigoPropio || '').includes(qCod) || (p.codigoBarras || '').includes(qCod)
           // El código de un fraccionado: cada tamaño lleva su etiqueta.
           || (p.presentaciones || []).some((pr) => pr.codigoBarras && pr.codigoBarras.includes(qCod))
-        : norm(nombre).includes(ql)));
+        : norm(nombre).includes(ql);
       memo.set(productoId, ok);
       return ok;
     };
-  }, [q, marca, productos]);
+  }, [q, porId]);
 
-  return { q, setQ, marca, setMarca, marcas, coincide, clave: `${q}|${marca}` };
+  /** `coincide(productoId, nombre)`: búsqueda y marca. */
+  const coincide = useMemo(
+    () => (marca ? (productoId, nombre) => porId.get(productoId)?.marca === marca && coincideTexto(productoId, nombre) : coincideTexto),
+    [marca, porId, coincideTexto],
+  );
+
+  return { q, setQ, marca, setMarca, marcas, coincide, coincideTexto, clave: `${q}|${marca}` };
 }

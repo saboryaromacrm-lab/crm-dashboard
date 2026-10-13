@@ -1064,6 +1064,9 @@ const resolverIncidencia = (id, resolucion, contado) => _mutate(() => httpClient
 const anotarPedidoProveedor = (pedidoId, proveedorId, notas) => _directo(() => (pedidoId
   ? httpClient.patch(`/pedidos-proveedor/${pedidoId}`, { notas })
   : httpClient.post('/pedidos-proveedor/directo', { proveedorId, notas })));
+/** El último pedido copiado o mandado a un proveedor desde la orden de pedido (0165): uno solo, el nuevo pisa al anterior. */
+const ultimoPedido = (proveedorId) => _directo(() => httpClient.get(`/orden-pedido/ultimo/${proveedorId}`));
+const guardarUltimoPedido = (proveedorId, texto) => _directo(() => httpClient.put(`/orden-pedido/ultimo/${proveedorId}`, { texto }));
 /*
  * BAJOS EN STOCK (12/10/2026). La venta de 30 días por producto y la regla
  * vienen de la API; el stock y los productos ya están acá. `datosBajos` pide
@@ -1531,7 +1534,7 @@ export const inventoryStore = {
   editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
   historialFraccionamientos, exportarFraccionamientos,
   operadoresFraccion, crearOperadorFraccion, editarOperadorFraccion,
-  crearIncidencia, avanzarIncidencia, resolverIncidencia, cerrarIncidenciasAnteriores, anotarPedidoProveedor,
+  crearIncidencia, avanzarIncidencia, resolverIncidencia, cerrarIncidenciasAnteriores, anotarPedidoProveedor, ultimoPedido, guardarUltimoPedido,
   datosBajos, refrescarBajos, analisisBajos, bajosRojos, guardarStockMinimo,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto, cambiarControlStock,
   sugerenciasArchivado, archivarLote,
