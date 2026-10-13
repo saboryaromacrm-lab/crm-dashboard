@@ -32,15 +32,16 @@ const hoy = () => new Date().toLocaleDateString('es-AR');
 const QUIEN_PIDE = 'Lorenzo Lucas - 23356782429';
 const CIERRE = 'Por favor confirmar recibido.';
 
-export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: sucInicial = null }) {
+/** `sugeridos`: { productoId: cantidad } — lo que manda Bajos en stock, ya cargado y en ese orden. */
+export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: sucInicial = null, sugeridos = null }) {
   const { store, closeModal, toast, sucOperativa } = useProductos();
   const [provId, setProvId] = useState(provInicial ? String(provInicial) : '');
   const [sucId, setSucId] = useState(String(sucInicial || sucOperativa() || ''));
   const [umbral, setUmbral] = useState(() => String(leerUmbral()));
   const [q, setQ] = useState('');
   /** productoId → lo tecleado; `orden`: los productos en el orden en que se cargaron (así sale el mensaje). */
-  const [cant, setCant] = useState({});
-  const [orden, setOrden] = useState([]);
+  const [cant, setCant] = useState(() => Object.fromEntries(Object.entries(sugeridos ?? {}).map(([id, n]) => [id, String(n)])));
+  const [orden, setOrden] = useState(() => Object.keys(sugeridos ?? {}).map(Number));
   /** La tarjeta de Proveedores › Pedidos de esta orden: { id, provId, notas }. */
   const anotado = useRef(null);
   const [anotadoVisto, setAnotadoVisto] = useState(false);

@@ -68,14 +68,16 @@ export function indiceDisponible(stock, productos) {
     if (p.tipo === 'granel') for (const pr of p.presentaciones || []) kgPaquete.set(pr.id, Number(pr.tamKg) || 0);
   }
   const m = new Map();
+  const sumar = (k, q) => m.set(k, (m.get(k) ?? 0) + q);
   for (const st of stock) {
     if (st.estado !== 'disponible') continue;
     const q = st.presentacionId ? st.cantidad * (kgPaquete.get(st.presentacionId) ?? 0) : st.cantidad;
     if (!q) continue;
-    const k = `${st.productoId}:${st.sucursalId}`;
-    m.set(k, (m.get(k) ?? 0) + q);
+    sumar(`${st.productoId}:${st.sucursalId}`, q);
+    sumar(`${st.productoId}:*`, q);
   }
-  return (productoId, sucursalId) => Math.round((m.get(`${productoId}:${sucursalId}`) ?? 0) * 1000) / 1000;
+  /** `sucursalId` null = la suma de todas las sucursales. */
+  return (productoId, sucursalId) => Math.round((m.get(`${productoId}:${sucursalId ?? '*'}`) ?? 0) * 1000) / 1000;
 }
 
 /*

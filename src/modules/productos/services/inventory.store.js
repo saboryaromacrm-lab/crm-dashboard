@@ -15,6 +15,8 @@
 import { httpClient, HttpError } from '@core/services/httpClient.js';
 import { leerClave, escribirClave, leerSesion } from '@core/auth/sesion.js';
 import { num, fmtTam } from '../domain/format.js';
+import { analizarBajos } from '../domain/bajosStock.js';
+import { bultoDelProveedor, indiceDisponible } from '../domain/bulto.js';
 
 const CTX_KEY = 'crm_inv_ctx';
 
@@ -62,6 +64,8 @@ function nuevoEstado() {
     lecturasPendientes: 0,
     // Lo que apura del vigía de fechas (vencidos sin procesar + vence en ≤7 días).
     vencimientosUrgentes: 0,
+    // Bajos en stock de la Distribuidora (venta de 30 días + regla), para el globito; ver `refrescarBajos`.
+    bajos: null,
     ctx: _loadCtx(),
   };
 }
@@ -1060,6 +1064,53 @@ const resolverIncidencia = (id, resolucion, contado) => _mutate(() => httpClient
 const anotarPedidoProveedor = (pedidoId, proveedorId, notas) => _directo(() => (pedidoId
   ? httpClient.patch(`/pedidos-proveedor/${pedidoId}`, { notas })
   : httpClient.post('/pedidos-proveedor/directo', { proveedorId, notas })));
+/*
+ * BAJOS EN STOCK (12/10/2026). La venta de 30 días por producto y la regla
+ * vienen de la API; el stock y los productos ya están acá. `datosBajos` pide
+ * otra sucursal (o 'todas'); `refrescarBajos` guarda la de la Distribuidora
+ * para el globito del menú, y no repregunta antes de 5 minutos salvo que se
+ * fuerce. `analisisBajos` es la MISMA cuenta para la sección y el globito.
+ */
+const datosBajos = (sucursalId) => _directo(() => httpClient.get('/bajos-stock' + (sucursalId ? `?sucursalId=${sucursalId}` : '')));
+let _bajosEn = 0;
+async function refrescarBajos(forzar = false) {
+  if (!forzar && state.bajos && Date.now() - _bajosEn < 5 * 60_000) return state.bajos;
+  const r = await datosBajos();
+  if (r.ok) { state.bajos = r.data; _bajosEn = Date.now(); emit(); }
+  return state.bajos;
+}
+/* La cuenta se recuerda por juego de datos (la Distribuidora del globito y la sucursal que mire la
+ * sección), y vale mientras el stock y el catálogo sean los mismos. */
+const _bajosMemo = new WeakMap();
+function analisisBajos(datos, soloControlados = false, tipo = '') {
+  if (!datos) return { proveedores: [], rojos: 0 };
+  const vigentes = (_bajosMemo.get(datos) ?? []).filter((m) => m.stock === state.stock && m.productos === state.productos);
+  const hit = vigentes.find((m) => m.solo === soloControlados && m.tipo === tipo);
+  if (hit) return hit.valor;
+  const valor = analizarBajos({
+    productos: state.productos,
+    disponible: indiceDisponible(state.stock, state.productos),
+    datos,
+    proveedorDe: (p) => formatoActivo(p)?.proveedorId ?? null,
+    controla: (p) => !stockLibre(p),
+    bultoDe: bultoDelProveedor,
+    soloControlados,
+    tipo,
+  });
+  _bajosMemo.set(datos, [...vigentes, { stock: state.stock, productos: state.productos, solo: soloControlados, tipo, valor }]);
+  return valor;
+}
+/** Cuántos proveedores están en rojo en la Distribuidora (el globito). */
+const bajosRojos = () => (state.bajos ? analisisBajos(state.bajos).rojos : 0);
+/** El mínimo a mano de un producto (0 = automático). Se refleja en el catálogo sin recargar. */
+async function guardarStockMinimo(productoId, stockMin) {
+  const r = await _directo(() => httpClient.patch(`/bajos-stock/minimo/${productoId}`, { stockMin }));
+  if (r.ok) {
+    state.productos = state.productos.map((p) => (p.id === productoId ? { ...p, stockMin: r.data.stockMin } : p));
+    emit();
+  }
+  return r;
+}
 /** Cierra en bloque las ventas sin stock anteriores al control de su producto (0159). Sin sucursal: todas. */
 const cerrarIncidenciasAnteriores = (sucursalId) => _mutate(() => httpClient.post('/incidencias/cerrar-anteriores',
   sucursalId ? { sucursalId } : {}));
@@ -1481,6 +1532,7 @@ export const inventoryStore = {
   historialFraccionamientos, exportarFraccionamientos,
   operadoresFraccion, crearOperadorFraccion, editarOperadorFraccion,
   crearIncidencia, avanzarIncidencia, resolverIncidencia, cerrarIncidenciasAnteriores, anotarPedidoProveedor,
+  datosBajos, refrescarBajos, analisisBajos, bajosRojos, guardarStockMinimo,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto, cambiarControlStock,
   sugerenciasArchivado, archivarLote,
   guardarPresentaciones, importarCatalogo, importarCostos, importarFormatosVenta, importacionesPorProveedor, moverLista, usoLista, borrarListasVacias, importarCostosEnTanda, crearProveedorEnTanda, actualizarClasificacion,

@@ -14,7 +14,6 @@ import { EcheqsPanel } from '../panels/EcheqsPanel.jsx';
 import { EdocPanel } from '../panels/EdocPanel.jsx';
 import { PadronPanel } from '../panels/PadronPanel.jsx';
 import { CuentasDisponiblesPanel } from '../panels/CuentasDisponiblesPanel.jsx';
-import { StockProvisorioPanel } from '../panels/StockProvisorioPanel.jsx'; // TEMPORAL (0138)
 
 /** Los `id` coinciden con `PROVEEDORES_PANELS` (config). */
 const PANEL_COMPONENTS = {
@@ -24,7 +23,6 @@ const PANEL_COMPONENTS = {
   edoc: EdocPanel,
   cuentas: CuentasDisponiblesPanel,
   padron: PadronPanel,
-  stockprov: StockProvisorioPanel,
 };
 
 /** Shell del módulo Proveedores: misma estructura que Gastos y Ventas. */

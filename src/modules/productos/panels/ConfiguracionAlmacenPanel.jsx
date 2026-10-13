@@ -14,7 +14,7 @@ import { PanelHead, Btn, s } from '../components/ui.jsx';
  * Cambiarlas cambia cómo se mueve el stock de todo el negocio: se guarda con
  * una segunda confirmación y con candado de doble clic.
  */
-const LLAVES = ['permitirStockNegativo', 'controlStockGranel', 'controlStockEnteros'];
+const LLAVES = ['permitirStockNegativo', 'controlStockGranel', 'controlStockEnteros', 'bajosDiasCobertura', 'bajosUmbralRojo'];
 
 function Interruptor({ label, hint, checked, onChange, disabled }) {
   return (
@@ -122,6 +122,8 @@ export function ConfiguracionAlmacenPanel() {
         'permitirStockNegativo' in cambios && `${cambios.permitirStockNegativo ? 'PERMITIR' : 'NO PERMITIR'} vender sin stock`,
         'controlStockGranel' in cambios && `${cambios.controlStockGranel === false ? 'APAGAR' : 'PRENDER'} el control de stock a granel`,
         'controlStockEnteros' in cambios && `${cambios.controlStockEnteros === false ? 'APAGAR' : 'PRENDER'} el control de stock de los enteros`,
+        'bajosDiasCobertura' in cambios && `cubrir ${cambios.bajosDiasCobertura} días de venta en Bajos en stock`,
+        'bajosUmbralRojo' in cambios && `poner en rojo a un proveedor desde el ${cambios.bajosUmbralRojo}%`,
       ].filter(Boolean).join(' y ');
       toast(`Vas a ${que}. Tocá «Sí, guardar» para confirmar.`, 'ok');
       return;
@@ -187,6 +189,34 @@ export function ConfiguracionAlmacenPanel() {
             <AvisoControl tipo="entero" prendido={draft.controlStockEnteros !== false} antes={guardado.controlStockEnteros !== false} />
             <div className={s.hint} style={{ margin: 0 }}>
               Un producto puede tener su <strong>control propio</strong>, que manda sobre estas llaves: se elige en su ficha (Compras › Productos).
+            </div>
+          </div>
+        </div>
+      )}
+      {draft && (
+        <div className={cx(s.card, s.cardPad)}>
+          <div className={s['card-title']}>Bajos en stock</div>
+          <div className={s['form-grid']} style={{ marginTop: 'var(--crm-space-3)' }}>
+            <div className={s.field}>
+              <label htmlFor="cfg-bajos-dias">Días de venta a cubrir</label>
+              <input
+                id="cfg-bajos-dias" type="number" min="1" max="90" step="1" value={draft.bajosDiasCobertura ?? 7}
+                onChange={(e) => set('bajosDiasCobertura')(Math.min(90, Math.max(1, Math.round(Number(e.target.value) || 1))))}
+              />
+              <div className={s.hint} style={{ margin: '4px 0 0' }}>
+                El mínimo automático de cada producto: lo que vende por día (últimos 30 días) por estos días.
+                Un producto con mínimo cargado a mano usa el suyo.
+              </div>
+            </div>
+            <div className={s.field}>
+              <label htmlFor="cfg-bajos-rojo">Rojo desde (% de productos en falta)</label>
+              <input
+                id="cfg-bajos-rojo" type="number" min="5" max="100" step="5" value={draft.bajosUmbralRojo ?? 50}
+                onChange={(e) => set('bajosUmbralRojo')(Math.min(100, Math.max(5, Math.round(Number(e.target.value) || 5))))}
+              />
+              <div className={s.hint} style={{ margin: '4px 0 0' }}>
+                Un proveedor se pone en rojo cuando este % de sus productos está sin stock o bajo el mínimo; amarillo desde la mitad.
+              </div>
             </div>
           </div>
         </div>

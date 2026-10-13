@@ -45,6 +45,14 @@ const ORIGEN = {
 
 const FILTROS_VACIOS = { sucursalId: '', operadorId: '', categoriaId: '', tamKg: '', origen: '', turno: '' };
 const TURNOS = { manana: 'Mañana', tarde: 'Tarde' };
+/*
+ * PROMEDIO POR TURNO (12/10/2026, pedido del dueño): lo armado ÷ los turnos
+ * trabajados. Un turno trabajado es cada (sucursal, día, mañana/tarde) con
+ * algo fraccionado (las correcciones no cuentan); el de un operador, los turnos
+ * en que fraccionó él. Lo cuenta el servidor con los mismos filtros.
+ */
+const porTurno = (total, turnos, dec = 0) => (turnos > 0 ? num(total / turnos, dec) : '—');
+const RESALTADA = { background: 'var(--crm-color-primary-soft, rgba(22,101,52,.08))' };
 const soloDia = (v) => new Date(v).toLocaleDateString('es-AR');
 
 /** "10×500 g · 4×250 g"; la corrección que baja paquetes va con signo. */
@@ -225,26 +233,35 @@ export function TabHistorial({ puede }) {
         <Stat label="Registros" value={t ? num(t.registros, 0) : '—'} />
         <Stat label={f.tamKg ? `Paquetes de ${fmtTam(Number(f.tamKg))}` : 'Paquetes armados'} value={t ? num(t.paquetes, 0) : '—'} />
         <Stat label="Kg fraccionados" value={t ? num(t.kg, 3) : '—'} />
+        <Stat label="Turnos trabajados" value={t ? num(t.turnos ?? 0, 0) : '—'} />
+        <Stat label="Promedio por turno" value={t ? `${porTurno(t.paquetes, t.turnos)} paq. · ${porTurno(t.kg, t.turnos, 1)} kg` : '—'} />
         {t?.correcciones > 0 && <Stat label="Correcciones" value={num(t.correcciones, 0)} accent="accent-amber" />}
         {t?.sinOperador > 0 && <Stat label="Sin operador" value={num(t.sinOperador, 0)} />}
       </div>
 
-      {data && (data.porOperador.length > 1 || data.porGramaje.length > 1) && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--crm-space-4)' }}>
+      {data && data.total > 0 && (
+        /* Por operador a todo el ancho (es la más ancha); gramaje y turno, lado a lado debajo. */
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 440px), 1fr))', gap: 'var(--crm-space-4)' }}>
           {data.porOperador.length > 0 && (
-            <div>
+            <div style={{ gridColumn: '1 / -1' }}>
               <h3 className={s['card-title']} style={{ marginTop: 0 }}>Por operador</h3>
-              <Table cols={[{ h: 'Operador' }, { h: 'Registros', num: true }, { h: 'Paquetes', num: true }, { h: 'Kg', num: true }]}>
+              <Table cols={[
+                { h: 'Operador' }, { h: 'Registros', num: true }, { h: 'Paquetes', num: true }, { h: 'Kg', num: true },
+                { h: 'Turnos', num: true }, { h: 'Paq./turno', num: true }, { h: 'Kg/turno', num: true },
+              ]}>
                 {data.porOperador.map((o) => {
                   const id = o.operadorId == null ? 'sin' : String(o.operadorId);
                   return (
                     <tr key={id} className={s.clickable} title="Filtrar por este operador"
                       onClick={() => setFiltro('operadorId', id)}
-                      style={f.operadorId === id ? { background: 'var(--crm-color-primary-soft, rgba(22,101,52,.08))' } : undefined}>
+                      style={f.operadorId === id ? RESALTADA : undefined}>
                       <td>{o.operadorId == null ? <span className={s.muted}>Sin operador</span> : o.nombre}</td>
                       <td className={cx(s.num, s.mono)}>{num(o.registros, 0)}</td>
                       <td className={cx(s.num, s.mono)}>{num(o.paquetes, 0)}</td>
                       <td className={cx(s.num, s.mono)}>{num(o.kg, 3)}</td>
+                      <td className={cx(s.num, s.mono)}>{num(o.turnos ?? 0, 0)}</td>
+                      <td className={cx(s.num, s.mono)}><strong>{porTurno(o.paquetes, o.turnos)}</strong></td>
+                      <td className={cx(s.num, s.mono)}>{porTurno(o.kg, o.turnos, 1)}</td>
                     </tr>
                   );
                 })}
@@ -254,14 +271,37 @@ export function TabHistorial({ puede }) {
           {data.porGramaje.length > 0 && (
             <div>
               <h3 className={s['card-title']} style={{ marginTop: 0 }}>Por gramaje</h3>
-              <Table cols={[{ h: 'Gramaje' }, { h: 'Registros', num: true }, { h: 'Paquetes', num: true }]}>
+              <Table cols={[{ h: 'Gramaje' }, { h: 'Registros', num: true }, { h: 'Paquetes', num: true }, { h: 'Paq./turno', num: true }]}>
                 {data.porGramaje.map((g) => (
                   <tr key={g.tamKg} className={s.clickable} title="Filtrar por este gramaje"
                     onClick={() => setFiltro('tamKg', String(g.tamKg))}
-                    style={f.tamKg === String(g.tamKg) ? { background: 'var(--crm-color-primary-soft, rgba(22,101,52,.08))' } : undefined}>
+                    style={f.tamKg === String(g.tamKg) ? RESALTADA : undefined}>
                     <td>{fmtTam(g.tamKg)}</td>
                     <td className={cx(s.num, s.mono)}>{num(g.registros, 0)}</td>
                     <td className={cx(s.num, s.mono)}>{num(g.paquetes, 0)}</td>
+                    <td className={cx(s.num, s.mono)}><strong>{porTurno(g.paquetes, t?.turnos)}</strong></td>
+                  </tr>
+                ))}
+              </Table>
+            </div>
+          )}
+          {data.porTurno?.length > 0 && (
+            <div>
+              <h3 className={s['card-title']} style={{ marginTop: 0 }}>Por turno</h3>
+              <Table cols={[
+                { h: 'Turno' }, { h: 'Turnos', num: true }, { h: 'Paquetes', num: true }, { h: 'Kg', num: true },
+                { h: 'Paq./turno', num: true }, { h: 'Kg/turno', num: true },
+              ]}>
+                {data.porTurno.map((x) => (
+                  <tr key={x.turno} className={s.clickable} title="Filtrar por este turno"
+                    onClick={() => setFiltro('turno', x.turno)}
+                    style={f.turno === x.turno ? RESALTADA : undefined}>
+                    <td>{TURNOS[x.turno] || x.turno}</td>
+                    <td className={cx(s.num, s.mono)}>{num(x.turnos, 0)}</td>
+                    <td className={cx(s.num, s.mono)}>{num(x.paquetes, 0)}</td>
+                    <td className={cx(s.num, s.mono)}>{num(x.kg, 3)}</td>
+                    <td className={cx(s.num, s.mono)}><strong>{porTurno(x.paquetes, x.turnos)}</strong></td>
+                    <td className={cx(s.num, s.mono)}>{porTurno(x.kg, x.turnos, 1)}</td>
                   </tr>
                 ))}
               </Table>

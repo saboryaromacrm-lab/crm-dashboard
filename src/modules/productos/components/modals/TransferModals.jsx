@@ -20,7 +20,6 @@ import { LISTAS_PREP, GRUPOS_PEDIDO, listaDeProducto, puedeMandar, disponibleTot
 import { ExplorarProductosModal } from './ExplorarProductosModal.jsx';
 import { SelectorOperador, useOperadoresFraccion } from '../OperadorFraccion.jsx';
 import { bultoDe } from '../../domain/bulto.js';
-import { StockGranelOjo } from '../StockGranelOjo.jsx'; // TEMPORAL: se va con el stock provisorio
 
 /* ---------------- Preparación: helpers compartidos ---------------- */
 
@@ -842,11 +841,6 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
               como se arma el pedido semanal mirando la góndola. */}
           <Btn variant="btn-edit" onClick={() => setExplorando(true)}>Buscar en el catálogo</Btn>
         </div>
-
-        {/* El stock a granel contado a ojo en el depósito, para pedir mirándolo (5/10/2026). */}
-        {grupo === 'granel' && (
-          <StockGranelOjo store={store} toast={toast} onAgregar={(p, kg) => agregar(p, '', kg, { limpiar: false })} />
-        )}
 
         {resultados.length > 0 && (
           <div className={s.card} style={{ padding: 0, margin: 0, overflow: 'hidden' }}>

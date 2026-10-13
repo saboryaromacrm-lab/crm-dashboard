@@ -88,6 +88,7 @@ export function ProductoFormModal({ prodId }) {
     codigoBarras: prod?.codigoBarras || '',
     dun: prod?.dun || '',
     unidadesPorBulto: prod?.unidadesPorBulto != null ? String(prod.unidadesPorBulto) : '1',
+    stockMin: Number(prod?.stockMin) > 0 ? String(prod.stockMin) : '',
     marcaId: prod?.marcaId ?? null,
     categoriaId: prod?.categoriaId ?? null,
     subcategoriaId: prod?.subcategoriaId ?? null,
@@ -191,6 +192,8 @@ export function ProductoFormModal({ prodId }) {
       codigoBarras: f.codigoBarras.trim(),
       dun: f.dun.trim(),
       unidadesPorBulto: Number(f.unidadesPorBulto) || 1,
+      /* Vacío = automático (Almacén › Bajos en stock lo calcula por la venta). */
+      stockMin: Math.max(0, Number(String(f.stockMin).replace(',', '.')) || 0),
       marcaId: f.marcaId,
       categoriaId: f.categoriaId,
       subcategoriaId: f.subcategoriaId,
@@ -475,6 +478,18 @@ export function ProductoFormModal({ prodId }) {
         <div className={s.hint}>
           El redondeo se aplica sobre el precio final con IVA. Dejalo heredado salvo que este
           producto necesite otra cosa.
+        </div>
+        <div className={s['form-grid']} style={{ marginTop: 10 }}>
+          <div className={s.field}>
+            <label htmlFor="prod-stock-min">Stock mínimo ({esGranel ? 'kg' : 'unidades'})</label>
+            <input
+              id="prod-stock-min" inputMode="decimal" placeholder="Automático"
+              value={f.stockMin} onChange={(e) => set('stockMin', e.target.value.replace(/[^\d.,]/g, ''))}
+            />
+          </div>
+        </div>
+        <div className={s.hint}>
+          Vacío = automático: Almacén › Bajos en stock lo calcula con lo que se vende. Cargalo solo si este producto necesita otro.
         </div>
         {esGranel && (
           <>

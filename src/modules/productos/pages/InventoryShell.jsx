@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Button, Snackbar, Alert } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
@@ -26,6 +26,7 @@ import { CafeteriaPanel } from '../panels/CafeteriaPanel.jsx';
 import { VencimientosPanel } from '../panels/VencimientosPanel.jsx';
 import { ConteosPanel } from '../panels/ConteosPanel.jsx';
 import { SinMovimientoPanel } from '../panels/SinMovimientoPanel.jsx';
+import { BajosStockPanel } from '../panels/BajosStockPanel.jsx';
 
 /**
  * Registro de paneles disponibles. Cada módulo elige cuáles muestra (config).
@@ -56,6 +57,7 @@ const PANEL_COMPONENTS = {
   // El físico contra el virtual (0066): sesiones de conteo por diferencia.
   conteos: ConteosPanel,
   'sin-movimiento': SinMovimientoPanel,
+  bajos: BajosStockPanel,
   // Las llaves de stock (3/10/2026): antes en Ventas › Configuración.
   configuracion: ConfiguracionAlmacenPanel,
 };
@@ -88,6 +90,8 @@ export function InventoryShell({ title, subtitle }) {
      * era el total de todas, y a Norte le sonaba por un pedido del Depósito.
      */
     pedidosCafe: pedidosCafeSinResolver,
+    // Proveedores en rojo en la Distribuidora (la venta se pide al entrar, y a lo sumo cada 5 min).
+    bajos: store.bajosRojos(),
     // Lo que apura del vigía de fechas: vencidos sin procesar + vencen en ≤7 días.
     vencimientos: store.state.vencimientosUrgentes || 0,
   };
@@ -98,9 +102,13 @@ export function InventoryShell({ title, subtitle }) {
   const visible = panels.some((x) => x.id === panel) ? panel : first;
   const ActivePanel = (visible && PANEL_COMPONENTS[visible]) || null;
 
+  /* El globito de Bajos en stock necesita la venta: se pide solo si el rol tiene la sección (cada 5 min a lo sumo). */
+  const veBajos = panels.some((x) => x.id === 'bajos');
+  useEffect(() => { if (veBajos && store.loaded) store.refrescarBajos(); }, [veBajos, store, store.loaded]);
+
   const onRefresh = async () => {
     setRefreshing(true);
-    try { await store.refetch(); toast('Datos actualizados.', 'ok'); }
+    try { await store.refetch(); if (veBajos) await store.refrescarBajos(true); toast('Datos actualizados.', 'ok'); }
     catch (e) { toast('No se pudo actualizar.', 'err'); }
     finally { setRefreshing(false); }
   };
