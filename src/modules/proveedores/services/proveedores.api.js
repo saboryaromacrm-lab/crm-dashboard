@@ -82,6 +82,8 @@ export const provApi = {
 
   /* Estado de cuenta */
   edoc: () => httpClient.get('/proveedores-edoc'),
+  /* Montos (14/10/2026): sin sucursal, la Distribuidora; 'todas' = todas. */
+  montos: ({ sucursalId, ventana }) => httpClient.get(`/proveedores-montos?${new URLSearchParams({ ...(sucursalId && { sucursalId }), ventana })}`),
   edocProveedor: (id) => httpClient.get(`/proveedores-edoc/${id}`),
   crearAjuste: (data) => httpClient.post('/proveedores-edoc/ajustes', data),
   // Borrar un ajuste pide el porqué: queda en Auditoría (27/9/2026).

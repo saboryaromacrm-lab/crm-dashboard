@@ -184,11 +184,12 @@ export function PanelHead({ title, desc, actions }) {
   );
 }
 
-export function Stat({ label, value, accent }) {
+export function Stat({ label, value, accent, nota }) {
   return (
     <div className={cx(styles.stat, accent && styles[accent])}>
       <div className={styles['stat-label']}>{label}</div>
       <div className={styles['stat-value']}>{value}</div>
+      {nota && <div className={styles['stat-nota']}>{nota}</div>}
     </div>
   );
 }

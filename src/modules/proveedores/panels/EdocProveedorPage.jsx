@@ -252,6 +252,12 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
             </div>
           )}
         </Di>
+        {d.totales.paraCoffit > EPS && (
+          <Di label="De eso, para Coffit (sin IVA)">
+            {money(d.totales.paraCoffit)}
+            <div className={s.hint} style={{ margin: 0 }}>ya está dentro de lo de arriba · Coffit te lo debe en su cuenta corriente</div>
+          </Di>
+        )}
         <Di label="Saldo"><Saldo valor={d.saldo}><strong>{money(d.saldo)}</strong></Saldo></Di>
       </div>
       {d.totales.gastos > EPS && (
@@ -386,6 +392,11 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
                 )}
                 {m.saldoDoc > EPS && (
                   <div className={s.hint} style={{ margin: 0 }}>Queda debiendo {money(m.saldoDoc)}</div>
+                )}
+                {m.paraCoffit > EPS && (
+                  <div className={s.hint} style={{ margin: 0 }} title="El proveedor cobra la factura entera. Esta parte se la carga a Coffit en su cuenta corriente (Almacén › Coffit).">
+                    ☕ {m.kind.startsWith('nc') ? 'Descuenta' : 'Incluye'} {money(m.paraCoffit)} sin IVA {m.kind.startsWith('nc') ? 'de lo de' : 'para'} Coffit
+                  </div>
                 )}
               </td>
               <td className={s.num}>{m.debe > 0 ? money(m.debe) : ''}</td>

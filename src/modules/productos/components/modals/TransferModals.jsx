@@ -16,7 +16,7 @@ import { leerSesion } from '@core/auth/sesion.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions, sucursalOptionsOtras, presentacionOptions, usuarioOptions } from '../selectOptions.jsx';
 import { Table, TransferPill, Btn, s } from '../ui.jsx';
-import { LISTAS_PREP, GRUPOS_PEDIDO, listaDeProducto, puedeMandar, disponibleTotal } from '../../domain/pedido.js';
+import { LISTAS_PREP, GRUPOS_PEDIDO, listaDeProducto, puedeMandar, disponibleTotal, hayParaMandar } from '../../domain/pedido.js';
 import { ExplorarProductosModal } from './ExplorarProductosModal.jsx';
 import { SelectorOperador, useOperadoresFraccion } from '../OperadorFraccion.jsx';
 import { bultoDe } from '../../domain/bulto.js';
@@ -200,6 +200,8 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
   const [items, setItems] = useState([]);
   const [q, setQ] = useState('');
   const [soloSinStock, setSoloSinStock] = useState(false);
+  /** Solo lo que la sucursal a la que se le pide puede mandar (14/10/2026): no pedir lo que no hay. */
+  const [soloConStockOrigen, setSoloConStockOrigen] = useState(false);
   /*
    * NOVEDADES (0083) — lo que llegó al depósito que este local no sabe.
    *
@@ -305,7 +307,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
 
   const busqueda = useMemo(() => {
     const ql = normTxt(q);
-    if (!ql && !soloSinStock && !soloNovedades) return { lista: [], otros: 0 };
+    if (!ql && !soloSinStock && !soloNovedades && !soloConStockOrigen) return { lista: [], otros: 0 };
     const cod = q.trim();
     /* Tipeando alcanza con las primeras coincidencias (se sigue escribiendo
      * para afinar). Recorriendo novedades NO: la lista es corta y curada, y
@@ -316,6 +318,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
     for (const p of store.state.productos) {
       if (soloNovedades && !novedades?.mapa?.has(p.id)) continue;
       if (soloSinStock && dispTotal(p, destinoNum) > 1e-9) continue;
+      if (soloConStockOrigen && !hayParaMandar(store, p, origenNum)) continue;
       if (ql && !(normTxt(p.nombre).includes(ql) || normTxt(p.marca).includes(ql)
         || (p.codigoBarras || '').includes(cod) || (p.codigoPropio || '').includes(cod)
         // También por el código del PAQUETE: escanear un 500 g tiene que
@@ -359,7 +362,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
     }
     return { lista, otros };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.state.productos, store.state.stock, q, soloSinStock, soloNovedades, novedades, destinoNum, grupo]);
+  }, [store.state.productos, store.state.stock, q, soloSinStock, soloConStockOrigen, soloNovedades, novedades, origenNum, destinoNum, grupo]);
   const resultados = busqueda.lista;
 
   /** Cuántos renglones cayeron en cada pestaña (el pedido sigue siendo UNO). */
@@ -830,6 +833,10 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
             <input type="checkbox" checked={soloSinStock} onChange={(e) => setSoloSinStock(e.target.checked)} />
             Ver solo sin stock en {destino?.nombre ?? 'mi sucursal'}
           </label>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+            <input id="pedido-con-stock-origen" type="checkbox" checked={soloConStockOrigen} onChange={(e) => setSoloConStockOrigen(e.target.checked)} />
+            Ver solo con stock en {origen?.nombre ?? 'el origen'}
+          </label>
           {cuentaNovedades.total > 0 && (
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
               <input type="checkbox" checked={soloNovedades} onChange={(e) => setSoloNovedades(e.target.checked)} />
@@ -930,12 +937,12 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
         )}
         {/* Un buscador acotado puede decir "no existe" de algo que sí existe: si
             la coincidencia está en la otra pestaña, se avisa y se ofrece ir. */}
-        {(q || soloSinStock || soloNovedades) && !resultados.length && (
+        {(q || soloSinStock || soloConStockOrigen || soloNovedades) && !resultados.length && (
           <div className={s.hint}>
             {busqueda.otros > 0 ? (
               <>
                 Nada coincide entre los productos {grupo === 'granel' ? 'a granel' : 'enteros'}
-                {soloSinStock ? ' sin stock' : ''}{soloNovedades ? ' de las novedades' : ''}, pero hay {busqueda.otros}{' '}
+                {soloSinStock ? ' sin stock' : ''}{soloConStockOrigen ? ` con stock en ${origen?.nombre ?? 'el origen'}` : ''}{soloNovedades ? ' de las novedades' : ''}, pero hay {busqueda.otros}{' '}
                 {grupo === 'granel' ? 'entre los enteros' : 'a granel'}.{' '}
                 <button
                   type="button"
@@ -948,6 +955,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
             ) : (
               <>
                 Nada coincide{soloSinStock ? ' entre los productos sin stock' : ''}
+                {soloConStockOrigen ? ` con stock en ${origen?.nombre ?? 'el origen'}` : ''}
                 {soloNovedades ? ` entre las novedades ${grupo === 'granel' ? 'a granel' : 'enteras'}` : ''}.
               </>
             )}

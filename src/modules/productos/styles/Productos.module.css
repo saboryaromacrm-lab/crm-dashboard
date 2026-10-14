@@ -144,6 +144,7 @@
 }
 .stat-label { font-size: var(--crm-font-size-xs); color: var(--crm-color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
 .stat-value { font-size: var(--crm-font-size-xl); font-weight: 700; margin-top: 4px; color: var(--crm-color-text); }
+.stat-nota { margin-top: 4px; font-size: 12px; color: var(--crm-color-text-secondary); }
 .accent-red .stat-value { color: var(--crm-color-danger); }
 .accent-amber .stat-value { color: var(--crm-color-warning); }
 .accent-green .stat-value { color: var(--crm-color-success); }

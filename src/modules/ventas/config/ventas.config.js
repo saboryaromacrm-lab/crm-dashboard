@@ -11,6 +11,7 @@
  * —clientes, cobranzas— y al final lo que se configura y casi no se toca.
  */
 import CloudOffIcon from '@mui/icons-material/CloudOff';
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import PublicIcon from '@mui/icons-material/Public';
@@ -40,6 +41,8 @@ export const VENTAS_PANELS = [
   /* Las cobradas que ARCA no pudo facturar (26/9/2026): misma llave que el
      listado, porque el que vende es el que tiene que dejarlas en regla. */
   { id: 'arca', label: 'Caídas por ARCA', icon: CloudOffIcon, permiso: 'ventas.listado', badge: 'arca' },
+  /* Cuánto subió o bajó lo vendido entre dos períodos (14/10/2026). Sin costos. */
+  { id: 'variaciones', label: 'Variaciones', icon: CompareArrowsIcon, permiso: 'ventas.variaciones' },
   { id: 'ordenes', label: 'Órdenes web', icon: PublicIcon, permiso: 'ventas.ordenes', badge: 'ordenes' },
   { id: 'presupuestos', label: 'Presupuestos', icon: RequestQuoteIcon, permiso: 'ventas.presupuestos' },
   { id: 'clientes', label: 'Clientes', icon: PeopleAltIcon, permiso: 'ventas.clientes' },

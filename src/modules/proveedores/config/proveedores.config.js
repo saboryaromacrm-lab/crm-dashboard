@@ -11,6 +11,7 @@ import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import BalanceIcon from '@mui/icons-material/Balance';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import QueryStatsIcon from '@mui/icons-material/QueryStats';
 
 export const PROVEEDORES_PANELS = [
   { id: 'pedidos', label: 'Pedidos', icon: ViewKanbanIcon, permiso: 'proveedores.pedidos', badge: 'pedidos' },
@@ -19,5 +20,6 @@ export const PROVEEDORES_PANELS = [
   { id: 'edoc', label: 'Estados de cuenta', icon: BalanceIcon, permiso: 'proveedores.edoc' },
   { id: 'cuentas', label: 'Cuentas disponibles', icon: SwapHorizIcon, permiso: 'proveedores.cuentas', badge: 'cuentas' },
   { id: 'padron', label: 'Proveedores', icon: LocalShippingIcon, permiso: 'proveedores.padron' },
-  /* TEMPORAL (0138): se borra cuando el stock real esté bien. Solo administración. */
+  /* La plata en mercadería de cada proveedor, a costo (14/10/2026). */
+  { id: 'montos', label: 'Montos', icon: QueryStatsIcon, permiso: 'proveedores.montos' },
 ];

@@ -44,6 +44,12 @@ export function rangoDe(preset) {
   switch (preset) {
     case 'hoy': return [hoy, hoy];
     case '7d': return [d(h.getFullYear(), h.getMonth(), h.getDate() - 6), hoy];
+    // La semana arranca el lunes (como `date_trunc('week')` de las consultas).
+    case 'semana': return [d(h.getFullYear(), h.getMonth(), h.getDate() - ((h.getDay() + 6) % 7)), hoy];
+    case 'semana-pasada': {
+      const lunes = h.getDate() - ((h.getDay() + 6) % 7) - 7;
+      return [d(h.getFullYear(), h.getMonth(), lunes), d(h.getFullYear(), h.getMonth(), lunes + 6)];
+    }
     case '30d': return [d(h.getFullYear(), h.getMonth(), h.getDate() - 29), hoy];
     case 'mes-pasado': return [d(h.getFullYear(), h.getMonth() - 1, 1), d(h.getFullYear(), h.getMonth(), 0)];
     case 'anio': return [d(h.getFullYear(), 0, 1), hoy];
@@ -53,7 +59,7 @@ export function rangoDe(preset) {
   }
 }
 export const PRESETS = [
-  ['hoy', 'Hoy'], ['7d', 'Últimos 7 días'], ['mes', 'Este mes'], ['mes-pasado', 'Mes pasado'],
+  ['hoy', 'Hoy'], ['7d', 'Últimos 7 días'], ['semana', 'Esta semana'], ['semana-pasada', 'Semana pasada'], ['mes', 'Este mes'], ['mes-pasado', 'Mes pasado'],
   ['30d', 'Últimos 30 días'], ['anio', 'Este año'], ['12m', 'Últimos 12 meses'], ['otro', 'Elegir fechas…'],
 ];
 

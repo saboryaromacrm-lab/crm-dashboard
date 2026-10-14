@@ -44,6 +44,13 @@ export const puedeMandar = (store, p, sucId) => {
 };
 
 /**
+ * ¿TIENE CON QUÉ CUMPLIRSE EL PEDIDO? El filtro «con stock» del origen, en el
+ * buscador del pedido y en el explorador del catálogo (14/10/2026: una sola
+ * regla para los dos). Lo que no lleva control de stock siempre se puede pedir.
+ */
+export const hayParaMandar = (store, p, sucId) => store.stockLibre(p) || puedeMandar(store, p, sucId) > 1e-9;
+
+/**
  * Total disponible en una sucursal. Para granel se convierte a KG equivalentes
  * (suelto + paquetes × tamaño): sumar "45 kg + 2 paquetes" como 47 dice algo;
  * sumarlo crudo no.

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { disponibleTotal, listaDeProducto, puedeMandar } from './pedido.js';
+import { disponibleTotal, hayParaMandar, listaDeProducto, puedeMandar } from './pedido.js';
 
 /** Un store de inventario mínimo, con la misma superficie que usan las reglas. */
 function storeCon(stock) {
@@ -46,4 +46,17 @@ test('disponibleTotal: el destino mide en kg equivalentes (suelto + paquetes × 
   ]);
   assert.equal(disponibleTotal(store, granel, 2), 5, '2 kg + 6 × 0,5 kg');
   assert.equal(disponibleTotal(store, entero, 2), 0);
+});
+
+test('hayParaMandar: con stock para mandar, o sin control de stock; el granel por el suelto', () => {
+  const stock = [
+    { productoId: 1, sucursalId: 1, presentacionId: 50, estado: 'disponible', cantidad: 10 },
+    { productoId: 2, sucursalId: 1, presentacionId: null, estado: 'disponible', cantidad: 3 },
+  ];
+  const conControl = { ...storeCon(stock), stockLibre: () => false };
+  assert.equal(hayParaMandar(conControl, entero, 1), true);
+  assert.equal(hayParaMandar(conControl, entero, 2), false, 'en otra sucursal no hay');
+  assert.equal(hayParaMandar(conControl, granel, 1), false, 'solo paquetes armados: no hay suelto para mandar');
+  const sinControl = { ...storeCon(stock), stockLibre: () => true };
+  assert.equal(hayParaMandar(sinControl, entero, 2), true, 'sin control de stock se puede pedir igual');
 });

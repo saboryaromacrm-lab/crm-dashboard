@@ -84,6 +84,8 @@ export const ventasApi = {
    * primitivo que usan el POS y la ficha del cliente, y devuelve un array.
    */
   listadoVentas: (filtros) => httpClient.get(`/ventas/listado${qs(filtros)}`),
+  /** Ventas › Variaciones: lo vendido en dos períodos (A = desde/hasta, B = bDesde/bHasta), de todas las sucursales. */
+  variaciones: (periodos) => httpClient.get(`/ventas-variaciones${qs(periodos)}`),
   venta: (id) => httpClient.get(`/ventas/${id}`),
   /** El motivo es obligatorio: queda en `anuladoMotivo` junto a quién y cuándo. */
   anularVenta: (id, motivo) => httpClient.post(`/ventas/${id}/anular`, { motivo }),

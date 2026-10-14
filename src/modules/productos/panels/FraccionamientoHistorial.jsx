@@ -52,6 +52,30 @@ const TURNOS = { manana: 'Mañana', tarde: 'Tarde' };
  * en que fraccionó él. Lo cuenta el servidor con los mismos filtros.
  */
 const porTurno = (total, turnos, dec = 0) => (turnos > 0 ? num(total / turnos, dec) : '—');
+const cociente = (total, turnos) => (turnos > 0 ? total / turnos : null);
+const diaCorto = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7);
+
+/**
+ * LA FLECHA CONTRA EL PERÍODO ANTERIOR DEL MISMO LARGO (14/10/2026, pedido del
+ * dueño): ayer contra anteayer, 7 días contra los 7 de antes. ▲ verde si sube,
+ * ▼ roja si baja; `neutro` la deja gris (más turnos o más gente no es mejor ni
+ * peor). El valor de antes, al pasar el mouse.
+ */
+function Variacion({ actual, previo, anterior, neutro = false, dec = 0 }) {
+  if (!anterior) return null;
+  const vs = anterior.desde === anterior.hasta ? diaCorto(anterior.desde) : `${diaCorto(anterior.desde)}–${diaCorto(anterior.hasta)}`;
+  if (actual == null || previo == null) return <span>sin datos para comparar · vs {vs}</span>;
+  const dif = actual - previo;
+  const sube = dif > 1e-9;
+  const baja = dif < -1e-9;
+  const color = neutro || (!sube && !baja) ? undefined : (sube ? 'var(--crm-color-success)' : 'var(--crm-color-danger)');
+  const flecha = !sube && !baja ? '= igual' : `${sube ? '▲' : '▼'} ${previo ? `${num(Math.abs(dif / previo) * 100, 0)}%` : `antes 0`}`;
+  return (
+    <span title={`Antes: ${num(previo, dec)}`}>
+      <strong style={{ color }}>{flecha}</strong> · vs {vs}
+    </span>
+  );
+}
 const RESALTADA = { background: 'var(--crm-color-primary-soft, rgba(22,101,52,.08))' };
 const soloDia = (v) => new Date(v).toLocaleDateString('es-AR');
 
@@ -161,6 +185,8 @@ export function TabHistorial({ puede }) {
   };
 
   const t = data?.totales;
+  /** El período anterior del mismo largo (null sin rango de fechas): las flechas. */
+  const a = data?.anterior;
   const nombreOperador = (id) => operadores.find((o) => String(o.id) === String(id))?.nombre;
 
   return (
@@ -230,11 +256,24 @@ export function TabHistorial({ puede }) {
       {error && <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>{error}</div>}
 
       <div className={s.stats}>
-        <Stat label="Registros" value={t ? num(t.registros, 0) : '—'} />
-        <Stat label={f.tamKg ? `Paquetes de ${fmtTam(Number(f.tamKg))}` : 'Paquetes armados'} value={t ? num(t.paquetes, 0) : '—'} />
-        <Stat label="Kg fraccionados" value={t ? num(t.kg, 3) : '—'} />
-        <Stat label="Turnos trabajados" value={t ? num(t.turnos ?? 0, 0) : '—'} />
-        <Stat label="Promedio por turno" value={t ? `${porTurno(t.paquetes, t.turnos)} paq. · ${porTurno(t.kg, t.turnos, 1)} kg` : '—'} />
+        <Stat label="Registros" value={t ? num(t.registros, 0) : '—'} nota={t && <Variacion actual={t.registros} previo={a?.registros} anterior={a} />} />
+        <Stat
+          label={f.tamKg ? `Paquetes de ${fmtTam(Number(f.tamKg))}` : 'Paquetes armados'} value={t ? num(t.paquetes, 0) : '—'}
+          nota={t && <Variacion actual={t.paquetes} previo={a?.paquetes} anterior={a} />}
+        />
+        <Stat label="Kg fraccionados" value={t ? num(t.kg, 3) : '—'} nota={t && <Variacion actual={t.kg} previo={a?.kg} anterior={a} dec={1} />} />
+        <Stat label="Turnos trabajados" value={t ? num(t.turnos ?? 0, 0) : '—'} nota={t && <Variacion actual={t.turnos} previo={a?.turnos} anterior={a} neutro />} />
+        {/* Los que fraccionaron (con operador cargado; las correcciones no cuentan). */}
+        <Stat label="Colaboradores activos" value={t ? num(t.colaboradores ?? 0, 0) : '—'} nota={t && <Variacion actual={t.colaboradores} previo={a?.colaboradores} anterior={a} neutro />} />
+        <Stat
+          label="Promedio por turno" value={t ? `${porTurno(t.paquetes, t.turnos)} paq. · ${porTurno(t.kg, t.turnos, 1)} kg` : '—'}
+          nota={t && <Variacion actual={cociente(t.paquetes, t.turnos)} previo={a && cociente(a.paquetes, a.turnos)} anterior={a} />}
+        />
+        {/* Cuánto arma cada persona en un turno: lo de los que tienen operador ÷ sus turnos (dos en la misma mañana son dos). */}
+        <Stat
+          label="Promedio por turno por colaborador" value={t ? `${porTurno(t.paquetesPersona, t.turnosPersona)} paq. · ${porTurno(t.kgPersona, t.turnosPersona, 1)} kg` : '—'}
+          nota={t && <Variacion actual={cociente(t.paquetesPersona, t.turnosPersona)} previo={a && cociente(a.paquetesPersona, a.turnosPersona)} anterior={a} />}
+        />
         {t?.correcciones > 0 && <Stat label="Correcciones" value={num(t.correcciones, 0)} accent="accent-amber" />}
         {t?.sinOperador > 0 && <Stat label="Sin operador" value={num(t.sinOperador, 0)} />}
       </div>

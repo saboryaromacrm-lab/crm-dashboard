@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
+import CallSplitIcon from '@mui/icons-material/CallSplit';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import styles from '../styles/Dashboard.module.css';
 
@@ -14,6 +15,7 @@ const ACCESOS = [
   { label: 'Cash Flow', modulo: 'Gerencia', ruta: '/gerencia?seccion=cashflow', permiso: 'gerencia.cashflow', Icono: PaymentsIcon },
   { label: 'Proveedores', modulo: 'Proveedores', ruta: '/proveedores?panel=padron', permiso: 'proveedores.padron', Icono: LocalShippingIcon },
   { label: 'Existencias', modulo: 'Almacén', ruta: '/almacen?panel=existencias', permiso: 'almacen.existencias', Icono: WarehouseIcon },
+  { label: 'Fraccionamiento', modulo: 'Almacén', ruta: '/almacen?panel=fraccionamiento', permiso: 'almacen.fraccionamiento', Icono: CallSplitIcon },
 ];
 
 export function AccesosDirectos() {

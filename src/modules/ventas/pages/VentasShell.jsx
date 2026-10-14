@@ -13,6 +13,7 @@ import { Btn, s } from '../components/ui.jsx';
 import { PosPanel } from '../panels/PosPanel.jsx';
 import { ListadoVentasPanel } from '../panels/ListadoVentasPanel.jsx';
 import { ArcaCaidasPanel } from '../panels/ArcaCaidasPanel.jsx';
+import { VariacionesPanel } from '../panels/VariacionesPanel.jsx';
 import { OrdenesPanel } from '../panels/OrdenesPanel.jsx';
 import { PresupuestosPanel } from '../panels/PresupuestosPanel.jsx';
 import { ClientesPanel } from '../panels/ClientesPanel.jsx';
@@ -29,6 +30,7 @@ const PANEL_COMPONENTS = {
   pos: PosPanel,
   listado: ListadoVentasPanel,
   arca: ArcaCaidasPanel,
+  variaciones: VariacionesPanel,
   ordenes: OrdenesPanel,
   presupuestos: PresupuestosPanel,
   clientes: ClientesPanel,
