@@ -117,6 +117,27 @@ function PorModalidad({ modalidades }) {
   });
 }
 
+/**
+ * POR SUCURSAL (15/10/2026, pedido del dueño): lo vendido de cada local con su
+ * % del total (la misma cuenta que «Vendido») y sus tickets. Tocar un local
+ * filtra el listado por él; tocarlo de nuevo saca el filtro.
+ */
+function PorSucursal({ sucursales, elegida, elegir }) {
+  if (!sucursales?.length) return <div className={s.hint}>Sin ventas en el período.</div>;
+  return sucursales.map((x) => {
+    const activa = String(x.sucursalId ?? '') === String(elegida);
+    return (
+      <button
+        key={x.sucursalId ?? 'sin'} type="button" onClick={() => elegir(activa ? '' : String(x.sucursalId ?? ''))} aria-pressed={activa}
+        style={{ ...GRILLA_BARRA, width: '100%', padding: 0, border: 0, background: 'none', cursor: 'pointer', textAlign: 'left', font: 'inherit', color: 'inherit' }}
+        title={`Ticket promedio ${money(x.promedio)} · ${activa ? 'tocá para ver todas' : 'tocá para ver solo esta sucursal'}`}
+      >
+        <FilaBarra nombre={`${activa ? '● ' : ''}${x.nombre}`} pct={x.pct} importe={x.importe} ventas={x.tickets} />
+      </button>
+    );
+  });
+}
+
 /** Un color fijo por medio de pago: el color sigue al medio, no a su puesto en el ranking. */
 const COLOR_MEDIO = {
   efectivo: '#16a34a', transferencia: '#2563eb', tarjeta_debito: '#7c3aed', tarjeta_credito: '#db2777',
@@ -518,6 +539,11 @@ export function ListadoVentasPanel() {
               color="#ea580c" nombre="Liquidado (F10)" importe={t.facturacion.liquidado} pct={t.facturacion.pctLiquidado}
               detalle={`${num(t.facturacion.liquidaciones, 0)} ${t.facturacion.liquidaciones === 1 ? 'ticket' : 'tickets'}`}
             />
+          </div>
+          <div className={s.card} style={{ padding: '10px 14px', flex: '2 1 320px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span className={s['mini-label']}>POR SUCURSAL</span>
+            <PorSucursal sucursales={t.porSucursal} elegida={sucursalId} elegir={setSucursalId} />
+            <div className={s.hint} style={{ margin: 0 }}>Lo vendido con IVA (igual que «Vendido»; las notas de crédito restan). Tocá una sucursal para ver solo sus ventas.</div>
           </div>
           <div className={s.card} style={{ padding: '10px 14px', flex: '2 1 320px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span className={s['mini-label']}>POR MODALIDAD</span>

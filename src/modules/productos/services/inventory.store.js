@@ -1049,6 +1049,10 @@ const exportarFraccionamientos = (params) => _directo(() => httpClient.get('/fra
 const operadoresFraccion = (todos = false) => _directo(() => httpClient.get('/fraccionamientos/operadores' + (todos ? '?todos=1' : '')));
 const crearOperadorFraccion = (o) => _directo(() => httpClient.post('/fraccionamientos/operadores', o));
 const editarOperadorFraccion = (id, o) => _directo(() => httpClient.patch('/fraccionamientos/operadores/' + id, o));
+/* Pedidos de fraccionado de la Distribuidora (0169): no mueven stock; se cierran al registrar lo fraccionado con `pedidoId`. */
+const pedidosFraccion = () => _directo(() => httpClient.get('/pedidos-fraccion'));
+const guardarPedidoFraccion = (id, o) => _directo(() => (id ? httpClient.put('/pedidos-fraccion/' + id, o) : httpClient.post('/pedidos-fraccion', o)));
+const descartarPedidoFraccion = (id) => _directo(() => httpClient.delete('/pedidos-fraccion/' + id));
 /** Recepción CONTADA: items = [{itemId, cantidadRecibida}]. La diferencia genera incidencia sola. */
 const recibirTransferencia = (id, o) => _mutate(() => httpClient.post('/transferencias/' + id + '/recibir', o));
 /** El libro del almacén: una fila por documento, valuada a costo congelado. */
@@ -1537,6 +1541,7 @@ export const inventoryStore = {
   editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
   historialFraccionamientos, exportarFraccionamientos,
   operadoresFraccion, crearOperadorFraccion, editarOperadorFraccion,
+  pedidosFraccion, guardarPedidoFraccion, descartarPedidoFraccion,
   crearIncidencia, avanzarIncidencia, resolverIncidencia, cerrarIncidenciasAnteriores, anotarPedidoProveedor, ultimoPedido, guardarUltimoPedido,
   datosBajos, refrescarBajos, analisisBajos, bajosRojos, guardarStockMinimo,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto, cambiarControlStock,

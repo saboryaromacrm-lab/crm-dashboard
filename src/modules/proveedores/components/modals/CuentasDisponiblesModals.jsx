@@ -37,6 +37,7 @@ export function CuentaDisponibleModal({ cuenta, onChange }) {
     importe: cuenta ? String(cuenta.importe) : '',
     fecha: cuenta?.fecha ? String(cuenta.fecha).slice(0, 10) : hoyISO(),
     prioritaria: !!cuenta?.prioritaria,
+    ventaMinima: Number(cuenta?.ventaMinima) > 0 ? String(cuenta.ventaMinima) : '',
     enviado: !!cuenta?.enviado,
     corte: !!cuenta?.corte,
     observaciones: cuenta?.observaciones ?? '',
@@ -62,6 +63,7 @@ export function CuentaDisponibleModal({ cuenta, onChange }) {
   const guardar = async () => {
     if (!editando && !f.proveedorId) { toast('Elegí el proveedor.', 'err'); return; }
     if (!(Number(f.importe) > 0)) { toast('El importe a cubrir tiene que ser mayor a 0.', 'err'); return; }
+    if (f.ventaMinima !== '' && !(Number(f.ventaMinima) >= 0)) { toast('La venta mínima tiene que ser un número (o quedar vacía).', 'err'); return; }
     if (!editando) {
       if (!f.bancaria) { toast('Elegí la cuenta bancaria, o cargá una nueva.', 'err'); return; }
       if (f.bancaria === NUEVA && (!f.titular.trim() || !f.cbuAlias.trim())) {
@@ -73,6 +75,7 @@ export function CuentaDisponibleModal({ cuenta, onChange }) {
     }
     const comunes = {
       importe: r2(f.importe), fecha: f.fecha || undefined, prioritaria: f.prioritaria,
+      ventaMinima: f.ventaMinima === '' ? 0 : r2(f.ventaMinima),
       observaciones: f.observaciones.trim(),
     };
     const res = await act(
@@ -159,6 +162,15 @@ export function CuentaDisponibleModal({ cuenta, onChange }) {
         <div className={s.field}>
           <label>Fecha</label>
           <input type="date" value={f.fecha} onChange={set('fecha')} />
+        </div>
+      </div>
+      <div className={s.field}>
+        <label>Solo para ventas desde</label>
+        <input type="number" min="0" step="1" value={f.ventaMinima} onChange={set('ventaMinima')} placeholder="Vacío = en cualquier venta" />
+        <div className={s.hint} style={{ margin: '4px 0 0' }}>
+          {Number(f.ventaMinima) > 0
+            ? <>La caja ofrece esta cuenta solo en ventas (o recibos) de <strong>{money(Number(f.ventaMinima))}</strong> o más.</>
+            : 'Opcional: con un monto, la caja la ofrece solo en ventas de ese total o más.'}
         </div>
       </div>
       <div className={s.field}>

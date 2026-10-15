@@ -10,13 +10,21 @@ const EPS = 0.005;
 export const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 /**
+ * ¿Esta cuenta se ofrece en una venta (o un recibo) de este total? (0168) Las
+ * que son «solo para ventas desde $X» esperan a que el total llegue a X.
+ */
+export const seOfrece = (cuenta, total) => !(r2(cuenta?.ventaMinima) > 0) || r2(total) >= r2(cuenta.ventaMinima) - EPS;
+
+/**
  * Por qué esta transferencia no entra en esta cuenta, o `null` si entra.
+ *  - solo en ventas desde la venta mínima de la cuenta;
  *  - nunca más de lo que falta;
  *  - nunca menos del mínimo del proveedor, salvo que CIERRE la cuenta
  *    (el resto final es lo que es).
  */
-export function validarTransferenciaProveedor(importe, cuenta) {
+export function validarTransferenciaProveedor(importe, cuenta, total) {
   if (!cuenta) return 'Elegí a qué cuenta del proveedor va la transferencia.';
+  if (!seOfrece(cuenta, total)) return `Esa cuenta es solo para ventas desde ${fmt(cuenta.ventaMinima)}: elegí otra.`;
   const imp = r2(importe);
   if (imp <= 0) return null; // sin importe todavía no hay nada que juzgar
   const falta = r2(cuenta.falta);

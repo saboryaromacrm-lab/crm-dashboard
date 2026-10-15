@@ -43,6 +43,7 @@ export function rangoDe(preset) {
   const d = (y, m, dd) => iso(new Date(y, m, dd));
   switch (preset) {
     case 'hoy': return [hoy, hoy];
+    case 'ayer': { const a = d(h.getFullYear(), h.getMonth(), h.getDate() - 1); return [a, a]; }
     case '7d': return [d(h.getFullYear(), h.getMonth(), h.getDate() - 6), hoy];
     // La semana arranca el lunes (como `date_trunc('week')` de las consultas).
     case 'semana': return [d(h.getFullYear(), h.getMonth(), h.getDate() - ((h.getDay() + 6) % 7)), hoy];

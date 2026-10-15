@@ -67,3 +67,24 @@ export const disponibleTotal = (store, p, sucId) => {
     return a + st.cantidad * (pres ? pres.tamKg : 1);
   }, 0);
 };
+
+/* ------------- Los tildes de stock del local que pide (15/10/2026) ------------- */
+
+/** «Bajo en stock» al armar un pedido entre sucursales: menos de 3 en el local que pide. */
+export const BAJO_STOCK_PEDIDO = 3;
+
+/**
+ * Lo que el local que pide tiene de ESA fila del buscador: las unidades del
+ * entero, o los paquetes de ese tamaño (lo que se pide del granel son
+ * paquetes); el granel sin tamaños, sus kg sueltos.
+ */
+export const stockFila = (store, p, pres, sucId) => {
+  if (!sucId || !p) return 0;
+  if (pres) return store.cant(p.id, sucId, pres.id, 'disponible');
+  return p.tipo === 'granel' ? store.cant(p.id, sucId, null, 'disponible') : disponibleTotal(store, p, sucId);
+};
+
+/** Sin tildes pasa todo; con «sin stock» y/o «bajos», la fila que cumpla alguno de los tildados. */
+export const pasaStockDestino = (stock, { sinStock, bajos }) => (!sinStock && !bajos)
+  || (sinStock && stock <= 1e-9)
+  || (bajos && stock < BAJO_STOCK_PEDIDO - 1e-9);

@@ -11,12 +11,14 @@ import { useProductos } from '../../context/ProductosContext.jsx';
 import { fmtFechaHora, money, num } from '../../domain/format.js';
 import { cx } from '@shared/utils/classNames.js';
 import { httpClient } from '@core/services/httpClient.js';
-import { esc, imprimirDocumento, abrirVentanaImpresion, cuerpoRemitoTransferencia } from '@core/services/imprimir.js';
+import { imprimirDocumento, abrirVentanaImpresion, cuerpoListaPreparacion, cuerpoRemitoTransferencia } from '@core/services/imprimir.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions, sucursalOptionsOtras, presentacionOptions, usuarioOptions } from '../selectOptions.jsx';
 import { Table, TransferPill, Btn, s } from '../ui.jsx';
-import { LISTAS_PREP, GRUPOS_PEDIDO, listaDeProducto, puedeMandar, disponibleTotal, hayParaMandar } from '../../domain/pedido.js';
+import {
+  BAJO_STOCK_PEDIDO, LISTAS_PREP, GRUPOS_PEDIDO, listaDeProducto, puedeMandar, disponibleTotal, hayParaMandar, pasaStockDestino, stockFila,
+} from '../../domain/pedido.js';
 import { ExplorarProductosModal } from './ExplorarProductosModal.jsx';
 import { SelectorOperador, useOperadoresFraccion } from '../OperadorFraccion.jsx';
 import { bultoDe } from '../../domain/bulto.js';
@@ -199,9 +201,12 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
   const [obs, setObs] = useState(obsInicial ?? '');
   const [items, setItems] = useState([]);
   const [q, setQ] = useState('');
-  const [soloSinStock, setSoloSinStock] = useState(false);
+  /* «Sin stock en mi local» y «con stock en el origen» arrancan tildados (15/10/2026, pedido del dueño). */
+  const [soloSinStock, setSoloSinStock] = useState(true);
+  /** Lo que el local que pide tiene bajo (menos de BAJO_STOCK_PEDIDO); suma con «sin stock». */
+  const [soloBajos, setSoloBajos] = useState(false);
   /** Solo lo que la sucursal a la que se le pide puede mandar (14/10/2026): no pedir lo que no hay. */
-  const [soloConStockOrigen, setSoloConStockOrigen] = useState(false);
+  const [soloConStockOrigen, setSoloConStockOrigen] = useState(true);
   /*
    * NOVEDADES (0083) — lo que llegó al depósito que este local no sabe.
    *
@@ -307,24 +312,28 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
 
   const busqueda = useMemo(() => {
     const ql = normTxt(q);
-    if (!ql && !soloSinStock && !soloNovedades && !soloConStockOrigen) return { lista: [], otros: 0 };
+    if (!ql && !soloSinStock && !soloBajos && !soloNovedades && !soloConStockOrigen) return { lista: [], otros: 0 };
     const cod = q.trim();
     /* Tipeando alcanza con las primeras coincidencias (se sigue escribiendo
-     * para afinar). Recorriendo novedades NO: la lista es corta y curada, y
-     * cortarla en 8 escondería justo lo que se vino a ver. */
-    const TOPE = soloNovedades && !ql ? 40 : 8;
+     * para afinar). RECORRIENDO no (sin stock, bajos, novedades): cortarla en 8
+     * escondería justo lo que se vino a ver. */
+    const TOPE = ql ? 8 : 40;
+    /* Sin stock y bajos se miden POR FILA en el local que pide: las unidades
+     * del entero, o los paquetes de ese tamaño (15/10/2026). */
+    const filtroDestino = { sinStock: soloSinStock, bajos: soloBajos };
+    const pasaFila = (p, pres) => pasaStockDestino(stockFila(store, p, pres, destinoNum), filtroDestino);
+    const filasDe = (p) => (listaDeProducto(p) === 'granel' && (p.presentaciones || []).length ? p.presentaciones : [null]);
     const lista = [];
     let otros = 0;
     for (const p of store.state.productos) {
       if (soloNovedades && !novedades?.mapa?.has(p.id)) continue;
-      if (soloSinStock && dispTotal(p, destinoNum) > 1e-9) continue;
       if (soloConStockOrigen && !hayParaMandar(store, p, origenNum)) continue;
       if (ql && !(normTxt(p.nombre).includes(ql) || normTxt(p.marca).includes(ql)
         || (p.codigoBarras || '').includes(cod) || (p.codigoPropio || '').includes(cod)
         // También por el código del PAQUETE: escanear un 500 g tiene que
         // encontrarlo, y ese código es de la presentación, no de la madre.
         || (p.presentaciones || []).some((pr) => (pr.codigoBarras || '').includes(cod)))) continue;
-      if (listaDeProducto(p) !== grupo) { otros += 1; continue; }
+      if (listaDeProducto(p) !== grupo) { if (filasDe(p).some((pr) => pasaFila(p, pr))) otros += 1; continue; }
       /* Con el filtro de novedades NO se corta acá: el recorrido va en el
        * orden del catálogo, y cortar antes de ordenar dejaría afuera justo lo
        * último que llegó. La lista la acota el propio mapa (son decenas como
@@ -344,10 +353,10 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
        * esconderlo sería no poder pedirlo nunca.
        */
       const tamanos = grupo === 'granel' ? (p.presentaciones || []) : [];
-      if (!tamanos.length) { lista.push({ clave: `p${p.id}`, p, pres: null }); continue; }
+      if (!tamanos.length) { if (pasaFila(p, null)) lista.push({ clave: `p${p.id}`, p, pres: null }); continue; }
       for (const pr of tamanos) {
         if (!soloNovedades && lista.length >= TOPE) break;
-        lista.push({ clave: `f${pr.id}`, p, pres: pr });
+        if (pasaFila(p, pr)) lista.push({ clave: `f${pr.id}`, p, pres: pr });
       }
     }
     if (soloNovedades) {
@@ -362,7 +371,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
     }
     return { lista, otros };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.state.productos, store.state.stock, q, soloSinStock, soloConStockOrigen, soloNovedades, novedades, origenNum, destinoNum, grupo]);
+  }, [store.state.productos, store.state.stock, q, soloSinStock, soloBajos, soloConStockOrigen, soloNovedades, novedades, origenNum, destinoNum, grupo]);
   const resultados = busqueda.lista;
 
   /** Cuántos renglones cayeron en cada pestaña (el pedido sigue siendo UNO). */
@@ -767,7 +776,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
           real de la góndola — los enteros por un lado, el granel por otro.
           Van ARRIBA del buscador porque manda sobre él: cada pestaña busca,
           ofrece y lista únicamente sus productos. */}
-      <div className={s.pestanas} role="tablist" aria-label="Cómo se agrupan los renglones del pedido" style={{ marginTop: 4 }}>
+      <div className={s.pestanas} role="tablist" aria-label="Cómo se agrupan los renglones del pedido" style={{ marginTop: 4, flexWrap: 'wrap' }}>
         {GRUPOS_PEDIDO.map((g) => (
           <button
             key={g.id}
@@ -781,6 +790,20 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
             {porGrupo[g.id] > 0 && <span className={s.pestanaBadge}>{porGrupo[g.id]}</span>}
           </button>
         ))}
+        {/* El buscador va en la fila de las pestañas (15/10/2026, pedido del dueño): busca en la pestaña elegida. */}
+        <input
+          type="search"
+          autoFocus
+          placeholder={grupo === 'granel'
+            ? 'Buscar un producto a granel por nombre, marca o código y agregarlo con Enter…'
+            : 'Buscar un producto entero por nombre, marca o código y agregarlo con Enter…'}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          /* Enter agrega el PRIMER resultado (1 unidad o 1 paquete): cada resultado es { p, pres }, no el producto pelado. */
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const r = resultados[0]; if (r) agregar(r.p, r.pres ? r.pres.id : ''); } }}
+          style={{ flex: '1 1 260px', marginLeft: 8, marginBottom: 6, alignSelf: 'center' }}
+          aria-label="Buscar producto"
+        />
       </div>
 
       {/* Ritmo vertical con UN gap parejo (25/8, "está todo muy pegado"): los
@@ -819,19 +842,13 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
           </div>
         )}
         <div className={s.toolbar} style={{ margin: 0, rowGap: 10 }}>
-          <input
-            type="search"
-            autoFocus
-            placeholder={grupo === 'granel'
-              ? 'Buscar un producto a granel por nombre, marca o código y agregarlo con Enter…'
-              : 'Buscar un producto entero por nombre, marca o código y agregarlo con Enter…'}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar(resultados[0]); } }}
-          />
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
             <input type="checkbox" checked={soloSinStock} onChange={(e) => setSoloSinStock(e.target.checked)} />
             Ver solo sin stock en {destino?.nombre ?? 'mi sucursal'}
+          </label>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+            <input id="pedido-bajos" type="checkbox" checked={soloBajos} onChange={(e) => setSoloBajos(e.target.checked)} />
+            Ver bajos en stock en {destino?.nombre ?? 'mi sucursal'} (menos de {BAJO_STOCK_PEDIDO})
           </label>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
             <input id="pedido-con-stock-origen" type="checkbox" checked={soloConStockOrigen} onChange={(e) => setSoloConStockOrigen(e.target.checked)} />
@@ -937,12 +954,12 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
         )}
         {/* Un buscador acotado puede decir "no existe" de algo que sí existe: si
             la coincidencia está en la otra pestaña, se avisa y se ofrece ir. */}
-        {(q || soloSinStock || soloConStockOrigen || soloNovedades) && !resultados.length && (
+        {(q || soloSinStock || soloBajos || soloConStockOrigen || soloNovedades) && !resultados.length && (
           <div className={s.hint}>
             {busqueda.otros > 0 ? (
               <>
                 Nada coincide entre los productos {grupo === 'granel' ? 'a granel' : 'enteros'}
-                {soloSinStock ? ' sin stock' : ''}{soloConStockOrigen ? ` con stock en ${origen?.nombre ?? 'el origen'}` : ''}{soloNovedades ? ' de las novedades' : ''}, pero hay {busqueda.otros}{' '}
+                {soloSinStock ? ' sin stock' : ''}{soloBajos ? `${soloSinStock ? ' o' : ''} con menos de ${BAJO_STOCK_PEDIDO}` : ''}{soloConStockOrigen ? ` con stock en ${origen?.nombre ?? 'el origen'}` : ''}{soloNovedades ? ' de las novedades' : ''}, pero hay {busqueda.otros}{' '}
                 {grupo === 'granel' ? 'entre los enteros' : 'a granel'}.{' '}
                 <button
                   type="button"
@@ -954,7 +971,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
               </>
             ) : (
               <>
-                Nada coincide{soloSinStock ? ' entre los productos sin stock' : ''}
+                Nada coincide{soloSinStock || soloBajos ? ` entre los productos ${[soloSinStock && 'sin stock', soloBajos && `con menos de ${BAJO_STOCK_PEDIDO}`].filter(Boolean).join(' o ')}` : ''}
                 {soloConStockOrigen ? ` con stock en ${origen?.nombre ?? 'el origen'}` : ''}
                 {soloNovedades ? ` entre las novedades ${grupo === 'granel' ? 'a granel' : 'enteras'}` : ''}.
               </>
@@ -1285,33 +1302,30 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
 
 /**
  * Hoja imprimible de UNA lista: el papel que cada encargado se lleva al
- * depósito. "Preparar" va EN BLANCO a propósito: ahí anota A LÁPIZ lo que
- * fraccionó o apartó, y con esa hoja vuelve y lo carga al sistema.
- * El formato (A4/Carta) y el membrete salen de Sistema › Impresión.
+ * depósito. Es la planilla única del que prepara (`cuerpoListaPreparacion`,
+ * la misma del pedido de fraccionado): tilda lo que apartó y anota en
+ * Observación lo que falte. El formato (A4/Carta) y el membrete salen de
+ * Sistema › Impresión.
  */
 function imprimirLista(t, store, tipo, filas) {
   const meta = LISTAS_PREP[tipo];
   const destino = store.getSucursal(t.destinoId)?.nombre ?? '';
-  const rows = filas.map(({ it, p }) => `
-    <tr>
-      <td>${esc(p.nombre)}${it.agregado ? ' <em>(agregado)</em>' : ''}</td>
-      <td class="chica">${esc(store.presLabel(p, it.presentacionId))}</td>
-      ${/* En el PAPEL importa más que en la pantalla: el que camina el depósito
-            con la hoja en la mano no tiene dónde hacer la cuenta. */ ''}
-      <td class="chica n">${it.agregado ? '—' : esc(store.fmtCant(p, it.presentacionId, it.cantidad))}${
-  !it.agregado && cajasDeRenglon(p, it.presentacionId, it.cantidad)
-    ? `<div class="chica">${esc(cajasDeRenglon(p, it.presentacionId, it.cantidad))}</div>`
-    : ''}</td>
-      <td class="prep"></td>
-      <td class="obs">${esc(it.motivo || '')}</td>
-      <td class="c">&#9744;</td>
-    </tr>`).join('');
   imprimirDocumento('listaPreparacion', {
     titulo: `${t.codigo} — ${meta.titulo}`,
-    cuerpo: `
-      <h1>${esc(t.codigo)} · ${esc(meta.titulo)} — para ${esc(destino)}</h1>
-      <div class="sub">Lista del ${esc(meta.encargado)} · ${filas.length} renglón(es) · impresa ${esc(new Date().toLocaleString('es-AR'))} · anotá lo preparado y cargalo al volver</div>
-      <table><thead><tr><th>Producto</th><th>Present.</th><th>Pedido</th><th>Preparar</th><th>Observación</th><th>&#10003;</th></tr></thead><tbody>${rows}</tbody></table>`,
+    cuerpo: cuerpoListaPreparacion({
+      titulo: `${t.codigo} · ${meta.titulo} — para ${destino}`,
+      sub: [`Lista del ${meta.encargado} · ${filas.length} renglón(es) · impresa ${new Date().toLocaleString('es-AR')} · tildá lo preparado y anotá lo que falte`],
+      /* En el PAPEL importa más que en la pantalla: el que camina el depósito
+       * con la hoja en la mano no tiene dónde hacer la cuenta de las cajas. */
+      filas: filas.map(({ it, p }) => ({
+        producto: p.nombre,
+        nota: it.agregado ? 'agregado' : '',
+        paquete: store.presLabel(p, it.presentacionId),
+        pedido: it.agregado ? '—' : store.fmtCant(p, it.presentacionId, it.cantidad),
+        detalle: it.agregado ? '' : cajasDeRenglon(p, it.presentacionId, it.cantidad),
+        obs: it.motivo || '',
+      })),
+    }),
   });
 }
 

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
+import { rangoDe } from '@modules/gerencia/panels/metricas/formato.js';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { errorMsg, provApi } from '../services/proveedores.api.js';
@@ -10,14 +11,25 @@ import {
 const ESTADOS = [['abiertas', 'Abiertas'], ['cubiertas', 'Cubiertas'], ['cortadas', 'Cortadas'], ['todas', 'Todas']];
 const VISTAS = [['cuentas', 'Cuentas'], ['pagos', 'Pagos'], ['reporte', 'Reporte']];
 
-const primeroDelMes = () => {
-  const d = new Date(); const p = (x) => String(x).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-01`;
-};
-const hoyISO = () => {
-  const d = new Date(); const p = (x) => String(x).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-};
+/** Los atajos de fecha de Pagos y Reporte (15/10/2026); «Todo» = sin fechas. */
+const ATAJOS = [['hoy', 'Hoy'], ['ayer', 'Ayer'], ['semana', 'Esta semana'], ['semana-pasada', 'Semana pasada'], ['mes', 'Este mes'], ['mes-pasado', 'Mes pasado'], ['todo', 'Todo']];
+const rangoAtajo = (k) => (k === 'todo' ? ['', ''] : rangoDe(k));
+
+/** Atajos + desde/hasta a mano. El atajo activo es el que coincide con las fechas puestas. */
+function Fechas({ desde, hasta, onChange }) {
+  return (
+    <>
+      {ATAJOS.map(([k, l]) => {
+        const [d, h] = rangoAtajo(k);
+        return <Btn key={k} small variant={d === desde && h === hasta ? 'btn-primary' : undefined} onClick={() => onChange(d, h)}>{l}</Btn>;
+      })}
+      <label className={s.hint} style={{ margin: 0 }}>Desde</label>
+      <input type="date" value={desde} max={hasta || undefined} onChange={(e) => onChange(e.target.value, hasta)} />
+      <label className={s.hint} style={{ margin: 0 }}>Hasta</label>
+      <input type="date" value={hasta} min={desde || undefined} onChange={(e) => onChange(desde, e.target.value)} />
+    </>
+  );
+}
 
 /**
  * CUENTAS DISPONIBLES — la transferencia tercerizada (0095).
@@ -124,7 +136,10 @@ function VistaCuentas({ tick }) {
           <tr key={c.id} style={fondo(c)}>
             <td>{fmtFecha(c.fecha)}</td>
             <td><strong>{c.proveedorNombre}</strong></td>
-            <td>{c.titular}</td>
+            <td>
+              {c.titular}
+              {c.ventaMinima > 0 && <div><Pill pill="est-transito" label={`solo ventas desde ${money(c.ventaMinima)}`} /></div>}
+            </td>
             <td>
               <span className={s.mono}>{c.cbuAlias}</span>{' '}
               <Btn small onClick={() => copiar(c)} title="Copiar alias">⧉</Btn>
@@ -177,8 +192,7 @@ function VistaCuentas({ tick }) {
 function VistaPagos() {
   const { proveedores, toast, openModal, recargarContadores } = useProveedores();
   const [proveedorId, setProveedorId] = useState('');
-  const [desde, setDesde] = useState('');
-  const [hasta, setHasta] = useState('');
+  const [[desde, hasta], setFechas] = useState(() => rangoDe('mes'));
   const [anulados, setAnulados] = useState(false);
   const { data, reload } = useResource(
     `ctas-disp-pagos:${proveedorId}:${desde}:${hasta}:${anulados}`,
@@ -203,14 +217,10 @@ function VistaPagos() {
           <option value="">Todos los proveedores</option>
           {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
         </select>
-        <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} title="Desde" />
-        <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} title="Hasta" />
+        <Fechas desde={desde} hasta={hasta} onChange={(d, h) => setFechas([d, h])} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <input type="checkbox" checked={anulados} onChange={(e) => setAnulados(e.target.checked)} /> Ver anuladas
         </label>
-        {(proveedorId || desde || hasta) && (
-          <Btn small onClick={() => { setProveedorId(''); setDesde(''); setHasta(''); }}>Limpiar</Btn>
-        )}
       </div>
       <Table
         cols={[
@@ -253,8 +263,7 @@ function VistaPagos() {
 
 function VistaReporte() {
   const { proveedores } = useProveedores();
-  const [desde, setDesde] = useState(primeroDelMes);
-  const [hasta, setHasta] = useState(hoyISO);
+  const [[desde, hasta], setFechas] = useState(() => rangoDe('mes'));
   const [proveedorId, setProveedorId] = useState('');
   const { data } = useResource(
     `ctas-disp-reporte:${desde}:${hasta}:${proveedorId}`,
@@ -265,15 +274,11 @@ function VistaReporte() {
   return (
     <>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <label className={s.hint} style={{ margin: 0 }}>Desde</label>
-        <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
-        <label className={s.hint} style={{ margin: 0 }}>Hasta</label>
-        <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
         <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
           <option value="">Todos los proveedores</option>
           {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
         </select>
-        <Btn small onClick={() => { setDesde(primeroDelMes()); setHasta(hoyISO()); setProveedorId(''); }}>Este mes</Btn>
+        <Fechas desde={desde} hasta={hasta} onChange={(d, h) => setFechas([d, h])} />
       </div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <Stat label="Total del período" value={money(data?.total ?? 0)} accent="accent-green" />

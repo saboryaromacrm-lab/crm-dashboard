@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  agruparPorProveedor, sugerirImporteCuenta, textoResumenCuenta, validarTransferenciaProveedor,
+  agruparPorProveedor, seOfrece, sugerirImporteCuenta, textoResumenCuenta, validarTransferenciaProveedor,
 } from './cuentasProveedor.js';
 
 const cuenta = (extra = {}) => ({
@@ -58,4 +58,13 @@ test('el texto del resumen lleva cabecera y una línea por transferencia', () =>
   assert.match(t, /Transferido: \$70\.000 en 2 transferencias/);
   assert.match(t, /Fa — \$40\.000\n/);
   assert.match(t, /Fb — \$30\.000 \(Lucas\)/);
+});
+
+test('solo para ventas desde (0168): se ofrece desde ese total, y la validación lo frena por debajo', () => {
+  const c = { id: 9, proveedorNombre: 'CARLOS OLIVAA', falta: 200000, minimo: 0, ventaMinima: 50000 };
+  assert.equal(seOfrece(c, 49999.99), false);
+  assert.equal(seOfrece(c, 50000), true, 'desde: el total justo entra');
+  assert.equal(seOfrece({ ...c, ventaMinima: 0 }, 10), true, 'sin piso: siempre');
+  assert.match(validarTransferenciaProveedor(30000, c, 40000), /solo para ventas desde \$50\.000/);
+  assert.equal(validarTransferenciaProveedor(30000, c, 60000), null, 'venta de $60.000: la cuenta entra aunque la transferencia sea de $30.000');
 });

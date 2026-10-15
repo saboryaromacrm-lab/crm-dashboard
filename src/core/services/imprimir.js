@@ -857,6 +857,33 @@ function selloReimpresion(usuario, ahora) {
 }
 
 /**
+ * LA PLANILLA DEL QUE PREPARA (15/10/2026, pedido del dueño): la MISMA hoja
+ * para el pedido entre sucursales (listas Enteros y Fraccionados) y para el
+ * pedido de fraccionado de la Distribuidora. Producto · Paquete · Pedido · ✓ ·
+ * Observación: se tilda lo hecho y se anota al lado lo que haya que aclarar.
+ *
+ * `filas`: [{ producto, nota?, paquete, pedido, detalle?, obs? }] en texto
+ * (se escapa acá). `total`: el total de lo pedido para la última fila, o nada.
+ */
+export function cuerpoListaPreparacion({ titulo, sub, filas, total = null }) {
+  const rows = filas.map((f) => `
+    <tr>
+      <td>${esc(f.producto)}${f.nota ? ` <em>(${esc(f.nota)})</em>` : ''}</td>
+      <td class="chica">${esc(f.paquete)}</td>
+      <td class="chica n">${esc(f.pedido)}${f.detalle ? `<div class="chica">${esc(f.detalle)}</div>` : ''}</td>
+      <td class="c">&#9744;</td>
+      <td class="obs">${esc(f.obs || '')}</td>
+    </tr>`).join('');
+  const pie = total == null ? '' : `
+    <tr><td colspan="2"><strong>Total</strong></td><td class="chica n"><strong>${esc(total)}</strong></td><td colspan="2"></td></tr>`;
+  return `
+    <h1>${esc(titulo)}</h1>
+    ${sub.map((x) => `<div class="sub">${esc(x)}</div>`).join('')}
+    <table><thead><tr><th>Producto</th><th>Paquete</th><th>Pedido</th><th>&#10003;</th><th>Observación</th></tr></thead>
+    <tbody>${rows}${pie}</tbody></table>`;
+}
+
+/**
  * REMITO DE UNA TRANSFERENCIA.
  *
  * Las tres cantidades van juntas —pedido, enviado, recibido— y no es

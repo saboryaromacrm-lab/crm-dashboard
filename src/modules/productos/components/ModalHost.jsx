@@ -10,6 +10,7 @@ import {
   CorregirFraccionadoModal, MovimientoModal, DescartarEstadoModal,
 } from './modals/StockModals.jsx';
 import { RegistrarFraccionadoModal } from './modals/RegistrarFraccionadoModal.jsx';
+import { PedidoFraccionModal } from '../panels/FraccionamientoPedidos.jsx';
 import { TransferenciaModal, DetalleTransferModal, RecibirTransferModal, PrepararTransferModal } from './modals/TransferModals.jsx';
 import { IncidenciaModal, ResolverIncidenciaModal, DetalleIncidenciaModal } from './modals/IncidenciaModals.jsx';
 import { ConteoNuevoModal, ConteoModal } from './modals/ConteosModals.jsx';
@@ -270,6 +271,7 @@ const REGISTRY = {
    * padrón, y el padrón se administra allá. */
   /* Sin `compra`: la mercadería entra por la factura en Compras (18/8/2026). */
   registrarFraccionado: RegistrarFraccionadoModal,
+  pedidoFraccion: PedidoFraccionModal,
   /** "Puse 20 paquetes y son 19": ajusta los paquetes Y el granel de una vez. */
   corregirFraccionado: CorregirFraccionadoModal,
   movimiento: MovimientoModal,

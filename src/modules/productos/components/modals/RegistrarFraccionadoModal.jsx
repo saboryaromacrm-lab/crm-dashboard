@@ -37,8 +37,10 @@ const clave = () => ++secuencia;
  * `inicial`: renglones ya cargados — [{ productoId, presId, cant }]. Lo usa la
  * preparación de un pedido, que ya sabe cuántos paquetes faltan.
  * `volverA`: el modal al que se vuelve al terminar (el pedido).
+ * `pedido`: { id, codigo } de un pedido de fraccionado de la Distribuidora
+ * (0169): al registrar, el servidor lo cierra en la misma operación.
  */
-export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volverA = null, onRegistrado = null }) {
+export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volverA = null, onRegistrado = null, pedido = null }) {
   const { store, closeModal, openModal, toast, isAdmin } = useProductos();
   /* Todo se fracciona en la DISTRIBUIDORA (ahí llega el granel): no se elige.
    * Si quien abre trae otra (el origen de un pedido), se respeta. Para el que
@@ -166,12 +168,13 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
       ...(motivo.trim() ? { motivo: motivo.trim() } : {}),
       // En el momento no se manda nada: la hora la pone el servidor.
       ...momento.payload,
+      ...(pedido ? { pedidoId: pedido.id } : {}),
       items: validos.map((it) => ({ productoId: it.productoId, presId: it.presId, cant: Math.round(Number(it.cant)) })),
     });
     enVuelo.current = false;
     setGuardando(false);
     if (!res.ok) { toast(res.error || 'No se pudo registrar.', 'err'); return; }
-    toast(`Fraccionado registrado: ${num(res.paquetes, 0)} paquete(s), ${num(res.kg, 3)} kg.`, 'ok');
+    toast(`Fraccionado registrado: ${num(res.paquetes, 0)} paquete(s), ${num(res.kg, 3)} kg.${pedido ? ` ${pedido.codigo} quedó hecho.` : ''}`, 'ok');
     onRegistrado?.();
     volver();
   };
@@ -179,7 +182,9 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
   return (
     <ModalShell
       title="Registrar fraccionado"
-      subtitle={volverA ? 'Para completar el pedido — al terminar volvés a él' : undefined}
+      subtitle={pedido
+        ? `Lo fraccionado del pedido ${pedido.codigo} — corregí lo que no se llegó a hacer; al registrar, el pedido queda hecho`
+        : volverA ? 'Para completar el pedido — al terminar volvés a él' : undefined}
       wide
       onClose={volver}
       footer={[

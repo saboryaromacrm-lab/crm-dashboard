@@ -236,11 +236,11 @@ export function CobroModal({
     if (!hayTerc) return null;
     for (const x of pagos) {
       if (x.medio !== TERC || !(Number(x.importe) > 0)) continue;
-      const m = validarTransferenciaProveedor(x.importe, (cuentasTerc ?? []).find((c) => c.id === x.cuentaDisponibleId));
+      const m = validarTransferenciaProveedor(x.importe, (cuentasTerc ?? []).find((c) => c.id === x.cuentaDisponibleId), totalCobrar);
       if (m) return m;
     }
     return null;
-  }, [hayTerc, pagos, cuentasTerc]);
+  }, [hayTerc, pagos, cuentasTerc, totalCobrar]);
 
   /**
    * Medios que EXIGEN factura (configuración, 19/8/2026): un peso cobrado con
@@ -984,7 +984,7 @@ export function CobroModal({
             )}
             {x.medio === TERC && (
               <CuentaProveedorPicker
-                cuentas={cuentasTerc} loading={cargandoTerc && !cuentasTerc} error={errorTerc}
+                cuentas={cuentasTerc} total={totalCobrar} loading={cargandoTerc && !cuentasTerc} error={errorTerc}
                 cuentaId={x.cuentaDisponibleId} importe={x.importe}
                 onSeleccionar={(c) => elegirCuenta(i, c)} onRefrescar={recargarTerc}
               />

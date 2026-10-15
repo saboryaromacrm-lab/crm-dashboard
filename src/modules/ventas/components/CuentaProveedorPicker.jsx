@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
-import { agruparPorProveedor, etiquetaCuenta, fmt, validarTransferenciaProveedor } from '../domain/cuentasProveedor.js';
+import { agruparPorProveedor, etiquetaCuenta, fmt, seOfrece, validarTransferenciaProveedor } from '../domain/cuentasProveedor.js';
 import { Btn, s } from './ui.jsx';
 import p from '../styles/Pos.module.css';
 
@@ -14,12 +14,17 @@ import p from '../styles/Pos.module.css';
  * el rechazo —si lo hay— ANTES de apretar.
  *
  * No pide nada por su cuenta: recibe la lista de cuentas abiertas del padre
- * (que la pide una vez por modal) y devuelve la cuenta elegida.
+ * (que la pide una vez por modal) y devuelve la cuenta elegida. `total` es el
+ * de la venta o el recibo: las cuentas «solo para ventas desde $X» no se
+ * ofrecen por debajo de X (0168).
  */
-export function CuentaProveedorPicker({ cuentas, loading, error, cuentaId, importe, onSeleccionar, onRefrescar }) {
+export function CuentaProveedorPicker({ cuentas, total, loading, error, cuentaId, importe, onSeleccionar, onRefrescar }) {
   const { toast } = useVentas();
-  const grupos = useMemo(() => agruparPorProveedor(cuentas), [cuentas]);
-  const elegida = useMemo(() => (cuentas ?? []).find((c) => c.id === cuentaId) || null, [cuentas, cuentaId]);
+  const ofrecidas = useMemo(() => (cuentas ?? []).filter((c) => seOfrece(c, total)), [cuentas, total]);
+  const ocultas = (cuentas?.length ?? 0) - ofrecidas.length;
+  const pisoOcultas = ocultas ? Math.min(...cuentas.filter((c) => !seOfrece(c, total)).map((c) => c.ventaMinima)) : 0;
+  const grupos = useMemo(() => agruparPorProveedor(ofrecidas), [ofrecidas]);
+  const elegida = useMemo(() => ofrecidas.find((c) => c.id === cuentaId) || null, [ofrecidas, cuentaId]);
   // El proveedor se elige primero; si ya hay cuenta, es el de esa cuenta.
   const [provElegido, setProvElegido] = useState('');
   const proveedorId = elegida ? elegida.proveedorId : Number(provElegido) || 0;
@@ -51,16 +56,22 @@ export function CuentaProveedorPicker({ cuentas, loading, error, cuentaId, impor
       </div>
     );
   }
+  const notaOcultas = ocultas > 0 && (
+    <div className={s.hint} style={{ margin: '4px 0 0' }}>
+      {ocultas === 1 ? 'Una cuenta no se ofrece' : `${ocultas} cuentas no se ofrecen`} en esta venta: son para ventas desde {fmt(pisoOcultas)}.
+    </div>
+  );
   if (!grupos.length) {
     return (
       <div className={cx(s.callout, s.warn)}>
-        No hay ninguna cuenta de proveedor abierta para recibir transferencias.
+        No hay ninguna cuenta de proveedor abierta para recibir transferencias{ocultas ? ' en una venta de este total' : ''}.
         Se cargan en <strong>Proveedores › Cuentas disponibles</strong>.
+        {notaOcultas}
       </div>
     );
   }
 
-  const aviso = validarTransferenciaProveedor(importe, elegida);
+  const aviso = validarTransferenciaProveedor(importe, elegida, total);
 
   return (
     <div className={p.terc}>
@@ -90,6 +101,7 @@ export function CuentaProveedorPicker({ cuentas, loading, error, cuentaId, impor
           </select>
         </div>
       </div>
+      {notaOcultas}
 
       {elegida && (
         <div className={p.tercCard}>
@@ -101,6 +113,7 @@ export function CuentaProveedorPicker({ cuentas, loading, error, cuentaId, impor
           <div className={p.tercDatos}>
             <span>Faltan <strong>{fmt(elegida.falta)}</strong> de {fmt(elegida.importe)}</span>
             {elegida.minimo > 0 && <span>Mínimo del proveedor: <strong>{fmt(elegida.minimo)}</strong></span>}
+            {elegida.ventaMinima > 0 && <span>Solo ventas desde <strong>{fmt(elegida.ventaMinima)}</strong></span>}
           </div>
           {aviso && <div className={cx(s.callout, s.warn)} style={{ marginTop: 8, marginBottom: 0 }}>{aviso}</div>}
         </div>

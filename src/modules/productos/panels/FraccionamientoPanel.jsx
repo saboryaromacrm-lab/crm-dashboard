@@ -10,7 +10,7 @@
  * que se quiera, todas las veces que se quiera, y el stock lo sigue moviendo
  * únicamente quien fracciona.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { analizarCodigo } from '@core/services/barcode.js';
 import { httpClient } from '@core/services/httpClient.js';
@@ -26,6 +26,7 @@ import { Table, PanelHead, Stat, Btn, usePaginado, s } from '../components/ui.js
 import { DisenadorEtiquetaFraccionado } from '../components/DisenadorEtiquetaFraccionado.jsx';
 import { AyudaEncabezadoNavegador } from '../components/AyudaEncabezado.jsx';
 import { TabHistorial, TabOperadores } from './FraccionamientoHistorial.jsx';
+import { TabPedidosDistribuidora } from './FraccionamientoPedidos.jsx';
 
 /** Texto comparable: sin mayúsculas ni acentos. */
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
@@ -35,6 +36,7 @@ const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacrit
  * que ya lista cada paquete con su stock. */
 const PESTANAS = [
   { id: 'historial', label: 'Historial' },
+  { id: 'pedidos', label: 'Pedidos Distribuidora' },
   { id: 'catalogo', label: 'Por categoría y gramaje' },
   { id: 'etiquetas', label: 'Etiquetas' },
   { id: 'operadores', label: 'Operadores' },
@@ -48,6 +50,14 @@ export function FraccionamientoPanel() {
   useSeccion('movimientos');
   const puede = can('fraccionar');
   const [pestana, setPestana] = useState('historial');
+
+  /* Los pedidos de fraccionado de la Distribuidora (0169): se piden al abrir
+   * el panel para que la pestaña diga cuántos hay pendientes. */
+  const [pedidos, setPedidos] = useState({ datos: null, error: '' });
+  const recargarPedidos = useCallback(() => store.pedidosFraccion()
+    .then((r) => setPedidos(r.ok ? { datos: r.data, error: '' } : { datos: null, error: r.error || 'No se pudieron cargar los pedidos.' })), [store]);
+  useEffect(() => { recargarPedidos(); }, [recargarPedidos]);
+  const pendientes = pedidos.datos?.pedidos.filter((x) => x.estado === 'pendiente').length ?? 0;
 
   /*
    * LOS PAQUETES SIN PRECIO. El formato de venta del paquete arrancó en blanco
@@ -80,7 +90,7 @@ export function FraccionamientoPanel() {
             }}
             onClick={() => setPestana(v.id)}
           >
-            {v.label}
+            {v.label}{v.id === 'pedidos' && pendientes > 0 ? ` (${pendientes})` : ''}
           </button>
         ))}
         <span style={{ flex: 1 }} />
@@ -104,6 +114,7 @@ export function FraccionamientoPanel() {
       </div>
 
       {pestana === 'historial' && <TabHistorial puede={puede} />}
+      {pestana === 'pedidos' && <TabPedidosDistribuidora datos={pedidos.datos} error={pedidos.error} recargar={recargarPedidos} />}
       {pestana === 'catalogo' && <TabPorCategoria puede={puede} />}
       {pestana === 'etiquetas' && <TabEtiquetas puede={puede} />}
       {pestana === 'operadores' && <TabOperadores />}

@@ -48,6 +48,8 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
 
   const comprobantes = useMemo(() => cuenta?.comprobantes ?? [], [cuenta]);
 
+  const totalPagos = r2(pagos.reduce((a, p) => a + (Number(p.importe) || 0), 0));
+
   /* Transferencia a cuenta de proveedor: mismas reglas y mismo selector que
    * el cobro del POS. Las cuentas se piden al elegir el medio. */
   const hayTerc = pagos.some((x) => x.medio === TERC);
@@ -58,13 +60,12 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
     if (!hayTerc) return null;
     for (const x of pagos) {
       if (x.medio !== TERC || !(Number(x.importe) > 0)) continue;
-      const m = validarTransferenciaProveedor(x.importe, (cuentasTerc ?? []).find((c) => c.id === x.cuentaDisponibleId));
+      const m = validarTransferenciaProveedor(x.importe, (cuentasTerc ?? []).find((c) => c.id === x.cuentaDisponibleId), totalPagos);
       if (m) return m;
     }
     return null;
-  }, [hayTerc, pagos, cuentasTerc]);
+  }, [hayTerc, pagos, cuentasTerc, totalPagos]);
 
-  const totalPagos = r2(pagos.reduce((a, p) => a + (Number(p.importe) || 0), 0));
   const totalImputado = r2(Object.values(imputado).reduce((a, v) => a + (Number(v) || 0), 0));
   const aCuenta = r2(totalPagos - totalImputado);
   const excedido = totalImputado > totalPagos + EPS;
@@ -252,7 +253,7 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
         </div>
         {p.medio === TERC && (
           <CuentaProveedorPicker
-            cuentas={cuentasTerc} loading={cargandoTerc && !cuentasTerc} error={errorTerc}
+            cuentas={cuentasTerc} total={totalPagos} loading={cargandoTerc && !cuentasTerc} error={errorTerc}
             cuentaId={p.cuentaDisponibleId} importe={p.importe}
             onSeleccionar={(c) => elegirCuenta(i, c)} onRefrescar={recargarTerc}
           />
