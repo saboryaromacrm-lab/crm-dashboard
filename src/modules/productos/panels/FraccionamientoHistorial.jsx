@@ -91,8 +91,8 @@ const chip = (activo) => ({
 });
 
 /* ============================== HISTORIAL ============================== */
-export function TabHistorial({ puede }) {
-  const { store, isAdmin, toast, openModal } = useProductos();
+export function TabHistorial() {
+  const { store, isAdmin, toast } = useProductos();
   const [fechas, setFechas] = useState(() => { const [desde, hasta] = rango('hoy'); return { desde, hasta }; });
   const [f, setF] = useState(FILTROS_VACIOS);
   const [texto, setTexto] = useState('');
@@ -102,8 +102,6 @@ export function TabHistorial({ puede }) {
   const [error, setError] = useState('');
   const [exportando, setExportando] = useState(false);
   const [operadores, setOperadores] = useState([]);
-  /* Sube al registrar un fraccionado desde acá: vuelve a pedir la página. */
-  const [recarga, setRecarga] = useState(0);
 
   useEffect(() => {
     const id = setTimeout(() => setQ(texto.trim()), 350);
@@ -147,7 +145,7 @@ export function TabHistorial({ puede }) {
   useEffect(() => {
     const offset = ultimaFirma.current !== firma ? 0 : pag.offset;
     ultimaFirma.current = firma;
-    const clave = `${firma}|${offset}|${pag.limit}|${recarga}`;
+    const clave = `${firma}|${offset}|${pag.limit}`;
     if (clave === ultimoPedido.current) return;
     ultimoPedido.current = clave;
     const mio = ++turno.current;
@@ -157,7 +155,7 @@ export function TabHistorial({ puede }) {
       setCargando(false);
       if (r.ok) { setData(r.data); setError(''); } else setError(r.error || 'No se pudo cargar el historial.');
     });
-  }, [firma, pag.offset, pag.limit, store, recarga]);
+  }, [firma, pag.offset, pag.limit, store]);
 
   const setFiltro = (k, v) => setF((x) => ({ ...x, [k]: x[k] === v ? '' : v }));
   const hayFiltros = Object.values(f).some(Boolean) || !!texto;
@@ -191,14 +189,6 @@ export function TabHistorial({ puede }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
-      {puede && (
-        <div>
-          <Btn variant="btn-primary" onClick={() => openModal('registrarFraccionado', { onRegistrado: () => setRecarga((n) => n + 1) })}>
-            Registrar fraccionado
-          </Btn>
-        </div>
-      )}
-
       <div className={s.toolbar} style={{ flexWrap: 'wrap', gap: 8 }}>
         {RANGOS.map((r) => (
           <button

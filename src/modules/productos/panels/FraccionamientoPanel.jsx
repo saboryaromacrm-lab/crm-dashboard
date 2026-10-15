@@ -113,7 +113,7 @@ export function FraccionamientoPanel() {
         )}
       </div>
 
-      {pestana === 'historial' && <TabHistorial puede={puede} />}
+      {pestana === 'historial' && <TabHistorial />}
       {pestana === 'pedidos' && <TabPedidosDistribuidora datos={pedidos.datos} error={pedidos.error} recargar={recargarPedidos} />}
       {pestana === 'catalogo' && <TabPorCategoria puede={puede} />}
       {pestana === 'etiquetas' && <TabEtiquetas puede={puede} />}
