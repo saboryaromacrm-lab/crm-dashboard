@@ -771,6 +771,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
   const [destino, setDestino] = useState('mercaderia');
   const [medio, setMedio] = useState(deposito ? 'deposito' : 'efectivo');
   const [referencia, setReferencia] = useState('');
+  const [cambioPor, setCambioPor] = useState('');
   const [fecha, setFecha] = useState(deposito?.fecha ?? hoy());
   const [detalle, setDetalle] = useState(deposito?.detalle ?? '');
   const [aCuenta, setACuenta] = useState('');
@@ -788,7 +789,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
     else delete n[d.docId];
     return n;
   });
-  const sc = useSegundaConfirmacion(`${proveedorId}|${destino}|${medio}|${referencia}|${fecha}|${detalle}|${aCuenta}|${JSON.stringify(tildes)}`);
+  const sc = useSegundaConfirmacion(`${proveedorId}|${destino}|${medio}|${cambioPor}|${referencia}|${fecha}|${detalle}|${aCuenta}|${JSON.stringify(tildes)}`);
   const yaSalio = !!deposito?.movimientoId;
   const confirmar = () => sc.clic(
     () => {
@@ -800,6 +801,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
         if (tildes[d.docId] != null && (!(v > 0) || v > d.saldo + 0.009)) { setError(`En ${d.etiqueta} el importe tiene que ser mayor a 0 y hasta ${money(d.saldo)}.`); return false; }
       }
       if (extra < -0.009) { setError(`Lo tildado (${money(aplicado)}) supera el depósito (${money(total)}).`); return false; }
+      if (medio === 'cambio' && !cambioPor.trim()) { setError('Escribí quién hizo la transferencia (a quién le diste el efectivo).'); return false; }
       if (medio === 'deposito' && !referencia.trim()) { setError('Para un depósito escribí la referencia (número de depósito o comprobante del banco).'); return false; }
       if (!yaSalio && fecha === hoy() && total > saldo + 0.009) { setError(`No alcanza: tenés ${money(saldo)} en mano.`); return false; }
       return true;
@@ -810,7 +812,11 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
         const base = { proveedorId: prov.id, destino, imputaciones, referencia: referencia.trim(), detalle: detalle.trim(), confirmado: true };
         const r = yaSalio
           ? await httpClient.post(`/cashflow/movimientos/${deposito.movimientoId}/aplicar-proveedor`, base)
-          : await httpClient.post('/cashflow/pagos', { ...base, medio, importe: total, fecha, ...(deposito ? { conceptoId: deposito.conceptoId } : {}) });
+          : await httpClient.post('/cashflow/pagos', {
+            ...base, importe: total, fecha,
+            ...(medio === 'cambio' ? { medio: 'transferencia', cambioPor: cambioPor.trim() } : { medio }),
+            ...(deposito ? { conceptoId: deposito.conceptoId } : {}),
+          });
         avisar('ok', yaSalio
           ? `Depósito de ${money(total)} aplicado a ${prov.nombre}: quedó en su cuenta.`
           : `Pago a ${prov.nombre} por ${money(total)} registrado. Efectivo en mano: ${money(r.saldo)}.`);
@@ -847,7 +853,13 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
             <select value={medio} onChange={(e) => setMedio(e.target.value)}>
               <option value="efectivo">Efectivo en mano</option>
               <option value="deposito">Depósito en su cuenta (sale efectivo de tu caja)</option>
+              <option value="cambio">Efectivo por transferencia (otra persona le transfiere)</option>
             </select>
+          </Campo>
+        )}
+        {medio === 'cambio' && (
+          <Campo label="¿Quién hizo la transferencia? *">
+            <input maxLength={80} value={cambioPor} onChange={(e) => setCambioPor(e.target.value)} placeholder="A quién le diste el efectivo" />
           </Campo>
         )}
         <Campo label={medio === 'deposito' ? 'Referencia del depósito *' : 'Referencia'}>

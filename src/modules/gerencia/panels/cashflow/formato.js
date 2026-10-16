@@ -22,7 +22,8 @@ export const fechaCorta = (v) => (v ? new Date(v).toLocaleDateString('es-AR', { 
 export const horaCorta = (v) => (v ? new Date(v).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) : '');
 export const fechaIso = (p) => (p ? `${p.slice(8, 10)}/${p.slice(5, 7)}/${p.slice(0, 4)}` : '—');
 export const ORIGEN = { saldo_inicial: 'Saldo inicial', sobre: 'Sobre de caja', concepto: 'Concepto', pago_proveedor: 'Pago a proveedor', gasto: 'Gasto', conteo: 'Conteo' };
-export const MEDIO = { efectivo: 'efectivo', deposito: 'depósito' };
+/** `cambio` = efectivo por transferencia (0175): en la base queda como transferencia con `cambioPor`. */
+export const MEDIO = { efectivo: 'efectivo', deposito: 'depósito', transferencia: 'transferencia', cambio: 'efectivo por transferencia' };
 /**
  * LOS FILTROS DE LOS REPORTES (9/10/2026, pedido del dueño), los mismos en la
  * PC y en el celular. `f` = { tipo, origen, conceptoId, sucursalId }.
@@ -53,7 +54,7 @@ export const diasDesde = (v) => Math.max(0, Math.round((Date.parse(hoy()) - Date
 export const queEs = (m) => {
   if (m.origen === 'concepto') return m.concepto;
   if (m.origen === 'sobre') return `Sobre ${m.sucursal ?? ''}`;
-  if (m.origen === 'pago_proveedor') return `Pago a ${m.proveedor ?? 'proveedor'} (${MEDIO[m.medio] ?? m.medio ?? ''})`;
+  if (m.origen === 'pago_proveedor') return `Pago a ${m.proveedor ?? 'proveedor'} (${m.cambioPor ? `${MEDIO.cambio} · ${m.cambioPor}` : MEDIO[m.medio] ?? m.medio ?? ''})`;
   if (m.origen === 'gasto') return `Gasto: ${m.concepto ?? m.gastoDescripcion ?? ''}${m.gastoCategoria ? ` · ${m.gastoCategoria}` : ''}`;
   return ORIGEN[m.origen] ?? m.origen;
 };

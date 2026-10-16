@@ -102,6 +102,8 @@ export const provApi = {
    * anula; imputar de más y desimputar siguen viviendo en el DOCUMENTO.
    */
   crearPago: (data) => httpClient.post('/pagos-proveedor', data),
+  /** Los pagos con filtros (`cambio: true` = efectivo por transferencia, 0175). */
+  pagos: (filtros) => httpClient.get(`/pagos-proveedor${qs(filtros)}`),
   anularPago: (id, motivo) => httpClient.post(`/pagos-proveedor/${id}/anular`, { motivo }),
   /**
    * Los FLETES que este proveedor todavía no descontó: plata que la cajera le

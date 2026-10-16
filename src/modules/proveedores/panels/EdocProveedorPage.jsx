@@ -384,6 +384,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
                     {[
                       m.usuarioNombre ? `lo registró ${m.usuarioNombre}` : null,
                       m.sucursalNombre || null,
+                      m.cambioPor ? `efectivo por transferencia (${m.cambioPor})` : null,
                       m.cajaSesionId ? `turno #${m.cajaSesionId}` : 'no salió de caja',
                       m.referencia ? `ref. ${m.referencia}` : null,
                       m.sinAplicar > EPS ? `${money(m.sinAplicar)} sin aplicar` : null,

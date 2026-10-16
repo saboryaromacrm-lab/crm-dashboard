@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { rangoDe } from '@modules/gerencia/panels/metricas/formato.js';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
+import { Fechas } from '../components/Fechas.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { errorMsg, provApi } from '../services/proveedores.api.js';
 import {
@@ -10,26 +11,6 @@ import {
 
 const ESTADOS = [['abiertas', 'Abiertas'], ['cubiertas', 'Cubiertas'], ['cortadas', 'Cortadas'], ['todas', 'Todas']];
 const VISTAS = [['cuentas', 'Cuentas'], ['pagos', 'Pagos'], ['reporte', 'Reporte']];
-
-/** Los atajos de fecha de Pagos y Reporte (15/10/2026); «Todo» = sin fechas. */
-const ATAJOS = [['hoy', 'Hoy'], ['ayer', 'Ayer'], ['semana', 'Esta semana'], ['semana-pasada', 'Semana pasada'], ['mes', 'Este mes'], ['mes-pasado', 'Mes pasado'], ['todo', 'Todo']];
-const rangoAtajo = (k) => (k === 'todo' ? ['', ''] : rangoDe(k));
-
-/** Atajos + desde/hasta a mano. El atajo activo es el que coincide con las fechas puestas. */
-function Fechas({ desde, hasta, onChange }) {
-  return (
-    <>
-      {ATAJOS.map(([k, l]) => {
-        const [d, h] = rangoAtajo(k);
-        return <Btn key={k} small variant={d === desde && h === hasta ? 'btn-primary' : undefined} onClick={() => onChange(d, h)}>{l}</Btn>;
-      })}
-      <label className={s.hint} style={{ margin: 0 }}>Desde</label>
-      <input type="date" value={desde} max={hasta || undefined} onChange={(e) => onChange(e.target.value, hasta)} />
-      <label className={s.hint} style={{ margin: 0 }}>Hasta</label>
-      <input type="date" value={hasta} min={desde || undefined} onChange={(e) => onChange(desde, e.target.value)} />
-    </>
-  );
-}
 
 /**
  * CUENTAS DISPONIBLES — la transferencia tercerizada (0095).

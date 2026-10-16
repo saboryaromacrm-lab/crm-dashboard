@@ -15,6 +15,7 @@ import { EdocPanel } from '../panels/EdocPanel.jsx';
 import { PadronPanel } from '../panels/PadronPanel.jsx';
 import { MontosPanel } from '../panels/MontosPanel.jsx';
 import { CuentasDisponiblesPanel } from '../panels/CuentasDisponiblesPanel.jsx';
+import { CambiosPanel } from '../panels/CambiosPanel.jsx';
 
 /** Los `id` coinciden con `PROVEEDORES_PANELS` (config). */
 const PANEL_COMPONENTS = {
@@ -25,6 +26,7 @@ const PANEL_COMPONENTS = {
   cuentas: CuentasDisponiblesPanel,
   padron: PadronPanel,
   montos: MontosPanel,
+  cambios: CambiosPanel,
 };
 
 /** Shell del módulo Proveedores: misma estructura que Gastos y Ventas. */

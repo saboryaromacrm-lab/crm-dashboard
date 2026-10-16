@@ -13,6 +13,12 @@ const hoyISO = () => {
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const EPS = 0.009;
 const claveDoc = (d) => `${d.tipo}-${d.docId}`;
+/**
+ * EFECTIVO POR TRANSFERENCIA (0175): se le da efectivo a otra persona y ella le
+ * transfiere al proveedor. Viaja como transferencia con `cambioPor`; la plata
+ * sale como efectivo (del turno, si se tilda).
+ */
+const CAMBIO = 'cambio';
 
 /**
  * PAGARLE AL PROVEEDOR, desde su estado de cuenta.
@@ -49,7 +55,9 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
   const [fecha, setFecha] = useState(hoyISO());
   const [concepto, setConcepto] = useState('');
   const [referencia, setReferencia] = useState('');
+  const [cambioPor, setCambioPor] = useState('');
   const [desdeCaja, setDesdeCaja] = useState(true);
+  const esCambio = modo === 'simple' && medio === CAMBIO;
 
   const { data: caja } = useResource(
     `caja-prov:${ctx.sucursalId}`,
@@ -115,10 +123,10 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
   const destino = elegidos.length && elegidos[0].tipo === 'gasto' ? 'gastos' : 'mercaderia';
 
   const usaEfectivo = modo === 'simple'
-    ? medio === 'efectivo'
+    ? medio === 'efectivo' || esCambio
     : formas.some((x) => x.medio === 'efectivo' && Number(x.importe) > 0);
   /* Si la plata sale por banco, a mano el CBU/alias del proveedor para copiarlo (10/10/2026). */
-  const porBanco = (m) => m === 'transferencia' || m === 'deposito';
+  const porBanco = (m) => m === 'transferencia' || m === 'deposito' || m === CAMBIO;
   const usaBanco = modo === 'simple' ? porBanco(medio) : formas.some((x) => porBanco(x.medio));
   const { data: cuentasBanco, error: errorCuentas } = useResource(`cuentas-banco:${proveedor.id}`, () => provApi.cuentas(proveedor.id), { enabled: usaBanco });
   const copiarCuenta = (c) => navigator.clipboard.writeText(c.cbuAlias)
@@ -134,7 +142,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
   /* Sale plata: segunda confirmación + candado del doble clic (27/9/2026). */
   const conf = useSegundaConfirmacion(JSON.stringify([
     Object.keys(tildados).filter((k) => tildados[k]), Object.keys(fletesTildados).filter((k) => fletesTildados[k]),
-    importeLibre, modo, medio, formas, fecha, concepto, referencia, desdeCaja,
+    importeLibre, modo, medio, formas, fecha, concepto, referencia, desdeCaja, cambioPor,
   ]));
   const validar = () => {
     if (mezcla || fleteExcedido) return pagarDirecto(false, true);
@@ -143,6 +151,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
       toast(elegidos.length ? 'Los documentos tildados no suman nada.' : 'Poné el importe del pago.', 'err');
       return false;
     }
+    if (esCambio && !cambioPor.trim()) { toast('Escribí quién hizo la transferencia (a quién le diste el efectivo).', 'err'); return false; }
     if (modo !== 'simple') {
       if (!formas.some((x) => Number(x.importe) > 0)) { toast('Cargá al menos una parte del pago.', 'err'); return false; }
       if (Math.abs(sumaFormas - importe) > EPS) {
@@ -208,7 +217,10 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
         : undefined,
       fletes: repartoFletes.lineas.length ? repartoFletes.lineas : undefined,
     };
-    if (modo === 'simple') {
+    if (esCambio) {
+      body.medio = 'transferencia';
+      body.cambioPor = cambioPor.trim();
+    } else if (modo === 'simple') {
       body.medio = medio;
     } else {
       const filas = formas.filter((x) => Number(x.importe) > 0);
@@ -259,7 +271,8 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
           ? <>Se descuentan <strong>{money(sumaFletes)}</strong> de flete ya pagado: no sale plata nueva.</>
           : <>
             Sale un pago de <strong>{money(importe)}</strong> a <strong>{proveedor.nombre}</strong>
-            {modo === 'simple' ? <> por {medio}</> : <> en {formas.filter((x) => Number(x.importe) > 0).length} partes</>}
+            {esCambio ? <> por transferencia que hace <strong>{cambioPor.trim() || '—'}</strong> a cambio de tu efectivo</>
+              : modo === 'simple' ? <> por {medio}</> : <> en {formas.filter((x) => Number(x.importe) > 0).length} partes</>}
             {usaEfectivo && hayTurno && desdeCaja ? <> (el efectivo <strong>sale del cajón</strong>, turno #{caja.id})</> : null}
             {elegidos.length
               ? <>, aplicado a {elegidos.length} documento(s){sumaFletes > EPS ? <> y descontando {money(sumaFletes)} de flete</> : null}.</>
@@ -445,8 +458,16 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
               <label>Medio real</label>
               <select value={medio} onChange={(e) => setMedio(e.target.value)}>
                 {Object.entries(MEDIOS_PAGO_REAL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                <option value={CAMBIO}>Efectivo por transferencia</option>
               </select>
             </div>
+            {esCambio && (
+              <div className={s.field}>
+                <label>¿Quién hizo la transferencia? <span className={s.req}>*</span></label>
+                <input value={cambioPor} maxLength={80} onChange={(e) => setCambioPor(e.target.value)} placeholder="A quién le diste el efectivo" />
+                <div className={s.hint} style={{ margin: '6px 0 0' }}>El proveedor lo ve como transferencia; la plata sale como efectivo.</div>
+              </div>
+            )}
             <div className={s.field}>
               <label>Fecha del pago</label>
               <input type="date" max={hoyISO()} value={fecha} onChange={(e) => setFecha(e.target.value)} />

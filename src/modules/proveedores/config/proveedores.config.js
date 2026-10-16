@@ -12,6 +12,7 @@ import BalanceIcon from '@mui/icons-material/Balance';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
+import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 
 export const PROVEEDORES_PANELS = [
   { id: 'pedidos', label: 'Pedidos', icon: ViewKanbanIcon, permiso: 'proveedores.pedidos', badge: 'pedidos' },
@@ -22,4 +23,6 @@ export const PROVEEDORES_PANELS = [
   { id: 'padron', label: 'Proveedores', icon: LocalShippingIcon, permiso: 'proveedores.padron' },
   /* La plata en mercadería de cada proveedor, a costo (14/10/2026). */
   { id: 'montos', label: 'Montos', icon: QueryStatsIcon, permiso: 'proveedores.montos' },
+  /* Efectivo por transferencia (0175): pagos de la cuenta del proveedor, lo ve quien ve los estados de cuenta. */
+  { id: 'cambios', label: 'Efectivo por transf.', icon: CurrencyExchangeIcon, permiso: 'proveedores.edoc' },
 ];
