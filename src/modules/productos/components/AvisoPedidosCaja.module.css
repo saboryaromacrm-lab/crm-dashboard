@@ -89,4 +89,6 @@
 /* Lo que la caja canceló (0171). */
 .cancelado { background: color-mix(in srgb, var(--crm-color-danger) 9%, var(--crm-color-surface)); }
 .canceladoTitulo { color: var(--crm-color-danger); font-weight: 700; }
-.tachado { text-decoration: line-through; opacity: 0.75; }
+.decidir { display: flex; flex-direction: column; gap: 6px; }
+.decidirNombre { font-weight: 700; min-width: 180px; }
+.siActivo { background: var(--crm-color-success); border-color: var(--crm-color-success); color: #fff; }

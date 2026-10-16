@@ -42,7 +42,10 @@ export function MisPedidosFraccion({ pedidos, onEntendido, onCancelar }) {
             </span>
             {aca ? (
               <>
-                <span>¿Cancelar {confirmar.texto}?</span>
+                <span>
+                  ¿Cancelar {confirmar.texto}?
+                  {x.estado === 'armando' && ' Ya lo están armando: si ya está hecho, fraccionado lo pasa igual al stock.'}
+                </span>
                 <Btn small variant="btn-delete" onClick={cancelar}>Sí, cancelar</Btn>
                 <Btn small onClick={() => setConfirmar(null)}>No</Btn>
               </>

@@ -17,7 +17,10 @@ export const pedidosCajaApi = {
   cancelar: (id, itemId) => httpClient.post(`${BASE}/${id}/cancelar`, itemId ? { itemId } : {}),
   abiertos: () => httpClient.get(`${BASE}/abiertos`),
   tomar: (id, operadorId) => httpClient.post(`${BASE}/${id}/tomar`, { operadorId }),
-  listo: (id) => httpClient.post(`${BASE}/${id}/listo`),
+  /** `armadosCancelados`: de lo que la caja canceló, lo que se armó igual (0172). */
+  listo: (id, armadosCancelados) => httpClient.post(`${BASE}/${id}/listo`, { armadosCancelados }),
+  /** Cancelado entero mientras se armaba: lo que se armó igual; vacío = «No armé nada». */
+  resolverCancelado: (id, itemIds) => httpClient.post(`${BASE}/${id}/resolver-cancelado`, { itemIds }),
   rechazar: (id, motivo) => httpClient.post(`${BASE}/${id}/rechazar`, { motivo }),
   historial: (desde, hasta) => httpClient.get(`${BASE}/historial?${new URLSearchParams({ desde, hasta })}`),
   operadores: () => httpClient.get('/fraccionamientos/operadores'),

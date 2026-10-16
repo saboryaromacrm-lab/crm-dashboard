@@ -106,7 +106,11 @@ export function TabPedidosCaja() {
               <td>{p.usuario || '—'}</td>
               <td>
                 {p.items.map((it) => <div key={it.id}>{textoRenglon(it)}</div>)}
-                {p.cancelados.map((it) => <div key={it.id} className={s.muted}><s>{textoRenglon(it)}</s> · cancelado</div>)}
+                {p.cancelados.map((it) => (
+                  <div key={it.id} className={s.muted}>
+                    <s>{textoRenglon(it)}</s> · cancelado{it.fraccionados > 0 ? ` · se armó igual (${num(it.fraccionados, 0)}): entró al stock` : ''}
+                  </div>
+                ))}
               </td>
               <td><Pill pill={est.pill} label={est.label ?? p.estado} /></td>
               <td>{p.operador || p.tomadoPor || '—'}</td>

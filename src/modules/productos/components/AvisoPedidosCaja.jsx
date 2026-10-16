@@ -10,8 +10,10 @@
  * · «Lo armo» (con el operador, que la PC recuerda) → «Listo» registra el
  *   fraccionado, con segunda confirmación porque mueve stock. «No se puede»
  *   pide el motivo, que el cajero lee.
- * · Lo que la caja cancela (0171) se ve tachado y suena distinto; un pedido que
- *   ya se estaba armando queda unos minutos como «Cancelado: no lo armes».
+ * · Lo que la caja cancela (0171) se ve tachado y suena distinto. Pudo quedar
+ *   armado igual (0172): «Listo» pide contestar «Lo armé / No lo armé» por cada
+ *   renglón cancelado, y un pedido cancelado entero mientras se armaba queda acá
+ *   hasta asentar lo armado (entra al stock, sin venta) o «No armé nada».
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@core/auth/AuthContext.jsx';
@@ -117,6 +119,8 @@ function Tarjeta({ p, ops, onCambio, onTerminado }) {
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  /** Renglón cancelado → ¿se armó igual? (sin responder: undefined). */
+  const [armados, setArmados] = useState({});
   const candado = useRef(false);
 
   /* Se propone el operador que esta PC recuerda (o el único). */
@@ -147,20 +151,47 @@ function Tarjeta({ p, ops, onCambio, onTerminado }) {
     await pedidosCajaApi.tomar(p.id, operadorId ?? undefined);
     recordarOperador(operadorId);
   });
-  const listo = () => hacer(() => pedidosCajaApi.listo(p.id), () => onTerminado(`${p.codigo} listo: el fraccionado quedó registrado.`));
+  /* Lo que la caja canceló (0172): por cada renglón, ¿se armó igual? Hasta contestar todo no se asienta. */
+  const elegidos = p.cancelados.filter((it) => armados[it.id] === true);
+  const respondido = p.cancelados.every((it) => typeof armados[it.id] === 'boolean');
+  const kgElegidos = elegidos.reduce((s, it) => s + it.paquetes * it.tamKg, 0);
+  const ids = elegidos.map((it) => it.id);
+
+  const listo = () => hacer(() => pedidosCajaApi.listo(p.id, ids), () => onTerminado(`${p.codigo} listo: el fraccionado quedó registrado.`));
   const rechazar = () => hacer(() => pedidosCajaApi.rechazar(p.id, motivo), () => onTerminado(`${p.codigo}: se le avisó a la caja que no se puede.`));
+  const resolver = () => hacer(() => pedidosCajaApi.resolverCancelado(p.id, ids), () => onTerminado(ids.length
+    ? `${p.codigo}: lo armado quedó registrado y entró al stock.`
+    : `${p.codigo}: anotado, no se armó nada.`));
 
   const faltaOperador = ops.length > 0 && !operadorId;
+  const decidir = <DecidirCancelados items={p.cancelados} armados={armados} setArmados={setArmados} />;
 
-  /* Lo estaban armando y la caja lo canceló entero (0171): solo el aviso, sin acciones. */
+  /* La caja lo canceló entero mientras lo armaban (0172): queda hasta decir qué se armó igual. */
   if (p.estado === 'cancelado') {
     return (
       <article className={cx(a.tarjeta, a.cancelado)}>
-        <div className={a.quien}><strong>{p.codigo}</strong> · lo pidió <strong>{p.usuario || 'la caja'}</strong></div>
-        <div className={a.canceladoTitulo}>❌ La caja lo canceló: no lo armes</div>
-        <ul className={cx(a.renglones, a.tachado)}>
-          {p.cancelados.map((it) => <li key={it.id}>{textoRenglon(it)}</li>)}
-        </ul>
+        <div className={a.quien}><strong>{p.codigo}</strong> · lo pidió <strong>{p.usuario || 'la caja'}</strong> · lo armaba {p.operador || 'fraccionado'}</div>
+        <div className={a.canceladoTitulo}>❌ La caja lo canceló mientras lo armaban</div>
+        {decidir}
+        {modo === 'asentar' ? (
+          <div className={a.acciones}>
+            <span>Se registra el fraccionado de lo armado: baja {num(kgElegidos, 3)} kg de granel y los paquetes entran al stock.</span>
+            <button type="button" className={cx(a.boton, a.principal)} disabled={ocupado} onClick={resolver}>
+              {ocupado ? 'Registrando…' : 'Sí, asentar'}
+            </button>
+            <button type="button" className={a.boton} disabled={ocupado} onClick={() => setModo(null)}>Volver</button>
+          </div>
+        ) : (
+          <div className={a.acciones}>
+            <button
+              type="button" className={cx(a.boton, a.principal)} disabled={ocupado || !respondido}
+              onClick={() => (ids.length ? setModo('asentar') : resolver())}
+            >
+              {!respondido ? 'Contestá qué armaste' : ids.length ? 'Asentar lo armado' : 'No armé nada'}
+            </button>
+          </div>
+        )}
+        {error && <div className={a.error}>{error}</div>}
       </article>
     );
   }
@@ -209,13 +240,20 @@ function Tarjeta({ p, ops, onCambio, onTerminado }) {
       )}
 
       {modo === 'listo' && (
-        <div className={a.acciones}>
-          <span>¿Está armado? Se registra el fraccionado: baja {num(p.kg, 3)} kg de granel.</span>
-          <button type="button" className={cx(a.boton, a.principal)} disabled={ocupado} onClick={listo}>
-            {ocupado ? 'Registrando…' : 'Sí, está listo'}
-          </button>
-          <button type="button" className={a.boton} disabled={ocupado} onClick={() => setModo(null)}>Volver</button>
-        </div>
+        <>
+          {p.cancelados.length > 0 && decidir}
+          <div className={a.acciones}>
+            <span>
+              {respondido
+                ? `¿Está armado? Se registra el fraccionado: baja ${num(p.kg + kgElegidos, 3)} kg de granel.`
+                : 'Primero contestá qué armaste de lo que la caja canceló.'}
+            </span>
+            <button type="button" className={cx(a.boton, a.principal)} disabled={ocupado || !respondido} onClick={listo}>
+              {ocupado ? 'Registrando…' : 'Sí, está listo'}
+            </button>
+            <button type="button" className={a.boton} disabled={ocupado} onClick={() => setModo(null)}>Volver</button>
+          </div>
+        </>
       )}
 
       {modo === 'rechazar' && (
@@ -240,5 +278,26 @@ function Tarjeta({ p, ops, onCambio, onTerminado }) {
       )}
       {error && <div className={a.error}>{error}</div>}
     </article>
+  );
+}
+
+/** «Lo armé / No lo armé» por cada renglón que la caja canceló (0172). Sin respuesta preseleccionada. */
+function DecidirCancelados({ items, armados, setArmados }) {
+  const marcar = (id, v) => setArmados((x) => ({ ...x, [id]: v }));
+  return (
+    <div className={a.decidir}>
+      <div className={a.canceladoTitulo}>La caja canceló esto. ¿Lo armaste igual? Lo armado entra al stock, sin venta.</div>
+      {items.map((it) => (
+        <div key={it.id} className={a.acciones}>
+          <span className={a.decidirNombre}>{textoRenglon(it)}</span>
+          <button type="button" className={cx(a.motivo, armados[it.id] === true && a.siActivo)} aria-pressed={armados[it.id] === true} onClick={() => marcar(it.id, true)}>
+            Lo armé
+          </button>
+          <button type="button" className={cx(a.motivo, armados[it.id] === false && a.motivoActivo)} aria-pressed={armados[it.id] === false} onClick={() => marcar(it.id, false)}>
+            No lo armé
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }
