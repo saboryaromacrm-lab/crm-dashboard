@@ -85,3 +85,8 @@
 }
 .motivoActivo { background: var(--crm-color-danger); border-color: var(--crm-color-danger); color: #fff; }
 .error { color: var(--crm-color-danger); font-weight: 600; font-size: var(--crm-font-size-sm); }
+
+/* Lo que la caja canceló (0171). */
+.cancelado { background: color-mix(in srgb, var(--crm-color-danger) 9%, var(--crm-color-surface)); }
+.canceladoTitulo { color: var(--crm-color-danger); font-weight: 700; }
+.tachado { text-decoration: line-through; opacity: 0.75; }

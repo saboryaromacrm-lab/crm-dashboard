@@ -12,6 +12,7 @@ export const ESTADO_PEDIDO_CAJA = {
   armando: { label: 'En preparación', pill: 'est-transito' },
   hecho: { label: 'Listo', pill: 'est-recibida' },
   rechazado: { label: 'No se puede', pill: 'est-cancelada' },
+  cancelado: { label: 'Cancelado', pill: 'est-borrador' },
 };
 
 /** Los motivos de un toque de «No se puede» (también se puede escribir otro). */

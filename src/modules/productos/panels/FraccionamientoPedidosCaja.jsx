@@ -44,6 +44,7 @@ export function TabPedidosCaja() {
     return {
       listos: listos.length,
       no: pedidos.filter((p) => p.estado === 'rechazado').length,
+      cancelados: pedidos.filter((p) => p.estado === 'cancelado').length,
       abiertos: pedidos.filter((p) => p.estado === 'pendiente' || p.estado === 'armando').length,
       demora,
       top: [...porPaquete].sort((a, b) => b[1] - a[1]).slice(0, TOP),
@@ -80,6 +81,7 @@ export function TabPedidosCaja() {
         <Stat label="Listos" value={datos ? num(resumen.listos, 0) : '—'} />
         <Stat label="Demora promedio" value={resumen.demora == null ? '—' : `${num(resumen.demora, 0)} min`} nota="del pedido a «Listo»" />
         {resumen.no > 0 && <Stat label="No se pudo" value={num(resumen.no, 0)} accent="accent-amber" />}
+        {resumen.cancelados > 0 && <Stat label="Cancelados por la caja" value={num(resumen.cancelados, 0)} />}
         {resumen.abiertos > 0 && <Stat label="Abiertos ahora" value={num(resumen.abiertos, 0)} />}
       </div>
       {resumen.top.length > 0 && (
@@ -102,12 +104,15 @@ export function TabPedidosCaja() {
             <tr key={p.id}>
               <td><strong>{p.codigo}</strong><div className={s.hint} style={{ margin: 0 }}>{fmtFechaHora(p.creadoEn)}</div></td>
               <td>{p.usuario || '—'}</td>
-              <td>{p.items.map((it) => <div key={it.id}>{textoRenglon(it)}</div>)}</td>
+              <td>
+                {p.items.map((it) => <div key={it.id}>{textoRenglon(it)}</div>)}
+                {p.cancelados.map((it) => <div key={it.id} className={s.muted}><s>{textoRenglon(it)}</s> · cancelado</div>)}
+              </td>
               <td><Pill pill={est.pill} label={est.label ?? p.estado} /></td>
               <td>{p.operador || p.tomadoPor || '—'}</td>
               <td className={s.num}>
                 {p.estado === 'hecho' ? `${num(minutos(p.creadoEn, p.hechoEn), 0)} min`
-                  : p.estado === 'rechazado' ? '—' : haceCuanto(p.creadoEn)}
+                  : p.estado === 'rechazado' || p.estado === 'cancelado' ? '—' : haceCuanto(p.creadoEn)}
               </td>
               <td>
                 {p.motivo && <div style={{ color: 'var(--crm-color-danger)' }}>{p.motivo}</div>}

@@ -10,6 +10,8 @@
  * · «Lo armo» (con el operador, que la PC recuerda) → «Listo» registra el
  *   fraccionado, con segunda confirmación porque mueve stock. «No se puede»
  *   pide el motivo, que el cajero lee.
+ * · Lo que la caja cancela (0171) se ve tachado y suena distinto; un pedido que
+ *   ya se estaba armando queda unos minutos como «Cancelado: no lo armes».
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@core/auth/AuthContext.jsx';
@@ -26,6 +28,8 @@ import a from './AvisoPedidosCaja.module.css';
 const REPETIR_MS = 30_000;
 /** Sol5 → Si5 → Mi6, tres notas que suben: distinto de los otros avisos. */
 const sonar = () => tocarNotas([[783.99, 0, 0.22], [987.77, 0.14, 0.22], [1318.51, 0.28, 0.4]], { onda: 'triangle', volumen: 0.22 });
+/** Mi5 → Do5, que baja: la caja canceló algo. */
+const sonarCancelado = () => tocarNotas([[659.25, 0, 0.25], [523.25, 0.18, 0.4]], { onda: 'triangle', volumen: 0.22 });
 
 export function AvisoPedidosCaja() {
   const { user } = useAuth();
@@ -36,6 +40,7 @@ export function AvisoPedidosCaja() {
   const [plegado, setPlegado] = useState(false);
   const [hecho, setHecho] = useState('');
   const anunciados = useRef(new Set());
+  const cancelaciones = useRef(new Set());
   const ultimoSonido = useRef(0);
   const refrescar = useRef(() => {});
 
@@ -48,10 +53,15 @@ export function AvisoPedidosCaja() {
       // Los operadores se releen con cada pedido nuevo: uno dado de alta en otra PC aparece solo.
       pedidosCajaApi.operadores().then((o) => setOps(o.filter((x) => x.activo && (x.sucursalId == null || x.sucursalId === user?.sucursalId)))).catch(() => {});
     }
+    /* Cada cancelación nueva (otro renglón o el pedido entero) se canta una vez. */
+    const canceladas = lista.filter((p) => p.cancelados.length).map((p) => `${p.id}:${p.estado}:${p.cancelados.length}`);
+    const cancelo = canceladas.some((k) => !cancelaciones.current.has(k));
+    canceladas.forEach((k) => cancelaciones.current.add(k));
+    if (cancelo) setPlegado(false);
     if (pendientes.length && (nuevo || Date.now() - ultimoSonido.current >= REPETIR_MS)) {
       ultimoSonido.current = Date.now();
       sonar();
-    }
+    } else if (cancelo) sonarCancelado();
     setPedidos(lista);
   }, [user?.sucursalId]);
 
@@ -142,6 +152,19 @@ function Tarjeta({ p, ops, onCambio, onTerminado }) {
 
   const faltaOperador = ops.length > 0 && !operadorId;
 
+  /* Lo estaban armando y la caja lo canceló entero (0171): solo el aviso, sin acciones. */
+  if (p.estado === 'cancelado') {
+    return (
+      <article className={cx(a.tarjeta, a.cancelado)}>
+        <div className={a.quien}><strong>{p.codigo}</strong> · lo pidió <strong>{p.usuario || 'la caja'}</strong></div>
+        <div className={a.canceladoTitulo}>❌ La caja lo canceló: no lo armes</div>
+        <ul className={cx(a.renglones, a.tachado)}>
+          {p.cancelados.map((it) => <li key={it.id}>{textoRenglon(it)}</li>)}
+        </ul>
+      </article>
+    );
+  }
+
   return (
     <article className={cx(a.tarjeta, p.estado === 'pendiente' && a.pendiente)}>
       <div className={a.quien}>
@@ -150,6 +173,11 @@ function Tarjeta({ p, ops, onCambio, onTerminado }) {
       <ul className={a.renglones}>
         {p.items.map((it) => <li key={it.id}>{textoRenglon(it)}</li>)}
       </ul>
+      {p.cancelados.length > 0 && (
+        <div className={a.canceladoTitulo}>
+          Cancelado por la caja: <s>{p.cancelados.map(textoRenglon).join(' · ')}</s>
+        </div>
+      )}
       {p.observaciones && <div className={a.nota}>«{p.observaciones}»</div>}
       {p.estado === 'armando' && (
         <div className={a.estado}>En preparación{p.operador ? `: ${p.operador}` : ''} · tomado {haceCuanto(p.tomadoEn)}</div>

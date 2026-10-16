@@ -5,12 +5,14 @@
  * Pregunta cada 10 s solo mientras haya algo abierto; `version` (sube al pedir)
  * lo vuelve a despertar. Cuando un pedido termina suena, y si quedó listo avisa
  * con `onListo` (la caja recarga el catálogo: el stock nuevo destraba el cobro).
- * Lo terminado queda hasta que el cajero toca «Entendido».
+ * Lo terminado queda hasta que el cajero toca «Entendido». Lo abierto se
+ * puede cancelar entero o por renglón (0171).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { tocarNotas } from '@core/services/sonido.js';
 import { CADA_MS } from '@modules/productos/domain/pedidosCaja.js';
 import { pedidosCajaApi } from '@modules/productos/services/pedidosCaja.js';
+import { errorMsg } from '../services/ventas.api.js';
 
 /** Do6 → Mi6, alegre: está listo. */
 const sonarListo = () => tocarNotas([[1046.5, 0, 0.2], [1318.51, 0.12, 0.35]]);
@@ -53,5 +55,20 @@ export function useMisPedidosFraccion(activo, version, onListo) {
     traer();
   }, [traer]);
 
-  return { pedidos: activo ? pedidos : [], entendido };
+  /** Cancelar (0171) un renglón o, sin `itemId`, el pedido entero. Devuelve el error a mostrar, o null. */
+  const cancelar = useCallback(async (id, itemId) => {
+    if (cerrando.current.has(id)) return null;
+    cerrando.current.add(id);
+    try {
+      await pedidosCajaApi.cancelar(id, itemId);
+      return null;
+    } catch (e) {
+      return errorMsg(e);
+    } finally {
+      cerrando.current.delete(id);
+      traer();
+    }
+  }, [traer]);
+
+  return { pedidos: activo ? pedidos : [], entendido, cancelar };
 }

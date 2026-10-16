@@ -834,3 +834,17 @@
 .miPedidoNo { border-color: var(--crm-color-danger); background: color-mix(in srgb, var(--crm-color-danger) 10%, var(--crm-color-surface)); }
 .miPedidoEstado { font-weight: 800; }
 .enEspera { color: var(--crm-color-info); font-weight: 700; }
+.miPedidoRenglon {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 4px 2px 10px;
+  border-radius: var(--crm-radius-pill);
+  background: var(--crm-color-surface);
+  border: 1px solid var(--crm-color-border);
+}
+.miPedidoQuitar {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 0; background: transparent;
+  color: var(--crm-color-danger); font-size: 16px; line-height: 1; cursor: pointer;
+}
+.miPedidoQuitar:hover { background: color-mix(in srgb, var(--crm-color-danger) 14%, transparent); }
+.miPedidoQuitar:focus-visible { outline: 2px solid var(--crm-color-danger); outline-offset: 1px; }

@@ -13,6 +13,8 @@ export const pedidosCajaApi = {
   pedir: (o) => httpClient.post(BASE, o),
   mios: () => httpClient.get(`${BASE}/mios`),
   visto: (id) => httpClient.post(`${BASE}/${id}/visto`),
+  /** Sin `itemId`, el pedido entero (0171). */
+  cancelar: (id, itemId) => httpClient.post(`${BASE}/${id}/cancelar`, itemId ? { itemId } : {}),
   abiertos: () => httpClient.get(`${BASE}/abiertos`),
   tomar: (id, operadorId) => httpClient.post(`${BASE}/${id}/tomar`, { operadorId }),
   listo: (id) => httpClient.post(`${BASE}/${id}/listo`),

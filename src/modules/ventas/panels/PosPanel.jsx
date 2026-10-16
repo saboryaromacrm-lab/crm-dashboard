@@ -1704,7 +1704,7 @@ export function PosPanel() {
         </div>
 
         {/* Lo pedido a fraccionado (0170) y cómo va: a la vista del cajero. */}
-        <MisPedidosFraccion pedidos={misPedidos.pedidos} onEntendido={misPedidos.entendido} />
+        <MisPedidosFraccion pedidos={misPedidos.pedidos} onEntendido={misPedidos.entendido} onCancelar={misPedidos.cancelar} />
 
         {operador && (
           <div
@@ -2118,7 +2118,7 @@ export function PosPanel() {
       </div>
 
       {/* Lo pedido a fraccionado (0170), también desde la lista. */}
-      <MisPedidosFraccion pedidos={misPedidos.pedidos} onEntendido={misPedidos.entendido} />
+      <MisPedidosFraccion pedidos={misPedidos.pedidos} onEntendido={misPedidos.entendido} onCancelar={misPedidos.cancelar} />
 
       {/* El banner del relevo, también en la lista: el olvido de volver es EL
           modo de falla, y contra eso lo único que sirve es que se vea. */}
