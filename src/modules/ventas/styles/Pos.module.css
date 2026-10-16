@@ -799,3 +799,34 @@
   color: var(--crm-color-text-muted);
 }
 @media (max-width: 640px) { .tercSelects { grid-template-columns: 1fr; } }
+
+/* ---------------- Pedir a fraccionado (0170) ---------------- */
+.pedirResultados {
+  margin-top: 10px;
+  border: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-md);
+  overflow: hidden;
+}
+.pedirTabla { width: 100%; margin-top: 12px; border-collapse: collapse; }
+.pedirTabla td { padding: 6px 4px; border-bottom: 1px solid var(--crm-color-border); vertical-align: middle; }
+.pedirTabla input { width: 100%; text-align: right; font-variant-numeric: tabular-nums; }
+.pedirQuitar {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--crm-color-border); background: var(--crm-color-surface);
+  color: var(--crm-color-danger); font-size: 18px; line-height: 1; cursor: pointer;
+}
+
+/* Lo que el cajero pidió y cómo va: arriba de la registradora. */
+.misPedidos { display: flex; flex-wrap: wrap; gap: 8px; }
+.miPedido {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px;
+  padding: 8px 12px;
+  border-radius: var(--crm-radius-md);
+  border: 2px solid var(--crm-color-warning);
+  background: color-mix(in srgb, var(--crm-color-warning) 10%, var(--crm-color-surface));
+  font-size: 14px;
+}
+.miPedidoArmando { border-color: var(--crm-color-info); background: color-mix(in srgb, var(--crm-color-info) 10%, var(--crm-color-surface)); }
+.miPedidoListo { border-color: var(--crm-color-success); background: color-mix(in srgb, var(--crm-color-success) 14%, var(--crm-color-surface)); }
+.miPedidoNo { border-color: var(--crm-color-danger); background: color-mix(in srgb, var(--crm-color-danger) 10%, var(--crm-color-surface)); }
+.miPedidoEstado { font-weight: 800; }

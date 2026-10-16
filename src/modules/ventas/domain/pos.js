@@ -238,6 +238,9 @@ export function cantidadInicial(item) {
  * Prioridad: código exacto → código que termina igual → nombre/marca.
  * El orden importa: un escaneo tiene que resolver en un solo resultado.
  */
+/** Un paquete de granel: lo único que la caja le pide a fraccionado (0170). */
+export const esPaquete = (item) => !!item?.presentacionId && item.tipo === 'granel';
+
 export function buscarEnCatalogo(catalogo, texto, limite = 8) {
   const q = String(texto || '').trim();
   if (!q) return [];

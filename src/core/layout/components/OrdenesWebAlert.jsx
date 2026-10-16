@@ -21,29 +21,11 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Snackbar, Alert, Button } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
+import { tocarNotas } from '@core/services/sonido.js';
 import { ordenesWeb } from '@core/services/ordenesWeb.js';
 
-function campanita() {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new Ctx();
-    const nota = (freq, t0, dur) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime + t0);
-      gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + t0 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t0 + dur);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(ctx.currentTime + t0);
-      osc.stop(ctx.currentTime + t0 + dur + 0.05);
-    };
-    nota(880, 0, 0.28);        // La5
-    nota(1174.66, 0.16, 0.34); // Re6 — dos notas ascendentes, corto y amable
-    setTimeout(() => ctx.close(), 1200);
-  } catch { /* sin audio disponible: el aviso visual alcanza */ }
-}
+// La5 → Re6: dos notas ascendentes, corto y amable.
+const campanita = () => tocarNotas([[880, 0, 0.28], [1174.66, 0.16, 0.34]]);
 
 export function OrdenesWebAlert() {
   const { can, esAdmin } = usePermissions();

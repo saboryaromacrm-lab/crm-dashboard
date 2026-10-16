@@ -22,31 +22,12 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Snackbar, Alert, Button } from '@mui/material';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
+import { tocarNotas } from '@core/services/sonido.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { cambiosPrecio, pedirRecargaDePrecios } from '@core/services/cambiosPrecio.js';
 
-/** Dos notas descendentes: distinto del de pedidos, que sube. Se distinguen a ciegas. */
-function aviso() {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new Ctx();
-    const nota = (freq, t0, dur) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime + t0);
-      gain.gain.exponentialRampToValueAtTime(0.16, ctx.currentTime + t0 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t0 + dur);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(ctx.currentTime + t0);
-      osc.stop(ctx.currentTime + t0 + dur + 0.05);
-    };
-    nota(1046.5, 0, 0.24);  // Do6
-    nota(783.99, 0.15, 0.3); // Sol5
-    setTimeout(() => ctx.close(), 1200);
-  } catch { /* sin audio disponible: el aviso visual alcanza */ }
-}
+/** Do6 → Sol5, dos notas descendentes: distinto del de pedidos, que sube. Se distinguen a ciegas. */
+const aviso = () => tocarNotas([[1046.5, 0, 0.24], [783.99, 0.15, 0.3]], { onda: 'triangle', volumen: 0.16 });
 
 /** Id del usuario de la sesión: para no avisarle a quien hizo el cambio. */
 function usuarioDeSesion() {

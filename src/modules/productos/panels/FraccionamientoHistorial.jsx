@@ -17,25 +17,7 @@ import { num, fmtFechaHora, fmtTam } from '../domain/format.js';
 import { Table, Stat, Btn, usePaginadoServidor, s } from '../components/ui.jsx';
 import { refrescarOperadores } from '../components/OperadorFraccion.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
-
-const pad = (n) => String(n).padStart(2, '0');
-const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-function rango(id) {
-  const hoy = new Date();
-  const d = (y, m, dia) => new Date(y, m, dia);
-  switch (id) {
-    case 'ayer': { const a = d(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1); return [iso(a), iso(a)]; }
-    case '7d': return [iso(d(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 6)), iso(hoy)];
-    case 'mes': return [iso(d(hoy.getFullYear(), hoy.getMonth(), 1)), iso(hoy)];
-    case 'mesAnt': return [iso(d(hoy.getFullYear(), hoy.getMonth() - 1, 1)), iso(d(hoy.getFullYear(), hoy.getMonth(), 0))];
-    default: return [iso(hoy), iso(hoy)];
-  }
-}
-const RANGOS = [
-  { id: 'hoy', label: 'Hoy' }, { id: 'ayer', label: 'Ayer' }, { id: '7d', label: 'Últimos 7 días' },
-  { id: 'mes', label: 'Este mes' }, { id: 'mesAnt', label: 'Mes pasado' },
-];
+import { RANGOS, chip, rango } from '../domain/rangosFecha.js';
 
 const ORIGEN = {
   manual: { label: 'Fraccionado', pill: null },
@@ -83,12 +65,6 @@ const soloDia = (v) => new Date(v).toLocaleDateString('es-AR');
 const detalle = (items) => items
   .map((i) => `${i.paquetes < 0 ? '−' : ''}${num(Math.abs(i.paquetes), 0)}×${fmtTam(i.tamKg)}`)
   .join(' · ');
-
-const chip = (activo) => ({
-  cursor: 'pointer', padding: '6px 12px', fontSize: 12.5, borderWidth: 1, borderStyle: 'solid',
-  borderColor: activo ? 'var(--crm-color-primary)' : 'var(--crm-color-border)',
-  ...(activo ? { background: 'var(--crm-color-primary)', color: 'var(--crm-color-primary-contrast)' } : {}),
-});
 
 /* ============================== HISTORIAL ============================== */
 export function TabHistorial() {

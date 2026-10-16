@@ -9,7 +9,7 @@ import {
   buscarEnCatalogo, calcularRenglon, descuentosDisponibles, descuentosParaApi,
   extrasParaApi, itemsParaApi, motivoBloqueo, parseEtiquetaBalanza,
   agruparDescuentos, cambioDeDescuento, descuentosConMedio, problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
-  bultoAbajo, bultoArriba, bultoDeFila, cantidadInicial, desgloseBulto, empujonMayorista, textoBulto,
+  bultoAbajo, bultoArriba, bultoDeFila, cantidadInicial, desgloseBulto, empujonMayorista, esPaquete, textoBulto,
   totalesTicket, ultimoArticulo, unidadesDeLista,
 } from '../domain/pos.js';
 import {
@@ -22,6 +22,7 @@ import { sugerenciasOfertaTicket } from '../domain/ofertas.js';
 import {
   Table, PanelHead, Btn, ModalShell, Paginador, usePaginado, money, num, fmtFechaHora, s,
 } from '../components/ui.jsx';
+import { MisPedidosFraccion } from '../components/MisPedidosFraccion.jsx';
 import { imprimirVenta } from '@core/services/imprimir.js';
 import { EVENTO_PRECIOS, cambiosPrecio } from '@core/services/cambiosPrecio.js';
 import p from '../styles/Pos.module.css';
@@ -206,8 +207,11 @@ function ConfirmarRetiroModal({ cliente, renglones, borradorId, operadorId, onCe
  * Un solo campo resuelve las tres formas de cargar un artículo: escaneo,
  * código tipeado y nombre. El foco vuelve acá después de cada acción porque el
  * lector es un teclado: si el foco está en otro lado, el código se pierde.
+ *
+ * `onPedirFraccion` (solo en la Distribuidora, 0170): F7 sobre un paquete lo
+ * pide a fraccionado; sobre otra cosa abre el pedido vacío.
  */
-function Buscador({ catalogo, config, onElegir, inputRef }) {
+function Buscador({ catalogo, config, onElegir, inputRef, onPedirFraccion }) {
   const [q, setQ] = useState('');
   const [activo, setActivo] = useState(0);
 
@@ -244,6 +248,15 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
     // Esc escalonado: con texto, limpia la búsqueda (y NO burbujea); vacío,
     // deja subir el evento y la registradora vuelve a la lista de ventas.
     else if (e.key === 'Escape' && q) { e.stopPropagation(); setQ(''); setActivo(0); }
+    // F7 con el paquete resaltado: no sube a la registradora, que abriría el pedido vacío.
+    else if (e.key === 'F7' && onPedirFraccion) {
+      e.preventDefault();
+      e.stopPropagation();
+      const it = resultados[activo];
+      onPedirFraccion(esPaquete(it) ? it : null);
+      setQ('');
+      setActivo(0);
+    }
   };
 
   return (
@@ -290,6 +303,7 @@ function Buscador({ catalogo, config, onElegir, inputRef }) {
                     {/* La marca del 0089 a la vista: el cajero ve el porqué ANTES
                         de intentar agregarlo y comerse el rechazo. */}
                     {item.soloCafeteria && <span className={p.sinStock}>{' · '}solo Coffit</span>}
+                    {onPedirFraccion && esPaquete(item) && item.stock <= 0 && !item.stockLibre && <strong>{' · '}F7: pedir a fraccionado</strong>}
                   </span>
                 </span>
                 <span className={p.resultadoPrecio}>
@@ -835,6 +849,16 @@ export function PosPanel() {
   /* Sucursal que no vende mayorista (0150): el catálogo de la caja va sin lo mayorista. */
   const catalogoRaw = useMemo(() => catalogoDeSucursal(catalogoServidor), [catalogoServidor]);
   const catalogo = useMemo(() => catalogoRaw?.items ?? [], [catalogoRaw]);
+
+  /*
+   * PEDIR A FRACCIONADO (0170): solo en la Distribuidora, que es donde se
+   * fracciona. `versionPedidos` despierta la tira de «mis pedidos» al pedir.
+   */
+  const pideFraccion = sucursales.find((x) => x.id === sucursalId)?.tipo === 'distribuidora';
+  const [versionPedidos, setVersionPedidos] = useState(0);
+  const pedirAFraccionado = useCallback((inicial) => openModal('pedirFraccionado', {
+    catalogo, inicial, onPedido: () => setVersionPedidos((v) => v + 1),
+  }), [catalogo, openModal]);
   const listasCatalogo = useMemo(() => catalogoRaw?.listas ?? [], [catalogoRaw]);
 
   /**
@@ -1543,6 +1567,7 @@ export function PosPanel() {
     const onKey = (e) => {
       if (e.key === 'F2') { e.preventDefault(); if (esRetiro) pedirRetiro(); else cobrar(); }
       else if (e.key === 'F4') { e.preventDefault(); enfocarBuscador(); }
+      else if (e.key === 'F7' && pideFraccion && !modal) { e.preventDefault(); pedirAFraccionado(null); }
       else if (e.key === 'Insert') {
         e.preventDefault();
         if (!activaId) { toast('Abrí una venta para cargar productos.', 'err'); return; }
@@ -1560,7 +1585,7 @@ export function PosPanel() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cobrar, esRetiro, pedirRetiro, enfocarBuscador, activaId, catalogo, config, agregar, openModal, toast, modal, irALista]);
+  }, [cobrar, esRetiro, pedirRetiro, enfocarBuscador, activaId, catalogo, config, agregar, openModal, toast, modal, irALista, pideFraccion, pedirAFraccionado]);
 
   /* ------------------------------ Render ------------------------------ */
 
@@ -1638,6 +1663,7 @@ export function PosPanel() {
             {/* Los mínimos por marca, a mano del cajero: cuántas unidades
                 abren la lista y cuántas lleva este ticket. */}
             <Btn small onClick={verMinimosMarca}>Ver mínimos por marca</Btn>
+            {pideFraccion && <Btn small onClick={() => pedirAFraccionado(null)}>Pedir a fraccionado · F7</Btn>}
             <Btn small onClick={() => openModal('relevo', { cajaSesionId: caja?.id })}>
               {operador ? `Cobrando: ${operador.nombre}` : 'Relevo'}
             </Btn>
@@ -1652,6 +1678,9 @@ export function PosPanel() {
             <span className={p.regSucursal}>{sucursal?.nombre}</span>
           </div>
         </div>
+
+        {/* Lo pedido a fraccionado (0170) y cómo va: a la vista del cajero. */}
+        {pideFraccion && <MisPedidosFraccion version={versionPedidos} />}
 
         {operador && (
           <div
@@ -1678,7 +1707,10 @@ export function PosPanel() {
         <div className={p.regMain}>
           {/* ------ Columna de trabajo: escanear → confirmar → corregir ------ */}
           <div className={p.regIzq}>
-            <Buscador catalogo={catalogo ?? []} config={config} onElegir={agregar} inputRef={buscadorRef} />
+            <Buscador
+              catalogo={catalogo ?? []} config={config} onElegir={agregar} inputRef={buscadorRef}
+              onPedirFraccion={pideFraccion ? pedirAFraccionado : null}
+            />
 
             {/*
               SIN "VISOR" DEL ÚLTIMO ARTÍCULO (18/9/2026, pedido del dueño:
@@ -1991,6 +2023,7 @@ export function PosPanel() {
                 <span className={p.tecla}><kbd>⇧Ins</kbd> buscar</span>
                 <span className={p.tecla}><kbd>F2</kbd> {esRetiro ? 'retiro' : 'cobrar'}</span>
                 <span className={p.tecla}><kbd>F4</kbd> foco</span>
+                {pideFraccion && <span className={p.tecla}><kbd>F7</kbd> fraccionado</span>}
                 <span className={p.tecla}><kbd>Esc</kbd> salir</span>
               </div>
             </div>
@@ -2016,6 +2049,7 @@ export function PosPanel() {
         actions={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {guardando && <span className={s.hint} style={{ margin: 0 }}>Guardando…</span>}
+            {pideFraccion && <Btn onClick={() => pedirAFraccionado(null)}>Pedir a fraccionado · F7</Btn>}
             {/* Traer precios a mano también da por visto el aviso: el cajero que
                 acaba de actualizar no tiene que ver el cartel. */}
             <Btn onClick={actualizarPrecios} disabled={cargandoCatalogo}>
@@ -2057,6 +2091,9 @@ export function PosPanel() {
           </>
         )}
       </div>
+
+      {/* Lo pedido a fraccionado (0170), también desde la lista. */}
+      {pideFraccion && <MisPedidosFraccion version={versionPedidos} />}
 
       {/* El banner del relevo, también en la lista: el olvido de volver es EL
           modo de falla, y contra eso lo único que sirve es que se vea. */}

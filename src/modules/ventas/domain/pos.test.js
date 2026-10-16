@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   agruparDescuentos, buscarEnCatalogo, descuentosDisponibles, bultoAbajo, bultoArriba, bultoDeFila, calcularRenglon, cambioDeDescuento, descuentosConMedio, desgloseBulto,
-  empujonMayorista, porBulto, textoBulto, totalesTicket,
+  empujonMayorista, esPaquete, porBulto, textoBulto, totalesTicket,
   unidadesDeLista, ticketDesdeBorrador, ticketReducer, ticketInicial,
 } from './pos.js';
 
@@ -392,4 +392,11 @@ test('descuentosDisponibles: el general y su «(efectivo)» se cambian entre sí
   const d = descuentosDisponibles(e);
   assert.equal(d.find((x) => x.id === 1).aplicable, true, 'el general del mismo descuento se puede elegir');
   assert.equal(d.find((x) => x.id === 3).aplicable, false, 'otro descuento de la misma lista, no');
+});
+
+test('esPaquete: solo el paquete de un granel se le pide a fraccionado (0170)', () => {
+  assert.equal(esPaquete({ presentacionId: 21, tipo: 'granel' }), true);
+  assert.equal(esPaquete({ presentacionId: null, tipo: 'granel' }), false, 'el granel madre no: ningún granel se vende suelto');
+  assert.equal(esPaquete({ presentacionId: null, tipo: 'entero' }), false);
+  assert.equal(esPaquete(undefined), false);
 });

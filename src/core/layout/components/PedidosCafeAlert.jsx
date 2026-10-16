@@ -12,29 +12,11 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Snackbar, Alert, Button } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
+import { tocarNotas } from '@core/services/sonido.js';
 import { pedidosCafe } from '@core/services/pedidosCafe.js';
 
-function campanitaGrave() {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new Ctx();
-    const nota = (freq, t0, dur) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime + t0);
-      gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + t0 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t0 + dur);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(ctx.currentTime + t0);
-      osc.stop(ctx.currentTime + t0 + dur + 0.05);
-    };
-    nota(659.25, 0, 0.28);   // Mi5
-    nota(880, 0.16, 0.34);   // La5 — ascendente pero más grave que la de órdenes
-    setTimeout(() => ctx.close(), 1200);
-  } catch { /* sin audio disponible: el aviso visual alcanza */ }
-}
+// Mi5 → La5: ascendente pero más grave que la de órdenes.
+const campanitaGrave = () => tocarNotas([[659.25, 0, 0.28], [880, 0.16, 0.34]]);
 
 export function PedidosCafeAlert() {
   const { can, esAdmin } = usePermissions();

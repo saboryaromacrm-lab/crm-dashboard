@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { s } from './ui.jsx';
+import { operadorRecordado, recordarOperador } from '../domain/operadorRecordado.js';
 
 let cache = null;
 let enVuelo = null;
@@ -36,9 +37,6 @@ function refrescar(store) {
 /** Después de dar de alta, editar o dar de baja un operador. */
 export const refrescarOperadores = refrescar;
 
-const CLAVE = 'crm.fraccion.operador';
-const recordado = () => { try { return Number(localStorage.getItem(CLAVE)) || null; } catch { return null; } };
-const recordar = (id) => { try { if (id) localStorage.setItem(CLAVE, String(id)); } catch { /* navegación privada */ } };
 
 /** Los operadores activos que pueden trabajar en esa sucursal (sin sucursal = en todas). */
 export function useOperadoresFraccion(sucursalId) {
@@ -73,7 +71,7 @@ export function SelectorOperador({ ops, value, onChange, opcional = false, label
   useEffect(() => {
     if (value && disponibles.some((o) => o.id === value)) return;
     if (opcional || !disponibles.length) { if (value) onChange(null); return; }
-    const previo = recordado();
+    const previo = operadorRecordado();
     const elegido = disponibles.find((o) => o.id === previo) ?? (disponibles.length === 1 ? disponibles[0] : null);
     onChange(elegido ? elegido.id : null);
   }, [disponibles, value, opcional, onChange]);
@@ -82,7 +80,7 @@ export function SelectorOperador({ ops, value, onChange, opcional = false, label
 
   const elegir = (v) => {
     const id = Number(v) || null;
-    if (!opcional) recordar(id);
+    if (!opcional) recordarOperador(id);
     onChange(id);
   };
 

@@ -21,6 +21,7 @@ import { OfertaFormModal, BorrarOfertaModal } from './modals/OfertaModals.jsx';
 import { DetalleVentaModal, AnularVentaModal, NotaCreditoModal } from './modals/VentaModals.jsx';
 import { RelevoModal } from './modals/RelevoModal.jsx';
 import { MinimosMarcaModal } from './modals/MinimosMarcaModal.jsx';
+import { PedirFraccionadoModal } from './modals/PedirFraccionadoModal.jsx';
 
 /** Un solo modal a la vez: el contexto guarda `{ type, props }`. */
 const REGISTRY = {
@@ -54,6 +55,8 @@ const REGISTRY = {
   relevo: RelevoModal,
   // Consulta del cajero: qué marcas abren lista y desde cuántas unidades.
   minimosMarca: MinimosMarcaModal,
+  // La caja de la Distribuidora le pide un paquete a fraccionado (0170).
+  pedirFraccionado: PedirFraccionadoModal,
   cargaRapida: CargaRapidaModal,
   busquedaMasiva: BusquedaMasivaModal,
   cargaExtra: CargaExtraModal,

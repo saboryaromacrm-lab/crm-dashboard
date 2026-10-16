@@ -11,6 +11,7 @@ import { CajasAbiertasBanner } from './components/CajasAbiertasBanner.jsx';
 import { AccesosTiendaBanner } from './components/AccesosTiendaBanner.jsx';
 import { DireccionViejaBanner } from './components/DireccionViejaBanner.jsx';
 import { ConsultasRapidas } from '@modules/consultas/ConsultasRapidas.jsx';
+import { AvisoPedidosCaja } from '@modules/productos/components/AvisoPedidosCaja.jsx';
 import { useUI } from '@core/context/UIContext.jsx';
 import { useBreakpoint } from '@core/hooks/useBreakpoint.js';
 import { cx } from '@shared/utils/classNames.js';
@@ -68,10 +69,11 @@ export function MainLayout() {
       </div>
 
       {/*
-        Única dependencia del layout hacia un módulo, y es deliberada: son
-        consultas con atajo de teclado global (Alt+F5 / Alt+F3) y un atajo
-        global no tiene ninguna ruta de la cual colgarse. Montarlo en un módulo
-        lo dejaba muerto en el resto del sistema.
+        Dependencia del layout hacia un módulo, deliberada (como el aviso de
+        pedidos de la caja, más abajo): son consultas con atajo de teclado
+        global (Alt+F5 / Alt+F3) y un atajo global no tiene ninguna ruta de la
+        cual colgarse. Montarlo en un módulo lo dejaba muerto en el resto del
+        sistema.
       */}
       <ConsultasRapidas />
 
@@ -82,6 +84,10 @@ export function MainLayout() {
       {/* Idem para los cambios de precio: el cajero tiene el catálogo en memoria
           y sin este aviso seguiría cobrando el precio viejo. */}
       <PreciosAlert />
+
+      {/* La caja de la Distribuidora le pide a fraccionado (0170): el aviso
+          tiene que llegar en cualquier pantalla, como el de órdenes web. */}
+      <AvisoPedidosCaja />
 
       {/* El cartel rojo del stock: al abrir y cada 2 h, para todos menos el superadmin. */}
       <AvisoStock />
