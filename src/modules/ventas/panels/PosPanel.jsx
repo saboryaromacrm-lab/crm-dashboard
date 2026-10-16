@@ -495,9 +495,9 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, sinD
                   <div className={p.detalleCol}>
                     {r.detalle}
                     {espera ? (
-                      <span className={espera.estado === 'rechazado' ? p.sinStock : p.enEspera}>
-                        {' · '}{espera.estado === 'rechazado'
-                          ? `fraccionado no puede: ${espera.motivo}`
+                      <span className={espera.sinStock || espera.estado === 'rechazado' ? p.sinStock : p.enEspera}>
+                        {' · '}{espera.sinStock ? 'fraccionado no tiene stock: sacalo del ticket'
+                          : espera.estado === 'rechazado' ? `fraccionado no puede: ${espera.motivo}`
                           : `⏳ en espera de fraccionado${espera.operador ? ` (lo arma ${espera.operador})` : ''}`}
                       </span>
                     ) : (
@@ -1458,9 +1458,14 @@ export function PosPanel() {
       if (activaId) renglones.forEach((r) => agregar(r.item, r.paquetes));
     },
   }), [catalogo, openModal, activaId, agregar]);
-  /** Paquete → el pedido a fraccionado que lo espera (o que no se pudo), para marcar su renglón. */
-  const enEspera = useMemo(() => new Map(misPedidos.pedidos.filter((x) => x.estado !== 'hecho')
-    .flatMap((x) => x.items.map((it) => [it.presentacionId, x]))), [misPedidos.pedidos]);
+  /**
+   * Paquete → el pedido a fraccionado que lo espera (o que no se pudo), para
+   * marcar su renglón. Lo marcado sin stock (0174) no llega nunca, aunque el
+   * resto del pedido esté listo: se avisa en el renglón para sacarlo.
+   */
+  const enEspera = useMemo(() => new Map(misPedidos.pedidos.flatMap((x) => x.items
+    .filter((it) => it.sinStockEn || x.estado !== 'hecho')
+    .map((it) => [it.presentacionId, { ...x, sinStock: !!it.sinStockEn }]))), [misPedidos.pedidos]);
 
   const trasCobrar = useCallback((idCobrado) => {
     dispatch({ tipo: 'limpiar' });

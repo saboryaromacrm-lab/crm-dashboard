@@ -2,7 +2,8 @@
  * LO QUE EL CAJERO LE PIDIÓ A FRACCIONADO Y CÓMO VA (0170), arriba de la caja:
  * pedido → en preparación (con quién lo arma) → ¡listo! o «no se puede» con el
  * motivo. Mientras está abierto se cancela entero o por renglón (0171), con
- * confirmación. Los datos y el sonido vienen de `useMisPedidosFraccion`.
+ * confirmación. Lo que fraccionado marcó sin stock (0174) se ve en rojo y no
+ * se cancela: ya no se prepara. Los datos y el sonido vienen de `useMisPedidosFraccion`.
  */
 import { useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
@@ -52,9 +53,10 @@ export function MisPedidosFraccion({ pedidos, onEntendido, onCancelar }) {
             ) : (
               <>
                 {x.items.map((it) => (
-                  <span key={it.id} className={p.miPedidoRenglon}>
+                  <span key={it.id} className={cx(p.miPedidoRenglon, it.sinStockEn && p.miPedidoSinStock)}>
                     {textoRenglon(it)}
-                    {abierto && (
+                    {it.sinStockEn && ' · no hay stock'}
+                    {abierto && !it.sinStockEn && (
                       <button
                         type="button" className={p.miPedidoQuitar} aria-label={`Cancelar ${textoRenglon(it)}`} title="Cancelar este producto"
                         onClick={() => setConfirmar({ id: x.id, itemId: it.id, texto: textoRenglon(it) })}

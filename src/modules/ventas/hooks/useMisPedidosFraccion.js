@@ -6,7 +6,8 @@
  * lo vuelve a despertar. Cuando un pedido termina suena, y si quedó listo avisa
  * con `onListo` (la caja recarga el catálogo: el stock nuevo destraba el cobro).
  * Lo terminado queda hasta que el cajero toca «Entendido». Lo abierto se
- * puede cancelar entero o por renglón (0171).
+ * puede cancelar entero o por renglón (0171). Un renglón que fraccionado marca
+ * sin stock (0174) suena como «no se puede».
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { tocarNotas } from '@core/services/sonido.js';
@@ -24,6 +25,7 @@ export const pedidoAbierto = (x) => x.estado === 'pendiente' || x.estado === 'ar
 export function useMisPedidosFraccion(activo, version, onListo) {
   const [pedidos, setPedidos] = useState([]);
   const previos = useRef(new Map());
+  const sinStockVistos = useRef(new Set());
   const cerrando = useRef(new Set());
   const alListo = useRef(onListo);
   useEffect(() => { alListo.current = onListo; }, [onListo]);
@@ -32,8 +34,11 @@ export function useMisPedidosFraccion(activo, version, onListo) {
     try {
       const lista = await pedidosCajaApi.mios();
       const cambio = (estado) => lista.some((x) => x.estado === estado && previos.current.has(x.id) && previos.current.get(x.id) !== estado);
-      if (cambio('hecho')) { sonarListo(); alListo.current?.(); } else if (cambio('rechazado')) sonarNo();
+      const sinStock = lista.flatMap((x) => x.items.filter((it) => it.sinStockEn).map((it) => it.id));
+      const nuevoSinStock = sinStock.some((id) => !sinStockVistos.current.has(id)) && previos.current.size > 0;
+      if (cambio('hecho')) { sonarListo(); alListo.current?.(); } else if (cambio('rechazado') || nuevoSinStock) sonarNo();
       previos.current = new Map(lista.map((x) => [x.id, x.estado]));
+      sinStockVistos.current = new Set(sinStock);
       setPedidos(lista);
     } catch { /* API caída: el próximo tick reintenta */ }
   }, []);

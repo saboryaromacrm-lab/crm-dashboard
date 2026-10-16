@@ -841,6 +841,8 @@
   background: var(--crm-color-surface);
   border: 1px solid var(--crm-color-border);
 }
+/* Fraccionado no tiene stock (0174): no llega, el cajero lo saca del ticket. */
+.miPedidoSinStock { padding-right: 10px; border-color: var(--crm-color-danger); color: var(--crm-color-danger); font-weight: 700; }
 .miPedidoQuitar {
   width: 24px; height: 24px; border-radius: 50%;
   border: 0; background: transparent;

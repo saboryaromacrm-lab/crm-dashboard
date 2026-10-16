@@ -56,7 +56,18 @@
 .pendiente { background: color-mix(in srgb, var(--crm-color-warning) 10%, var(--crm-color-surface)); }
 .quien { font-size: var(--crm-font-size-sm); color: var(--crm-color-text-secondary); }
 .quien strong { color: var(--crm-color-text); }
-.renglones { margin: 0; padding-left: 18px; font-size: var(--crm-font-size-xl); font-weight: 800; line-height: 1.3; }
+.renglones { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: var(--crm-font-size-xl); font-weight: 800; line-height: 1.3; }
+.renglones li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+/* Sin stock (0174): no se prepara; queda a la vista, tachado, para poder desmarcarlo. */
+.sinStock > span { text-decoration: line-through; color: var(--crm-color-text-secondary); }
+.checkSinStock {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  padding: 4px 10px; border-radius: var(--crm-radius-pill);
+  border: 1px solid var(--crm-color-border); background: var(--crm-color-surface);
+  font-size: var(--crm-font-size-sm); font-weight: 700; color: var(--crm-color-text); cursor: pointer;
+}
+.checkSinStock input { width: 18px; height: 18px; margin: 0; cursor: pointer; }
+.sinStock .checkSinStock { border-color: var(--crm-color-danger); color: var(--crm-color-danger); }
 .nota { font-style: italic; font-size: var(--crm-font-size-md); }
 .estado { font-weight: 700; color: var(--crm-color-info); }
 .acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

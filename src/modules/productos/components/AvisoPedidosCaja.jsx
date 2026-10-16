@@ -10,6 +10,9 @@
  * · «Lo armo» (con el operador, que la PC recuerda) → «Listo» registra el
  *   fraccionado, con segunda confirmación porque mueve stock. «No se puede»
  *   pide el motivo, que el cajero lee.
+ * · Un producto que no hay se tilda «No hay stock» (0174): la caja lo ve en el
+ *   momento y «Listo» asienta el resto. Si no queda nada por armar, «Avisar que
+ *   no hay stock» cierra el pedido con ese motivo.
  * · Lo que la caja cancela (0171) se ve tachado y suena distinto. Pudo quedar
  *   armado igual (0172): «Listo» pide contestar «Lo armé / No lo armé» por cada
  *   renglón cancelado, y un pedido cancelado entero mientras se armaba queda acá
@@ -23,7 +26,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { errorMsg } from '@modules/ventas/services/ventas.api.js';
 import { num } from '../domain/format.js';
 import { operadorRecordado, recordarOperador } from '../domain/operadorRecordado.js';
-import { CADA_MS, MOTIVOS_NO_SE_PUEDE, haceCuanto, textoRenglon } from '../domain/pedidosCaja.js';
+import { CADA_MS, MOTIVOS_NO_SE_PUEDE, MOTIVO_SIN_STOCK, haceCuanto, textoRenglon } from '../domain/pedidosCaja.js';
 import { pedidosCajaApi } from '../services/pedidosCaja.js';
 import a from './AvisoPedidosCaja.module.css';
 
@@ -115,7 +118,7 @@ export function AvisoPedidosCaja() {
 
 function Tarjeta({ p, ops, onCambio, onTerminado }) {
   const [operadorId, setOperadorId] = useState(null);
-  const [modo, setModo] = useState(null); // null | 'listo' | 'rechazar'
+  const [modo, setModo] = useState(null); // null | 'listo' | 'rechazar' | 'sinStock' | 'asentar'
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState('');
   const [ocupado, setOcupado] = useState(false);
@@ -151,20 +154,30 @@ function Tarjeta({ p, ops, onCambio, onTerminado }) {
     await pedidosCajaApi.tomar(p.id, operadorId ?? undefined);
     recordarOperador(operadorId);
   });
-  /* Lo que la caja canceló (0172): por cada renglón, ¿se armó igual? Hasta contestar todo no se asienta. */
-  const elegidos = p.cancelados.filter((it) => armados[it.id] === true);
-  const respondido = p.cancelados.every((it) => typeof armados[it.id] === 'boolean');
+  /* Lo que la caja canceló (0172): por cada renglón, ¿se armó igual? Hasta contestar todo no se asienta.
+   * Lo que ya estaba marcado sin stock (0174) no se armó: no se pregunta. */
+  const aDecidir = p.cancelados.filter((it) => !it.sinStockEn);
+  const elegidos = aDecidir.filter((it) => armados[it.id] === true);
+  const respondido = aDecidir.every((it) => typeof armados[it.id] === 'boolean');
   const kgElegidos = elegidos.reduce((s, it) => s + it.paquetes * it.tamKg, 0);
   const ids = elegidos.map((it) => it.id);
 
   const listo = () => hacer(() => pedidosCajaApi.listo(p.id, ids), () => onTerminado(`${p.codigo} listo: el fraccionado quedó registrado.`));
-  const rechazar = () => hacer(() => pedidosCajaApi.rechazar(p.id, motivo), () => onTerminado(`${p.codigo}: se le avisó a la caja que no se puede.`));
+  const rechazar = (m = motivo) => hacer(() => pedidosCajaApi.rechazar(p.id, m), () => onTerminado(`${p.codigo}: se le avisó a la caja que no se puede.`));
+  /* Sin stock (0174): se guarda en el acto, así la caja lo ve sin esperar al «Listo». */
+  const marcarSinStock = (it, v) => hacer(() => pedidosCajaApi.sinStock(p.id, it.id, v));
+  const sinStock = p.items.filter((it) => it.sinStockEn).length;
+  /* Todo sin stock: sin nada cancelado por decidir no hay qué registrar, solo avisar;
+   * si hay cancelados, depende de si se armó alguno (lo decide en «Listo»). */
+  const todoSinStock = p.items.length > 0 && sinStock === p.items.length;
+  const nadaQueArmar = todoSinStock && !aDecidir.length;
+  const nadaParaRegistrar = todoSinStock && !elegidos.length;
   const resolver = () => hacer(() => pedidosCajaApi.resolverCancelado(p.id, ids), () => onTerminado(ids.length
     ? `${p.codigo}: lo armado quedó registrado y entró al stock.`
     : `${p.codigo}: anotado, no se armó nada.`));
 
   const faltaOperador = ops.length > 0 && !operadorId;
-  const decidir = <DecidirCancelados items={p.cancelados} armados={armados} setArmados={setArmados} />;
+  const decidir = <DecidirCancelados items={aDecidir} armados={armados} setArmados={setArmados} />;
 
   /* La caja lo canceló entero mientras lo armaban (0172): queda hasta decir qué se armó igual. */
   if (p.estado === 'cancelado') {
@@ -202,7 +215,15 @@ function Tarjeta({ p, ops, onCambio, onTerminado }) {
         <strong>{p.codigo}</strong> · pide <strong>{p.usuario || 'la caja'}</strong> · {haceCuanto(p.creadoEn)}
       </div>
       <ul className={a.renglones}>
-        {p.items.map((it) => <li key={it.id}>{textoRenglon(it)}</li>)}
+        {p.items.map((it) => (
+          <li key={it.id} className={cx(it.sinStockEn && a.sinStock)}>
+            <span>{textoRenglon(it)}</span>
+            <label className={a.checkSinStock}>
+              <input type="checkbox" checked={!!it.sinStockEn} disabled={ocupado} onChange={(e) => marcarSinStock(it, e.target.checked)} />
+              No hay stock
+            </label>
+          </li>
+        ))}
       </ul>
       {p.cancelados.length > 0 && (
         <div className={a.canceladoTitulo}>
@@ -214,7 +235,25 @@ function Tarjeta({ p, ops, onCambio, onTerminado }) {
         <div className={a.estado}>En preparación{p.operador ? `: ${p.operador}` : ''} · tomado {haceCuanto(p.tomadoEn)}</div>
       )}
 
-      {modo === null && (
+      {modo === null && nadaQueArmar && (
+        <div className={a.acciones}>
+          <button type="button" className={cx(a.boton, a.peligro)} disabled={ocupado} onClick={() => setModo('sinStock')}>
+            Avisar a la caja que no hay stock
+          </button>
+        </div>
+      )}
+
+      {modo === 'sinStock' && (
+        <div className={a.acciones}>
+          <span>Se cierra el pedido y la caja ve «{MOTIVO_SIN_STOCK}». No se registra nada.</span>
+          <button type="button" className={cx(a.boton, a.peligro)} disabled={ocupado} onClick={() => rechazar(MOTIVO_SIN_STOCK)}>
+            Sí, avisar
+          </button>
+          <button type="button" className={a.boton} disabled={ocupado} onClick={() => setModo(null)}>Volver</button>
+        </div>
+      )}
+
+      {modo === null && !nadaQueArmar && (
         <div className={a.acciones}>
           {p.estado === 'pendiente' ? (
             <>
@@ -241,15 +280,19 @@ function Tarjeta({ p, ops, onCambio, onTerminado }) {
 
       {modo === 'listo' && (
         <>
-          {p.cancelados.length > 0 && decidir}
+          {aDecidir.length > 0 && decidir}
           <div className={a.acciones}>
             <span>
-              {respondido
-                ? `¿Está armado? Se registra el fraccionado: baja ${num(p.kg + kgElegidos, 3)} kg de granel.`
+              {respondido && nadaParaRegistrar ? `No hay nada para registrar: se le avisa a la caja «${MOTIVO_SIN_STOCK}».`
+                : respondido
+                ? `¿Está armado? Se registra el fraccionado: baja ${num(p.kg + kgElegidos, 3)} kg de granel.${sinStock ? ' Lo marcado sin stock no se registra.' : ''}`
                 : 'Primero contestá qué armaste de lo que la caja canceló.'}
             </span>
-            <button type="button" className={cx(a.boton, a.principal)} disabled={ocupado || !respondido} onClick={listo}>
-              {ocupado ? 'Registrando…' : 'Sí, está listo'}
+            <button
+              type="button" className={cx(a.boton, a.principal)} disabled={ocupado || !respondido}
+              onClick={nadaParaRegistrar ? () => rechazar(MOTIVO_SIN_STOCK) : listo}
+            >
+              {ocupado ? 'Registrando…' : nadaParaRegistrar ? 'Sí, avisar' : 'Sí, está listo'}
             </button>
             <button type="button" className={a.boton} disabled={ocupado} onClick={() => setModo(null)}>Volver</button>
           </div>
@@ -269,7 +312,7 @@ function Tarjeta({ p, ops, onCambio, onTerminado }) {
             />
           </div>
           <div className={a.acciones}>
-            <button type="button" className={cx(a.boton, a.peligro)} disabled={ocupado || !motivo.trim()} onClick={rechazar}>
+            <button type="button" className={cx(a.boton, a.peligro)} disabled={ocupado || !motivo.trim()} onClick={() => rechazar()}>
               Avisar a la caja que no se puede
             </button>
             <button type="button" className={a.boton} disabled={ocupado} onClick={() => { setModo(null); setMotivo(''); }}>Volver</button>

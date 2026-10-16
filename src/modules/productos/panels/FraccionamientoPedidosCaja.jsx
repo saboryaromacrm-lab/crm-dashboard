@@ -105,7 +105,11 @@ export function TabPedidosCaja() {
               <td><strong>{p.codigo}</strong><div className={s.hint} style={{ margin: 0 }}>{fmtFechaHora(p.creadoEn)}</div></td>
               <td>{p.usuario || '—'}</td>
               <td>
-                {p.items.map((it) => <div key={it.id}>{textoRenglon(it)}</div>)}
+                {p.items.map((it) => (
+                  <div key={it.id} style={it.sinStockEn ? { color: 'var(--crm-color-danger)' } : undefined}>
+                    {textoRenglon(it)}{it.sinStockEn ? ' · no había stock' : ''}
+                  </div>
+                ))}
                 {p.cancelados.map((it) => (
                   <div key={it.id} className={s.muted}>
                     <s>{textoRenglon(it)}</s> · cancelado{it.fraccionados > 0 ? ` · se armó igual (${num(it.fraccionados, 0)}): entró al stock` : ''}

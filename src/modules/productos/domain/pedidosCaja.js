@@ -15,6 +15,9 @@ export const ESTADO_PEDIDO_CAJA = {
   cancelado: { label: 'Cancelado', pill: 'est-borrador' },
 };
 
+/** El motivo con que se cierra un pedido cuando todo lo que quedaba se marcó sin stock (0174). */
+export const MOTIVO_SIN_STOCK = 'No hay stock';
+
 /** Los motivos de un toque de «No se puede» (también se puede escribir otro). */
 export const MOTIVOS_NO_SE_PUEDE = ['No hay granel', 'No hay bolsas', 'No hay etiquetas'];
 

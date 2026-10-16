@@ -21,6 +21,8 @@ export const pedidosCajaApi = {
   listo: (id, armadosCancelados) => httpClient.post(`${BASE}/${id}/listo`, { armadosCancelados }),
   /** Cancelado entero mientras se armaba: lo que se armó igual; vacío = «No armé nada». */
   resolverCancelado: (id, itemIds) => httpClient.post(`${BASE}/${id}/resolver-cancelado`, { itemIds }),
+  /** Un renglón que no se preparó porque no hay stock (0174); `false` lo desmarca. */
+  sinStock: (id, itemId, sinStock) => httpClient.post(`${BASE}/${id}/sin-stock`, { itemId, sinStock }),
   rechazar: (id, motivo) => httpClient.post(`${BASE}/${id}/rechazar`, { motivo }),
   historial: (desde, hasta) => httpClient.get(`${BASE}/historial?${new URLSearchParams({ desde, hasta })}`),
   operadores: () => httpClient.get('/fraccionamientos/operadores'),
