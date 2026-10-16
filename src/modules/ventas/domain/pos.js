@@ -484,9 +484,19 @@ function recalcular(estado) {
  */
 export function ticketReducer(estado, accion) {
   switch (accion.tipo) {
-    /** Cambió el catálogo o el cliente: se recotiza todo lo no manual. */
-    case 'contexto':
-      return recalcular({ ...estado, ctx: accion.ctx });
+    /**
+     * Cambió el catálogo o el cliente: se recotiza todo lo no manual, y el
+     * stock de cada renglón pasa a ser el del catálogo nuevo (16/10/2026: lo
+     * que fraccionado terminó para esta venta deja de frenar el cobro).
+     */
+    case 'contexto': {
+      const porKey = new Map((accion.ctx.catalogo?.items ?? []).map((i) => [i.key, i]));
+      const renglones = estado.renglones.map((r) => {
+        const stock = porKey.get(r.key)?.stock;
+        return stock == null || stock === r.stock ? r : { ...r, stock };
+      });
+      return recalcular({ ...estado, renglones, ctx: accion.ctx });
+    }
 
     case 'agregar': {
       const { item, cantidad = 1, descuentoCliente = 0, listaFija = null } = accion;

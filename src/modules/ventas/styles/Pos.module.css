@@ -809,7 +809,10 @@
 }
 .pedirTabla { width: 100%; margin-top: 12px; border-collapse: collapse; }
 .pedirTabla td { padding: 6px 4px; border-bottom: 1px solid var(--crm-color-border); vertical-align: middle; }
-.pedirTabla input { width: 100%; text-align: right; font-variant-numeric: tabular-nums; }
+/* El − cantidad + de la caja (bultoStep), un poco más grande: se toca con el dedo. */
+.pedirCant { width: fit-content; margin-left: auto; }
+.pedirCant .bultoBtn { width: 34px; font-size: 18px; }
+.pedirCant .inputBulto { width: 46px; padding: 8px 2px; font-variant-numeric: tabular-nums; }
 .pedirQuitar {
   width: 30px; height: 30px; border-radius: 50%;
   border: 1px solid var(--crm-color-border); background: var(--crm-color-surface);
@@ -830,3 +833,4 @@
 .miPedidoListo { border-color: var(--crm-color-success); background: color-mix(in srgb, var(--crm-color-success) 14%, var(--crm-color-surface)); }
 .miPedidoNo { border-color: var(--crm-color-danger); background: color-mix(in srgb, var(--crm-color-danger) 10%, var(--crm-color-surface)); }
 .miPedidoEstado { font-weight: 800; }
+.enEspera { color: var(--crm-color-info); font-weight: 700; }

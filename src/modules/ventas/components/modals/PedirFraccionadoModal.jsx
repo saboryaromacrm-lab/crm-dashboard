@@ -16,8 +16,10 @@ import { Btn, ModalShell, num, s } from '../ui.jsx';
 import p from '../../styles/Pos.module.css';
 
 const esEntero = (v) => /^\d+$/.test(String(v).trim()) && Number(v) > 0;
+/** − y +: nunca menos de 1 (para sacarlo está la ×). */
+const mover = (v, delta) => String(Math.max(1, (esEntero(v) ? Number(v) : 0) + delta));
 
-export function PedirFraccionadoModal({ catalogo, inicial = null, onPedido }) {
+export function PedirFraccionadoModal({ catalogo, inicial = null, sumaAlTicket = false, onPedido }) {
   const { closeModal, toast } = useVentas();
   const paquetes = useMemo(() => catalogo.filter(esPaquete), [catalogo]);
   const [q, setQ] = useState('');
@@ -31,10 +33,10 @@ export function PedirFraccionadoModal({ catalogo, inicial = null, onPedido }) {
 
   const resultados = useMemo(() => buscarEnCatalogo(paquetes, q, 8), [paquetes, q]);
 
+  const cambiar = (key, fn) => setRenglones((rs) => rs.map((r) => (r.item.key === key ? { ...r, paquetes: fn(r.paquetes) } : r)));
   const agregar = (item) => {
-    setRenglones((rs) => (rs.some((r) => r.item.key === item.key)
-      ? rs.map((r) => (r.item.key === item.key && esEntero(r.paquetes) ? { ...r, paquetes: String(Number(r.paquetes) + 1) } : r))
-      : [...rs, { item, paquetes: '1' }]));
+    if (renglones.some((r) => r.item.key === item.key)) cambiar(item.key, (v) => mover(v, 1));
+    else setRenglones((rs) => [...rs, { item, paquetes: '1' }]);
     setQ('');
     setActivo(0);
     buscadorRef.current?.focus();
@@ -52,8 +54,8 @@ export function PedirFraccionadoModal({ catalogo, inicial = null, onPedido }) {
         items: renglones.map((x) => ({ presentacionId: x.item.presentacionId, paquetes: Number(x.paquetes) })),
         observaciones: nota.trim(),
       });
-      toast(`${r.codigo}: pedido a fraccionado. Acá arriba ves cuando lo están armando.`, 'ok');
-      onPedido?.();
+      toast(`${r.codigo}: pedido a fraccionado${sumaAlTicket ? ' y sumado a la venta, en espera' : ''}. Acá arriba ves cuando lo están armando.`, 'ok');
+      onPedido?.(renglones.map((x) => ({ item: x.item, paquetes: Number(x.paquetes) })));
       closeModal();
     } catch (e) {
       setError(errorMsg(e));
@@ -74,7 +76,9 @@ export function PedirFraccionadoModal({ catalogo, inicial = null, onPedido }) {
   return (
     <ModalShell
       title="Pedir a fraccionado"
-      subtitle="Para el paquete que no está en la góndola: fraccionado lo arma y te avisa."
+      subtitle={sumaAlTicket
+        ? 'Fraccionado lo arma y te avisa. Se suma a la venta abierta como «en espera».'
+        : 'Para el paquete que no está en la góndola: fraccionado lo arma y te avisa.'}
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', onClick: closeModal, disabled: enviando },
@@ -120,12 +124,26 @@ export function PedirFraccionadoModal({ catalogo, inicial = null, onPedido }) {
             {renglones.map((r) => (
               <tr key={r.item.key}>
                 <td><strong>{r.item.nombre}</strong> · {r.item.detalle}</td>
-                <td style={{ width: 90 }}>
-                  <input
-                    inputMode="numeric" value={r.paquetes} aria-label={`Paquetes de ${r.item.nombre} ${r.item.detalle}`}
-                    onChange={(e) => setRenglones((rs) => rs.map((x) => (x.item.key === r.item.key ? { ...x, paquetes: e.target.value } : x)))}
-                    onKeyDown={volverAlBuscador}
-                  />
+                <td style={{ width: 120 }}>
+                  <div className={cx(p.bultoStep, p.pedirCant)}>
+                    <button
+                      type="button" className={p.bultoBtn} aria-label={`Un paquete menos de ${r.item.nombre}`}
+                      disabled={!esEntero(r.paquetes) || Number(r.paquetes) <= 1} onClick={() => cambiar(r.item.key, (v) => mover(v, -1))}
+                    >
+                      −
+                    </button>
+                    <input
+                      className={p.inputBulto} inputMode="numeric" value={r.paquetes} aria-label={`Paquetes de ${r.item.nombre} ${r.item.detalle}`}
+                      onChange={(e) => cambiar(r.item.key, () => e.target.value)}
+                      onKeyDown={volverAlBuscador}
+                    />
+                    <button
+                      type="button" className={p.bultoBtn} aria-label={`Un paquete más de ${r.item.nombre}`}
+                      onClick={() => cambiar(r.item.key, (v) => mover(v, 1))}
+                    >
+                      +
+                    </button>
+                  </div>
                 </td>
                 <td style={{ width: 36 }}>
                   <button type="button" className={p.pedirQuitar} aria-label={`Quitar ${r.item.nombre}`}

@@ -23,6 +23,7 @@ import {
   Table, PanelHead, Btn, ModalShell, Paginador, usePaginado, money, num, fmtFechaHora, s,
 } from '../components/ui.jsx';
 import { MisPedidosFraccion } from '../components/MisPedidosFraccion.jsx';
+import { useMisPedidosFraccion } from '../hooks/useMisPedidosFraccion.js';
 import { imprimirVenta } from '@core/services/imprimir.js';
 import { EVENTO_PRECIOS, cambiosPrecio } from '@core/services/cambiosPrecio.js';
 import p from '../styles/Pos.module.css';
@@ -422,7 +423,7 @@ function DescuentosConNombre({ opciones, puestos, onAlternar, habilitado }) {
  * Ticket
  * ==================================================================== */
 
-function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, sinDescuentoManual, puedePisarPrecio, preciosDe, ultimoKey, listasPorId, overrideBloqueado, retiro }) {
+function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, sinDescuentoManual, puedePisarPrecio, preciosDe, ultimoKey, listasPorId, overrideBloqueado, retiro, enEspera }) {
   if (!renglones.length) {
     return (
       <div className={p.ticket}>
@@ -461,6 +462,8 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, sinD
             /* Con "vender sin stock" prendido la caja no frena, pero el cajero
              * tiene que saber que ese renglón deja una incidencia (26/9/2026). */
             const sinStockPermitido = permitirStockNegativo && faltaStock;
+            /* Pedido a fraccionado (0170): «en espera» manda sobre el aviso de stock, que es justamente lo que falta. */
+            const espera = r.presentacionId ? enEspera?.get(r.presentacionId) : null;
             /*
              * El tope se mide contra la BASE, no contra el descuento visible.
              * Un renglón bajo "Atención por tardanza 25%" muestra 25 y no está
@@ -491,11 +494,21 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, sinD
                   <div className={p.nombreCol}>{r.nombre}</div>
                   <div className={p.detalleCol}>
                     {r.detalle}
-                    {sinStock && <span className={p.sinStock}> · solo hay {num(r.stock)} {r.unidad}</span>}
-                    {sinStockPermitido && (
-                      <span style={{ color: 'var(--crm-color-warning)' }} title="Se vende igual y queda una incidencia en Almacén › Incidencias › Ventas sin stock, para ir a contar la góndola">
-                        {' · '}sin stock (hay {num(Math.max(r.stock, 0))} {r.unidad}): se vende y queda registrado
+                    {espera ? (
+                      <span className={espera.estado === 'rechazado' ? p.sinStock : p.enEspera}>
+                        {' · '}{espera.estado === 'rechazado'
+                          ? `fraccionado no puede: ${espera.motivo}`
+                          : `⏳ en espera de fraccionado${espera.operador ? ` (lo arma ${espera.operador})` : ''}`}
                       </span>
+                    ) : (
+                      <>
+                        {sinStock && <span className={p.sinStock}> · solo hay {num(r.stock)} {r.unidad}</span>}
+                        {sinStockPermitido && (
+                          <span style={{ color: 'var(--crm-color-warning)' }} title="Se vende igual y queda una incidencia en Almacén › Incidencias › Ventas sin stock, para ir a contar la góndola">
+                            {' · '}sin stock (hay {num(Math.max(r.stock, 0))} {r.unidad}): se vende y queda registrado
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                   {/* La oferta se muestra donde está el producto, con nombre e
@@ -850,15 +863,6 @@ export function PosPanel() {
   const catalogoRaw = useMemo(() => catalogoDeSucursal(catalogoServidor), [catalogoServidor]);
   const catalogo = useMemo(() => catalogoRaw?.items ?? [], [catalogoRaw]);
 
-  /*
-   * PEDIR A FRACCIONADO (0170): solo en la Distribuidora, que es donde se
-   * fracciona. `versionPedidos` despierta la tira de «mis pedidos» al pedir.
-   */
-  const pideFraccion = sucursales.find((x) => x.id === sucursalId)?.tipo === 'distribuidora';
-  const [versionPedidos, setVersionPedidos] = useState(0);
-  const pedirAFraccionado = useCallback((inicial) => openModal('pedirFraccionado', {
-    catalogo, inicial, onPedido: () => setVersionPedidos((v) => v + 1),
-  }), [catalogo, openModal]);
   const listasCatalogo = useMemo(() => catalogoRaw?.listas ?? [], [catalogoRaw]);
 
   /**
@@ -1438,6 +1442,26 @@ export function PosPanel() {
     setUltimoKey(item.key);
   }, [toast, clienteActual, preciosDe, listasPorId]);
 
+  /*
+   * PEDIR A FRACCIONADO (0170): solo en la Distribuidora, que es donde se
+   * fracciona. Con una venta abierta, lo pedido se suma al ticket y queda «en
+   * espera» hasta que fraccionado lo termina; entonces se recarga el catálogo
+   * y su stock destraba el cobro. `versionPedidos` despierta «mis pedidos».
+   */
+  const pideFraccion = sucursales.find((x) => x.id === sucursalId)?.tipo === 'distribuidora';
+  const [versionPedidos, setVersionPedidos] = useState(0);
+  const misPedidos = useMisPedidosFraccion(pideFraccion, versionPedidos, recargarCatalogo);
+  const pedirAFraccionado = useCallback((inicial) => openModal('pedirFraccionado', {
+    catalogo, inicial, sumaAlTicket: !!activaId,
+    onPedido: (renglones) => {
+      setVersionPedidos((v) => v + 1);
+      if (activaId) renglones.forEach((r) => agregar(r.item, r.paquetes));
+    },
+  }), [catalogo, openModal, activaId, agregar]);
+  /** Paquete → el pedido a fraccionado que lo espera (o que no se pudo), para marcar su renglón. */
+  const enEspera = useMemo(() => new Map(misPedidos.pedidos.filter((x) => x.estado !== 'hecho')
+    .flatMap((x) => x.items.map((it) => [it.presentacionId, x]))), [misPedidos.pedidos]);
+
   const trasCobrar = useCallback((idCobrado) => {
     dispatch({ tipo: 'limpiar' });
     setClienteId(null);
@@ -1680,7 +1704,7 @@ export function PosPanel() {
         </div>
 
         {/* Lo pedido a fraccionado (0170) y cómo va: a la vista del cajero. */}
-        {pideFraccion && <MisPedidosFraccion version={versionPedidos} />}
+        <MisPedidosFraccion pedidos={misPedidos.pedidos} onEntendido={misPedidos.entendido} />
 
         {operador && (
           <div
@@ -1759,6 +1783,7 @@ export function PosPanel() {
                 puedePisarPrecio={puedePisarPrecio}
                 preciosDe={preciosDe}
                 ultimoKey={ultimoKey}
+                enEspera={enEspera}
                 listasPorId={listasPorId}
                 overrideBloqueado={overrideBloqueado}
                 retiro={esRetiro}
@@ -2093,7 +2118,7 @@ export function PosPanel() {
       </div>
 
       {/* Lo pedido a fraccionado (0170), también desde la lista. */}
-      {pideFraccion && <MisPedidosFraccion version={versionPedidos} />}
+      <MisPedidosFraccion pedidos={misPedidos.pedidos} onEntendido={misPedidos.entendido} />
 
       {/* El banner del relevo, también en la lista: el olvido de volver es EL
           modo de falla, y contra eso lo único que sirve es que se vea. */}

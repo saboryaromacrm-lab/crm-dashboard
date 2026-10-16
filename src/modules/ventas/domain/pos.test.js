@@ -400,3 +400,10 @@ test('esPaquete: solo el paquete de un granel se le pide a fraccionado (0170)', 
   assert.equal(esPaquete({ presentacionId: null, tipo: 'entero' }), false);
   assert.equal(esPaquete(undefined), false);
 });
+
+test('contexto: el renglón toma el stock del catálogo nuevo (lo que fraccionado terminó deja de frenar el cobro)', () => {
+  const estado = { ...ticketInicial, renglones: [{ uid: 1, key: 's21', stock: 0 }, { uid: 2, key: 'p9', stock: 5 }] };
+  const nuevo = ticketReducer(estado, { tipo: 'contexto', ctx: { catalogo: { items: [{ key: 's21', stock: 3 }] } } });
+  assert.equal(nuevo.renglones[0].stock, 3);
+  assert.equal(nuevo.renglones[1].stock, 5, 'lo que no está en el catálogo nuevo queda como estaba');
+});
