@@ -358,7 +358,14 @@ export function PresupuestosPanel() {
       .map((it) => ({
         productoId: it.productoId, presentacionId: it.presentacionId ?? undefined,
         cantidad: armadaDe(it), precioLista: it.precioLista, precioUnitario: it.precioLista,
-        descuento: it.descuento || 0, iva: it.iva, lista: it.lista || undefined,
+        /*
+         * UN PEDIDO DEL SITIO NO LLEVA DESCUENTO A LA CAJA (16/10/2026). Su único
+         * descuento es la PROMO con la que se cotizó (3×2, 15 % off): la caja la
+         * vuelve a aplicar sola con su motor de ofertas —la misma cuenta, y bien
+         * aunque el cliente cambie la cantidad—. Pasarlo además como descuento la
+         * cobraba dos veces y lo frenaba el tope de descuento a mano del cajero.
+         */
+        descuento: p.origen === 'web' ? 0 : (it.descuento || 0), iva: it.iva, lista: it.lista || undefined,
         /*
          * Viaja el `listaId` con el que se COTIZÓ, no el nombre. El servidor
          * reconoce el precio congelado contra el renglón del presupuesto (que
