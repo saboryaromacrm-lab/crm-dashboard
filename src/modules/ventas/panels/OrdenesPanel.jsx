@@ -26,6 +26,17 @@ import {
 /* `camioneta` es el id interno; se lee «Envío sin costo» como en la tienda (4/10/2026). */
 const ENTREGAS = { retiro: 'Retiro en local', cadete: 'Cadete', camioneta: 'Envío sin costo' };
 
+/** De qué modo de la tienda vino la orden (0173): las anteriores a la tienda minorista son mayoristas. */
+const MODOS = { mayorista: { label: 'Mayorista', pill: 'est-transito' }, minorista: { label: 'Minorista', pill: 'est-recibida' } };
+const modoDe = (p) => (p.modoTienda === 'minorista' ? 'minorista' : 'mayorista');
+function ModoPill({ orden }) {
+  const m = MODOS[modoDe(orden)];
+  return <span className={cx(s.pill, s[m.pill])}>{m.label}</span>;
+}
+
+/** Quién es, para el ERP: el DNI del mayorista o el WhatsApp del minorista (que no tiene DNI). */
+const identidad = (wc) => (wc.dni ? `DNI ${wc.dni}` : `WhatsApp ${wc.telefono || '—'}`);
+
 /** Nombre a mostrar: el cliente adjudicado o lo que escribió en el formulario. */
 function nombreOrden(p, getCliente) {
   if (p.clienteId) return getCliente(p.clienteId)?.nombre || `Cliente #${p.clienteId}`;
@@ -37,9 +48,13 @@ function nombreOrden(p, getCliente) {
 function Entrega({ orden }) {
   const direccion = direccionOrden(orden);
   const conEnvio = orden.entrega && orden.entrega !== 'retiro';
+  /* Minorista (0173): el cadete es «Envío a domicilio», y dice si salió gratis por el monto. */
+  const etiqueta = modoDe(orden) === 'minorista' && orden.entrega === 'cadete'
+    ? `Envío a domicilio${orden.webCliente?.envioGratis ? ' · gratis' : ''}`
+    : ENTREGAS[orden.entrega] ?? orden.entrega;
   return (
     <>
-      {ENTREGAS[orden.entrega] ?? orden.entrega}
+      {etiqueta}
       {conEnvio && (
         direccion
           ? <div className={s.hint} style={{ margin: 0 }}>📍 {direccion}</div>
@@ -97,6 +112,7 @@ function DetalleOrdenModal({ orden, getCliente, onCerrar }) {
         <Di label="Cliente">{nombreOrden(orden, getCliente)}{!orden.clienteId && <span className={cx(s.pill, s['est-pendiente'])} style={{ marginLeft: 6 }}>NUEVO</span>}</Di>
         <Di label="WhatsApp"><WhatsAppLink orden={orden} /></Di>
         <Di label="DNI">{wc.dni || '—'}</Di>
+        <Di label="Modo"><ModoPill orden={orden} /></Di>
         <Di label="Entrega"><Entrega orden={orden} /></Di>
       </div>
 
@@ -193,20 +209,21 @@ function AceptarOrdenModal({ orden, onListo, onCerrar }) {
     >
       {yaAdjudicada ? (
         <div className={s.callout}>
-          El DNI <strong>{wc.dni}</strong> ya es cliente de la casa: la orden queda adjudicada a{' '}
+          El {identidad(wc)} ya es cliente de la casa: la orden queda adjudicada a{' '}
           <strong>{getCliente(orden.clienteId)?.nombre ?? `#${orden.clienteId}`}</strong>.
         </div>
       ) : (
         <>
           <div className={cx(s.callout, s.warn)}>
-            El DNI <strong>{wc.dni || '—'}</strong> no está en la base de clientes.
+            El {identidad(wc)} no está en la base de clientes.
+            {modoDe(orden) === 'minorista' && ' Es un comprador minorista: no tiene DNI; su ficha queda con el WhatsApp.'}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '4px 0 10px' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13.5 }}>
               <input type="radio" checked={modo === 'crear'} onChange={() => setModo('crear')} />
               <span>
                 Agregarlo como cliente nuevo: <strong>{`${wc.nombre ?? ''} ${wc.apellido ?? ''}`.trim() || '—'}</strong>
-                {wc.telefono ? ` · ${wc.telefono}` : ''} · DNI {wc.dni || '—'}
+                {wc.telefono ? ` · ${wc.telefono}` : ''}{wc.dni ? ` · DNI ${wc.dni}` : ''}
                 {direccionOrden(orden) ? ` · ${direccionOrden(orden)}` : ''}
               </span>
             </label>
@@ -280,18 +297,22 @@ export function OrdenesPanel() {
   const { getCliente } = useVentas();
   const [modal, setModal] = useState(null); // { tipo: 'ver'|'aceptar'|'rechazar', orden }
   const [cargandoId, setCargandoId] = useState(0);
+  /** Filtro por modo de la tienda (0173): '' = todas. */
+  const [modo, setModo] = useState('');
 
   const { data, loading, error, reload } = useResource('ordenes-web', async () => {
     const todos = await ventasApi.presupuestos();
     return todos.filter((p) => p.estado === 'pendiente');
   });
-  const ordenes = useMemo(() => data ?? [], [data]);
+  const todas = useMemo(() => data ?? [], [data]);
+  const ordenes = useMemo(() => (modo ? todas.filter((p) => modoDe(p) === modo) : todas), [todas, modo]);
+  const cuenta = (m) => todas.filter((p) => modoDe(p) === m).length;
 
   // La bandeja se recarga sola cuando el poller detecta que el contador
   // cambió: el pedido nuevo aparece sin tocar nada (igual que el badge).
   const pendientesWeb = useSyncExternalStore(ordenesWeb.subscribe, ordenesWeb.count, ordenesWeb.count);
   useEffect(() => { reload(); }, [pendientesWeb, reload]);
-  const pag = usePaginado(ordenes, 'ordenesWeb');
+  const pag = usePaginado(ordenes, 'ordenesWeb', modo);
 
   /** El detalle (con stock por renglón) se pide al abrir cualquier modal. */
   const abrir = async (tipo, p) => {
@@ -314,9 +335,25 @@ export function OrdenesPanel() {
 
       {error && <div className={cx(s.callout, s.warn)}>No se pudieron cargar las órdenes: <strong>{error}</strong></div>}
 
+      <div className={s.toolbar} style={{ gap: 8, flexWrap: 'wrap' }}>
+        {[['', `Todas (${todas.length})`], ['minorista', `Minorista (${cuenta('minorista')})`], ['mayorista', `Mayorista (${cuenta('mayorista')})`]].map(([id, label]) => (
+          <button
+            key={id} type="button" className={cx(s.badge)}
+            style={{
+              cursor: 'pointer', padding: '6px 12px', fontSize: 12.5, borderWidth: 1, borderStyle: 'solid',
+              borderColor: modo === id ? 'var(--crm-color-primary)' : 'var(--crm-color-border)',
+              ...(modo === id ? { background: 'var(--crm-color-primary)', color: 'var(--crm-color-primary-contrast)' } : {}),
+            }}
+            onClick={() => setModo(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <Table
         cols={[
-          { h: 'Orden' }, { h: 'Recibida' }, { h: 'Cliente' }, { h: 'WhatsApp' },
+          { h: 'Orden' }, { h: 'Recibida' }, { h: 'Modo' }, { h: 'Cliente' }, { h: 'WhatsApp' },
           { h: 'Entrega' }, { h: 'Renglones', num: true }, { h: 'Total', num: true },
           { h: 'Acciones', cls: 'actions-col' },
         ]}
@@ -327,6 +364,7 @@ export function OrdenesPanel() {
           <tr key={p.id} style={cargandoId === p.id ? { opacity: 0.5 } : undefined}>
             <td className={s.mono}><strong>{p.codigo}</strong></td>
             <td>{fmtFechaHora(p.fecha)}</td>
+            <td><ModoPill orden={p} /></td>
             <td>
               {nombreOrden(p, getCliente)}
               {!p.clienteId && <span className={cx(s.pill, s['est-pendiente'])} style={{ marginLeft: 6 }}>NUEVO</span>}

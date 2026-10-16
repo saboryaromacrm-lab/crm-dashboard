@@ -598,7 +598,31 @@ export function ConfiguracionPanel() {
       {tabActiva === 'tienda' && (
         <div className={s['dash-grid']}>
           {can('ventas.configuracion') && (
-            <Seccion titulo="Entregas" desc="Cómo puede recibir su pedido el cliente de la tienda online.">
+            <Seccion titulo="Tienda minorista" desc="La misma tienda, en modo Minorista (0173): precio de mostrador (la lista base), sin compra mínima ni registro; el comprador es su WhatsApp.">
+              <Interruptor
+                label="Modo minorista encendido"
+                hint="Encendido, al entrar a la tienda se elige Minorista o Mayorista y se puede cambiar desde el cartel de arriba. Apagado, la tienda queda solo mayorista como antes y el servidor rechaza los pedidos minoristas."
+                checked={draft.tiendaMinoristaActiva !== false}
+                onChange={set('tiendaMinoristaActiva')}
+              />
+              <Campo
+                label="Envío a domicilio gratis desde"
+                hint="0 = nunca es gratis: el costo del envío se coordina por WhatsApp. Con un monto, el pedido que lo supera queda marcado «gratis» en Órdenes web. Retiro en el local se ofrece siempre."
+              >
+                <input
+                  type="number" min="0" step="1000"
+                  value={draft.tiendaMinoristaEnvioGratisDesde ?? 0}
+                  disabled={draft.tiendaMinoristaActiva === false}
+                  onChange={setNum('tiendaMinoristaEnvioGratisDesde')}
+                />
+              </Campo>
+              <div className={s.hint}>
+                Se publica todo producto con precio en la lista base y stock en la Distribuidora. El granel va por paquetes fraccionados y, como bolsa cerrada, solo el que en la lista base vende «por N kg».
+              </div>
+            </Seccion>
+          )}
+          {can('ventas.configuracion') && (
+            <Seccion titulo="Entregas (mayorista)" desc="Cómo puede recibir su pedido el cliente de la tienda mayorista.">
               <div className={cx(s.callout, s.info)}>
                 <strong>Retiro en el local</strong> y <strong>envío por cadete</strong> se ofrecen siempre.
               </div>
