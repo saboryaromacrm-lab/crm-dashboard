@@ -31,7 +31,7 @@ import { ColumnasMulti } from '../metricas/graficos.jsx';
 import { iso } from '../metricas/formato.js';
 import { CajasAControlar, TildeControlar } from './CajasAControlar.jsx';
 import { useTildeControlar, useUmbralControlar } from './tildeControlar.js';
-import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
+import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, esDeposito, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
 
 /** La diferencia, con su color: rojo faltó, verde sobró, gris nada. */
 export function Diferencia({ v }) {
@@ -611,7 +611,7 @@ function Sobres({ version, bump, avisar }) {
  * registró el movimiento (un sobre: el día que lo controlaste); «Caja del
  * local» es el cierre del turno de donde salió el sobre.
  */
-function TablaMovimientos({ filas, compacta, onAnular }) {
+function TablaMovimientos({ filas, compacta, onAnular, onAplicar }) {
   return (
     <Table
       cols={[
@@ -647,7 +647,10 @@ function TablaMovimientos({ filas, compacta, onAnular }) {
             </td>
             {onAnular && (
               <td className={s['actions-col']}>
-                {!anulado && ANULABLES.includes(m.origen) && <Btn small variant="btn-delete" onClick={() => onAnular(m)}>Anular</Btn>}
+                <div className={s['row-actions']}>
+                  {onAplicar && depositoAplicable(m) && <Btn small onClick={() => onAplicar(m)} title="Pasar este depósito a la cuenta de un proveedor">Aplicar a proveedor</Btn>}
+                  {!anulado && ANULABLES.includes(m.origen) && <Btn small variant="btn-delete" onClick={() => onAnular(m)}>Anular</Btn>}
+                </div>
               </td>
             )}
           </tr>
@@ -678,18 +681,23 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
   const [fecha, setFecha] = useState(hoy());
   const [detalle, setDetalle] = useState('');
   const [error, setError] = useState('');
+  /* Un depósito se puede aplicar a un proveedor (16/10/2026): el paso siguiente es el pago, con este importe. */
+  const [aProveedor, setAProveedor] = useState(false);
+  const [alProveedor, setAlProveedor] = useState(false);
   const n = Number(importe);
   const concepto = opciones.find((c) => c.id === Number(conceptoId));
+  const esDep = tipo === 'egreso' && esDeposito(concepto?.nombre);
   const sc = useSegundaConfirmacion(`${conceptoId}|${importe}|${fecha}|${detalle}`);
+  const valido = () => {
+    setError('');
+    if (!concepto) { setError('Elegí el concepto.'); return false; }
+    if (!Number.isFinite(n) || n <= 0) { setError('Escribí el importe.'); return false; }
+    if (!fecha || fecha > hoy()) { setError('La fecha tiene que ser hoy o anterior.'); return false; }
+    if (tipo === 'egreso' && fecha === hoy() && n > saldo + 0.009) { setError(`No alcanza: tenés ${money(saldo)} en mano.`); return false; }
+    return true;
+  };
   const confirmar = () => sc.clic(
-    () => {
-      setError('');
-      if (!concepto) { setError('Elegí el concepto.'); return false; }
-      if (!Number.isFinite(n) || n <= 0) { setError('Escribí el importe.'); return false; }
-      if (!fecha || fecha > hoy()) { setError('La fecha tiene que ser hoy o anterior.'); return false; }
-      if (tipo === 'egreso' && fecha === hoy() && n > saldo + 0.009) { setError(`No alcanza: tenés ${money(saldo)} en mano.`); return false; }
-      return true;
-    },
+    valido,
     async () => {
       try {
         const r = await httpClient.post('/cashflow/movimientos', { tipo, conceptoId: concepto.id, importe: n, fecha, detalle: detalle.trim(), confirmado: true });
@@ -698,10 +706,21 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
       } catch (e) { setError(errorMsg(e)); }
     },
   );
+  const aplicar = esDep && aProveedor;
+  if (aplicar && alProveedor) {
+    return (
+      <PagoProveedorModal
+        deposito={{ importe: n, fecha, detalle: detalle.trim(), conceptoId: concepto.id }}
+        saldo={saldo} onCerrar={onCerrar} onHecho={onHecho} onVolver={() => setAlProveedor(false)} avisar={avisar}
+      />
+    );
+  }
   return (
     <ModalShell title={tipo === 'ingreso' ? 'Registrar un ingreso de efectivo' : 'Sacar efectivo de la caja'} onClose={onCerrar} footer={[
       { texto: 'Cancelar', onClick: onCerrar },
-      { texto: textoBoton(sc, tipo === 'ingreso' ? 'Registrar ingreso' : 'Registrar egreso', 'Sí, confirmar'), clase: 'btn-primary', onClick: confirmar },
+      aplicar
+        ? { texto: 'Seguir: elegir el proveedor', clase: 'btn-primary', onClick: () => { if (valido()) setAlProveedor(true); } }
+        : { texto: textoBoton(sc, tipo === 'ingreso' ? 'Registrar ingreso' : 'Registrar egreso', 'Sí, confirmar'), clase: 'btn-primary', onClick: confirmar },
     ]}>
       {!opciones.length && <Aviso tono="warn">No hay conceptos de {tipo} activos. Crealos en la pestaña «Conceptos».</Aviso>}
       <div className={s['form-grid']}>
@@ -716,6 +735,15 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
         <Campo label="Fecha"><input type="date" value={fecha} max={hoy()} onChange={(e) => setFecha(e.target.value)} /></Campo>
         <Campo label="Detalle"><input maxLength={300} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Opcional: para qué, a quién" /></Campo>
       </div>
+      {esDep && (
+        <div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            <input type="checkbox" checked={aProveedor} onChange={(e) => setAProveedor(e.target.checked)} />
+            Aplicar este depósito a un proveedor
+          </label>
+          <div className={s.hint} style={{ margin: '4px 0 0 26px' }}>Queda en su cuenta: en el paso siguiente tildás qué facturas paga y el resto queda a cuenta.</div>
+        </div>
+      )}
       {tipo === 'egreso' && <Disponible saldo={saldo} importe={n > 0 ? n : 0} fecha={fecha} />}
       <AvisoSegundaConfirmacion {...sc}>
         {tipo === 'ingreso' ? 'Entra' : 'Sale'} <strong>{money(n || 0)}</strong> {tipo === 'ingreso' ? 'a' : 'de'} tu caja por <strong>{concepto?.nombre ?? '—'}</strong> el {fechaIso(fecha)}.
@@ -730,26 +758,38 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
  * PAGO A PROVEEDOR DESDE LA CAJA (parte 2): se elige el proveedor, se tildan
  * las facturas (o los gastos cargados) que se pagan y con qué (efectivo o
  * depósito). Es el mismo pago de siempre: queda en la cuenta del proveedor.
+ *
+ * CON `deposito` (16/10/2026, pedido del dueño): un depósito que se aplica a un
+ * proveedor, el importe es FIJO (el del depósito) y lo que no se tilda queda a
+ * cuenta. Recién cargado desde «Sacar plata» (`conceptoId`) sale de la caja acá;
+ * ya cargado (`movimientoId`) la plata ya salió y solo se pasa a la cuenta.
  */
-export function PagoProveedorModal({ saldo, onCerrar, onHecho, avisar }) {
+export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar, deposito = null }) {
   const { movil } = useModalModo();
   const { data: provs } = useResource('cashflow:proveedores', () => httpClient.get('/cashflow/proveedores'));
   const [proveedorId, setProveedorId] = useState('');
   const [destino, setDestino] = useState('mercaderia');
-  const [medio, setMedio] = useState('efectivo');
+  const [medio, setMedio] = useState(deposito ? 'deposito' : 'efectivo');
   const [referencia, setReferencia] = useState('');
-  const [fecha, setFecha] = useState(hoy());
-  const [detalle, setDetalle] = useState('');
+  const [fecha, setFecha] = useState(deposito?.fecha ?? hoy());
+  const [detalle, setDetalle] = useState(deposito?.detalle ?? '');
   const [aCuenta, setACuenta] = useState('');
   const [tildes, setTildes] = useState({}); // docId -> importe (string)
   const [error, setError] = useState('');
   const { data: docs, loading } = useResource(`cashflow:pend:${proveedorId}:${destino}`, () => httpClient.get(`/cashflow/proveedores/${proveedorId}/pendientes?destino=${destino}`), { enabled: !!proveedorId });
   const prov = (provs ?? []).find((p) => p.id === Number(proveedorId));
-  const aplicado = Object.values(tildes).reduce((a, v) => a + (Number(v) || 0), 0);
-  const extra = Number(aCuenta) || 0;
-  const total = Math.round((aplicado + extra) * 100) / 100;
-  const tildar = (d, on) => setTildes((t) => { const n = { ...t }; if (on) n[d.docId] = String(d.saldo); else delete n[d.docId]; return n; });
+  const aplicado = Math.round(Object.values(tildes).reduce((a, v) => a + (Number(v) || 0), 0) * 100) / 100;
+  const extra = deposito ? Math.round((deposito.importe - aplicado) * 100) / 100 : Number(aCuenta) || 0;
+  const total = deposito ? deposito.importe : Math.round((aplicado + extra) * 100) / 100;
+  /* Con importe fijo se tilda por lo que todavía queda del depósito. */
+  const tildar = (d, on) => setTildes((t) => {
+    const n = { ...t };
+    if (on) n[d.docId] = String(deposito ? Math.max(0, Math.min(d.saldo, Math.round((deposito.importe - aplicado) * 100) / 100)) : d.saldo);
+    else delete n[d.docId];
+    return n;
+  });
   const sc = useSegundaConfirmacion(`${proveedorId}|${destino}|${medio}|${referencia}|${fecha}|${detalle}|${aCuenta}|${JSON.stringify(tildes)}`);
+  const yaSalio = !!deposito?.movimientoId;
   const confirmar = () => sc.clic(
     () => {
       setError('');
@@ -759,24 +799,34 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, avisar }) {
         const v = Number(tildes[d.docId]);
         if (tildes[d.docId] != null && (!(v > 0) || v > d.saldo + 0.009)) { setError(`En ${d.etiqueta} el importe tiene que ser mayor a 0 y hasta ${money(d.saldo)}.`); return false; }
       }
+      if (extra < -0.009) { setError(`Lo tildado (${money(aplicado)}) supera el depósito (${money(total)}).`); return false; }
       if (medio === 'deposito' && !referencia.trim()) { setError('Para un depósito escribí la referencia (número de depósito o comprobante del banco).'); return false; }
-      if (fecha === hoy() && total > saldo + 0.009) { setError(`No alcanza: tenés ${money(saldo)} en mano.`); return false; }
+      if (!yaSalio && fecha === hoy() && total > saldo + 0.009) { setError(`No alcanza: tenés ${money(saldo)} en mano.`); return false; }
       return true;
     },
     async () => {
       try {
         const imputaciones = (docs ?? []).filter((d) => tildes[d.docId] != null).map((d) => ({ [d.tipo === 'gasto' ? 'gastoId' : 'comprobanteId']: d.docId, importe: Number(tildes[d.docId]) }));
-        const r = await httpClient.post('/cashflow/pagos', { proveedorId: prov.id, destino, medio, importe: total, imputaciones, referencia: referencia.trim(), detalle: detalle.trim(), fecha, confirmado: true });
-        avisar('ok', `Pago a ${prov.nombre} por ${money(total)} registrado. Efectivo en mano: ${money(r.saldo)}.`);
+        const base = { proveedorId: prov.id, destino, imputaciones, referencia: referencia.trim(), detalle: detalle.trim(), confirmado: true };
+        const r = yaSalio
+          ? await httpClient.post(`/cashflow/movimientos/${deposito.movimientoId}/aplicar-proveedor`, base)
+          : await httpClient.post('/cashflow/pagos', { ...base, medio, importe: total, fecha, ...(deposito ? { conceptoId: deposito.conceptoId } : {}) });
+        avisar('ok', yaSalio
+          ? `Depósito de ${money(total)} aplicado a ${prov.nombre}: quedó en su cuenta.`
+          : `Pago a ${prov.nombre} por ${money(total)} registrado. Efectivo en mano: ${money(r.saldo)}.`);
         onHecho();
       } catch (e) { setError(errorMsg(e)); }
     },
   );
   return (
-    <ModalShell title="Pagar a un proveedor desde tu caja" subtitle="Queda en la cuenta del proveedor, aplicado a lo que tildes." wide onClose={onCerrar} footer={[
-      { texto: 'Cancelar', onClick: onCerrar },
-      { texto: textoBoton(sc, `Pagar ${money(total)}`, 'Sí, confirmar el pago'), clase: 'btn-primary', onClick: confirmar, disabled: !prov },
-    ]}>
+    <ModalShell
+      title={deposito ? 'Aplicar el depósito a un proveedor' : 'Pagar a un proveedor desde tu caja'}
+      subtitle={deposito ? `Depósito de ${money(total)} del ${fechaIso(fecha)}: queda en la cuenta del proveedor, aplicado a lo que tildes y el resto a cuenta.` : 'Queda en la cuenta del proveedor, aplicado a lo que tildes.'}
+      wide onClose={onCerrar} footer={[
+        onVolver ? { texto: 'Volver', onClick: onVolver } : { texto: 'Cancelar', onClick: onCerrar },
+        { texto: textoBoton(sc, deposito ? `Aplicar ${money(total)}` : `Pagar ${money(total)}`, 'Sí, confirmar'), clase: 'btn-primary', onClick: confirmar, disabled: !prov },
+      ]}
+    >
       <div className={s['form-grid']}>
         <Campo label="Proveedor *">
           <select value={proveedorId} onChange={(e) => { setProveedorId(e.target.value); setTildes({}); }} autoFocus>
@@ -792,20 +842,25 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, avisar }) {
         </Campo>
       </div>
       <div className={s['form-grid']}>
-        <Campo label="Con qué">
-          <select value={medio} onChange={(e) => setMedio(e.target.value)}>
-            <option value="efectivo">Efectivo en mano</option>
-            <option value="deposito">Depósito en su cuenta (sale efectivo de tu caja)</option>
-          </select>
-        </Campo>
+        {!deposito && (
+          <Campo label="Con qué">
+            <select value={medio} onChange={(e) => setMedio(e.target.value)}>
+              <option value="efectivo">Efectivo en mano</option>
+              <option value="deposito">Depósito en su cuenta (sale efectivo de tu caja)</option>
+            </select>
+          </Campo>
+        )}
         <Campo label={medio === 'deposito' ? 'Referencia del depósito *' : 'Referencia'}>
           <input maxLength={200} value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder={medio === 'deposito' ? 'Nº de depósito / comprobante' : 'Opcional'} />
         </Campo>
+        {deposito && <Campo label="Detalle"><input maxLength={300} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Opcional" /></Campo>}
       </div>
-      <div className={s['form-grid']}>
-        <Campo label="Fecha"><input type="date" value={fecha} max={hoy()} onChange={(e) => setFecha(e.target.value)} /></Campo>
-        <Campo label="Detalle"><input maxLength={300} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Opcional" /></Campo>
-      </div>
+      {!deposito && (
+        <div className={s['form-grid']}>
+          <Campo label="Fecha"><input type="date" value={fecha} max={hoy()} onChange={(e) => setFecha(e.target.value)} /></Campo>
+          <Campo label="Detalle"><input maxLength={300} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Opcional" /></Campo>
+        </div>
+      )}
       {prov && (
         <div>
           <div className={s['mini-label']}>{destino === 'gastos' ? 'Gastos que le debés' : 'Facturas que le debés'} — tildá las que pagás</div>
@@ -857,18 +912,26 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, avisar }) {
         </div>
       )}
       <div className={s['form-grid']}>
-        <Campo label="Además, a cuenta (sin aplicar a un documento)" hint="Queda como saldo a favor en la cuenta del proveedor; se aplica después desde Proveedores.">
-          <input type="number" min="0" step="0.01" inputMode="decimal" value={aCuenta} onChange={(e) => setACuenta(e.target.value)} placeholder="0" />
-        </Campo>
+        {deposito ? (
+          <div className={s.hint} style={{ margin: 0 }}>
+            Lo que no tildes queda <strong>a cuenta</strong>: saldo a favor en la cuenta del proveedor, que se aplica después desde Proveedores.
+          </div>
+        ) : (
+          <Campo label="Además, a cuenta (sin aplicar a un documento)" hint="Queda como saldo a favor en la cuenta del proveedor; se aplica después desde Proveedores.">
+            <input type="number" min="0" step="0.01" inputMode="decimal" value={aCuenta} onChange={(e) => setACuenta(e.target.value)} placeholder="0" />
+          </Campo>
+        )}
         <div>
-          <div className={s['mini-label']}>Total del pago</div>
+          <div className={s['mini-label']}>{deposito ? 'El depósito' : 'Total del pago'}</div>
           <div style={{ fontSize: 22, fontWeight: 800 }}>{money(total)}</div>
-          <div className={s.hint} style={{ margin: 0 }}>aplicado {money(aplicado)} · a cuenta {money(extra)}</div>
+          <div className={s.hint} style={{ margin: 0, color: extra < -0.009 ? 'var(--crm-color-danger)' : undefined }}>aplicado {money(aplicado)} · a cuenta {money(extra)}</div>
         </div>
       </div>
-      <Disponible saldo={saldo} importe={total} fecha={fecha} />
+      {yaSalio
+        ? <Aviso tono="info">Esta plata ya salió de tu caja cuando cargaste el depósito: el efectivo en mano no cambia.</Aviso>
+        : <Disponible saldo={saldo} importe={total} fecha={fecha} />}
       <AvisoSegundaConfirmacion {...sc}>
-        Sale <strong>{money(total)}</strong> de tu caja para <strong>{prov?.nombre ?? '—'}</strong> ({MEDIO[medio]}), aplicado a {Object.keys(tildes).length} documento{Object.keys(tildes).length === 1 ? '' : 's'}{extra > 0 ? ` y ${money(extra)} a cuenta` : ''}.
+        {yaSalio ? 'El depósito de ' : 'Sale '}<strong>{money(total)}</strong> {yaSalio ? 'pasa a la cuenta de' : 'de tu caja para'} <strong>{prov?.nombre ?? '—'}</strong> ({MEDIO[medio]}), aplicado a {Object.keys(tildes).length} documento{Object.keys(tildes).length === 1 ? '' : 's'}{extra > 0.009 ? ` y ${money(extra)} a cuenta` : ''}.
       </AvisoSegundaConfirmacion>
       {error && <Aviso tono="warn">{error}</Aviso>}
     </ModalShell>
@@ -938,7 +1001,13 @@ function Movimientos({ version, bump, avisar, conceptos, saldo }) {
         {filas.length >= 500 && ' · se muestran los últimos 500: acotá las fechas para ver más.'}
       </div>
       {error && <Aviso tono="warn">{error}</Aviso>}
-      {loading && !data ? <Cargando /> : <TablaMovimientos filas={filas} onAnular={(m) => setModal({ tipo: 'anular', m })} />}
+      {loading && !data ? <Cargando /> : <TablaMovimientos filas={filas} onAnular={(m) => setModal({ tipo: 'anular', m })} onAplicar={(m) => setModal({ tipo: 'aplicar', m })} />}
+      {modal?.tipo === 'aplicar' && (
+        <PagoProveedorModal
+          deposito={{ movimientoId: modal.m.id, importe: modal.m.importe, fecha: iso(new Date(modal.m.fecha)), detalle: '' }}
+          saldo={saldo} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar}
+        />
+      )}
       {modal?.tipo === 'anular' && (
         <AnularModal
           titulo={`Anular ${modal.m.tipo} de ${money(modal.m.importe)}`}

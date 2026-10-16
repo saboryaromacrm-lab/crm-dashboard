@@ -54,7 +54,7 @@ import {
   AnularModal, Arranque, ConteoModal, MovimientoModal, PagoProveedorModal, SobreModal, SobreVer,
 } from './CashFlowPanel.jsx';
 import {
-  ANULABLES, FILTROS_REPORTE_VACIOS, conSigno, ORIGEN, ORIGENES_REPORTE, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso,
+  ANULABLES, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, ORIGEN, ORIGENES_REPORTE, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso,
   hayFiltrosReporte, horaCorta, hoy, primerDiaMes, qsFiltrosReporte, queEs, textoAnular, textoFiltrosReporte, tituloPeriodo,
 } from './formato.js';
 import { CajasAControlar } from './CajasAControlar.jsx';
@@ -430,13 +430,14 @@ function Movimientos({ f, setF, version, abrir }) {
   );
 }
 
-/** El detalle de un movimiento, con «Anular» si se puede. */
-function DetalleMovimiento({ m, onCerrar, onAnular }) {
+/** El detalle de un movimiento, con «Anular» si se puede y, en un depósito suelto, «Aplicar a proveedor» (16/10/2026). */
+function DetalleMovimiento({ m, onCerrar, onAnular, onAplicar }) {
   const anulable = !m.anuladoEn && ANULABLES.includes(m.origen);
   return (
     <ModalShell title={queEs(m)} subtitle={fechaHora(m.fecha)} onClose={onCerrar} footer={[
       { texto: 'Cerrar', onClick: onCerrar },
       ...(anulable ? [{ texto: 'Anular', clase: 'btn-delete', onClick: onAnular }] : []),
+      ...(depositoAplicable(m) ? [{ texto: 'Aplicar a proveedor', clase: 'btn-primary', onClick: onAplicar }] : []),
     ]}>
       <dl className={c.detalle}>
         <dt>Importe</dt>
@@ -1031,7 +1032,15 @@ export function CashFlowMovil() {
             onCerrar={cerrar} onHecho={hecho} avisar={avisar}
           />
         )}
-        {modal?.tipo === 'mov' && <DetalleMovimiento m={modal.m} onCerrar={cerrar} onAnular={() => setModal({ tipo: 'anular', m: modal.m })} />}
+        {modal?.tipo === 'mov' && (
+          <DetalleMovimiento m={modal.m} onCerrar={cerrar} onAnular={() => setModal({ tipo: 'anular', m: modal.m })} onAplicar={() => setModal({ tipo: 'aplicar', m: modal.m })} />
+        )}
+        {modal?.tipo === 'aplicar' && (
+          <PagoProveedorModal
+            deposito={{ movimientoId: modal.m.id, importe: modal.m.importe, fecha: iso(new Date(modal.m.fecha)), detalle: '' }}
+            saldo={saldo} onCerrar={cerrar} onHecho={hecho} avisar={avisar}
+          />
+        )}
         {modal?.tipo === 'anular' && (
           <AnularModal
             titulo={`Anular ${modal.m.tipo} de ${money(modal.m.importe)}`}
