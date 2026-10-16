@@ -125,7 +125,7 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
   return (
     <>
       <div className={s.stats}>
-        <Stat label="Comprado para Coffit (neto)" value={money(datos?.total ?? 0)} accent="accent-amber" />
+        <Stat label="Comprado para Coffit (a su cuenta, precio final)" value={money(datos?.total ?? 0)} accent="accent-amber" />
         <Stat label="Facturas" value={num(datos?.facturas ?? 0, 0)} />
         <Stat label="Artículos distintos" value={num(datos?.articulos?.length ?? 0, 0)} />
         <Stat label="Remitos sin factura" value={num(remitos.length, 0)} />
@@ -151,7 +151,7 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
         <Table
           cols={[
             { h: 'Fecha' }, { h: 'Comprobante' }, { h: 'Proveedor' }, { h: 'Sucursal' },
-            { h: 'Qué es de Coffit' }, { h: 'Neto Coffit', num: true },
+            { h: 'Qué es de Coffit' }, { h: 'Neto Coffit', num: true }, { h: 'A su cuenta', num: true },
           ]}
           empty={cargando ? 'Cargando…' : 'Ninguna compra para Coffit en el período.'}
           pag={pagDocs}
@@ -172,11 +172,12 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
                     ? <span className={s.badge}>Toda la factura</span>
                     : <span className={s.muted}>{d.items.length} renglón{d.items.length === 1 ? '' : 'es'} de {money(Math.abs(d.subtotalNeto))}</span>}
                 </td>
-                <td className={cx(s.num, s.mono)} style={{ fontWeight: 700 }}>{money(d.neto)}</td>
+                <td className={cx(s.num, s.mono)}>{money(d.neto)}</td>
+                <td className={cx(s.num, s.mono)} style={{ fontWeight: 700 }}>{money(d.cuenta)}</td>
               </tr>,
               abierto && (
                 <tr key={`${d.id}-det`}>
-                  <td colSpan={6} style={{ background: 'var(--crm-color-surface-2, rgba(0,0,0,.03))' }}>
+                  <td colSpan={7} style={{ background: 'var(--crm-color-surface-2, rgba(0,0,0,.03))' }}>
                     <table style={{ width: '100%', fontSize: 13 }}>
                       <thead>
                         <tr>
@@ -253,8 +254,9 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
       <div className={s.hint}>
         Entra acá la parte de Coffit de cada factura de compra: los artículos de <strong>uso exclusivo
         de Coffit</strong> y los renglones tildados <strong>«Para Coffit»</strong> (o la factura entera) al
-        cargarla. Es el <strong>neto</strong>, sin IVA: el crédito fiscal sigue siendo de la empresa. La nota
-        de crédito resta. El total es el mismo de <strong>Gerencia</strong> («Directo para Coffit»).
+        cargarla. <strong>Coffit paga precio final</strong>: a su cuenta va su parte con el IVA y las percepciones
+        de la factura (el total del papel), aunque el crédito fiscal siga siendo de la empresa. La nota de crédito
+        resta. <strong>Gerencia</strong> («Directo para Coffit») muestra el neto, porque separa las compras de la empresa.
       </div>
     </>
   );
@@ -291,7 +293,7 @@ export function CoffitGastos({ desde, hasta, setDesde, setHasta }) {
     <>
       <div className={s.stats}>
         <Stat label="Gastos de Coffit (con IVA)" value={money(datos?.total ?? 0)} />
-        <Stat label="A su cuenta (sin IVA ni percepciones)" value={money(datos?.totalCuenta ?? 0)} accent="accent-amber" />
+        <Stat label="A su cuenta (precio final)" value={money(datos?.totalCuenta ?? 0)} accent="accent-amber" />
         <Stat label="Comprobantes" value={num(datos?.gastos?.length ?? 0, 0)} />
         <Stat label="Rubros" value={num(datos?.porRubro?.length ?? 0, 0)} />
       </div>
@@ -373,7 +375,7 @@ export function CoffitGastos({ desde, hasta, setDesde, setHasta }) {
 
       <div className={s.hint}>
         Son los gastos cargados en <strong>Gastos</strong> con <strong>Negocio: Coffit</strong>. A su cuenta
-        corriente entran <strong>sin IVA ni percepciones</strong> (eso lo recupera la empresa); la nota de
+        corriente entran por su <strong>total, con IVA y percepciones</strong>: Coffit paga precio final; la nota de
         crédito resta. Cambiar el negocio de un gasto queda registrado en la auditoría. Para que uno aparezca acá, se elige
         ese negocio al cargarlo.
       </div>

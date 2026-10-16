@@ -3603,6 +3603,12 @@ export function ComprobanteDetalleModal({ id }) {
         >
           <strong>TOTAL</strong><strong>{money(c.total)}</strong>
         </div>
+        {c.finalCafeteria > 0.009 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--crm-color-text-secondary)' }}>
+            <span>Coffit paga <span className={s.muted}>· su parte a precio final, con IVA y percepciones</span></span>
+            <strong>{money(c.finalCafeteria)}</strong>
+          </div>
+        )}
       </div>
       {c.percepcionesTotal > 0.009 && (
         <div className={s.hint}>

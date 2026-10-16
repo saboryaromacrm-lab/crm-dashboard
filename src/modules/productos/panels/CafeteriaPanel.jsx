@@ -383,7 +383,7 @@ export function CafeteriaPanel() {
               label={`${(resumen?.saldoCuenta ?? 0) >= 0 ? v.saldoCasa : v.saldoCafe} al ${fmtFechaVenc(resumen?.saldoCuentaAl)}`}
               value={money(Math.abs(resumen?.saldoCuenta ?? 0))}
             />
-            <Stat label="Gastos imputados (sin IVA)" value={money(resumen?.gastos ?? 0)} />
+            <Stat label="Gastos imputados (precio final)" value={money(resumen?.gastos ?? 0)} />
             {/* Es "le mandamos + gastos", no el costo de los dos sentidos:
                 al lado de "Nos mandó" el nombre viejo se leía como un error. */}
             <Stat

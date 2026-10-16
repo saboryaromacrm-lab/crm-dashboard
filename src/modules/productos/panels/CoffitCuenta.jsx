@@ -182,10 +182,11 @@ export function CoffitCuenta({ desde, hasta, setDesde, setHasta }) {
 
       <div className={s.hint}>
         <strong>Debe Coffit</strong> suma a lo que Coffit le debe a Sabor y Aroma; <strong>A favor de Coffit</strong>
-        {' '}lo resta. Entran solos: la parte de Coffit de cada factura de compra (neto, sin IVA), lo que se le
-        manda desde el stock al <strong>costo de la última factura</strong> (sin lo que ya había pagado), lo que
-        ella manda a las sucursales, los faltantes al recibir (los pierde el que mandó, en la fecha en que se
-        recibió) y los gastos de Coffit sin IVA ni percepciones. Los pagos, compensaciones y ajustes se cargan acá.
+        {' '}lo resta. <strong>Coffit paga precio final</strong> (con IVA y percepciones). Entran solos: la parte de
+        Coffit de cada factura de compra (el total del papel de su parte), lo que se le manda desde el stock al
+        <strong> precio final de la última factura</strong> (sin lo que ya había pagado), lo que ella manda a las
+        sucursales (al costo que declara), los faltantes al recibir (los pierde el que mandó, en la fecha en que se
+        recibió) y los gastos de Coffit por su total. Los pagos, compensaciones y ajustes se cargan acá.
       </div>
 
       {(datos?.cierres?.length ?? 0) > 0 && (
