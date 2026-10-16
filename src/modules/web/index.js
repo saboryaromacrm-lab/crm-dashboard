@@ -18,7 +18,7 @@ import { accesosTienda } from '@core/services/accesosTienda.js';
 export const webModule = defineModule({
   id: 'web',
   name: 'Tienda online',
-  description: 'La tienda mayorista online: productos publicados, destacados, imágenes, banners y quién puede comprar.',
+  description: 'La tienda online, mayorista y minorista: productos publicados, destacados, imágenes, banners, quién puede comprar y su configuración.',
   icon: LanguageIcon,
   enabled: true,
   basePath: '/web',

@@ -1,5 +1,5 @@
 /**
- * WEB — la administración de la tienda mayorista online
+ * WEB — la administración de la tienda online (mayorista y minorista)
  * ============================================================================
  * Módulo propio del sidebar (grupo Catálogo), con su sub-menú de secciones a la
  * izquierda igual que Compras, Ventas, Almacén y Gastos: moverse entre módulos
@@ -16,8 +16,9 @@
  *   - CONTENIDO: los slides de la portada, el banner y las imágenes de
  *     categorías y marcas.
  *   - ESTADÍSTICAS: visitas, qué se mira y qué se busca.
- *   - (CONFIGURACIÓN del sitio —logo, favicon, contacto, redes y cartel— se
- *     mudó el 4/10/2026 a Ventas › Configuración › Tienda online: ver `SitioTienda`.)
+ *   - CONFIGURACIÓN (16/10/2026): todo lo de la tienda en un lugar —general
+ *     (vista del catálogo y datos del sitio: logo, favicon, contacto, redes y
+ *     cartel), mayorista y minorista—. Ver `ConfiguracionTiendaPanel`.
  *
  * Todo lo demás del producto (nombre, precio, stock, etiquetas) se maneja en
  * Compras › Productos — a propósito: una sola fuente de verdad por dato.
@@ -35,6 +36,7 @@ import { SubirImagenBtn } from '../components/SubirImagenBtn.jsx';
 import { SubirFotosLoteModal } from '../components/SubirFotosLoteModal.jsx';
 import { RafagaFotosModal } from '../components/RafagaFotosModal.jsx';
 import { AccesosTiendaPanel } from '../components/AccesosTiendaPanel.jsx';
+import { ConfiguracionTiendaPanel } from '../components/ConfiguracionTiendaPanel.jsx';
 import { accesosTienda, sinSuscripcion } from '@core/services/accesosTienda.js';
 import { PRESETS_IMAGEN } from '../services/imagenes.js';
 
@@ -901,21 +903,6 @@ function ConfiguracionSitioPanel({ catalogo, recargar, avisar }) {
   );
 }
 
-/**
- * LOS DATOS DEL SITIO DENTRO DE «VENTAS › CONFIGURACIÓN › TIENDA ONLINE»
- * (4/10/2026, pedido del dueño: «una pestaña exclusiva de todo lo que es la
- * tienda online»). Es el mismo panel de siempre; se trae su propio catálogo
- * (para el logo y el favicon) y avisa con el `avisar(tipo, texto)` de quien lo use.
- */
-export function SitioTienda({ avisar }) {
-  const [catalogo, setCatalogo] = useState(null);
-  const recargar = useCallback(async () => {
-    try { setCatalogo(await httpClient.get('/tienda/catalogo')); } catch { setCatalogo((c) => c ?? { sitio: {} }); }
-  }, []);
-  useEffect(() => { recargar(); }, [recargar]);
-  return <ConfiguracionSitioPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />;
-}
-
 /** Los topes del cartel: los mismos que aplica el servidor (configuracion.module, `web.popup*`). */
 const TOPE_POPUP = { popupEtiqueta: 40, popupTitulo: 90, popupTexto: 400 };
 
@@ -1061,7 +1048,7 @@ export function WebPage() {
   if (!secciones.length) {
     return (
       <div>
-        <PageHeader title="Tienda online" subtitle="Administración de la tienda mayorista online" />
+        <PageHeader title="Tienda online" subtitle="Administración de la tienda online" />
         <div className={cx(s.callout, s.warn)}>Tu rol no tiene ninguna sección del sitio habilitada.</div>
       </div>
     );
@@ -1075,7 +1062,7 @@ export function WebPage() {
     <div>
       <PageHeader
         title="Tienda online"
-        subtitle="La tienda mayorista online: qué se ve, qué se destaca, con qué imágenes, quién puede comprar y cómo viene andando"
+        subtitle="La tienda online, mayorista y minorista: qué se ve, qué se destaca, con qué imágenes, quién puede comprar, cómo viene andando y su configuración"
       />
 
       <div className={s.shell}>
@@ -1118,6 +1105,9 @@ export function WebPage() {
                 {activa === 'contenido' && <ContenidoPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />}
                 {activa === 'estadisticas' && <EstadisticasPanel avisar={avisar} />}
                 {activa === 'accesos' && <AccesosTiendaPanel avisar={avisar} />}
+                {activa === 'configuracion' && (
+                  <ConfiguracionTiendaPanel avisar={avisar} sitio={<ConfiguracionSitioPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />} />
+                )}
               </>
             )}
         </div>

@@ -10,6 +10,7 @@ import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import ImageIcon from '@mui/icons-material/Image';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 export const WEB_SECCIONES = [
   { id: 'productos', label: 'Productos del sitio', icon: StorefrontIcon, permiso: 'web.productos' },
@@ -18,4 +19,6 @@ export const WEB_SECCIONES = [
   { id: 'estadisticas', label: 'Estadísticas', icon: QueryStatsIcon, permiso: 'web.estadisticas' },
   /* Quién puede comprar (0155): pedidos de ingreso por DNI. La llave conserva el nombre con que nació. */
   { id: 'accesos', label: 'Accesos a la tienda online', icon: HowToRegIcon, permiso: 'ventas.accesos_tienda', badge: 'accesos' },
+  /* Todo lo configurable de la tienda (16/10/2026, antes en Ventas › Configuración): general, mayorista y minorista. */
+  { id: 'configuracion', label: 'Configuración', icon: SettingsIcon, permiso: 'web.configuracion' },
 ];

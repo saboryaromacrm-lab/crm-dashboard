@@ -5,11 +5,10 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { ventasApi } from '../services/ventas.api.js';
 import { CONDICIONES_IVA, MEDIOS_PAGO, OPCIONES_REDONDEO_PRECIO } from '../domain/constants.js';
-import { PanelHead, Btn, money, s } from '../components/ui.jsx';
+import { PanelHead, Btn, s } from '../components/ui.jsx';
 import { PanelArca } from '../components/PanelArca.jsx';
 import { MercadoPagoPanel } from '../components/MercadoPagoPanel.jsx';
 import { ListasPanel } from './ListasPanel.jsx';
-import { SitioTienda } from '@modules/web/pages/WebPage.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
 
 /*
@@ -29,16 +28,12 @@ const PESTANAS = [
   { id: 'clientes', label: 'Cuenta corriente y presupuestos', permiso: 'ventas.configuracion' },
   // Cobro con QR de Mercado Pago (0126): conexión y cajas con su QR.
   { id: 'mercadopago', label: 'Mercado Pago', permiso: 'ventas.configuracion' },
-  /* TIENDA ONLINE (4/10/2026, pedido del dueño): todo lo del sitio en un lugar —
-   * entregas (con el envío sin costo), la compra mínima y los datos del sitio
-   * (logo, contacto, redes, cartel de bienvenida), que antes estaban en Web. */
-  { id: 'tienda', label: 'Tienda online', permiso: ['ventas.configuracion', 'web.configuracion'] },
+  /* La pestaña «Tienda online» se mudó a Tienda online › Configuración (16/10/2026). */
 ];
 const TAB_KEY = 'crm.ventas.configuracion.tab';
 
 /** En qué pestaña vive cada campo de la config: para marcar dónde hay cambios. */
 const tabDeCampo = (k) => {
-  if (['montoMinimoCamioneta', 'envioCamionetaActivo', 'tiendaVistaLista'].includes(k)) return 'tienda';
   if (['puntoVenta', 'condicionIvaEmpresa', 'arcaHabilitado', 'topeSinIdentificar'].includes(k)) return 'facturacion';
   if (/^(ctaCte|presupuesto)/.test(k)) return 'clientes';
   if (/^(caja|mediosPago$|mediosFacturar|recargoCuotas|lector|balanza)/.test(k)) return 'caja';
@@ -592,99 +587,6 @@ export function ConfiguracionPanel() {
             toast={toast}
           />
         </div>
-        </div>
-      )}
-
-      {tabActiva === 'tienda' && (
-        <div className={s['dash-grid']}>
-          {can('ventas.configuracion') && (
-            <Seccion titulo="Tienda minorista" desc="La misma tienda, en modo Minorista (0173): precio de mostrador (la lista base), sin compra mínima ni registro; el comprador es su WhatsApp.">
-              <Interruptor
-                label="Modo minorista encendido"
-                hint="Encendido, al entrar a la tienda se elige Minorista o Mayorista y se puede cambiar desde el cartel de arriba. Apagado, la tienda queda solo mayorista como antes y el servidor rechaza los pedidos minoristas."
-                checked={draft.tiendaMinoristaActiva !== false}
-                onChange={set('tiendaMinoristaActiva')}
-              />
-              <Campo
-                label="Envío a domicilio gratis desde"
-                hint="0 = nunca es gratis: el costo del envío se coordina por WhatsApp. Con un monto, el pedido que lo supera queda marcado «gratis» en Órdenes web. Retiro en el local se ofrece siempre."
-              >
-                <input
-                  type="number" min="0" step="1000"
-                  value={draft.tiendaMinoristaEnvioGratisDesde ?? 0}
-                  disabled={draft.tiendaMinoristaActiva === false}
-                  onChange={setNum('tiendaMinoristaEnvioGratisDesde')}
-                />
-              </Campo>
-              <div className={s.hint}>
-                Se publica todo producto con precio en la lista base y stock en la Distribuidora. El granel va por paquetes fraccionados y, como bolsa cerrada, solo el que en la lista base vende «por N kg».
-              </div>
-            </Seccion>
-          )}
-          {can('ventas.configuracion') && (
-            <Seccion titulo="Entregas (mayorista)" desc="Cómo puede recibir su pedido el cliente de la tienda mayorista.">
-              <div className={cx(s.callout, s.info)}>
-                <strong>Retiro en el local</strong> y <strong>envío por cadete</strong> se ofrecen siempre.
-              </div>
-              <Interruptor
-                label="Envío sin costo"
-                hint="Encendido, la tienda lo ofrece como «Envío sin costo». Apagado, no aparece y el servidor rechaza el pedido que lo pida; los pedidos que ya entraron no cambian."
-                checked={draft.envioCamionetaActivo !== false}
-                onChange={set('envioCamionetaActivo')}
-              />
-              <Campo
-                label="Pedido mínimo para el envío sin costo"
-                hint="0 = sin mínimo. Si el pedido no llega, la opción aparece deshabilitada con cuánto le falta. Es aparte de la compra mínima de la tienda."
-              >
-                <input
-                  type="number" min="0" step="1000"
-                  value={draft.montoMinimoCamioneta ?? 0}
-                  disabled={draft.envioCamionetaActivo === false}
-                  onChange={setNum('montoMinimoCamioneta')}
-                />
-              </Campo>
-            </Seccion>
-          )}
-          {can('ventas.configuracion') && (
-            <Seccion titulo="Cómo se ven los productos" desc="La forma del catálogo de la tienda online.">
-              <Interruptor
-                label="Catálogo sin fotos (vista de lista)"
-                hint="Encendido, la tienda muestra los productos como renglones de una lista, sin imagen: marca, nombre, etiquetas, oferta, precio y el botón de agregar en un solo renglón. Para cuando los productos no tienen fotos cargadas. Apagado, las tarjetas con foto de siempre. La portada no cambia. El cliente lo ve al recargar la tienda."
-                checked={draft.tiendaVistaLista === true}
-                onChange={set('tiendaVistaLista')}
-              />
-            </Seccion>
-          )}
-          {can('ventas.configuracion') && (() => {
-            const mods = listasCatalogo.modalidades ?? [];
-            const mod = mods.find((m) => m.id === draft.modalidadMontoId) ?? mods.find((m) => /mayorista/i.test(m.nombre));
-            const filas = [
-              ['Precios de la tienda', mod ? `Modalidad ${mod.nombre}, con todas sus listas` : 'Sin modalidad mayorista: la tienda no muestra productos'],
-              ['Compra mínima', Number(draft.montoMinimoMayorista) > 0 ? `${money(draft.montoMinimoMayorista)} en total (o cumplir las reglas de marca y los mínimos por artículo)` : 'Sin mínimo por monto'],
-              ['Cada pedido', `Entra como presupuesto en Ventas › Órdenes web, válido ${draft.presupuestoValidezDias ?? 7} días`],
-            ];
-            return (
-              <Seccion titulo="Compra en la tienda" desc="Se comparten con la caja, por eso se cambian en su pestaña.">
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {filas.map(([k, v]) => (
-                    <div key={k} style={{ display: 'grid', gridTemplateColumns: 'minmax(110px, 30%) 1fr', gap: 10, fontSize: 13 }}>
-                      <span className={s.hint} style={{ margin: 0 }}>{k}</span>
-                      <strong>{v}</strong>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <Btn small onClick={() => elegirTab('precios')}>Cambiar en Precios y descuentos</Btn>
-                  <Btn small onClick={() => elegirTab('clientes')}>Validez de los presupuestos</Btn>
-                </div>
-              </Seccion>
-            );
-          })()}
-          {can('web.configuracion') && (
-            <div style={{ gridColumn: '1 / -1' }} className={cx(s.card, s.cardPad)}>
-              <SitioTienda avisar={(tipo, texto) => toast(texto, tipo === 'ok' ? 'ok' : 'err')} />
-            </div>
-          )}
         </div>
       )}
 
