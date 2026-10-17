@@ -13,15 +13,19 @@
  * La ventana se abre ANTES de esperar al servidor, porque abierta después del
  * `await` el navegador la toma como emergente y la bloquea. Rechazar y
  * deshabilitar piden un segundo clic.
+ *
+ * MINORISTAS (0178): la pestaña con los clientes de la tienda minorista, que
+ * entran con su WhatsApp sin aprobación (`CompradoresMinoristas`).
  */
 import { useRef, useState, useSyncExternalStore } from 'react';
 import { accesosTienda } from '@core/services/accesosTienda.js';
 import { httpClient } from '@core/services/httpClient.js';
 import { useResource } from '@modules/ventas/hooks/useResource.js';
 import { errorMsg } from '@modules/ventas/services/ventas.api.js';
-import { telefonoWa } from '@modules/ventas/domain/constants.js';
+import { telLegible, telefonoWa } from '@modules/ventas/domain/constants.js';
 import { fmtFechaHora } from '@modules/productos/domain/format.js';
 import { Table, PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
+import { CompradoresMinoristas } from './CompradoresMinoristas.jsx';
 
 /** Donde entra el cliente: va en el mensaje de «ya estás habilitado». */
 const TIENDA = 'tiendaonline.saboryaroma.com';
@@ -45,16 +49,16 @@ const VISTAS = [
   { id: 'pendiente', label: 'Pendientes' },
   { id: 'habilitado', label: 'Habilitados' },
   { id: 'bloqueado', label: 'Bloqueados' },
+  { id: 'minoristas', label: 'Minoristas' },
 ];
 
-/** «370 412-3456»: el número como se lee. */
-const telLegible = (w) => (/^\d{10}$/.test(w) ? `${w.slice(0, 3)} ${w.slice(3, 6)}-${w.slice(6)}` : w);
 
 /** `avisar(tipo, texto)`: el aviso de la página de Tienda online ('ok' | 'err'). */
 export function AccesosTiendaPanel({ avisar }) {
   const [vista, setVista] = useState('pendiente');
   const pendientes = useSyncExternalStore(accesosTienda.subscribe, accesosTienda.count, accesosTienda.count);
-  const { data, loading, error, reload } = useResource(`accesos:${vista}`, () => api.listar(vista));
+  const minoristas = vista === 'minoristas';
+  const { data, loading, error, reload } = useResource(`accesos:${vista}`, () => api.listar(vista), { enabled: !minoristas });
   /* Rechazar / deshabilitar: el primer clic arma la confirmación de ESA fila, el segundo ejecuta. */
   const [armado, setArmado] = useState(null);
   const enVuelo = useRef(false);
@@ -97,8 +101,8 @@ export function AccesosTiendaPanel({ avisar }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Accesos a la tienda online"
-        desc="Los precios de la tienda online los ven solo los clientes habilitados. Acá llegan los pedidos de ingreso: al habilitar, se abre WhatsApp con el aviso listo para enviar y desde ahí entran con su DNI."
-        actions={<Btn onClick={reload}>Actualizar</Btn>}
+        desc="Los precios de la tienda online los ven solo los que ingresaron. Mayorista: llegan los pedidos de ingreso; al habilitar, se abre WhatsApp con el aviso listo para enviar y desde ahí entran con su DNI. Minorista: entran con su WhatsApp, sin aprobación."
+        actions={!minoristas && <Btn onClick={reload}>Actualizar</Btn>}
       />
 
       <div className={s.toolbar}>
@@ -109,80 +113,82 @@ export function AccesosTiendaPanel({ avisar }) {
         ))}
       </div>
 
-      {error && <div className={s.hint} style={{ color: 'var(--crm-color-danger)' }}>{error}</div>}
+      {minoristas ? <CompradoresMinoristas avisar={avisar} /> : (<>
+        {error && <div className={s.hint} style={{ color: 'var(--crm-color-danger)' }}>{error}</div>}
 
-      <Table
-        cols={[
-          { h: vista === 'pendiente' ? 'Pidió' : 'Resuelto' }, { h: 'Nombre o comercio' }, { h: 'DNI' }, { h: 'WhatsApp' },
-          { h: 'Localidad' }, { h: 'En el ERP' }, { h: '', cls: 'actions-col' },
-        ]}
-        empty={loading ? 'Cargando…' : vista === 'pendiente' ? 'No hay pedidos de ingreso esperando.' : 'Nada por acá.'}
-      >
-        {filas.map((a) => (
-          <tr key={a.id}>
-            <td>
-              {fmtFechaHora(vista === 'pendiente' ? a.creadoEn : (a.resueltoEn ?? a.creadoEn))}
-              {vista !== 'pendiente' && a.resueltoPor && <div className={s.hint} style={{ margin: 0 }}>por {a.resueltoPor}</div>}
-            </td>
-            <td>
-              <strong>{a.nombre}</strong>
-              {a.cuit && <div className={s.hint} style={{ margin: 0 }}>CUIT <span className={s.mono}>{a.cuit}</span></div>}
-            </td>
-            <td className={s.mono}>{a.dni}</td>
-            <td>
-              <span className={s.mono}>{telLegible(a.whatsapp)}</span>
-              {vista === 'pendiente' && (
-                <div className={s.hint} style={{ margin: 0 }}>
-                  {a.avisadoRecibidaEn ? `«Recibimos» avisado ${fmtFechaHora(a.avisadoRecibidaEn)}` : 'Sin avisar que se recibió'}
-                </div>
-              )}
-              {vista === 'habilitado' && (
-                <div className={s.hint} style={{ margin: 0 }}>
-                  {a.ultimoIngreso ? `Entró por última vez ${fmtFechaHora(a.ultimoIngreso)}` : 'Todavía no entró'}
-                </div>
-              )}
-            </td>
-            <td>{a.localidad || '—'}</td>
-            <td>
-              {a.clienteId
-                ? <>{a.clienteNombre ?? `Cliente #${a.clienteId}`}{vista === 'pendiente' && <div className={s.hint} style={{ margin: 0 }}>Ya es cliente</div>}</>
-                : <span className={s.muted}>Nuevo: la ficha se crea al habilitar</span>}
-            </td>
-            <td className={s['actions-col']}>
-              <div className={s['row-actions']}>
-                {vista === 'pendiente' && !a.avisadoRecibidaEn && (
-                  <Btn small onClick={() => avisarRecibida(a)} disabled={sinWa(a)} title="Abre WhatsApp con «recibimos tu solicitud»">Avisar que la recibimos</Btn>
-                )}
-                {vista !== 'habilitado' && (
-                  <Btn small variant="btn-primary" onClick={() => habilitar(a)} disabled={sinWa(a)}>
-                    {vista === 'bloqueado' ? 'Desbloquear y habilitar' : 'Habilitar y avisar'}
-                  </Btn>
+        <Table
+          cols={[
+            { h: vista === 'pendiente' ? 'Pidió' : 'Resuelto' }, { h: 'Nombre o comercio' }, { h: 'DNI' }, { h: 'WhatsApp' },
+            { h: 'Localidad' }, { h: 'En el ERP' }, { h: '', cls: 'actions-col' },
+          ]}
+          empty={loading ? 'Cargando…' : vista === 'pendiente' ? 'No hay pedidos de ingreso esperando.' : 'Nada por acá.'}
+        >
+          {filas.map((a) => (
+            <tr key={a.id}>
+              <td>
+                {fmtFechaHora(vista === 'pendiente' ? a.creadoEn : (a.resueltoEn ?? a.creadoEn))}
+                {vista !== 'pendiente' && a.resueltoPor && <div className={s.hint} style={{ margin: 0 }}>por {a.resueltoPor}</div>}
+              </td>
+              <td>
+                <strong>{a.nombre}</strong>
+                {a.cuit && <div className={s.hint} style={{ margin: 0 }}>CUIT <span className={s.mono}>{a.cuit}</span></div>}
+              </td>
+              <td className={s.mono}>{a.dni}</td>
+              <td>
+                <span className={s.mono}>{telLegible(a.whatsapp)}</span>
+                {vista === 'pendiente' && (
+                  <div className={s.hint} style={{ margin: 0 }}>
+                    {a.avisadoRecibidaEn ? `«Recibimos» avisado ${fmtFechaHora(a.avisadoRecibidaEn)}` : 'Sin avisar que se recibió'}
+                  </div>
                 )}
                 {vista === 'habilitado' && (
-                  <Btn small onClick={() => { window.open(urlWa(a, 'habilitado'), '_blank', 'noopener'); }} disabled={sinWa(a)}>Reenviar WhatsApp</Btn>
+                  <div className={s.hint} style={{ margin: 0 }}>
+                    {a.ultimoIngreso ? `Entró por última vez ${fmtFechaHora(a.ultimoIngreso)}` : 'Todavía no entró'}
+                  </div>
                 )}
-                {vista !== 'bloqueado' && (
-                  armado === a.id ? (
-                    <>
-                      <Btn small onClick={() => setArmado(null)}>No</Btn>
-                      <Btn small variant="btn-delete" onClick={() => bloquear(a)}>
-                        {vista === 'pendiente' ? 'Sí, rechazar y bloquear' : 'Sí, deshabilitar'}
-                      </Btn>
-                    </>
-                  ) : (
-                    <Btn small onClick={() => bloquear(a)}>{vista === 'pendiente' ? 'Rechazar' : 'Deshabilitar'}</Btn>
-                  )
-                )}
-              </div>
-            </td>
-          </tr>
-        ))}
-      </Table>
+              </td>
+              <td>{a.localidad || '—'}</td>
+              <td>
+                {a.clienteId
+                  ? <>{a.clienteNombre ?? `Cliente #${a.clienteId}`}{vista === 'pendiente' && <div className={s.hint} style={{ margin: 0 }}>Ya es cliente</div>}</>
+                  : <span className={s.muted}>Nuevo: la ficha se crea al habilitar</span>}
+              </td>
+              <td className={s['actions-col']}>
+                <div className={s['row-actions']}>
+                  {vista === 'pendiente' && !a.avisadoRecibidaEn && (
+                    <Btn small onClick={() => avisarRecibida(a)} disabled={sinWa(a)} title="Abre WhatsApp con «recibimos tu solicitud»">Avisar que la recibimos</Btn>
+                  )}
+                  {vista !== 'habilitado' && (
+                    <Btn small variant="btn-primary" onClick={() => habilitar(a)} disabled={sinWa(a)}>
+                      {vista === 'bloqueado' ? 'Desbloquear y habilitar' : 'Habilitar y avisar'}
+                    </Btn>
+                  )}
+                  {vista === 'habilitado' && (
+                    <Btn small onClick={() => { window.open(urlWa(a, 'habilitado'), '_blank', 'noopener'); }} disabled={sinWa(a)}>Reenviar WhatsApp</Btn>
+                  )}
+                  {vista !== 'bloqueado' && (
+                    armado === a.id ? (
+                      <>
+                        <Btn small onClick={() => setArmado(null)}>No</Btn>
+                        <Btn small variant="btn-delete" onClick={() => bloquear(a)}>
+                          {vista === 'pendiente' ? 'Sí, rechazar y bloquear' : 'Sí, deshabilitar'}
+                        </Btn>
+                      </>
+                    ) : (
+                      <Btn small onClick={() => bloquear(a)}>{vista === 'pendiente' ? 'Rechazar' : 'Deshabilitar'}</Btn>
+                    )
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </Table>
 
-      <div className={s.hint}>
-        Rechazar o deshabilitar deja ese DNI <strong>bloqueado</strong>: no entra ni puede volver a pedir ingreso, y si estaba
-        adentro se le cierra la sesión al instante. Desde «Bloqueados» se puede volver a habilitar.
-      </div>
+        <div className={s.hint}>
+          Rechazar o deshabilitar deja ese DNI <strong>bloqueado</strong>: no entra ni puede volver a pedir ingreso, y si estaba
+          adentro se le cierra la sesión al instante. Desde «Bloqueados» se puede volver a habilitar.
+        </div>
+      </>)}
     </div>
   );
 }

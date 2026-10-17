@@ -150,6 +150,9 @@ export function nroComprobante(doc) {
  * Devuelve '' si no llega a un número argentino completo (área + abonado = 10
  * dígitos): mejor sin link que con un link que abre un chat inexistente.
  */
+/** «370 412-3456»: un teléfono de 10 dígitos como se lee (si no tiene 10, tal cual). */
+export const telLegible = (w) => (/^\d{10}$/.test(w) ? `${w.slice(0, 3)} ${w.slice(3, 6)}-${w.slice(6)}` : w);
+
 export function telefonoWa(tel) {
   let d = String(tel ?? '').replace(/\D/g, '');
   if (d.startsWith('54')) d = d.slice(2);

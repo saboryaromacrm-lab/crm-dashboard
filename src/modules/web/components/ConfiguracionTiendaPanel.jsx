@@ -193,7 +193,7 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
       )}
 
       {activa === 'minorista' && (<>
-        <Seccion titulo="Tienda minorista" desc="La misma tienda, en modo Minorista: precio de mostrador (la lista base de la caja), sin compra mínima ni registro; el comprador es su WhatsApp.">
+        <Seccion titulo="Tienda minorista" desc="La misma tienda, en modo Minorista: precio de mostrador (la lista base de la caja), sin compra mínima. Para ver los precios y comprar, el cliente ingresa con su WhatsApp: la primera vez se registra (nombre, apellido y dirección) y entra en el momento. Los ves y los bloqueás en Tienda online › Accesos › Minoristas.">
           <Interruptor
             label="Modo minorista encendido"
             hint="Encendido, al entrar a la tienda se elige Minorista o Mayorista y se puede cambiar desde el cartel de arriba. Apagado, la tienda queda solo mayorista y el servidor rechaza los pedidos minoristas."
