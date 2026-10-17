@@ -8,6 +8,7 @@ import PaymentsIcon from '@mui/icons-material/Payments';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
+import LocalCafeIcon from '@mui/icons-material/LocalCafe';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import styles from '../styles/Dashboard.module.css';
 
@@ -16,6 +17,7 @@ const ACCESOS = [
   { label: 'Proveedores', modulo: 'Proveedores', ruta: '/proveedores?panel=padron', permiso: 'proveedores.padron', Icono: LocalShippingIcon },
   { label: 'Existencias', modulo: 'Almacén', ruta: '/almacen?panel=existencias', permiso: 'almacen.existencias', Icono: WarehouseIcon },
   { label: 'Fraccionamiento', modulo: 'Almacén', ruta: '/almacen?panel=fraccionamiento', permiso: 'almacen.fraccionamiento', Icono: CallSplitIcon },
+  { label: 'Coffit', modulo: 'Almacén', ruta: '/almacen?panel=cafeteria', permiso: 'almacen.cafeteria', Icono: LocalCafeIcon },
 ];
 
 export function AccesosDirectos() {
