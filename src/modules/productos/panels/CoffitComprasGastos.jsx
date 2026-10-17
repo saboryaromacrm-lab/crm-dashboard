@@ -105,19 +105,20 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
   const exportar = () => {
     if (vista === 'articulo') {
       descargarCsv('coffit-compras-por-articulo.csv',
-        ['Artículo', 'Código', 'Unidad', 'Cantidad', 'Costo promedio', 'Neto Coffit', 'Comprobantes'],
-        articulos.map((a) => [a.nombre, a.codigoPropio, a.unidad, csvNum(a.cantidad, 3), csvNum(a.costoPromedio), csvNum(a.neto), a.documentos]));
+        ['Artículo', 'Código', 'Unidad', 'Cantidad', 'Costo promedio (precio final)', 'Sin IVA', 'A su cuenta', 'Comprobantes'],
+        articulos.map((a) => [a.nombre, a.codigoPropio, a.unidad, csvNum(a.cantidad, 3), csvNum(a.costoPromedio), csvNum(a.neto), csvNum(a.aCuenta), a.documentos]));
       return;
     }
     const filas = [];
     for (const d of documentos) {
       for (const it of d.items) {
         filas.push([fmtFecha(d.fecha), TIPOS_COMPROBANTE[d.tipo]?.label || d.tipo, nroDoc(d), d.proveedor, d.sucursal,
-          it.nombre, it.codigoPropio, it.unidad, csvNum(it.cantidad, 3), csvNum(it.costoUnitario), csvNum(it.descuento, 2), csvNum(it.subtotal)]);
+          it.nombre, it.codigoPropio, it.unidad, csvNum(it.cantidad, 3), csvNum(it.costoUnitario), csvNum(it.descuento, 2),
+          csvNum(it.iva, 1), csvNum(it.subtotal), csvNum(it.aCuenta)]);
       }
     }
     descargarCsv('coffit-compras.csv',
-      ['Fecha', 'Tipo', 'Número', 'Proveedor', 'Sucursal', 'Artículo', 'Código', 'Unidad', 'Cantidad', 'Costo u.', 'Desc. %', 'Neto Coffit'],
+      ['Fecha', 'Tipo', 'Número', 'Proveedor', 'Sucursal', 'Artículo', 'Código', 'Unidad', 'Cantidad', 'Costo u.', 'Desc. %', 'IVA %', 'Sin IVA', 'A su cuenta'],
       filas);
   };
 
@@ -151,7 +152,7 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
         <Table
           cols={[
             { h: 'Fecha' }, { h: 'Comprobante' }, { h: 'Proveedor' }, { h: 'Sucursal' },
-            { h: 'Qué es de Coffit' }, { h: 'Neto Coffit', num: true }, { h: 'A su cuenta', num: true },
+            { h: 'Qué es de Coffit' }, { h: 'Sin IVA', num: true }, { h: 'A su cuenta (precio final)', num: true },
           ]}
           empty={cargando ? 'Cargando…' : 'Ninguna compra para Coffit en el período.'}
           pag={pagDocs}
@@ -172,7 +173,7 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
                     ? <span className={s.badge}>Toda la factura</span>
                     : <span className={s.muted}>{d.items.length} renglón{d.items.length === 1 ? '' : 'es'} de {money(Math.abs(d.subtotalNeto))}</span>}
                 </td>
-                <td className={cx(s.num, s.mono)}>{money(d.neto)}</td>
+                <td className={cx(s.num, s.mono, s.muted)}>{money(d.neto)}</td>
                 <td className={cx(s.num, s.mono)} style={{ fontWeight: 700 }}>{money(d.cuenta)}</td>
               </tr>,
               abierto && (
@@ -183,9 +184,10 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
                         <tr>
                           <th style={{ textAlign: 'left' }}>Artículo</th>
                           <th style={{ textAlign: 'right' }}>Cantidad</th>
-                          <th style={{ textAlign: 'right' }}>Costo u.</th>
+                          <th style={{ textAlign: 'right' }}>Costo u. (factura)</th>
                           <th style={{ textAlign: 'right' }}>Desc.</th>
-                          <th style={{ textAlign: 'right' }}>Neto</th>
+                          <th style={{ textAlign: 'right' }}>IVA</th>
+                          <th style={{ textAlign: 'right' }}>A su cuenta</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -195,7 +197,8 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
                             <td className={cx(s.num, s.mono)}>{num(it.cantidad, decimalesDe(it.unidad))} {it.unidad}</td>
                             <td className={cx(s.num, s.mono)}>{money(it.costoUnitario)}</td>
                             <td className={cx(s.num, s.mono)}>{it.descuento ? `${num(it.descuento, 1)}%` : '—'}</td>
-                            <td className={cx(s.num, s.mono)}>{money(it.subtotal)}</td>
+                            <td className={cx(s.num, s.mono)}>{it.iva ? `${num(it.iva, 1)}%` : 'sin IVA'}</td>
+                            <td className={cx(s.num, s.mono)} style={{ fontWeight: 600 }}>{money(it.aCuenta)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -212,8 +215,8 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
       ) : (
         <Table
           cols={[
-            { h: 'Artículo' }, { h: 'Cantidad', num: true }, { h: 'Costo promedio', num: true },
-            { h: 'Neto Coffit', num: true }, { h: 'Comprobantes', num: true },
+            { h: 'Artículo' }, { h: 'Cantidad', num: true }, { h: 'Costo promedio (precio final)', num: true },
+            { h: 'A su cuenta', num: true }, { h: 'Comprobantes', num: true },
           ]}
           empty={cargando ? 'Cargando…' : 'Ninguna compra para Coffit en el período.'}
           pag={pagArts}
@@ -223,7 +226,7 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
               <td>{a.nombre}{a.codigoPropio && <div className={s.hint} style={{ margin: 0 }}>{a.codigoPropio}</div>}</td>
               <td className={cx(s.num, s.mono)}>{num(a.cantidad, decimalesDe(a.unidad))} {a.unidad}</td>
               <td className={cx(s.num, s.mono)}>{money(a.costoPromedio)}/{a.unidad.replace('.', '')}</td>
-              <td className={cx(s.num, s.mono)} style={{ fontWeight: 700 }}>{money(a.neto)}</td>
+              <td className={cx(s.num, s.mono)} style={{ fontWeight: 700 }}>{money(a.aCuenta)}</td>
               <td className={s.num}>{a.documentos}</td>
             </tr>
           ))}
@@ -255,8 +258,10 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
         Entra acá la parte de Coffit de cada factura de compra: los artículos de <strong>uso exclusivo
         de Coffit</strong> y los renglones tildados <strong>«Para Coffit»</strong> (o la factura entera) al
         cargarla. <strong>Coffit paga precio final</strong>: a su cuenta va su parte con el IVA y las percepciones
-        de la factura (el total del papel), aunque el crédito fiscal siga siendo de la empresa. La nota de crédito
-        resta. <strong>Gerencia</strong> («Directo para Coffit») muestra el neto, porque separa las compras de la empresa.
+        de la factura (el total del papel), aunque el crédito fiscal siga siendo de la empresa; cada renglón muestra
+        su parte. Una liquidación o factura sin IVA (X, B, C) ya es precio final: ahí «sin IVA» y «a su cuenta» dan
+        lo mismo. La nota de crédito resta. <strong>Gerencia</strong> («Directo para Coffit») muestra el neto, porque
+        separa las compras de la empresa.
       </div>
     </>
   );
