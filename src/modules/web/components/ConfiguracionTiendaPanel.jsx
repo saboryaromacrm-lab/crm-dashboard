@@ -15,6 +15,7 @@ import { Tabs, Tab } from '@mui/material';
 import { httpClient } from '@core/services/httpClient.js';
 import { cx } from '@shared/utils/classNames.js';
 import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
+import { PortadaMinoristaEditor } from './PortadaMinoristaEditor.jsx';
 
 /** Las llaves de la tienda y la pestaña donde se cambia cada una. */
 const LLAVES = {
@@ -191,7 +192,7 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
         </>
       )}
 
-      {activa === 'minorista' && (
+      {activa === 'minorista' && (<>
         <Seccion titulo="Tienda minorista" desc="La misma tienda, en modo Minorista: precio de mostrador (la lista base de la caja), sin compra mínima ni registro; el comprador es su WhatsApp.">
           <Interruptor
             label="Modo minorista encendido"
@@ -208,7 +209,9 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
             Se publica todo producto con precio en la lista base y stock en la Distribuidora. El granel va por paquetes fraccionados y, como bolsa cerrada, solo el que en la lista base vende «por N kg».
           </div>
         </Seccion>
-      )}
+        {/* Los textos de la portada (17/10/2026): guardan con su propio botón, como los datos del sitio. */}
+        <PortadaMinoristaEditor avisar={avisar} />
+      </>)}
     </div>
   );
 }
