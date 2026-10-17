@@ -74,13 +74,16 @@ export function ClientesPanel() {
    */
   const filtrados = useMemo(() => {
     const ql = norm(q);
+    /* Los números de lo buscado, para el DNI/CUIT. Sin números no se mira el
+     * documento: `''.includes('')` es verdadero y dejaba pasar a todos (17/10/2026). */
+    const digitos = ql.replace(/\D/g, '');
     return clientes.filter((c) => {
       if (!verInactivos && !c.activo) return false;
       if (!ql) return true;
       return (
         norm(c.nombre).includes(ql) ||
         norm(c.nombreFantasia).includes(ql) ||
-        (c.numeroDoc || '').includes(ql.replace(/\D/g, '')) ||
+        (digitos !== '' && (c.numeroDoc || '').includes(digitos)) ||
         norm(c.localidad).includes(ql)
       );
     });
