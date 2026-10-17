@@ -14,7 +14,7 @@ import { Btn, s } from '@modules/productos/components/ui.jsx';
 const TOPE = { aviso: 90, eyebrow: 50, titulo: 80, texto: 220, cta: 30, sello: 24, beneficio: 120, beneficiosTitulo: 70, cierreTitulo: 70, cierreTexto: 160 };
 const MAX = { avisos: 5, sellos: 4, beneficios: 3 };
 /** Los botones enlazan solo dentro del sitio (el servidor lo vuelve a controlar). */
-const RUTAS = [['/#ofertas', 'Las ofertas de la portada'], ['/tienda', 'La tienda (todo el catálogo)'], ['/tienda?oferta=1', 'La tienda, filtrada por ofertas'], ['/', 'La portada']];
+const RUTAS = [['/#ofertas', 'Las NutriOfertas de la portada'], ['/tienda', 'La tienda (todo el catálogo)'], ['/tienda?oferta=1', 'La página de NutriOfertas'], ['/', 'La portada']];
 const CLAVES = ['minAvisos', 'minHeroEyebrow', 'minHeroTitulo', 'minHeroTexto', 'minHeroCta1', 'minHeroCta1Url', 'minHeroCta2', 'minHeroCta2Url', 'minSellos', 'minBeneficiosTitulo', 'minBeneficios', 'minCierreTitulo', 'minCierreTexto', 'minCierreCta'];
 
 const soloMin = (web) => Object.fromEntries(CLAVES.map((k) => [k, web?.[k]]));
