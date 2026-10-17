@@ -14,6 +14,7 @@
  */
 import { configImpresion } from '@core/services/imprimir.js';
 import { fmtFechaHora, money } from '@modules/productos/domain/format.js';
+import { saldoCuenta } from '@modules/ventas/domain/cuentasProveedor.js';
 
 const ANCHO = 820;
 const PAD = 28;
@@ -67,7 +68,7 @@ export async function imagenResumenCuenta(cuenta, pagos) {
     ['Alias / CBU', cuenta.cbuAlias],
     ['A cubrir', money(cuenta.importe)],
     ['Transferido', `${money(cuenta.pagado)} en ${cuenta.cant} transferencia${cuenta.cant === 1 ? '' : 's'}`, true],
-    ['Falta', money(cuenta.falta)],
+    [saldoCuenta(cuenta)[0], money(saldoCuenta(cuenta)[1])],
   ];
 
   const dibujar = (ctx, pintar) => {

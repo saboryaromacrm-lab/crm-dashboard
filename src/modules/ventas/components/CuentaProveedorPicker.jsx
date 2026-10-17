@@ -114,6 +114,7 @@ export function CuentaProveedorPicker({ cuentas, total, loading, error, cuentaId
             <span>Faltan <strong>{fmt(elegida.falta)}</strong> de {fmt(elegida.importe)}</span>
             {elegida.minimo > 0 && <span>Mínimo del proveedor: <strong>{fmt(elegida.minimo)}</strong></span>}
             {elegida.ventaMinima > 0 && <span>Solo ventas desde <strong>{fmt(elegida.ventaMinima)}</strong></span>}
+            {elegida.puedePasarse && <span>Puede pasarse: <strong>toma el pago entero</strong> y se cierra</span>}
           </div>
           {aviso && <div className={cx(s.callout, s.warn)} style={{ marginTop: 8, marginBottom: 0 }}>{aviso}</div>}
         </div>

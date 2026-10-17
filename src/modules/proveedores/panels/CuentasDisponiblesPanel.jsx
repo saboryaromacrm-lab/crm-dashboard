@@ -120,6 +120,7 @@ function VistaCuentas({ tick }) {
             <td>
               {c.titular}
               {c.ventaMinima > 0 && <div><Pill pill="est-transito" label={`solo ventas desde ${money(c.ventaMinima)}`} /></div>}
+              {c.puedePasarse && <div><Pill pill="est-transito" label="puede pasarse del monto" /></div>}
             </td>
             <td>
               <span className={s.mono}>{c.cbuAlias}</span>{' '}
@@ -129,6 +130,7 @@ function VistaCuentas({ tick }) {
             <td className={s.num} style={{ color: 'var(--crm-color-success)' }}>{money(c.pagado)}</td>
             <td className={s.num}>
               {c.estado === 'cubierta' ? <Pill pill="est-recibida" label="cubierta" /> : <strong>{money(c.falta)}</strong>}
+              {c.pasado > 0 && <div className={s.hint} style={{ margin: 0 }}>pasada por {money(c.pasado)}</div>}
               {c.restoBajoMinimo && (
                 <div><Pill pill="est-pendiente" label={`resto bajo el mínimo (${money(c.minimo)})`} /></div>
               )}

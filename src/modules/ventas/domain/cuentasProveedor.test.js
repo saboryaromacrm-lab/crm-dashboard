@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  agruparPorProveedor, seOfrece, sugerirImporteCuenta, textoResumenCuenta, validarTransferenciaProveedor,
+  agruparPorProveedor, saldoCuenta, seOfrece, sugerirImporteCuenta, textoResumenCuenta, validarTransferenciaProveedor,
 } from './cuentasProveedor.js';
 
 const cuenta = (extra = {}) => ({
@@ -67,4 +67,29 @@ test('solo para ventas desde (0168): se ofrece desde ese total, y la validación
   assert.equal(seOfrece({ ...c, ventaMinima: 0 }, 10), true, 'sin piso: siempre');
   assert.match(validarTransferenciaProveedor(30000, c, 40000), /solo para ventas desde \$50\.000/);
   assert.equal(validarTransferenciaProveedor(30000, c, 60000), null, 'venta de $60.000: la cuenta entra aunque la transferencia sea de $30.000');
+});
+
+test('puede pasarse del monto (0177): entra más de lo que falta y ese pago cierra', () => {
+  const c = cuenta({ importe: 100000, pagado: 90000, falta: 10000, minimo: 20000, puedePasarse: true });
+  assert.equal(validarTransferenciaProveedor(30000, c), null, '$30.000 sobre $10.000 que faltan: entra');
+  assert.equal(validarTransferenciaProveedor(10000, c), null, 'el resto exacto también, aunque sea menor al mínimo');
+  assert.equal(validarTransferenciaProveedor(12000, c), null, 'más que el resto y menos que el mínimo: cierra, entra');
+  assert.match(validarTransferenciaProveedor(5000, c), /salvo que cubra el resto \(\$10\.000 o más\)/, 'menos que el resto y que el mínimo: no');
+  assert.match(validarTransferenciaProveedor(30000, { ...c, puedePasarse: false }), /no puede recibir de más/, 'sin el tilde, igual que siempre');
+});
+
+test('puede pasarse: la sugerencia toma lo que resta de la venta', () => {
+  const c = cuenta({ falta: 10000, puedePasarse: true });
+  assert.equal(sugerirImporteCuenta(c, 30000), 30000);
+  assert.equal(sugerirImporteCuenta(c, 5000), 5000);
+  assert.equal(sugerirImporteCuenta(c, 0), 10000, 'sin tope (recibo): lo que falta');
+  assert.equal(sugerirImporteCuenta({ ...c, puedePasarse: false }, 30000), 10000);
+});
+
+test('saldo de la cuenta: lo que falta o por cuánto se pasó', () => {
+  assert.deepEqual(saldoCuenta(cuenta()), ['Falta', 50000]);
+  assert.deepEqual(saldoCuenta(cuenta({ falta: 0, pasado: 20000 })), ['Pasada por', 20000]);
+  const t = textoResumenCuenta(cuenta({ importe: 100000, pagado: 120000, falta: 0, pasado: 20000, cant: 2 }), [], (f) => f);
+  assert.match(t, /Pasada por: \$20\.000/);
+  assert.doesNotMatch(t, /Falta:/);
 });

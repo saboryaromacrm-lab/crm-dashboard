@@ -5,7 +5,7 @@ import { useProveedores } from '../../context/ProveedoresContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { errorMsg, provApi } from '../../services/proveedores.api.js';
 import { copiarImagenResumen } from '../../services/resumenImagen.js';
-import { fmt, textoResumenCuenta } from '@modules/ventas/domain/cuentasProveedor.js';
+import { fmt, saldoCuenta, textoResumenCuenta } from '@modules/ventas/domain/cuentasProveedor.js';
 import { Di, ModalShell, Pill, Table, fmtFecha, fmtFechaHora, money, s } from '../ui.jsx';
 
 const hoyISO = () => {
@@ -22,7 +22,8 @@ const NUEVA = 'nueva';
  * crearla se elige una cuenta de la ficha del proveedor o se carga una nueva
  * (que queda guardada en la ficha para la próxima). Una vez que recibió
  * transferencias, el titular y el alias quedan congelados: el importe se puede
- * subir (nunca por debajo de lo pagado), y el resto son tildes.
+ * subir (nunca por debajo de lo pagado), y el resto son tildes. «Puede pasarse
+ * del monto» (0177) no se saca de una cuenta que ya se pasó.
  */
 export function CuentaDisponibleModal({ cuenta, onChange }) {
   const { proveedores, act, closeModal, toast } = useProveedores();
@@ -37,6 +38,7 @@ export function CuentaDisponibleModal({ cuenta, onChange }) {
     importe: cuenta ? String(cuenta.importe) : '',
     fecha: cuenta?.fecha ? String(cuenta.fecha).slice(0, 10) : hoyISO(),
     prioritaria: !!cuenta?.prioritaria,
+    puedePasarse: !!cuenta?.puedePasarse,
     ventaMinima: Number(cuenta?.ventaMinima) > 0 ? String(cuenta.ventaMinima) : '',
     enviado: !!cuenta?.enviado,
     corte: !!cuenta?.corte,
@@ -75,6 +77,7 @@ export function CuentaDisponibleModal({ cuenta, onChange }) {
     }
     const comunes = {
       importe: r2(f.importe), fecha: f.fecha || undefined, prioritaria: f.prioritaria,
+      puedePasarse: f.puedePasarse,
       ventaMinima: f.ventaMinima === '' ? 0 : r2(f.ventaMinima),
       observaciones: f.observaciones.trim(),
     };
@@ -157,7 +160,13 @@ export function CuentaDisponibleModal({ cuenta, onChange }) {
         <div className={s.field}>
           <label>A cubrir <span className={s.req}>*</span></label>
           <input type="number" min="0" step="0.01" value={f.importe} onChange={set('importe')} />
-          {congelada && <div className={s.hint} style={{ margin: '4px 0 0' }}>Ya transferido: {money(cuenta.pagado)} — no se puede bajar de ahí.</div>}
+          {congelada && (
+            <div className={s.hint} style={{ margin: '4px 0 0' }}>
+              {cuenta.pasado > 0
+                ? <>Ya transferido: {money(cuenta.pagado)}, pasada por {money(cuenta.pasado)}. Si lo cambiás, no puede quedar por debajo de lo transferido.</>
+                : <>Ya transferido: {money(cuenta.pagado)} — no se puede bajar de ahí.</>}
+            </div>
+          )}
         </div>
         <div className={s.field}>
           <label>Fecha</label>
@@ -181,6 +190,9 @@ export function CuentaDisponibleModal({ cuenta, onChange }) {
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" checked={f.prioritaria} onChange={setBool('prioritaria')} /> ★ Prioritaria (se ofrece primero)
         </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }} title={editando && cuenta.pasado > 0 ? 'Ya se pasó del monto: el tilde queda puesto.' : undefined}>
+          <input type="checkbox" checked={f.puedePasarse} onChange={setBool('puedePasarse')} disabled={editando && cuenta.pasado > 0} /> Puede pasarse del monto
+        </label>
         {editando && (
           <>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -192,6 +204,12 @@ export function CuentaDisponibleModal({ cuenta, onChange }) {
           </>
         )}
       </div>
+      {f.puedePasarse && (
+        <div className={s.hint} style={{ margin: '6px 0 0' }}>
+          Acepta un pago aunque supere lo que falta: ese pago la cierra, y lo de más queda <strong>a favor</strong> en la
+          cuenta corriente del proveedor.
+        </div>
+      )}
     </ModalShell>
   );
 }
@@ -223,7 +241,7 @@ function cuerpoResumen(cuenta, pagos) {
       ${fila('Alias / CBU', cuenta.cbuAlias)}
       ${fila('A cubrir', money(cuenta.importe))}
       ${fila('Transferido', `${money(cuenta.pagado)} en ${cuenta.cant} transferencia${cuenta.cant === 1 ? '' : 's'}`, true)}
-      ${fila('Falta', money(cuenta.falta))}
+      ${fila(saldoCuenta(cuenta)[0], money(saldoCuenta(cuenta)[1]))}
     </tbody></table>
     <table>
       <thead><tr><th>Fecha y hora</th><th style="text-align:right">Monto</th><th>Comprobante</th><th>Obs.</th></tr></thead>
@@ -293,8 +311,10 @@ export function ResumenCuentaModal({ cuentaId, onChange }) {
             <Di label="Alias / CBU"><span className={s.mono}>{cuenta.cbuAlias}</span></Di>
             <Di label="A cubrir">{money(cuenta.importe)}</Di>
             <Di label="Transferido">{money(cuenta.pagado)} · {cuenta.cant} transf.</Di>
-            <Di label="Falta">
-              {cuenta.estado === 'cubierta' ? <Pill pill="est-recibida" label="cubierta" /> : <strong>{fmt(cuenta.falta)}</strong>}
+            <Di label={saldoCuenta(cuenta)[0]}>
+              {cuenta.pasado > 0
+                ? <><strong>{fmt(cuenta.pasado)}</strong> <span className={s.muted}>(a favor en la cuenta corriente)</span></>
+                : cuenta.estado === 'cubierta' ? <Pill pill="est-recibida" label="cubierta" /> : <strong>{fmt(cuenta.falta)}</strong>}
             </Di>
           </div>
           <Table cols={[{ h: 'Fecha' }, { h: 'Cliente' }, { h: 'Comprobante' }, { h: 'Pago', num: true }, { h: 'Cajero' }, { h: 'Obs.' }]}
@@ -336,7 +356,7 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
 
   const registrar = async () => {
     if (!(n > 0)) { toast('Poné el importe que transferiste.', 'err'); return; }
-    if (n > r2(c.falta) + 0.004) { toast(`A esta cuenta le faltan ${money(c.falta)}: no se puede pagar de más.`, 'err'); return; }
+    if (!c.puedePasarse && n > r2(c.falta) + 0.004) { toast(`A esta cuenta le faltan ${money(c.falta)}: no se puede pagar de más.`, 'err'); return; }
     if (!confirmando) { setConfirmando(true); return; }
     if (enCurso.current) return;
     enCurso.current = true;
@@ -363,6 +383,7 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
         Una transferencia que hiciste <strong>vos, desde la cuenta de Sabor y Aroma</strong>, a esta cuenta del proveedor. No pasa
         por la caja: suma a «Pagado» y baja lo que le debés al proveedor (queda como pago a cuenta, para aplicar a su factura).
         A cubrir <strong>{money(c.importe)}</strong> · pagado <strong>{money(c.pagado)}</strong> · falta <strong>{money(c.falta)}</strong>.
+        {c.puedePasarse && <> Esta cuenta <strong>puede pasarse del monto</strong>: lo de más queda a favor en la cuenta corriente del proveedor.</>}
       </div>
       <div className={s['form-grid']} style={{ marginTop: 12 }}>
         <div className={s.field}>
@@ -388,7 +409,9 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
       {confirmando && (
         <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>
           ¿Registrás la transferencia de <strong>{money(n)}</strong> desde tu cuenta a <strong>{c.proveedorNombre}</strong> ({c.titular} · {c.cbuAlias})?{' '}
-          {n >= r2(c.falta) - 0.004 ? 'La cuenta queda cubierta.' : `Le van a quedar ${money(r2(c.falta - n))} por cubrir.`}
+          {n > r2(c.falta) + 0.004
+            ? `La cuenta queda cubierta y pasada por ${money(r2(n - c.falta))}: eso queda a favor en la cuenta corriente del proveedor.`
+            : n >= r2(c.falta) - 0.004 ? 'La cuenta queda cubierta.' : `Le van a quedar ${money(r2(c.falta - n))} por cubrir.`}
         </div>
       )}
     </ModalShell>
