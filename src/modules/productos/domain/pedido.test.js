@@ -48,7 +48,7 @@ test('disponibleTotal: el destino mide en kg equivalentes (suelto + paquetes × 
   assert.equal(disponibleTotal(store, entero, 2), 0);
 });
 
-test('hayParaMandar: con stock para mandar, o sin control de stock; el granel por el suelto', () => {
+test('hayParaMandar: con stock para mandar, lleve o no control de stock; el granel por el suelto', () => {
   const stock = [
     { productoId: 1, sucursalId: 1, presentacionId: 50, estado: 'disponible', cantidad: 10 },
     { productoId: 2, sucursalId: 1, presentacionId: null, estado: 'disponible', cantidad: 3 },
@@ -58,7 +58,9 @@ test('hayParaMandar: con stock para mandar, o sin control de stock; el granel po
   assert.equal(hayParaMandar(conControl, entero, 2), false, 'en otra sucursal no hay');
   assert.equal(hayParaMandar(conControl, granel, 1), false, 'solo paquetes armados: no hay suelto para mandar');
   const sinControl = { ...storeCon(stock), stockLibre: () => true };
-  assert.equal(hayParaMandar(sinControl, entero, 2), true, 'sin control de stock se puede pedir igual');
+  assert.equal(hayParaMandar(sinControl, entero, 2), false, 'sin control de stock y en 0: el tilde no lo muestra');
+  assert.equal(hayParaMandar(sinControl, granel, 1), false, 'granel sin control, sin suelto: tampoco');
+  assert.equal(hayParaMandar(sinControl, entero, 1), true, 'sin control y con stock: sí');
 });
 
 test('stockFila: el entero en unidades, el paquete por su tamaño, el granel sin tamaños en kg', () => {

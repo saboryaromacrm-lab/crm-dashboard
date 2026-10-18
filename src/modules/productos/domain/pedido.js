@@ -44,11 +44,16 @@ export const puedeMandar = (store, p, sucId) => {
 };
 
 /**
- * ¿TIENE CON QUÉ CUMPLIRSE EL PEDIDO? El filtro «con stock» del origen, en el
- * buscador del pedido y en el explorador del catálogo (14/10/2026: una sola
- * regla para los dos). Lo que no lleva control de stock siempre se puede pedir.
+ * ¿HAY ALLÁ PARA MANDAR? El filtro «con stock» del origen, en el buscador del
+ * pedido y en el explorador del catálogo (14/10/2026: una sola regla para los
+ * dos). Mide lo mismo que dice el renglón: si dice «0 kg», no pasa.
+ *
+ * Un producto SIN CONTROL DE STOCK también se filtra por lo que hay (18/10/2026,
+ * pedido del dueño: con el granel sin control, el tilde dejaba pasar todo el
+ * granel en 0). El control decide si el pedido se puede confirmar sin stock;
+ * el tilde es solo qué se ve. Para pedir algo en 0 se saca el tilde.
  */
-export const hayParaMandar = (store, p, sucId) => store.stockLibre(p) || puedeMandar(store, p, sucId) > 1e-9;
+export const hayParaMandar = (store, p, sucId) => puedeMandar(store, p, sucId) > 1e-9;
 
 /**
  * Total disponible en una sucursal. Para granel se convierte a KG equivalentes
