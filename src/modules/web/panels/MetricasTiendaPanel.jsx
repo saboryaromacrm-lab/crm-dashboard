@@ -8,8 +8,9 @@
  * bloques, de arriba hacia abajo: el resumen con sus variaciones, el embudo,
  * el tráfico (en el tiempo, por hora, por día de la semana, páginas), los
  * pedidos (cómo terminaron, cómo se entregan, de cuánto son, por hora y día),
- * los clientes (altas, ingresos, quién repite, los que más compran) y los
- * productos (ranking, categorías, marcas, búsquedas).
+ * las ofertas (cómo las recibe la tienda: vistas, carrito, pedidos, descuento
+ * y si movieron sus productos), los clientes (altas, ingresos, quién repite,
+ * los que más compran) y los productos (ranking, categorías, marcas, búsquedas).
  *
  * Es medición propia y anónima: el sitio reporta a esta misma base. Nada de
  * Google Analytics ni cookies de terceros.
@@ -20,9 +21,10 @@ import { useResource } from '@modules/ventas/hooks/useResource.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { money, num } from '@modules/productos/domain/format.js';
 import { Table, PanelHead, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
+import { describirOferta } from '@modules/ventas/domain/ofertas.js';
 import { Barras, Columnas, Reparto } from '@modules/gerencia/panels/metricas/graficos.jsx';
 import { DIAS_SEMANA, PRESETS, compacto, etiquetaPeriodo, fechaLarga, nombrePaso, pasoPara, pctTxt, rangoDe, tituloPeriodo } from '@modules/gerencia/panels/metricas/formato.js';
-import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles } from '@modules/gerencia/panels/metricas/piezas.jsx';
+import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles, Variacion } from '@modules/gerencia/panels/metricas/piezas.jsx';
 
 const MODOS = [['mayorista', 'Tienda mayorista'], ['minorista', 'Tienda minorista']];
 const ESTADOS = [
@@ -34,6 +36,7 @@ const ESTADOS = [
 ];
 const ENTREGAS = { retiro: 'Retiro en el local', cadete: 'Envío a domicilio', camioneta: 'Envío sin costo', envio: 'Envío a domicilio' };
 const entero = (v) => num(v, 0);
+const ESTADO_OFERTA = { vigente: ['Vigente', 'st-disponible'], programada: ['Programada', 'est-transito'], vencida: ['Vencida', 'est-recibida'], inactiva: ['Inactiva', 'est-cancelada'] };
 const HORAS = Array.from({ length: 24 }, (_, h) => `${h} h`);
 
 /** Un número del resumen con su comparación: la API manda {ahora, antes, variacion}. */
@@ -198,6 +201,50 @@ export function MetricasTiendaPanel() {
               <PorMomento valores={d.trafico.pedidosPorDia} etiquetas={DIAS_SEMANA.slice(1)} que="pedidos" />
             </Bloque>
           </Grilla>
+
+          {/* ============================ OFERTAS ============================ */}
+          <Bloque titulo="Las ofertas: cómo las recibe la tienda" sub="Por cada oferta con movimiento en el período: cuánto se miró, se cargó y se pidió con ella, y si movió sus productos contra el período anterior.">
+            <Tiles>
+              <Tile label="Pedidos con alguna oferta" valor={entero(d.ofertas.conOferta)} detalle={`${pctTxt(d.ofertas.pctConOferta)} de los ${entero(d.ofertas.pedidos)} pedidos`} />
+              <Tile label="Plata de esos pedidos" valor={money(d.ofertas.totalConOferta)} detalle="El pedido entero, no solo lo que estaba en oferta" />
+              <Tile label="Descuento otorgado" valor={money(d.ofertas.descuentoTotal)} detalle="Lo que se dejó de cobrar por las ofertas" />
+            </Tiles>
+            <Table
+              cols={[{ h: 'Oferta' }, { h: 'Vistas', num: true }, { h: 'Al carrito', num: true }, { h: 'Pedidos', num: true }, { h: 'Unidades', num: true }, { h: 'Plata', num: true }, { h: 'Descuento', num: true }, { h: 'Unidades por día' }]}
+              empty="Ninguna oferta tuvo movimiento en la tienda en este período."
+            >
+              {d.ofertas.lista.map((o) => {
+                const [estado, pill] = ESTADO_OFERTA[o.estado] ?? [o.estado, ''];
+                return (
+                  <tr key={o.id}>
+                    <td>
+                      <strong>{o.nombre}</strong>
+                      <div className={s.hint} style={{ margin: 0 }}>
+                        {describirOferta({ tipo: o.tipo, ...o.parametros })} · <span className={`${s.pill} ${s[pill] ?? ''}`}>{estado}</span>
+                        {o.productos > 0 && ` · ${entero(o.productos)} producto${o.productos === 1 ? '' : 's'}`}
+                        {o.compradores > 0 && ` · ${entero(o.compradores)} comprador${o.compradores === 1 ? '' : 'es'}`}
+                      </div>
+                    </td>
+                    <td className={s.num}>{o.vistas || '—'}{o.segundosProm > 0 && <div className={s.hint} style={{ margin: 0 }}>{num(o.segundosProm, 1)} s</div>}</td>
+                    <td className={s.num}>{o.carrito || '—'}{o.pctCarrito != null && <div className={s.hint} style={{ margin: 0 }}>{pctTxt(o.pctCarrito)} de las vistas</div>}</td>
+                    <td className={s.num}>{o.pedidos || '—'}{o.pctPedido != null && <div className={s.hint} style={{ margin: 0 }}>{pctTxt(o.pctPedido)} de las vistas</div>}</td>
+                    <td className={s.num}>{o.unidades ? num(o.unidades, 2) : '—'}</td>
+                    <td className={s.num}><strong>{o.total ? money(o.total) : '—'}</strong></td>
+                    <td className={s.num}>{o.descuento ? money(o.descuento) : '—'}</td>
+                    <td>
+                      <strong>{num(o.unidadesDia.ahora, 2)}</strong>{' '}
+                      <Variacion valor={o.unidadesDia.variacion} contra={`vs ${num(o.unidadesDia.antes, 2)} antes`} />
+                      {o.unidadesDia.variacion == null && o.unidadesDia.antes === 0 && <div className={s.hint} style={{ margin: 0 }}>Antes no se pedía</div>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </Table>
+            <div className={s.hint} style={{ margin: 0 }}>
+              <strong>Vistas / Al carrito</strong> = veces que un producto se miró o se cargó <em>mientras estaba publicado con esa oferta</em>. <strong>Pedidos, Unidades y Plata</strong> = lo cotizado con la oferta en pedidos no rechazados; <strong>Descuento</strong> = lo que se dejó de cobrar.
+              {' '}<strong>Unidades por día</strong> = cuánto se pidió por día de los productos de la oferta (con o sin ella) contra el período anterior: si sube, la oferta movió; si no, no.
+            </div>
+          </Bloque>
 
           {/* ============================ CLIENTES ============================ */}
           <Bloque titulo={`Clientes de la tienda ${modo}`} sub={modo === 'mayorista' ? 'Los que piden ingreso con su DNI y los que ya compran.' : 'Los que se registran con su WhatsApp y los que ya compran.'}>
