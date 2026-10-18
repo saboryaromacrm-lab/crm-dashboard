@@ -30,13 +30,14 @@ import { appConfig } from '@core/config/app.config.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
 import { cx } from '@shared/utils/classNames.js';
-import { Table, PanelHead, Stat, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
+import { Table, PanelHead, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
 import { WEB_SECCIONES } from '../config/web.config.js';
 import { SubirImagenBtn } from '../components/SubirImagenBtn.jsx';
 import { SubirFotosLoteModal } from '../components/SubirFotosLoteModal.jsx';
 import { RafagaFotosModal } from '../components/RafagaFotosModal.jsx';
 import { AccesosTiendaPanel } from '../components/AccesosTiendaPanel.jsx';
 import { ConfiguracionTiendaPanel } from '../components/ConfiguracionTiendaPanel.jsx';
+import { MetricasTiendaPanel } from '../panels/MetricasTiendaPanel.jsx';
 import { accesosTienda, sinSuscripcion } from '@core/services/accesosTienda.js';
 import { PRESETS_IMAGEN } from '../services/imagenes.js';
 
@@ -643,130 +644,6 @@ function ContenidoPanel({ catalogo, recargar, avisar }) {
 }
 
 /* ==================================================================== *
- * Estadísticas del sitio
- * ==================================================================== */
-
-const RANGOS = [[7, '7 días'], [30, '30 días'], [90, '90 días']];
-
-function EstadisticasPanel({ avisar }) {
-  const [dias, setDias] = useState(30);
-  const [datos, setDatos] = useState(null);
-
-  useEffect(() => {
-    let activo = true;
-    setDatos(null);
-    httpClient.get(`/web/estadisticas?dias=${dias}`)
-      .then((d) => { if (activo) setDatos(d); })
-      .catch((e) => { if (activo) { setDatos({ vistas: 0, sesiones: 0, pedidos: 0, conversion: 0, porDia: [], productos: [] }); avisar('err', e?.data?.message || 'No se pudieron cargar las estadísticas.'); } });
-    return () => { activo = false; };
-  }, [dias, avisar]);
-
-  if (datos === null) return <div className={s['empty-state']}>Contando visitas…</div>;
-
-  const maxVistas = Math.max(1, ...datos.porDia.map((d) => d.vistas));
-  const fmtDia = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
-      <PanelHead
-        title="Estadísticas del sitio"
-        desc="Medición propia y anónima: el sitio reporta a esta misma base qué se visita, cuánto tiempo se mira cada producto y qué se agrega al carrito. Sin Google Analytics ni cookies de terceros."
-        actions={(
-          <div style={{ display: 'flex', gap: 6 }}>
-            {RANGOS.map(([n, label]) => (
-              <Btn key={n} small variant={dias === n ? 'btn-primary' : 'btn-ghost'} onClick={() => setDias(n)}>
-                {label}
-              </Btn>
-            ))}
-          </div>
-        )}
-      />
-
-      <div className={s.stats}>
-        <Stat label="Visitas (páginas vistas)" value={datos.vistas} />
-        <Stat label="Sesiones (visitantes)" value={datos.sesiones} accent="accent-green" />
-        <Stat label="Pedidos web" value={datos.pedidos} accent={datos.pedidos ? 'accent-amber' : undefined} />
-        <Stat label="Conversión" value={`${datos.conversion}%`} />
-      </div>
-      {datos.conversion > 100 && (
-        <div className={s.hint} style={{ marginTop: -8 }}>
-          La conversión supera el 100% porque hay pedidos anteriores al inicio de la medición:
-          se acomoda sola a medida que el contador junte tráfico real.
-        </div>
-      )}
-
-      <div className={s['section-title']}>Visitas por día</div>
-      <div className={s.card} style={{ padding: '14px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 120 }}>
-          {datos.porDia.map((d) => (
-            <div
-              key={d.fecha}
-              title={`${fmtDia(d.fecha)}: ${d.vistas} vista(s), ${d.sesiones} sesión(es)`}
-              style={{
-                flex: 1,
-                minWidth: 3,
-                height: `${Math.max(2, (d.vistas / maxVistas) * 100)}%`,
-                background: d.vistas ? 'var(--crm-color-primary)' : 'var(--crm-color-border)',
-                borderRadius: '3px 3px 0 0',
-                opacity: d.vistas ? 0.85 : 0.5,
-              }}
-            />
-          ))}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: 'var(--crm-color-text-muted)' }}>
-          <span>{datos.porDia[0] ? fmtDia(datos.porDia[0].fecha) : ''}</span>
-          <span>hoy</span>
-        </div>
-      </div>
-
-      <div className={s['section-title']}>Productos: interés y pedidos</div>
-      <Table
-        cols={[
-          { h: 'Producto' }, { h: 'Vistas', num: true }, { h: 'Seg. mirando (prom.)', num: true },
-          { h: 'Al carrito', num: true }, { h: 'En pedidos', num: true }, { h: 'Unidades pedidas', num: true },
-        ]}
-        empty="Sin datos todavía: las estadísticas se juntan a medida que la gente navega el sitio."
-      >
-        {datos.productos.map((p) => (
-          <tr key={p.id}>
-            <td><strong>{p.nombre}</strong></td>
-            <td className={s.num}>{p.vistas}</td>
-            <td className={s.num}>{p.segundosProm ? `${p.segundosProm}s` : '—'}</td>
-            <td className={s.num}>{p.carrito || '—'}</td>
-            <td className={s.num}>{p.pedidos || '—'}</td>
-            <td className={s.num}><strong>{p.unidades || '—'}</strong></td>
-          </tr>
-        ))}
-      </Table>
-
-      <div className={s.hint}>
-        <strong>Vistas</strong> = veces que la tarjeta estuvo realmente en pantalla (≥50% visible).
-        <strong> Seg. mirando</strong> = tiempo promedio con la tarjeta a la vista: el interés, aunque
-        no compren. <strong>Unidades pedidas</strong> sale de las órdenes web no rechazadas del período.
-      </div>
-
-      {(datos.busquedas ?? []).length > 0 && (
-        <>
-          <div className={s['section-title']}>Lo más buscado</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 'var(--crm-space-2)' }}>
-            {datos.busquedas.map((b) => (
-              <div key={b.termino} className={s.card} style={{ padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.termino}</span>
-                <span className={s.muted} style={{ fontSize: 12.5, flexShrink: 0 }}>{b.veces}×</span>
-              </div>
-            ))}
-          </div>
-          <div className={s.hint}>
-            Lo que la gente escribe en el buscador del sitio. Un término repetido que no matchea
-            ningún producto es un faltante del catálogo — la lista de compras que arma el cliente.
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ==================================================================== *
  * Configuración del sitio (logo, favicon, contacto y redes)
  * ==================================================================== */
 
@@ -1103,7 +980,7 @@ export function WebPage() {
                 {activa === 'productos' && <ProductosWebPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />}
                 {activa === 'ofertas' && <OfertasWebPanel avisar={avisar} />}
                 {activa === 'contenido' && <ContenidoPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />}
-                {activa === 'estadisticas' && <EstadisticasPanel avisar={avisar} />}
+                {activa === 'estadisticas' && <MetricasTiendaPanel />}
                 {activa === 'accesos' && <AccesosTiendaPanel avisar={avisar} />}
                 {activa === 'configuracion' && (
                   <ConfiguracionTiendaPanel avisar={avisar} sitio={<ConfiguracionSitioPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />} />

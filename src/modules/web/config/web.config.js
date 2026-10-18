@@ -16,7 +16,8 @@ export const WEB_SECCIONES = [
   { id: 'productos', label: 'Productos del sitio', icon: StorefrontIcon, permiso: 'web.productos' },
   { id: 'ofertas', label: 'Ofertas del sitio', icon: LocalOfferIcon, permiso: 'web.ofertas' },
   { id: 'contenido', label: 'Contenido del sitio', icon: ImageIcon, permiso: 'web.contenido' },
-  { id: 'estadisticas', label: 'Estadísticas', icon: QueryStatsIcon, permiso: 'web.estadisticas' },
+  /* Métricas por modo (0179): la sección conserva el id y la llave con que nació. */
+  { id: 'estadisticas', label: 'Métricas', icon: QueryStatsIcon, permiso: 'web.estadisticas' },
   /* Quién puede comprar (0155): pedidos de ingreso por DNI. La llave conserva el nombre con que nació. */
   { id: 'accesos', label: 'Accesos a la tienda online', icon: HowToRegIcon, permiso: 'ventas.accesos_tienda', badge: 'accesos' },
   /* Todo lo configurable de la tienda (16/10/2026, antes en Ventas › Configuración): general, mayorista y minorista. */
