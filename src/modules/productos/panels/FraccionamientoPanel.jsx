@@ -10,6 +10,7 @@
  * que se quiera, todas las veces que se quiera, y el stock lo sigue moviendo
  * únicamente quien fracciona.
  */
+import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { analizarCodigo } from '@core/services/barcode.js';
@@ -68,7 +69,7 @@ export function FraccionamientoPanel() {
    * etiqueta en blanco. Sin este contador, uno se entera porque un cliente no
    * pudo comprar.
    */
-  const sinPrecio = store.state.productos.flatMap((p) => (p.presentaciones || [])
+  const sinPrecio = store.state.productos.filter(deSaborYAroma).flatMap((p) => (p.presentaciones || [])
     .filter((pr) => pr.precioFinal == null)
     .map((pr) => ({ p, pr })));
 
@@ -165,7 +166,7 @@ function TabPorCategoria({ puede }) {
     const filas = [];
     for (const p of store.state.productos) {
       if (p.tipo !== 'granel' || !(p.presentaciones || []).length) continue;
-      if ((p.estado || 'activo') === 'archivado') continue;
+      if ((p.estado || 'activo') === 'archivado' || !deSaborYAroma(p)) continue;
       if (ql && !norm(p.nombre).includes(ql) && !norm(p.marca).includes(ql)
         && !norm(p.categoria).includes(ql)) continue;
       for (const pr of p.presentaciones) {
@@ -495,7 +496,7 @@ function TabEtiquetas({ puede }) {
    * producto sin presentaciones no aparece — no hay etiqueta que sacarle. */
   const fraccionados = [];
   for (const p of store.state.productos) {
-    if (p.tipo !== 'granel' || (p.estado || 'activo') !== 'activo') continue;
+    if (p.tipo !== 'granel' || (p.estado || 'activo') !== 'activo' || !deSaborYAroma(p)) continue;
     for (const pr of p.presentaciones || []) fraccionados.push({ p, pr });
   }
 

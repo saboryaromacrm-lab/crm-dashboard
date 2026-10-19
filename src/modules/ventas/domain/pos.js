@@ -52,20 +52,6 @@ export function parseEtiquetaBalanza(codigo, config) {
 }
 
 /**
- * USO EXCLUSIVO DE CAFETERÍA (0089): el motivo por el que este ítem no puede ir
- * al ticket, o null si puede. El ítem SE MUESTRA en los buscadores con su
- * marca — esconderlo haría que un código escaneado "no exista", que parece un
- * error — y se bloquea al agregarlo, siempre con el mismo texto. La API lo
- * revalida en el confirm (el catálogo se cachea al abrir la caja).
- */
-export function motivoBloqueo(item) {
-  if (item?.soloCafeteria) {
-    return `${item.nombre} es de uso exclusivo de Coffit: no se vende en el mostrador. Sale por el envío de Almacén › Coffit.`;
-  }
-  return null;
-}
-
-/**
  * EL BULTO ESCANEADO, MARCADO PARA QUE LA FILA NO MIENTA.
  *
  * Escanear el EAN de la caja carga las N unidades y fija la lista del formato.

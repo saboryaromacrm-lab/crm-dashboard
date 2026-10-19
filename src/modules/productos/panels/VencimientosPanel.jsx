@@ -15,6 +15,7 @@
  *   Mermas    la baja de stock de siempre (se mudó acá: es la misma historia)
  *   Reportes  el análisis: por sucursal, categoría, frecuentes, historial
  */
+import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
@@ -192,6 +193,7 @@ function TabControl({ sesion, setSesion, alGuardar }) {
   /** Busca un código EXACTO en el catálogo (producto o presentación). */
   const porCodigo = useCallback((codigo) => {
     for (const p of store.state.productos) {
+      if (!deSaborYAroma(p)) continue;
       if (p.codigoBarras === codigo) return { prod: p, presId: null };
       const pres = (p.presentaciones || []).find((x) => x.codigoBarras === codigo);
       if (pres) return { prod: p, presId: pres.id };
@@ -335,7 +337,7 @@ function TabControl({ sesion, setSesion, alGuardar }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div className={s.field} style={{ flex: '3 1 240px', minWidth: 200 }}>
             <label>Producto (nombre, código o barras)</label>
-            <BuscadorCatalogo store={store} onElegir={elegirProducto} />
+            <BuscadorCatalogo store={store} onElegir={elegirProducto} filtro={deSaborYAroma} />
           </div>
           <div style={{ flex: '0 0 auto', paddingBottom: 2 }}>
             <Btn
@@ -926,6 +928,7 @@ function TabMermas() {
             <label>Registrar una baja: buscá el producto</label>
             <BuscadorCatalogo
               store={store}
+              filtro={deSaborYAroma}
               onElegir={(prod, presId) => openModal('movimiento', { prodId: prod.id, pre: { presId } })}
             />
           </div>

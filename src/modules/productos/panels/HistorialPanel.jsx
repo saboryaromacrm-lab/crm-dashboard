@@ -1,3 +1,4 @@
+import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { useEffect, useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { useSeccion } from '../hooks/useSeccion.js';
@@ -63,6 +64,7 @@ export function HistorialPanel({ preset, embedded }) {
     .slice()
     .sort((a, b) => b.id - a.id)
     .filter((m) => {
+      if (!deSaborYAroma(store.getProducto(m.productoId))) return false;
       if (tipoF && m.tipo !== tipoF) return false;
       if (prodF && m.productoId !== parseInt(prodF, 10)) return false;
       if (sucF && m.sucursalId !== parseInt(sucF, 10) && m.sucursalDestinoId !== parseInt(sucF, 10)) return false;

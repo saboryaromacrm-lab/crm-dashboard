@@ -25,6 +25,7 @@
  * una consulta, y cambiar un filtro tampoco. Lo único que se cuida es no
  * dibujar miles de filas de una — para eso está el paginado de siempre.
  */
+import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
@@ -71,6 +72,7 @@ export function MargenesPanel() {
     const marcas = new Set();
     const categorias = new Set();
     for (const p of store.state.productos) {
+      if (!deSaborYAroma(p)) continue;
       if (p.marca) marcas.add(p.marca);
       if (p.categoria) categorias.add(p.categoria);
     }
@@ -83,6 +85,7 @@ export function MargenesPanel() {
     const ql = norm(q);
     const provId = proveedorId ? Number(proveedorId) : null;
     return store.state.productos.filter((p) => {
+      if (!deSaborYAroma(p)) return false;   // no se vende: no tiene lista que mirar
       const est = p.estado || 'activo';
       if (estadoF === 'vigentes' && est === 'archivado') return false;
       if (estadoF !== 'vigentes' && estadoF !== '' && est !== estadoF) return false;

@@ -12,6 +12,7 @@
  * El contexto (sucursal/usuario activo) es del cliente y se persiste en
  * localStorage — no hay auth todavía.
  */
+import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { httpClient, HttpError } from '@core/services/httpClient.js';
 import { leerClave, escribirClave, leerSesion } from '@core/auth/sesion.js';
 import { num, fmtTam } from '../domain/format.js';
@@ -476,7 +477,7 @@ function saldoTotalProveedores() {
 /* ---------------- Métricas ---------------- */
 function stockBajo() {
   return state.productos.filter((p) => {
-    if (!p.stockMin) return false;
+    if (!p.stockMin || !deSaborYAroma(p)) return false;
     /* Lo que ya no se trae NO se repone: un discontinuado con stock mínimo
      * pediría reposición para siempre, y el archivado ni existe. */
     if ((p.estado || 'activo') !== 'activo') return false;

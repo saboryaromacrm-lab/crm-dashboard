@@ -282,11 +282,12 @@ export function ProductoFormModal({ prodId }) {
         <label className={s['granel-toggle']}>
           <input type="checkbox" checked={soloCafeteria} onChange={(e) => marcarSoloCafeteria(e.target.checked)} />
           <span>
-            <span className={s['t-title']}>Uso exclusivo de Coffit — no se vende en el mostrador</span><br />
+            <span className={s['t-title']}>Uso exclusivo de Coffit — no existe para Sabor y Aroma</span><br />
             <span className={s['t-sub']}>
-              Mercadería que se compra y guarda para Coffit. Es stock normal en
-              todo — compra, existencias, conteos, vencimientos — pero el POS la bloquea con el
-              motivo y la venta la rechaza. Sale solo por el envío de Almacén › Coffit.
+              Mercadería que se compra y guarda para Coffit. No aparece en la caja, presupuestos,
+              pedidos entre sucursales, fraccionamiento, Existencias, controles de stock, listas de
+              precios ni la tienda online. Se compra igual, se repone con la orden de pedido y su
+              stock se ve y se ajusta en Almacén › Coffit › Depósito.
             </span>
           </span>
         </label>
@@ -726,7 +727,7 @@ function ResumenTab({ prod: p }) {
             <span className={cx(s.badge, s['badge-granel'])} style={{ marginLeft: 6 }}>no se vende suelto</span>
           )}
           {p.soloCafeteria && (
-            <div className={s.hint} style={{ margin: 0 }}>Uso exclusivo de Coffit: no se vende en el mostrador.</div>
+            <div className={s.hint} style={{ margin: 0 }}>Uso exclusivo de Coffit: no aparece en ninguna operación de Sabor y Aroma.</div>
           )}
         </Di>
         <Di label="Marca">{p.marca || '—'}</Di>

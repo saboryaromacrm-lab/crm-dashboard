@@ -2,6 +2,7 @@
  * Fábricas de <option> reutilizables para los <select> nativos de los modales.
  * Devuelven arrays de elementos <option> listos para poner como children.
  */
+import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { fmtTam } from '../domain/format.js';
 
@@ -59,11 +60,14 @@ export function sucursalOptionsOtras(store, excluirId) {
     .map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>);
 }
 
-/** `filtro(p)`: opcional, acota la lista (el buscador de Existencias y Movimientos). */
+/**
+ * `filtro(p)`: opcional, acota la lista (el buscador de Existencias y Movimientos).
+ * Nunca ofrece lo de uso exclusivo de Coffit (domain/exclusivoCoffit.js).
+ */
 export function productoOptions(store, incTodos, soloTipo, filtro) {
   const arr = incTodos ? [<option key="_all" value="">Todos los productos</option>] : [];
   store.state.productos
-    .filter((p) => (!soloTipo || p.tipo === soloTipo) && (!filtro || filtro(p)))
+    .filter((p) => deSaborYAroma(p) && (!soloTipo || p.tipo === soloTipo) && (!filtro || filtro(p)))
     .forEach((p) => arr.push(<option key={p.id} value={p.id}>{p.nombre}</option>));
   return arr;
 }

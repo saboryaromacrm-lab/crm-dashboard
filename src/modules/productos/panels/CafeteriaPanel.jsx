@@ -63,6 +63,9 @@ export function CafeteriaPanel() {
    * puede los dos. El candado de verdad está en la API — esto solo evita
    * ofrecer un botón que iba a rebotar. */
   const puedeCargarEntradas = puedeOperar || can('almacen.cafeteria-entradas');
+  /* Lo de uso exclusivo de Coffit no está en Existencias (19/10/2026): su stock
+   * se ajusta acá, en el Depósito, con el mismo movimiento de siempre. */
+  const puedeAjustar = puedeOperar && can('inventario');
   /* Armar un pedido a una sucursal: la llave del café (la del rol Coffit). */
   const puedePedir = can('almacen.cafeteria-pedidos');
   /* Toda la pantalla habla en la voz del que la abre. Un solo lugar donde se
@@ -474,6 +477,7 @@ export function CafeteriaPanel() {
               { h: 'Artículo' }, { h: 'Código' },
               ...(deposito?.sucursales ?? []).map((su) => ({ h: su.nombre, num: true })),
               { h: 'Total', num: true }, { h: 'Costo u.', num: true }, { h: 'Valor', num: true },
+              ...(puedeAjustar ? [{ h: '' }] : []),
               ...(v.depositoBtn ? [{ h: '' }] : []),
             ]}
             empty={deposito ? v.depositoVacio : 'Cargando…'}
@@ -510,6 +514,23 @@ export function CafeteriaPanel() {
                   <td className={cx(s.num, s.mono)} style={{ fontWeight: 600 }}>{num(a.total, a.unidad === 'kg' ? 2 : 0)} {a.unidad}</td>
                   <td className={cx(s.num, s.mono)}>{money(a.costoU)}</td>
                   <td className={cx(s.num, s.mono)}>{money(a.valor)}</td>
+                  {puedeAjustar && (
+                    <td className={s.num}>
+                      {/* Un compartido es stock de la distribuidora: se ajusta en Existencias. */}
+                      {!a.compartido && (
+                        <Btn
+                          small
+                          onClick={() => openModal('movimiento', {
+                            prodId: a.productoId,
+                            sucId: Number(sucMax) || undefined,
+                            pre: { presId: a.presentacionId, tipo: 'ajuste' },
+                          })}
+                        >
+                          Ajustar
+                        </Btn>
+                      )}
+                    </td>
+                  )}
                   {v.depositoBtn && (
                     <td className={s.num}>
                       <Btn

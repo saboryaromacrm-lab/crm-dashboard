@@ -18,6 +18,7 @@
  * está en curso y el que mira no tiene la llave de aplicar. Esta pantalla
  * pinta lo que llega — si no llega, no existe.
  */
+import { deSaborYAroma } from '../../domain/exclusivoCoffit.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
@@ -80,7 +81,7 @@ export function ConteoNuevoModal({ alCrear }) {
     const nombreMarca = new Map(marcasCatalogo.map((m) => [m.id, m.nombre]));
     const porMarca = new Map();
     for (const p of productos) {
-      if (p.estado === 'archivado') continue;
+      if (p.estado === 'archivado' || !deSaborYAroma(p)) continue;
       if (f.categoriaId && String(p.categoriaId ?? '') !== String(f.categoriaId)) continue;
       if (f.tipo && p.tipo !== f.tipo) continue;
       if (f.proveedorId && !(p.formatosCompra || []).some((e) => String(e.proveedorId) === String(f.proveedorId))) continue;

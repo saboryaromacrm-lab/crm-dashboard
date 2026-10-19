@@ -12,6 +12,7 @@
  *   transito     en la ruta, de cualquiera de mis dos lados
  *   recibidas    cerradas donde yo era una punta
  */
+import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { useMemo, useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { fmtFecha } from '../domain/format.js';
@@ -76,7 +77,7 @@ export function TransferenciasPanel() {
     return store.state.productos
       // Solo lo que se sigue reponiendo: pedir lo que ya no se trae es trabajo
       // al aire (y el archivado no se puede ni mover).
-      .filter((p) => p.stockMin > 0 && (p.estado || 'activo') === 'activo')
+      .filter((p) => p.stockMin > 0 && (p.estado || 'activo') === 'activo' && deSaborYAroma(p))
       .map((p) => {
         const disp = store.cant(p.id, miId, null, 'disponible');
         return disp < p.stockMin

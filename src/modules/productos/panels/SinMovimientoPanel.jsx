@@ -217,7 +217,7 @@ export function SinMovimientoPanel() {
                 <td>
                   <strong>{x.nombre}</strong>
                   <div className={s.hint} style={{ margin: 0 }}>
-                    {[n.marcas[x.marcaId], n.categorias[x.categoriaId], x.codigo, x.granel ? 'granel' : '', x.deCoffit ? 'de Coffit' : ''].filter(Boolean).join(' · ')}
+                    {[n.marcas[x.marcaId], n.categorias[x.categoriaId], x.codigo, x.granel ? 'granel' : ''].filter(Boolean).join(' · ')}
                   </div>
                 </td>
                 {variosLocales && <td style={NOWRAP}>{nombreSuc(x.sucursalId)}</td>}

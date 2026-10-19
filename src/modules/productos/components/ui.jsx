@@ -218,8 +218,9 @@ export function TipoBadge({ prod }) {
       ) : (
         <span className={cx(styles.badge, styles['badge-entero'])}>Entero</span>
       )}
-      {/* Uso exclusivo de Coffit (0089): se canta en TODOS los listados que
-          ya muestran el tipo — es la marca de "esto no va al mostrador". */}
+      {/* Uso exclusivo de Coffit (0089): se canta en los listados que todavía
+          lo muestran (Compras, Coffit, la orden de pedido) — es la marca de
+          "esto no existe para Sabor y Aroma" (domain/exclusivoCoffit.js). */}
       {prod.soloCafeteria && (
         <span className={cx(styles.badge, styles['badge-granel'])} style={{ marginLeft: 4 }}>Coffit</span>
       )}

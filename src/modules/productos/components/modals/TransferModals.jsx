@@ -6,6 +6,7 @@
  * prepara. La recepción es el paso con plata en juego: se cuenta lo que llegó
  * y la diferencia genera una incidencia sola.
  */
+import { deSaborYAroma } from '../../domain/exclusivoCoffit.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { fmtFechaHora, money, num } from '../../domain/format.js';
@@ -326,6 +327,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
     const lista = [];
     let otros = 0;
     for (const p of store.state.productos) {
+      if (!deSaborYAroma(p)) continue;
       if (soloNovedades && !novedades?.mapa?.has(p.id)) continue;
       if (soloConStockOrigen && !hayParaMandar(store, p, origenNum)) continue;
       if (ql && !(normTxt(p.nombre).includes(ql) || normTxt(p.marca).includes(ql)
@@ -1545,7 +1547,7 @@ export function PrepararTransferModal({ id }) {
     const editable = puedeTocar && enPrep && !confirmada;
     const filas = grupos[tipo];
     const alta = altas[tipo];
-    const productosDeLista = store.state.productos.filter((p) => listaDeProducto(p) === tipo);
+    const productosDeLista = store.state.productos.filter((p) => deSaborYAroma(p) && listaDeProducto(p) === tipo);
     const prodAlta = alta ? store.getProducto(parseInt(alta.prodId, 10)) : null;
 
     return (

@@ -1,3 +1,4 @@
+import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { useNavigate } from 'react-router-dom';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
@@ -59,17 +60,19 @@ export function ResumenInventario() {
   const { store } = useProductos();
   useSeccion('movimientos');
 
+  /* Sin lo de uso exclusivo de Coffit: es de ella, y se ve en Almacén › Coffit › Depósito. */
+  const stockSyA = store.state.stock.filter((st) => deSaborYAroma(store.getProducto(st.productoId)));
   let valor = 0; let comprometidoVal = 0;
-  store.state.stock.forEach((st) => {
+  stockSyA.forEach((st) => {
     if (st.estado === 'disponible') valor += store.valorEntry(st);
     if (st.estado === 'comprometido') comprometidoVal += store.valorEntry(st);
   });
   const bajo = store.stockBajo();
-  const comprometidos = store.state.stock.filter((st) => st.estado === 'comprometido' && st.cantidad > 1e-9);
+  const comprometidos = stockSyA.filter((st) => st.estado === 'comprometido' && st.cantidad > 1e-9);
 
   const filasSuc = store.state.sucursales.map((su) => {
     let v = 0; const prods = {};
-    store.state.stock.forEach((st) => {
+    stockSyA.forEach((st) => {
       if (st.sucursalId === su.id && st.estado === 'disponible' && st.cantidad > 1e-9) { v += store.valorEntry(st); prods[st.productoId] = 1; }
     });
     return (
@@ -119,7 +122,7 @@ export function ResumenInventario() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-5)' }}>
       <div className={s.stats}>
         <Stat label="Valor inventario (disp.)" value={money(valor)} accent="accent-green" />
-        <Stat label="Productos" value={store.state.productos.length} />
+        <Stat label="Productos" value={store.state.productos.filter(deSaborYAroma).length} />
         <Stat label="Stock bajo" value={bajo.length} accent={bajo.length ? 'accent-red' : undefined} />
         <Stat label="Valor comprometido" value={money(comprometidoVal)} accent={comprometidoVal ? 'accent-amber' : undefined} />
       </div>

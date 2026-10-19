@@ -1,3 +1,4 @@
+import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, Tab } from '@mui/material';
@@ -84,7 +85,9 @@ export function ExistenciasPanel() {
     resto.delete('ordenPedido');
     setParams(resto, { replace: true });
   }, [params, setParams, openModal]);
-  const { productos, stock, proveedores, sucursales } = store.state;
+  const { stock, proveedores, sucursales } = store.state;
+  /* Sin lo de uso exclusivo de Coffit: su stock se ve y se ajusta en Almacén › Coffit › Depósito. */
+  const productos = useMemo(() => store.state.productos.filter(deSaborYAroma), [store.state.productos]);
   const proveedoresMerc = useMemo(
     () => proveedores.filter((p) => p.proveeMercaderia).sort((a, b) => alfabetico(a.nombre, b.nombre)),
     [proveedores],
@@ -93,7 +96,7 @@ export function ExistenciasPanel() {
   const infoProd = useMemo(() => new Map(productos.map((p) => [p.id, {
     tipo: p.tipo, marca: p.marca || '', provs: new Set((p.formatosCompra || []).map((e) => e.proveedorId)),
   }])), [productos]);
-  const conStock = useMemo(() => stock.filter((st) => st.cantidad > 1e-9), [stock]);
+  const conStock = useMemo(() => stock.filter((st) => st.cantidad > 1e-9 && infoProd.has(st.productoId)), [stock, infoProd]);
   /* Sin stock: producto activo × sucursal activa con 0 o menos disponible (en kg el granel, con sus paquetes). */
   const faltantes = useMemo(() => {
     const disponible = indiceDisponible(stock, productos);

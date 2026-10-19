@@ -11,6 +11,7 @@
  * Buscar es instantáneo: el granel disponible de cada producto se arma UNA vez
  * (una pasada por el stock en memoria) y cada tecla filtra sobre eso.
  */
+import { deSaborYAroma } from '../../domain/exclusivoCoffit.js';
 import { useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
@@ -82,7 +83,7 @@ export function RegistrarFraccionadoModal({ sucId: sucInit, inicial = [], volver
 
   /* Lo que se puede fraccionar: granel activo, con tamaños definidos. */
   const candidatos = useMemo(() => store.state.productos
-    .filter((p) => p.tipo === 'granel' && (p.presentaciones || []).length && (p.estado || 'activo') !== 'archivado')
+    .filter((p) => p.tipo === 'granel' && (p.presentaciones || []).length && (p.estado || 'activo') !== 'archivado' && deSaborYAroma(p))
     .map((p) => ({ p, texto: norm(`${p.nombre} ${p.marca || ''} ${p.codigoPropio || ''}`) })), [store.state.productos]);
 
   const resultados = useMemo(() => {

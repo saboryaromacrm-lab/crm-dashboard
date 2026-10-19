@@ -22,6 +22,7 @@
  *
  * Los datos salen del snapshot que el módulo ya tiene en memoria: no hay red.
  */
+import { deSaborYAroma } from '../../domain/exclusivoCoffit.js';
 import { useMemo, useState } from 'react';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
@@ -71,7 +72,7 @@ export function ExplorarProductosModal({ grupo, origenId, destinoId, yaEnPedido,
       // El explorador vive DENTRO de una pestaña: ofrece solo lo suyo, igual
       // que el buscador de al lado.
       if (listaDeProducto(p) !== grupo) continue;
-      if ((p.estado || 'activo') === 'archivado') continue;
+      if ((p.estado || 'activo') === 'archivado' || !deSaborYAroma(p)) continue;
       if (marca && p.marca !== marca) continue;
       if (categoria && p.categoria !== categoria) continue;
       if (provId && !(p.formatosCompra || []).some((e) => e.proveedorId === provId)) continue;

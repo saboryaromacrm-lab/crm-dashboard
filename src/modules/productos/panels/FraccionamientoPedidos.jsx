@@ -7,6 +7,7 @@
  * precargado): ahí se mueve el stock y el pedido queda hecho, en una sola
  * operación. Lo fraccionado de verdad sale de ese registro.
  */
+import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { cuerpoListaPreparacion, imprimirDocumento } from '@core/services/imprimir.js';
@@ -206,7 +207,7 @@ export function PedidoFraccionModal({ distribuidora, pedido = null, onGuardado }
       if (st.sucursalId === distId && st.estado === 'disponible') hay.set(st.presentacionId ? `${st.productoId}:${st.presentacionId}` : `${st.productoId}`, st.cantidad);
     }
     return store.state.productos
-      .filter((p) => p.tipo === 'granel' && (p.presentaciones || []).length && (p.estado || 'activo') !== 'archivado')
+      .filter((p) => p.tipo === 'granel' && (p.presentaciones || []).length && (p.estado || 'activo') !== 'archivado' && deSaborYAroma(p))
       .map((p) => ({
         p,
         granel: hay.get(`${p.id}`) ?? 0,

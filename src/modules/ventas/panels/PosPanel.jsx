@@ -7,7 +7,7 @@ import { CONDICIONES_IVA, CONDICIONES_PAGO, MEDIOS_PAGO, ORIGEN_LISTA, TIPOS_VEN
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import {
   buscarEnCatalogo, calcularRenglon, descuentosDisponibles, descuentosParaApi,
-  extrasParaApi, itemsParaApi, motivoBloqueo, parseEtiquetaBalanza,
+  extrasParaApi, itemsParaApi, parseEtiquetaBalanza,
   agruparDescuentos, cambioDeDescuento, descuentosConMedio, problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
   bultoAbajo, bultoArriba, bultoDeFila, cantidadInicial, desgloseBulto, empujonMayorista, esPaquete, textoBulto,
   totalesTicket, ultimoArticulo, unidadesDeLista,
@@ -301,9 +301,6 @@ function Buscador({ catalogo, config, onElegir, inputRef, onPedirFraccion }) {
                       {num(item.stock)} {item.unidad}
                       {item.bolsaKg > 0 && ` (${num(Math.floor((Number(item.stock) || 0) / item.bolsaKg + 1e-9))} bolsas)`}
                     </span>
-                    {/* La marca del 0089 a la vista: el cajero ve el porqué ANTES
-                        de intentar agregarlo y comerse el rechazo. */}
-                    {item.soloCafeteria && <span className={p.sinStock}>{' · '}solo Coffit</span>}
                     {onPedirFraccion && esPaquete(item) && item.stock <= 0 && !item.stockLibre && <strong>{' · '}F7: pedir a fraccionado</strong>}
                   </span>
                 </span>
@@ -1415,11 +1412,6 @@ export function PosPanel() {
   const agregar = useCallback((item, cantidadPedida) => {
     /* Sin cantidad dicha: la caja escaneada trae sus N y el granel madre una bolsa (ver `cantidadInicial`). */
     const cantidad = cantidadPedida ?? cantidadInicial(item);
-    /* El candado de pantalla del "uso exclusivo de Cafetería" (0089). Va acá,
-     * en el embudo por el que pasan TODOS los caminos (buscador, escáner,
-     * carga rápida, búsqueda masiva); la API lo revalida en el confirm. */
-    const bloqueo = motivoBloqueo(item);
-    if (bloqueo) { toast(bloqueo, 'err'); return; }
     // Escaneo de una CAJA: además de las unidades, se fija la lista del
     // formato — comprar la caja ES elegir el precio mayorista.
     let listaFija = null;

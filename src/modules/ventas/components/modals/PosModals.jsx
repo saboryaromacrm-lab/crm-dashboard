@@ -3,7 +3,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { ventasApi } from '../../services/ventas.api.js';
 import { norm } from '../../domain/constants.js';
-import { buscarEnCatalogo, cantidadInicial, motivoBloqueo, parseEtiquetaBalanza, r2 } from '../../domain/pos.js';
+import { buscarEnCatalogo, cantidadInicial, parseEtiquetaBalanza, r2 } from '../../domain/pos.js';
 import { Btn, ModalShell, money, num, s } from '../ui.jsx';
 import p from '../../styles/Pos.module.css';
 
@@ -28,10 +28,6 @@ export function CargaRapidaModal({ catalogo, config, onAgregar }) {
   const agregar = (item, cantidadPedida) => {
     /* Sin cantidad dicha: la caja escaneada trae sus N y el granel madre una bolsa. */
     const cantidad = cantidadPedida ?? cantidadInicial(item);
-    // El "solo Cafetería" primero: su mensaje explica el porqué; el de
-    // "sin precio" mandaría al cajero a cargar un precio que no va a existir.
-    const bloqueo = motivoBloqueo(item);
-    if (bloqueo) { toast(bloqueo, 'err'); return; }
     if (item.precio <= 0) { toast(`${item.nombre} no tiene precio cargado.`, 'err'); return; }
     onAgregar(item, cantidad);
     // El "Agregado" muestra el FINAL con IVA: es lo que el cliente paga por
@@ -97,7 +93,6 @@ export function CargaRapidaModal({ catalogo, config, onAgregar }) {
                 <span className={p.resultadoMeta}>
                   {' · '}{item.detalle}
                   {' · '}<span className={item.stock <= 0 ? p.sinStock : undefined}>{num(item.stock)} {item.unidad}</span>
-                  {item.soloCafeteria && <span className={p.sinStock}>{' · '}solo Coffit</span>}
                 </span>
               </span>
               <span className={p.resultadoPrecio}>{money(item.precioFinal)}</span>
@@ -195,8 +190,6 @@ export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
   }, [catalogo, categoria, marca, texto]);
 
   const agregar = (item) => {
-    const bloqueo = motivoBloqueo(item);
-    if (bloqueo) { toast(bloqueo, 'err'); return; }
     if (item.precio <= 0) { toast(`${item.nombre} no tiene precio cargado.`, 'err'); return; }
     onAgregar(item, cantidadInicial(item));
     toast(`${item.nombre} · ${item.detalle} agregado.`, 'ok');
@@ -283,7 +276,6 @@ export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
                   <td>
                     <div className={p.nombreCol}>
                       {i.nombre}
-                      {i.soloCafeteria && <span className={p.sinStock}>{' · '}solo Coffit</span>}
                     </div>
                   </td>
                   <td>{i.detalle}</td>

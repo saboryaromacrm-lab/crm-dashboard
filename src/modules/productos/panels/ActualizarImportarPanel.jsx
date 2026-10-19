@@ -1,3 +1,4 @@
+import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
@@ -31,7 +32,7 @@ export function ActualizarImportarPanel() {
 
   /* Lo que está en juego (sin archivados), igual que el Catálogo por defecto. */
   const vigentes = useMemo(
-    () => store.state.productos.filter((p) => (p.estado || 'activo') !== 'archivado'),
+    () => store.state.productos.filter((p) => (p.estado || 'activo') !== 'archivado' && deSaborYAroma(p)),
     [store.state.productos],
   );
   const opciones = useMemo(() => {
