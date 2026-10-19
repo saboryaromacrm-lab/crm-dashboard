@@ -7,7 +7,7 @@ const PermissionContext = createContext(null);
  * La API de permisos, derivada del usuario de la sesión.
  *
  * Las claves son las del catálogo del servidor (`usuarios.module.ts`): las de
- * SECCIÓN tienen la forma `modulo.seccion` (`ventas.caja`, `web.productos`) y
+ * SECCIÓN tienen la forma `modulo.seccion` (`ventas.caja`, `web.ofertas`) y
  * las de ACCIÓN son una palabra (`merma`, `precio_manual`). El comodín `'*'` da
  * todo y lo tiene solo el superadmin.
  *

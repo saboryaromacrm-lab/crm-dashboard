@@ -29,8 +29,15 @@
  * con fondos lisos y claros (la foto típica de catálogo); con fondos
  * complejos no hace magia — para eso está la vista previa.
  */
+import { appConfig } from '@core/config/app.config.js';
 
 /** El archivo original puede venir del celular: se acepta grande porque acá se comprime. */
+/** Src absoluto de una imagen: las subidas llegan como ruta relativa a la API (`rutaImagen`), las externas como URL completa. */
+export function srcImagen(url) {
+  if (!url) return '';
+  return /^https?:|^data:/.test(url) ? url : `${appConfig.api.baseUrl}/${url}`;
+}
+
 export const MAX_ENTRADA_MB = 12;
 
 export const PRESETS_IMAGEN = {

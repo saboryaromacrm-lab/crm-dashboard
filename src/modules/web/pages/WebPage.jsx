@@ -5,12 +5,8 @@
  * izquierda igual que Compras, Ventas, Almacén y Gastos: moverse entre módulos
  * no cambia de idioma visual.
  *
- * Cuatro secciones, cuatro responsabilidades:
+ * Las secciones y sus responsabilidades:
  *
- *   - PRODUCTOS: lo que el sitio muestra. La lista ES la del sitio (mismo
- *     endpoint público `GET /tienda/catalogo`): un producto aparece si tiene
- *     precio en la lista Mayorista — acá no se publica ni se despublica, se
- *     ve. Lo único editable: `destacado`, la FOTO y el mínimo web.
  *   - OFERTAS: las promos que llegan al sitio (solo las que valen para la
  *     lista Mayorista). Solo lectura: se editan en Ventas › Ofertas.
  *   - CONTENIDO: los slides de la portada, el banner y las imágenes de
@@ -20,37 +16,31 @@
  *     (vista del catálogo y datos del sitio: logo, favicon, contacto, redes y
  *     cartel), mayorista y minorista—. Ver `ConfiguracionTiendaPanel`.
  *
- * Todo lo demás del producto (nombre, precio, stock, etiquetas) se maneja en
- * Compras › Productos — a propósito: una sola fuente de verdad por dato.
+ * TODO lo del producto se maneja en Compras › Productos —nombre, precio,
+ * stock, etiquetas y, desde el 19/10/2026, la foto, el destacado y el mínimo
+ * web (pestaña «Tienda online» del detalle)—: una sola fuente de verdad por
+ * dato. Acá ya no hay «Productos del sitio».
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { httpClient } from '@core/services/httpClient.js';
-import { appConfig } from '@core/config/app.config.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
 import { cx } from '@shared/utils/classNames.js';
-import { Table, PanelHead, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
+import { Table, PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 import { WEB_SECCIONES } from '../config/web.config.js';
 import { SubirImagenBtn } from '../components/SubirImagenBtn.jsx';
-import { SubirFotosLoteModal } from '../components/SubirFotosLoteModal.jsx';
-import { RafagaFotosModal } from '../components/RafagaFotosModal.jsx';
 import { AccesosTiendaPanel } from '../components/AccesosTiendaPanel.jsx';
 import { ConfiguracionTiendaPanel } from '../components/ConfiguracionTiendaPanel.jsx';
 import { MetricasTiendaPanel } from '../panels/MetricasTiendaPanel.jsx';
 import { accesosTienda, sinSuscripcion } from '@core/services/accesosTienda.js';
-import { PRESETS_IMAGEN } from '../services/imagenes.js';
+import { PRESETS_IMAGEN, srcImagen } from '../services/imagenes.js';
+import { Miniatura } from '../components/Miniatura.jsx';
 
 const money = (n) => new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 2, maximumFractionDigits: 2,
 }).format(Number(n) || 0);
 
-
-/** Src absoluto de una imagen del catálogo (las subidas llegan como ruta relativa a la API). */
-function srcImagen(url) {
-  if (!url) return '';
-  return /^https?:|^data:/.test(url) ? url : `${appConfig.api.baseUrl}/${url}`;
-}
 
 /** Igual que el cartel del sitio: qué promete cada mecánica de oferta. */
 function mecanicaOferta(o) {
@@ -69,263 +59,6 @@ function estadoVigencia(o) {
   if (o.desde && ahora < new Date(o.desde)) return { label: 'Programada', pill: 'est-pendiente' };
   if (o.hasta && ahora > new Date(o.hasta)) return { label: 'Vencida', pill: 'est-cancelada' };
   return { label: 'Vigente', pill: 'st-disponible' };
-}
-
-/* El botón de subida vive en components/SubirImagenBtn.jsx: es EL estándar —
- * molde por preset, compresión WebP, quitar fondo y previsualización. */
-
-/** Miniatura con el mismo fondo que usa el sitio; '—' honesto si no hay imagen. */
-function Thumb({ url, alt, size = 42 }) {
-  if (!url) {
-    return (
-      <span style={{
-        width: size, height: size, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--crm-color-bg)', border: '1px dashed var(--crm-color-border)',
-        borderRadius: 8, fontSize: 10, color: 'var(--crm-color-text-muted)',
-      }}
-      >
-        sin foto
-      </span>
-    );
-  }
-  return (
-    <img
-      src={srcImagen(url)}
-      alt={alt}
-      style={{ width: size, height: size, objectFit: 'contain', background: '#fff', border: '1px solid var(--crm-color-border)', borderRadius: 8 }}
-    />
-  );
-}
-
-/* ==================================================================== *
- * Productos del sitio
- * ==================================================================== */
-
-/**
- * Input del piso de stock online: guarda al salir del campo o con Enter, solo
- * si cambió. Editar un número por fila no amerita un modal.
- */
-function MinimoWebInput({ producto, admin, onGuardar }) {
-  const [valor, setValor] = useState(String(admin?.webStockMin ?? 0));
-  useEffect(() => { setValor(String(admin?.webStockMin ?? 0)); }, [admin?.webStockMin]);
-
-  const confirmar = () => {
-    const n = Number(valor);
-    if (!Number.isFinite(n) || n < 0) { setValor(String(admin?.webStockMin ?? 0)); return; }
-    if (n !== (admin?.webStockMin ?? 0)) onGuardar(producto, n);
-  };
-
-  return (
-    <input
-      type="number" min="0" step="1"
-      value={valor}
-      onChange={(e) => setValor(e.target.value)}
-      onBlur={confirmar}
-      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-      title="Al llegar a este stock, el sitio muestra «Sin stock» y lo que queda se prioriza para fraccionar / mostrador. 0 = sin piso."
-      style={{ width: 74, padding: '5px 8px', border: '1px solid var(--crm-color-border)', borderRadius: 8, textAlign: 'right' }}
-    />
-  );
-}
-
-function ProductosWebPanel({ catalogo, recargar, avisar }) {
-  const [q, setQ] = useState('');
-  const [ocupado, setOcupado] = useState(0); // id del producto en mutación
-  const [admin, setAdmin] = useState(new Map()); // id → { webStockMin, stockDisp, codigos }
-  const [soloSinFoto, setSoloSinFoto] = useState(false);
-  const [fotosLote, setFotosLote] = useState(false);
-  const [rafaga, setRafaga] = useState(false);
-
-  /** Datos que NO viajan en el catálogo público: stock real y piso configurado. */
-  const cargarAdmin = useCallback(async () => {
-    try {
-      const filas = await httpClient.get('/web/productos');
-      setAdmin(new Map(filas.map((f) => [f.id, f])));
-    } catch { /* sin datos admin, la tabla igual muestra el resto */ }
-  }, []);
-  useEffect(() => { cargarAdmin(); }, [cargarAdmin]);
-
-  const sinFoto = useMemo(
-    () => (catalogo?.items ?? []).filter((p) => !p.imagenUrl).length,
-    [catalogo],
-  );
-
-  const items = useMemo(() => {
-    const norm = (v) => String(v).toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
-    const nq = norm(q.trim());
-    const base = (catalogo?.items ?? []).filter((p) => !soloSinFoto || !p.imagenUrl);
-    return nq ? base.filter((p) => norm(p.nombre).includes(nq) || norm(p.marca).includes(nq)) : base;
-  }, [catalogo, q, soloSinFoto]);
-
-  const pag = usePaginado(items, 'webProductos', q);
-
-  const mutar = async (id, fn, okMsg) => {
-    setOcupado(id);
-    try { await fn(); avisar('ok', okMsg); await Promise.all([recargar(), cargarAdmin()]); }
-    catch (e) { avisar('err', e?.data?.message || 'No se pudo guardar.'); }
-    finally { setOcupado(0); }
-  };
-
-  const guardarMinimo = (p, n) => mutar(
-    p.id,
-    () => httpClient.patch(`/web/productos/${p.id}`, { webStockMin: n }),
-    n > 0
-      ? `${p.nombre}: el sitio venderá hasta que queden ${n} en depósito.`
-      : `${p.nombre}: sin piso — se vende online hasta la última unidad.`,
-  );
-
-  const toggleDestacado = (p) => mutar(
-    p.id,
-    () => httpClient.patch(`/web/productos/${p.id}`, { destacado: !p.destacado }),
-    p.destacado ? `${p.nombre} ya no está destacado.` : `${p.nombre} destacado en la portada.`,
-  );
-
-  const subirImagen = (p, data) => mutar(
-    p.id,
-    () => httpClient.post(`/web/imagenes/producto/${p.id}`, { data }),
-    `Imagen de ${p.nombre} actualizada.`,
-  );
-
-  const quitarImagen = (p) => mutar(
-    p.id,
-    () => httpClient.delete(`/web/imagenes/producto/${p.id}`),
-    `Imagen de ${p.nombre} quitada.`,
-  );
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
-      <PanelHead
-        title="Productos del sitio"
-        desc={`Lo que ve el cliente en la tienda online: ${catalogo?.items?.length ?? 0} productos con precio en la lista ${catalogo?.listaNombre || 'Mayorista'}. Publicar o despublicar = cargar o quitar ese precio (Ventas › Configuración › Formato de venta); acá se manejan el destacado y la foto.`}
-      />
-
-      <div className={s.toolbar}>
-        <input
-          className={s['select-inline']}
-          style={{ minWidth: 260 }}
-          placeholder="Buscar por nombre o marca…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        {/* El hueco de fotos se VE, no se descubre fila por fila (25/8): el
-            contador dice cuánto falta y el filtro es la lista de trabajo. */}
-        {sinFoto > 0 && (
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
-            <input type="checkbox" checked={soloSinFoto} onChange={(e) => setSoloSinFoto(e.target.checked)} />
-            Ver solo sin foto ({sinFoto})
-          </label>
-        )}
-        <Btn onClick={() => setFotosLote(true)} title="Arrastrar muchas fotos y emparejarlas por el nombre del archivo">
-          Subir fotos en lote
-        </Btn>
-        {sinFoto > 0 && (
-          <Btn onClick={() => setRafaga(true)} title="Recorrer los productos sin foto y soltarle a cada uno la suya — para fotos del celular, sin renombrar">
-            Modo ráfaga ({sinFoto})
-          </Btn>
-        )}
-      </div>
-
-      {fotosLote && (
-        <SubirFotosLoteModal
-          productos={(catalogo?.items ?? []).map((p) => ({
-            id: p.id,
-            nombre: p.nombre,
-            marca: p.marca || '',
-            imagenUrl: p.imagenUrl || '',
-            codigoBarras: admin.get(p.id)?.codigoBarras || '',
-            codigoPropio: admin.get(p.id)?.codigoPropio || '',
-          }))}
-          avisar={avisar}
-          onCerrar={() => setFotosLote(false)}
-          onListo={() => { recargar(); cargarAdmin(); }}
-        />
-      )}
-
-      {rafaga && (
-        <RafagaFotosModal
-          productos={catalogo?.items ?? []}
-          avisar={avisar}
-          onCerrar={() => setRafaga(false)}
-          onListo={() => { recargar(); cargarAdmin(); }}
-        />
-      )}
-
-      <Table
-        cols={[
-          { h: 'Foto' }, { h: 'Producto' }, { h: 'Marca' },
-          { h: 'Precio web', num: true }, { h: 'Oferta' }, { h: 'Stock' }, { h: 'Mínimo web', num: true },
-          { h: 'Destacado' }, { h: 'Imagen', cls: 'actions-col' },
-        ]}
-        empty="Ningún producto tiene precio en la lista Mayorista todavía."
-        pag={pag}
-      >
-        {pag.visibles.map((p) => (
-          <tr key={p.id} style={ocupado === p.id ? { opacity: 0.5 } : undefined}>
-            <td><Thumb url={p.imagenUrl} alt={p.nombre} /></td>
-            <td><strong>{p.nombre}</strong></td>
-            <td>{p.marca || '—'}</td>
-            <td className={s.num}>
-              {money(p.precio)}{p.unidad === 'kg' ? ' /kg' : ''}
-              {p.oferta?.precioOferta != null && (
-                <div style={{ fontSize: 12, color: 'var(--crm-color-accent-2)', fontWeight: 700 }}>
-                  {money(p.oferta.precioOferta)} en oferta
-                </div>
-              )}
-            </td>
-            <td>
-              {p.oferta
-                ? <span className={cx(s.pill, s['est-pendiente'])}>{p.oferta.badge}</span>
-                : <span className={s.muted}>—</span>}
-            </td>
-            <td>
-              <span className={cx(s.pill, p.enStock ? s['st-disponible'] : s['est-cancelada'])}>
-                {p.enStock ? 'En stock' : 'Sin stock'}
-              </span>
-              {admin.get(p.id) && (
-                <div className={s.muted} style={{ fontSize: 11.5, marginTop: 2 }}>
-                  {admin.get(p.id).stockDisp} {p.unidad === 'kg' ? 'kg' : 'u.'} en depósito
-                </div>
-              )}
-            </td>
-            <td className={s.num}>
-              <MinimoWebInput producto={p} admin={admin.get(p.id)} onGuardar={guardarMinimo} />
-            </td>
-            <td>
-              <button
-                type="button"
-                onClick={() => toggleDestacado(p)}
-                title={p.destacado ? 'Quitar de Destacados' : 'Destacar en la portada'}
-                style={{
-                  border: 'none', background: 'none', cursor: 'pointer', fontSize: 22, lineHeight: 1,
-                  color: p.destacado ? 'var(--crm-color-accent-2)' : 'var(--crm-color-border)',
-                }}
-              >
-                ★
-              </button>
-            </td>
-            <td className={s['actions-col']}>
-              <div className={s['row-actions']}>
-                <SubirImagenBtn preset="producto" onData={(data) => subirImagen(p, data)}>
-                  {p.imagenUrl ? 'Cambiar' : 'Subir'}
-                </SubirImagenBtn>
-                {p.imagenUrl && !/^https?:/.test(p.imagenUrl) && (
-                  <Btn variant="btn-delete" small onClick={() => quitarImagen(p)}>Quitar</Btn>
-                )}
-              </div>
-            </td>
-          </tr>
-        ))}
-      </Table>
-
-      <div className={s.hint}>
-        <strong>★ Destacado</strong> arma el carrusel &ldquo;Destacados&rdquo; de la portada del sitio.
-        <strong> Mínimo web</strong> es el piso de stock para la venta online: al llegar a ese número
-        el sitio muestra &ldquo;Sin stock&rdquo; y lo que queda se prioriza para fraccionar o para el
-        mostrador (0 = se vende hasta la última unidad). <strong>Fotos:</strong> {PRESETS_IMAGEN.producto.hint}{' '}
-        Al subir podés <strong>quitarle el fondo</strong> y ver cómo queda antes de confirmar.
-      </div>
-    </div>
-  );
 }
 
 /* ==================================================================== *
@@ -489,7 +222,7 @@ function ContenidoPanel({ catalogo, recargar, avisar }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 'var(--crm-space-3)' }}>
             {terminos.map((t) => (
               <div key={t.id} className={s.card} style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Thumb url={t.imagenUrl} alt={t.nombre} size={48} />
+                <Miniatura url={t.imagenUrl} alt={t.nombre} size={48} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.nombre}</div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
@@ -892,7 +625,7 @@ export function WebPage() {
   const secciones = useMemo(() => WEB_SECCIONES.filter((x) => can(x.permiso)), [can]);
   /* `?seccion=accesos` abre esa sección (el cartel de pedidos de ingreso), también con la página ya abierta. */
   const pedida = useSearchParams()[0].get('seccion');
-  const [seccion, setSeccion] = useState(secciones[0]?.id ?? 'productos');
+  const [seccion, setSeccion] = useState(secciones[0]?.id);
   useEffect(() => { if (pedida) setSeccion(pedida); }, [pedida]);
   const [catalogo, setCatalogo] = useState(null);
   const [error, setError] = useState(null);
@@ -939,7 +672,7 @@ export function WebPage() {
     <div>
       <PageHeader
         title="Tienda online"
-        subtitle="La tienda online, mayorista y minorista: qué se ve, qué se destaca, con qué imágenes, quién puede comprar, cómo viene andando y su configuración"
+        subtitle="La tienda online, mayorista y minorista: ofertas, contenido, quién puede comprar, cómo viene andando y su configuración. Lo de cada producto (foto, destacado) está en Compras › Productos."
       />
 
       <div className={s.shell}>
@@ -977,7 +710,6 @@ export function WebPage() {
             ? <div className={s['empty-state']}>Cargando el catálogo del sitio…</div>
             : (
               <>
-                {activa === 'productos' && <ProductosWebPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />}
                 {activa === 'ofertas' && <OfertasWebPanel avisar={avisar} />}
                 {activa === 'contenido' && <ContenidoPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />}
                 {activa === 'estadisticas' && <MetricasTiendaPanel />}

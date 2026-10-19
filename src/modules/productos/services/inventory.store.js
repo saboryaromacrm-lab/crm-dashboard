@@ -849,17 +849,45 @@ const eliminarProducto = (id) => _mutate(() => httpClient.delete('/productos/' +
  * `false` no controlar, `null` como la configuración general. Sin el refresco
  * completo (10 MB): se aplica lo que DEVUELVE el servidor, no lo que se pidió.
  */
+/** Cambia campos de UN producto en memoria (sin volver a bajar el catálogo de 10 MB). */
+function _ponerEnProducto(id, cambios) {
+  state.productos = state.productos.map((p) => (p.id === id ? { ...p, ...cambios } : p));
+  emit();
+}
+
 async function cambiarControlStock(id, controlStock) {
   try {
     const r = await httpClient.patch(`/productos/${id}/control-stock`, { controlStock });
-    const valor = r?.controlStock === true || r?.controlStock === false ? r.controlStock : null;
-    state.productos = state.productos.map((p) => (p.id === id ? { ...p, controlStock: valor } : p));
-    emit();
+    _ponerEnProducto(id, { controlStock: r?.controlStock === true || r?.controlStock === false ? r.controlStock : null });
     return { ok: true, ...r };
   } catch (e) {
     return _fallo(e);
   }
 }
+
+/*
+ * LO DE LA TIENDA DEL PRODUCTO (19/10/2026, antes en Tienda online › Productos
+ * del sitio): la foto, el destacado y el mínimo web se manejan desde Compras ›
+ * Productos, y cada cambio se refleja en el producto en memoria.
+ */
+async function guardarTiendaProducto(id, o) {
+  const r = await _directo(() => httpClient.patch(`/productos/${id}/tienda`, o));
+  if (r.ok) _ponerEnProducto(id, { destacado: r.data.destacado, webStockMin: r.data.webStockMin });
+  return r;
+}
+async function subirFotoProducto(id, data) {
+  const r = await _directo(() => httpClient.post(`/web/imagenes/producto/${id}`, { data }));
+  if (r.ok) _ponerEnProducto(id, { fotoUrl: r.data.url });
+  return r;
+}
+/** Sin la subida vuelve la URL externa, si tenía (el plan B de siempre). */
+async function quitarFotoProducto(id) {
+  const r = await _directo(() => httpClient.delete(`/web/imagenes/producto/${id}`));
+  if (r.ok) _ponerEnProducto(id, { fotoUrl: getProducto(id)?.imagenUrl || '' });
+  return r;
+}
+/** Cómo se ve el producto en cada tienda: `{ mayorista, minorista }` (null = no aparece). */
+const vistaTienda = (id) => _directo(() => httpClient.get(`/web/productos/${id}`));
 /**
  * Ciclo de vida: activo | discontinuado | archivado. Un solo endpoint para dar
  * de baja y para reactivar — es el mismo movimiento en las dos direcciones.
@@ -1546,6 +1574,7 @@ export const inventoryStore = {
   operadoresFraccion, crearOperadorFraccion, editarOperadorFraccion,
   pedidosFraccion, guardarPedidoFraccion, descartarPedidoFraccion,
   crearIncidencia, avanzarIncidencia, resolverIncidencia, cerrarIncidenciasAnteriores, anotarPedidoProveedor, ultimoPedido, guardarUltimoPedido, guardarNotaPedido,
+  guardarTiendaProducto, subirFotoProducto, quitarFotoProducto, vistaTienda,
   datosBajos, refrescarBajos, analisisBajos, bajosRojos, guardarStockMinimo,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto, cambiarControlStock,
   sugerenciasArchivado, archivarLote, bajaLote, clasificarLote,

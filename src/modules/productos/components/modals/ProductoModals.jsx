@@ -12,6 +12,7 @@ import { ModalShell } from '../Modal.jsx';
 import { CatalogoPicker, EtiquetasPicker } from '../CatalogoPicker.jsx';
 import { CatalogoAdmin } from '../CatalogoAdmin.jsx';
 import { FormatoCompraTab } from './FormatoCompraTab.jsx';
+import { TiendaProductoTab } from './TiendaProductoTab.jsx';
 import { Table, TipoBadge, StockPill, MovTag, Btn, s } from '../ui.jsx';
 
 /* ---- Alta / edición de producto ---- */
@@ -516,9 +517,9 @@ export function ProductoFormModal({ prodId }) {
         {/* --- Tienda: SOLO informativo, sin campos (decisión del dueño 17/8) --- */}
         <Seccion>Tienda</Seccion>
         <div className={s.hint} style={{ marginBottom: 10 }}>
-          Acá no se completa nada: el producto aparece en el sitio web cuando tiene
-          <strong> precio en la lista Mayorista</strong> — no hay switch de publicación. El
-          destacado y la foto se manejan en el módulo <strong>Web</strong>.
+          Acá no se completa nada: el producto aparece en la tienda cuando tiene
+          <strong> precio en una lista de esa tienda</strong> — no hay switch de publicación. La
+          foto, el destacado y el mínimo web están en la pestaña <strong>Tienda online</strong> del detalle.
         </div>
 
         <div className={cx(s.callout, s.info)}>
@@ -661,6 +662,8 @@ export function DetalleProductoModal({ prodId, pestana }) {
     { label: 'Evolución de precios', C: EvolucionPreciosTab },
   ];
   if (p.tipo === 'granel') tabDefs.push({ label: 'Presentaciones', C: PresentacionesTab });
+  /* La foto, el destacado y el mínimo web (19/10/2026, antes en Tienda online › Productos del sitio). */
+  tabDefs.push({ label: 'Tienda online', C: TiendaProductoTab });
   const activa = tabDefs.find((t) => t.label === tab) || tabDefs[0];
   const Active = activa.C;
 

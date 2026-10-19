@@ -9,6 +9,9 @@ import { FormatosPorProveedorPanel } from './FormatosPorProveedorPanel.jsx';
 import { ActualizarImportarPanel } from './ActualizarImportarPanel.jsx';
 import { BarraLote, CasillaLote, CasillaTodos } from '../components/AccionesLote.jsx';
 import { useSeleccionLote } from '../hooks/useSeleccionLote.js';
+import { Miniatura } from '@modules/web/components/Miniatura.jsx';
+import { SubirFotosLoteModal } from '@modules/web/components/SubirFotosLoteModal.jsx';
+import { RafagaFotosModal } from '@modules/web/components/RafagaFotosModal.jsx';
 import { num } from '../domain/format.js';
 import { ESTADOS_PRODUCTO } from '../domain/constants.js';
 import { bultoDe } from '../domain/bulto.js';
@@ -134,7 +137,7 @@ function AvisoParaArchivar() {
 }
 
 function CatalogoProductos() {
-  const { store, isAdmin, openModal } = useProductos();
+  const { store, isAdmin, openModal, toast } = useProductos();
   /* Acciones en lote (13/10/2026): las mismas que en Almacén › Existencias. */
   const puedeLote = store.can('compras.productos');
   const { sel, alternar, limpiar } = useSeleccionLote();
@@ -156,8 +159,11 @@ function CatalogoProductos() {
    * que aplica la caja. 'propio' = los que tienen uno elegido a mano.
    */
   const [controlF, setControlF] = useState('');
-  /** FOTO (4/10/2026): 'con' / 'sin' imagen cargada para la tienda (Web › Productos del sitio). */
+  /** FOTO (4/10/2026): 'con' / 'sin' foto para la tienda (la misma que ve el cliente: `fotoUrl`). */
   const [imagenF, setImagenF] = useState('');
+  /** Las fotos de a muchas (19/10/2026, antes en Tienda online): 'lote' | 'rafaga' | null. */
+  const [fotos, setFotos] = useState(null);
+  const puedeFotos = store.can('compras.productos');
 
   /** Opciones de los filtros, derivadas del catálogo ya cargado (sin red). */
   const opciones = useMemo(() => {
@@ -185,8 +191,8 @@ function CatalogoProductos() {
       if (marca && p.marca !== marca) return false;
       if (categoria && p.categoria !== categoria) return false;
       if (provIds && !(p.formatosCompra || []).some((e) => provIds.has(e.proveedorId))) return false;
-      if (imagenF === 'con' && !p.tieneImagen) return false;
-      if (imagenF === 'sin' && p.tieneImagen) return false;
+      if (imagenF === 'con' && !p.fotoUrl) return false;
+      if (imagenF === 'sin' && p.fotoUrl) return false;
       if (controlF) {
         const c = store.controlDe(p);
         if (controlF === 'con' && !c.controla) return false;
@@ -225,6 +231,9 @@ function CatalogoProductos() {
   }, [productos]);
 
   const hayFiltro = !!(q || tipo || marca || categoria || proveedorId || controlF || imagenF || estadoF !== 'vigentes');
+  /* El modo ráfaga recorre los de ESTA lista que no tienen foto: se filtra por marca o proveedor y se le pone foto a eso. */
+  const sinFoto = useMemo(() => productos.filter((p) => !p.fotoUrl), [productos]);
+  const avisar = (tipo, texto) => toast(texto, tipo);
   const stop = (e) => e.stopPropagation();
 
   /**
@@ -279,6 +288,7 @@ function CatalogoProductos() {
         <tr key={clave} className={s.clickable} onClick={() => openModal('fraccionado', { prodId: p.id, presId: pr.id })}>
           {puedeLote && <td />}
           <td className={s.muted}>{p.id}</td>
+          <td />
           <td>
             <span className={s.muted}>↳ </span>{p.nombre} · {store.presLabel(p, pr.id)}
           </td>
@@ -301,8 +311,10 @@ function CatalogoProductos() {
       <tr key={clave} className={s.clickable} onClick={() => openModal('detalleProducto', { prodId: p.id })}>
         {puedeLote && <CasillaLote sel={sel} id={p.id} nombre={p.nombre} alternar={alternar} />}
         <td>{p.id}</td>
+        <td><Miniatura url={p.fotoUrl} alt={p.nombre} size={34} /></td>
         <td>
           {p.nombre}
+          {p.destacado && <span title="Destacado en la portada de la tienda" style={{ marginLeft: 6, color: 'var(--crm-color-accent-2)' }}>★</span>}
           <EstadoProductoBadge estado={p.estado} />
           {faltanFraccionados(p) && <span style={{ marginLeft: 6 }} title="No tiene paquetes para vender: no se puede fraccionar ni vender"><Pill pill="st-defectuoso" label="Sin fraccionados" /></span>}
           <ControlPropioBadge c={store.controlDe(p)} />
@@ -396,11 +408,19 @@ function CatalogoProductos() {
           <option value="sin-hijos">A granel sin fraccionados</option>
           <option value="sin-bulto">Enteros sin bulto (no entran al mayorista por bulto)</option>
         </select>
-        <select className={s['select-inline']} value={imagenF} onChange={(e) => setImagenF(e.target.value)} aria-label="Imagen">
-          <option value="">Con y sin imagen</option>
-          <option value="con">Con imagen</option>
-          <option value="sin">Sin imagen</option>
+        <select className={s['select-inline']} value={imagenF} onChange={(e) => setImagenF(e.target.value)} aria-label="Foto">
+          <option value="">Con y sin foto</option>
+          <option value="con">Con foto</option>
+          <option value="sin">Sin foto</option>
         </select>
+        {puedeFotos && (
+          <>
+            <Btn onClick={() => setFotos('lote')} title="Arrastrar muchas fotos y emparejarlas por el nombre del archivo">Fotos en lote</Btn>
+            <Btn onClick={() => setFotos('rafaga')} disabled={!sinFoto.length} title="Recorrer los productos de esta lista que no tienen foto y soltarle a cada uno la suya (fotos del celular)">
+              Modo ráfaga ({sinFoto.length})
+            </Btn>
+          </>
+        )}
         {/* `estadoF` también se limpia: `hayFiltro` lo cuenta, así que el botón
             APARECÍA cuando lo único cambiado era el estado — y al hacer clic no
             pasaba nada. Un botón que se muestra y no hace nada es peor que no
@@ -426,15 +446,19 @@ function CatalogoProductos() {
           {controlF === 'sin' && ' Sin control: se venden, fraccionan y mueven aunque no haya stock (el stock se sigue registrando y puede quedar en negativo).'}
           {controlF === 'propio' && ' Tienen el control elegido en su ficha: no siguen a las llaves generales de Ventas › Configuración.'}
           {controlF && ' Se cambia en el detalle de cada producto (pestaña Resumen).'}
-          {imagenF && ' Las fotos se cargan en Tienda online › Productos del sitio (de a una o en lote).'}
+          {imagenF && ' La foto se carga en el detalle de cada producto (pestaña Tienda online), o de a muchas con «Fotos en lote» y «Modo ráfaga».'}
           {isAdmin && ' «Exportar CSV» alcanza solo a los filtrados.'}
         </div>
       )}
       {puedeLote && <BarraLote id="prod-lote-accion" sel={sel} idsFiltro={idsFiltro} alternar={alternar} limpiar={limpiar} />}
+      {fotos === 'lote' && (
+        <SubirFotosLoteModal productos={paraFotos(store.state.productos.filter((p) => (p.estado || 'activo') !== 'archivado'))} avisar={avisar} onCerrar={() => setFotos(null)} onListo={store.revalidar} />
+      )}
+      {fotos === 'rafaga' && <RafagaFotosModal productos={paraFotos(sinFoto)} avisar={avisar} onCerrar={() => setFotos(null)} onListo={store.revalidar} />}
       <Table
         cols={[
           ...(puedeLote ? [{ h: <CasillaTodos sel={sel} ids={idsPagina} alternar={alternar} /> }] : []),
-          { h: 'ID' }, { h: 'Producto' }, { h: 'Marca' }, { h: 'Tipo' }, { h: 'Categoría' },
+          { h: 'ID' }, { h: 'Foto' }, { h: 'Producto' }, { h: 'Marca' }, { h: 'Tipo' }, { h: 'Categoría' },
           { h: 'IVA', num: true }, { h: 'Disp. (base)', num: true },
           { h: 'Acciones', cls: 'actions-col' },
         ]}
@@ -455,6 +479,12 @@ function CatalogoProductos() {
  * la cabecera del catálogo.
  */
 const TAB_KEY = 'crm.productos.tab';
+
+/** Lo que piden las fotos en lote y el modo ráfaga: con qué emparejar y si ya tiene foto. */
+const paraFotos = (lista) => lista.map((p) => ({
+  id: p.id, nombre: p.nombre, marca: p.marca || '', imagenUrl: p.fotoUrl || '',
+  codigoBarras: p.codigoBarras || '', codigoPropio: p.codigoPropio || '',
+}));
 
 /* ---- Control de stock en la lista (0129) ---- */
 /** El texto del control efectivo, para el CSV. */
