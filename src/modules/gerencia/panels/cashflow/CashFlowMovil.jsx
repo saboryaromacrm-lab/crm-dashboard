@@ -58,6 +58,7 @@ import {
   hayFiltrosReporte, horaCorta, hoy, primerDiaMes, qsFiltrosReporte, queEs, textoAnular, textoFiltrosReporte, tituloPeriodo,
 } from './formato.js';
 import { CajasAControlar } from './CajasAControlar.jsx';
+import { PlanillaDia } from './PlanillaDia.jsx';
 import c from './CashFlowMovil.module.css';
 
 const MODO_MOVIL = { movil: true };
@@ -202,6 +203,7 @@ function Inicio({ d, abrir, irA, actualizado, version, bump, avisar }) {
   const pend = d.enTransito.sobres;
   const { data: sobresPend } = useResource(`cfm:inicio-sobres:${pend}:${d.enTransito.total}:${version}`, () => httpClient.get('/cashflow/sobres?estado=pendientes'), { enabled: pend > 0 });
   const mes = `${MESES_LARGOS[Number(d.mes.periodo.slice(5, 7)) - 1] ?? ''} ${d.mes.periodo.slice(0, 4)}`;
+  const [diaPlanilla, setDiaPlanilla] = useState(hoy);
   return (
     <>
       <div className={c.hero}>
@@ -247,6 +249,10 @@ function Inicio({ d, abrir, irA, actualizado, version, bump, avisar }) {
           Pagar a proveedor<small>a sus facturas</small>
         </button>
       </div>
+
+      <Seccion titulo="Cajas del día">
+        <PlanillaDia dia={diaPlanilla} setDia={setDiaPlanilla} version={version} onControlar={() => irA('sobres')} />
+      </Seccion>
 
       {pend > 0 && (
         <Seccion titulo="Sobres por controlar" accion={<button type="button" className={c.link} onClick={() => irA('sobres')}>Ver {pend > 2 ? `los ${pend}` : 'todos'}</button>}>

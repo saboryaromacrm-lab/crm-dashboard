@@ -30,6 +30,7 @@ import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles } from '../metricas/piezas
 import { ColumnasMulti } from '../metricas/graficos.jsx';
 import { iso } from '../metricas/formato.js';
 import { CajasAControlar, TildeControlar } from './CajasAControlar.jsx';
+import { PlanillaDia } from './PlanillaDia.jsx';
 import { useTildeControlar, useUmbralControlar } from './tildeControlar.js';
 import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, esDeposito, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
 
@@ -1382,7 +1383,7 @@ function Reportes({ version, conceptos }) {
  * El panel
  * ==================================================================== */
 /* «Conceptos» vive dentro de Configuración (9/10/2026, pedido del dueño). */
-const PESTANAS = [['resumen', 'Resumen'], ['sobres', 'Sobres de caja'], ['controlar', 'Cajas a controlar'], ['movimientos', 'Movimientos'], ['reportes', 'Reportes'], ['configuracion', 'Configuración']];
+const PESTANAS = [['resumen', 'Resumen'], ['planilla', 'Planilla del día'], ['sobres', 'Sobres de caja'], ['controlar', 'Cajas a controlar'], ['movimientos', 'Movimientos'], ['reportes', 'Reportes'], ['configuracion', 'Configuración']];
 /** El número entre paréntesis de las pestañas que piden algo. */
 const PENDIENTES = { sobres: (d) => d.enTransito.sobres, controlar: (d) => d.aControlar };
 
@@ -1390,6 +1391,7 @@ export function CashFlowPanel() {
   const [version, setVersion] = useState(0);
   const bump = () => setVersion((v) => v + 1);
   const [pestana, setPestana] = useState('resumen');
+  const [diaPlanilla, setDiaPlanilla] = useState(hoy);
   const [msg, setMsg] = useState(null);
   const avisar = (tono, texto) => setMsg({ tono, texto });
   useEffect(() => {
@@ -1424,6 +1426,7 @@ export function CashFlowPanel() {
             })}
           </Tabs>
           {pestana === 'resumen' && <Resumen d={d} conceptos={conceptos ?? []} irA={setPestana} avisar={avisar} onHecho={bump} />}
+          {pestana === 'planilla' && <PlanillaDia dia={diaPlanilla} setDia={setDiaPlanilla} version={version} onControlar={() => setPestana('sobres')} />}
           {pestana === 'sobres' && <Sobres version={version} bump={bump} avisar={avisar} />}
           {pestana === 'controlar' && <CajasAControlar version={version} bump={bump} avisar={avisar} />}
           {pestana === 'movimientos' && <Movimientos version={version} bump={bump} avisar={avisar} conceptos={conceptos ?? []} saldo={d.saldo} />}
