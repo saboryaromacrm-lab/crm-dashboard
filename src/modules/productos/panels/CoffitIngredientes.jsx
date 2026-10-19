@@ -29,6 +29,9 @@ const nroDoc = (c) => `${TIPO_DOC[c.tipo] ?? c.tipo}${c.tipo === 'remito' ? '' :
 const fmtContenido = (n, u) => `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 3 })} ${u === 'l' ? 'L' : u}`;
 
 /** Las opciones de «costo por» que tienen sentido para ese producto y ese contenido. */
+/** El valor del filtro para los ingredientes sin ninguna compra con precio. */
+const SIN_COMPRA = '__sin_compra__';
+
 function opcionesCosto(tipo, contenidoUnidad) {
   if (tipo === 'granel') return OPC_MASA;
   const liquido = contenidoUnidad === 'ml' || contenidoUnidad === 'l';
@@ -170,15 +173,27 @@ export function CoffitIngredientes() {
   const { store, toast } = useProductos();
   const { data, loading, error, reload } = useResource('coffit-ingredientes', () => httpClient.get('/cafeteria/ingredientes'));
   const [q, setQ] = useState('');
+  /** El proveedor de la última compra (19/10/2026): '' = todos, SIN_COMPRA = los que todavía no tienen. */
+  const [prov, setProv] = useState('');
   const [form, setForm] = useState(null); // null | 'nuevo' | fila
   const [quitando, setQuitando] = useState(null);
   /* Cada cambio de la lista vuelve a pedir el estado de CoffitCost (los «cambios sin mandar»). */
   const [version, setVersion] = useState(0);
   const recargar = () => { reload(); setVersion((v) => v + 1); };
+  /* Los proveedores que hay en la lista, de la última compra de cada ingrediente. */
+  const proveedores = useMemo(
+    () => [...new Set((data ?? []).map((f) => f.comprobante?.proveedor).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
+    [data],
+  );
+  /* Lo comprado más recientemente arriba (19/10/2026, pedido del dueño); los que no tienen compra, al final. */
   const filas = useMemo(() => {
     const t = sinTildes(q.trim());
-    return (data ?? []).filter((f) => !t || sinTildes(`${f.nombre} ${f.marca} ${f.codigo}`).includes(t));
-  }, [data, q]);
+    const fecha = (f) => (f.comprobante ? Date.parse(f.comprobante.fecha) : -Infinity);
+    return (data ?? [])
+      .filter((f) => !t || sinTildes(`${f.nombre} ${f.marca} ${f.codigo}`).includes(t))
+      .filter((f) => !prov || (prov === SIN_COMPRA ? !f.comprobante : f.comprobante?.proveedor === prov))
+      .sort((a, b) => fecha(b) - fecha(a) || a.nombre.localeCompare(b.nombre, 'es'));
+  }, [data, q, prov]);
   const conAviso = (data ?? []).filter((f) => f.aConfirmar?.length || f.costoBase == null).length;
 
   const quitar = async (f) => {
@@ -201,6 +216,11 @@ export function CoffitIngredientes() {
       <EstadoCoffitcost version={version} toast={toast} />
       <div className={s.toolbar} style={{ margin: 0 }}>
         <input type="search" placeholder="Buscar ingrediente…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar ingrediente" />
+        <select className={s['select-inline']} value={prov} onChange={(e) => setProv(e.target.value)} aria-label="Proveedor de la última compra">
+          <option value="">Todos los proveedores</option>
+          {proveedores.map((x) => <option key={x} value={x}>{x}</option>)}
+          <option value={SIN_COMPRA}>Sin compra todavía</option>
+        </select>
         {conAviso > 0 && <span className={s.hint} style={{ margin: 0, color: 'var(--crm-color-warning)', fontWeight: 600 }}>{conAviso} con aviso</span>}
         <div style={{ marginLeft: 'auto' }}>
           {!form && <Btn variant="btn-primary" small onClick={() => setForm('nuevo')}>+ Agregar ingrediente</Btn>}
