@@ -5,7 +5,7 @@ import { useResource } from '../hooks/useResource.js';
 import { errorMsg, provApi } from '../services/proveedores.api.js';
 import { BotonesAlta } from '../components/modals/PedidosModals.jsx';
 import { ProveedorMenu } from '../components/ProveedorMenu.jsx';
-import { Btn, PanelHead, Pill, Stat, Table, fmtFecha, s } from '../components/ui.jsx';
+import { Btn, PanelHead, Pill, Stat, Table, fmtFecha, fmtFechaHora, s } from '../components/ui.jsx';
 
 /**
  * PEDIDOS — el kanban de la app externa, tal cual: la pizarra entre el admin
@@ -20,10 +20,14 @@ const COLUMNAS = [
   { estado: 'retomar', titulo: 'Para retomar', hint: 'Aparcado sin fecha' },
 ];
 
-function diasDesde(fecha) {
-  if (!fecha) return null;
-  return Math.max(0, Math.floor((Date.now() - new Date(fecha).getTime()) / 86400000));
+/** Días de CALENDARIO hasta hoy (lo de anoche es «ayer», aunque no hayan pasado 24 h). */
+function diasCalendario(fecha) {
+  const d = new Date(fecha); d.setHours(0, 0, 0, 0);
+  const h = new Date(); h.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((h - d) / 86400000));
 }
+/** «hoy», «ayer», «hace 5 días». */
+const hace = (dias) => (dias === 0 ? 'hoy' : dias === 1 ? 'ayer' : `hace ${dias} días`);
 
 export function PedidosPanel() {
   const { openModal, toast, recargarContadores, getProveedor } = useProveedores();
@@ -43,13 +47,21 @@ export function PedidosPanel() {
   };
 
   const Tarjeta = ({ t }) => {
-    const revisadoHace = diasDesde(t.revisadoAt);
+    const revisadoHace = t.revisadoAt ? diasCalendario(t.revisadoAt) : null;
+    const anotadaHace = t.fechaAlta ? diasCalendario(t.fechaAlta) : null;
     return (
       <div className={s.card} style={{ padding: 10, marginBottom: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
           <ProveedorMenu proveedorId={t.proveedorId} nombre={t.proveedorNombre} />
           <Btn small onClick={() => mutar(provApi.borrarPedido(t.id), 'Tarjeta eliminada.')}>×</Btn>
         </div>
+        {/* CUÁNDO SE ANOTÓ (19/10/2026, pedido del dueño): la fecha en que se asentó
+            la tarjeta, en las tres columnas; en «Pedido» además el día que se le pidió. */}
+        {t.fechaAlta && (
+          <div style={{ fontSize: 12.5, margin: '2px 0', color: 'var(--crm-color-text-secondary)' }}>
+            Anotado el <strong style={{ color: 'var(--crm-color-text)' }}>{fmtFechaHora(t.fechaAlta)}</strong> · {hace(anotadaHace)}
+          </div>
+        )}
         {t.productosProveedor > 0 && (
           <div className={s.hint} style={{ margin: '2px 0' }}>trae {t.productosProveedor} producto(s)</div>
         )}
@@ -66,7 +78,7 @@ export function PedidosPanel() {
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', margin: '4px 0' }}>
           {t.estado === 'solicitado' && t.pedidoEnviado && <Pill pill="est-recibida" label="pedido enviado" />}
           {t.estado === 'solicitado' && revisadoHace != null && (
-            <Pill label={`lo viste hace ${revisadoHace} d`} />
+            <Pill label={`lo viste ${hace(revisadoHace)}`} />
           )}
           {t.estado === 'pedido' && t.fechaPedido && (
             <Pill label={`pedido el ${fmtFecha(t.fechaPedido)}`} />
