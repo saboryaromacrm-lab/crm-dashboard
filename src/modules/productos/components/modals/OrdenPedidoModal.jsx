@@ -25,6 +25,10 @@ import { Btn, s } from '../ui.jsx';
  * próxima vez. Al copiar o enviar queda anotado en
  * Proveedores › Pedidos (la tarjeta nace en «Pedido» y después se actualiza).
  *
+ * RECORDATORIOS DEL PROVEEDOR (0181, 19/10/2026, pedido del dueño): una nota
+ * por proveedor («mínimo 3 bultos», «no manda los martes») arriba de todo,
+ * apenas se lo elige. Queda guardada en el proveedor para la próxima vez.
+ *
  * No toca stock ni deuda: la mercadería entra cuando llega la factura.
  */
 const fmtN = (n) => String(Math.round(n * 1000) / 1000).replace('.', ',');
@@ -35,6 +39,68 @@ const TH_FIJO = { position: 'sticky', top: 0, zIndex: 1 };
 /* Cómo se presenta el pedido y cómo cierra (12/10/2026, pedido del dueño): quién pide —nombre y CUIT— y la fecha. */
 const QUIEN_PIDE = 'Lorenzo Lucas - 23356782429';
 const CIERRE = 'Por favor confirmar recibido.';
+
+const fechaHora = (v) => new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+/**
+ * Los recordatorios del proveedor: se leen siempre; «Editar» los cambia y
+ * «Guardar» los deja en el proveedor (vacío los borra). Con candado (`useRef`).
+ */
+function Recordatorios({ proveedor, nota, onGuardada }) {
+  const { store, toast } = useProductos();
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const candado = useRef(false);
+  const abrir = () => { setTexto(nota?.texto ?? ''); setEditando(true); };
+  const guardar = async () => {
+    if (candado.current) return;
+    candado.current = true; setGuardando(true);
+    const r = await store.guardarNotaPedido(proveedor.id, texto);
+    candado.current = false; setGuardando(false);
+    if (!r.ok) { toast(r.error || 'No se pudo guardar el recordatorio.', 'err'); return; }
+    onGuardada(r.data?.nota ?? null);
+    setEditando(false);
+    toast(texto.trim() ? 'Recordatorio guardado.' : 'Recordatorio borrado.', 'ok');
+  };
+
+  if (editando) {
+    return (
+      <div className={cx(s.callout, s.warn)} style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <strong>Recordatorios de {proveedor.nombre}</strong>
+        <textarea
+          id="orden-recordatorios" autoFocus rows={3} maxLength={2000} value={texto} onChange={(e) => setTexto(e.target.value)}
+          placeholder="Lo que tenés que tener presente al pedirle: mínimo de compra, días de entrega, a quién escribirle, qué no trae…"
+          style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.45 }}
+        />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Btn small variant="btn-primary" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</Btn>
+          <Btn small onClick={() => setEditando(false)} disabled={guardando}>Cancelar</Btn>
+          <span className={s.hint} style={{ margin: 0 }}>Queda guardado en el proveedor y aparece cada vez que le armás un pedido. Vacío lo borra.</span>
+        </div>
+      </div>
+    );
+  }
+  if (!nota) {
+    return (
+      <div>
+        <Btn small onClick={abrir}>📌 Agregar un recordatorio para {proveedor.nombre}</Btn>
+      </div>
+    );
+  }
+  return (
+    <div className={cx(s.callout, s.warn)} style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <strong style={{ flex: 1 }}>📌 Recordatorios de {proveedor.nombre}</strong>
+        <Btn small onClick={abrir}>Editar</Btn>
+      </div>
+      <div id="orden-recordatorios-texto" style={{ whiteSpace: 'pre-wrap', maxHeight: 120, overflow: 'auto', fontSize: 13.5, lineHeight: 1.45, color: 'var(--crm-color-text)' }}>{nota.texto}</div>
+      {nota.fecha && (
+        <div className={s.hint} style={{ margin: 0 }}>Actualizado el {fechaHora(nota.fecha)}{nota.usuario ? ` por ${nota.usuario}` : ''}</div>
+      )}
+    </div>
+  );
+}
 
 /** `sugeridos`: { productoId: cantidad } — lo que manda Bajos en stock, ya cargado y en ese orden. */
 export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: sucInicial = null, sugeridos = null }) {
@@ -53,7 +119,7 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   const [orden, setOrden] = useState(() => Object.keys(sugeridos ?? {}).map(Number));
   /** El mensaje retocado a mano: `{ texto, base }` (`base` = cómo lo armaba la lista al empezar a editar), o null = se arma solo. */
   const [editado, setEditado] = useState(null);
-  /** El pedido anterior a este proveedor, como estaba al abrir (lo de esta vez se ve la próxima): { provId, pedido } . */
+  /** Al elegir el proveedor: su pedido anterior como estaba al abrir (lo de esta vez se ve la próxima) y sus recordatorios: { provId, pedido, nota }. */
   const [anterior, setAnterior] = useState(null);
   const [verAnterior, setVerAnterior] = useState(false);
   /** La tarjeta de Proveedores › Pedidos de esta orden: { id, provId, notas }. */
@@ -81,10 +147,11 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
     setVerAnterior(false);
     if (!provId) return undefined;
     let vivo = true;
-    store.ultimoPedido(provId).then((r) => { if (vivo) setAnterior({ provId, pedido: r.ok ? r.data?.pedido ?? null : null }); });
+    store.ultimoPedido(provId).then((r) => { if (vivo) setAnterior({ provId, pedido: r.ok ? r.data?.pedido ?? null : null, nota: r.ok ? r.data?.nota ?? null : null }); });
     return () => { vivo = false; };
   }, [provId, store]);
-  const pedidoAnterior = anterior?.provId === provId ? anterior.pedido : null;
+  const delElegido = anterior?.provId === provId ? anterior : null;
+  const pedidoAnterior = delElegido?.pedido ?? null;
 
   /* Los productos activos del proveedor, con su bulto y en el orden de la góndola (marca → nombre). */
   const delProveedor = useMemo(() => {
@@ -233,6 +300,12 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
           <input id="orden-buscar" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto o marca…" style={{ minWidth: 200 }} />
         </div>
 
+        {proveedor && delElegido && (
+          <Recordatorios
+            key={proveedor.id} proveedor={proveedor} nota={delElegido.nota}
+            onGuardada={(nota) => setAnterior((a) => (a?.provId === provId ? { ...a, nota } : a))}
+          />
+        )}
         {!proveedor ? (
           <div className={cx(s.callout, s.info)}>Elegí el proveedor para ver qué le falta pedir.</div>
         ) : (
@@ -322,7 +395,7 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                 <div className={cx(s.callout, s.info)} style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <strong style={{ flex: 1 }}>
-                      Pedido anterior · {new Date(pedidoAnterior.fecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      Pedido anterior · {fechaHora(pedidoAnterior.fecha)}
                       {pedidoAnterior.usuario ? ` · ${pedidoAnterior.usuario}` : ''}
                     </strong>
                     <Btn small onClick={() => copiar(pedidoAnterior.texto, 'el pedido anterior').then((ok) => ok && toast('Pedido anterior copiado.', 'ok'))}>📋 Copiar</Btn>
