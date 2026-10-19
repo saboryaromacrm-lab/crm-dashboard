@@ -24,6 +24,7 @@ import { money, fmtFechaHora } from '@modules/productos/domain/format.js';
 import { SISTEMA_SECCIONES } from '../config/sistema.config.js';
 import { EsteEquipoPanel } from './EsteEquipoPanel.jsx';
 import { RespaldosPanel } from './RespaldosPanel.jsx';
+import { FeriadosPanel } from './FeriadosPanel.jsx';
 
 /**
  * Los documentos configurables. `etiqueta: true` marca los que van a la
@@ -172,12 +173,13 @@ export function SistemaPage() {
   const { can } = usePermissions();
   // Solo las secciones del rol: lo no asignado no se muestra, ni en el menú.
   const secciones = useMemo(() => SISTEMA_SECCIONES.filter((x) => can(x.permiso)), [can]);
-  const [seccion, setSeccion] = useState(() => (
-    /* Google devuelve acá después de autorizar el Drive (`?respaldo=…`): se abre directo en Respaldos. */
-    secciones.some((x) => x.id === 'respaldos') && new URLSearchParams(window.location.search).has('respaldo')
-      ? 'respaldos'
-      : secciones[0]?.id
-  ));
+  const [seccion, setSeccion] = useState(() => {
+    /* Google devuelve acá después de autorizar el Drive (`?respaldo=…`): se abre directo en Respaldos.
+     * `?seccion=` abre la pedida (el aviso de feriados lleva a la suya). */
+    const q = new URLSearchParams(window.location.search);
+    const pedida = q.has('respaldo') ? 'respaldos' : q.get('seccion');
+    return secciones.some((x) => x.id === pedida) ? pedida : secciones[0]?.id;
+  });
   const [empresa, setEmpresa] = useState(null);
   const [impresion, setImpresion] = useState(null);
   const [aviso, setAviso] = useState(null);
@@ -335,7 +337,7 @@ export function SistemaPage() {
               que con la API caída la sección se quedaba en "Cargando…" para
               siempre — una pantalla que no necesita ningún dato, esperando dos
               consultas que no le hacen falta. */}
-          {cargando && seccionActiva !== 'respaldos' && <div className={s.hint}>Cargando…</div>}
+          {cargando && (seccionActiva === 'empresa' || seccionActiva === 'impresion') && <div className={s.hint}>Cargando…</div>}
 
           {!cargando && seccionActiva === 'empresa' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
@@ -515,6 +517,7 @@ export function SistemaPage() {
           {/* Misma regla que "Este equipo": no depende de empresa/impresión,
               así que no espera esa carga. */}
           {seccionActiva === 'respaldos' && <RespaldosPanel onAviso={setAviso} />}
+          {seccionActiva === 'feriados' && <FeriadosPanel onAviso={setAviso} />}
         </div>
       </div>
     </div>

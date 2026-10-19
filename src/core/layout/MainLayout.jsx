@@ -8,6 +8,7 @@ import { PedidosCafeAlert } from './components/PedidosCafeAlert.jsx';
 import { PreciosAlert } from './components/PreciosAlert.jsx';
 import { AvisoStock } from './components/AvisoStock.jsx';
 import { CajasAbiertasBanner } from './components/CajasAbiertasBanner.jsx';
+import { FeriadosBanner } from './components/FeriadosBanner.jsx';
 import { AccesosTiendaBanner } from './components/AccesosTiendaBanner.jsx';
 import { DireccionViejaBanner } from './components/DireccionViejaBanner.jsx';
 import { ConsultasRapidas } from '@modules/consultas/ConsultasRapidas.jsx';
@@ -59,6 +60,8 @@ export function MainLayout() {
         <CajasAbiertasBanner />
         {/* Pedidos de ingreso a la tienda mayorista esperando (0155). */}
         <AccesosTiendaBanner />
+        {/* El próximo feriado, de hoy a 10 días (0182): administración. */}
+        <FeriadosBanner />
 
         <main className={styles.content} id="main-content">
           <div className={styles.contentInner}>

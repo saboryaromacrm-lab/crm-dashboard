@@ -9,6 +9,7 @@ import BusinessIcon from '@mui/icons-material/Business';
 import PrintIcon from '@mui/icons-material/Print';
 import BackupIcon from '@mui/icons-material/Backup';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
+import EventIcon from '@mui/icons-material/Event';
 
 export const SISTEMA_SECCIONES = [
   { id: 'empresa', label: 'Empresa', icon: BusinessIcon, permiso: 'sistema.empresa' },
@@ -18,4 +19,6 @@ export const SISTEMA_SECCIONES = [
     id: 'respaldos', label: 'Respaldos', icon: BackupIcon, permiso: 'sistema.respaldos',
     desc: 'La copia externa de la base: automática a Google Drive o descargada a esta máquina, con el rastro de quién y cuándo.',
   },
+  /* 0182: los feriados de Formosa y qué hace cada sucursal; administración (también recibe el aviso). */
+  { id: 'feriados', label: 'Feriados', icon: EventIcon, permiso: 'sistema.feriados' },
 ];
