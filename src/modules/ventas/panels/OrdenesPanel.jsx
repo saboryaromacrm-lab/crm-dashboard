@@ -18,7 +18,7 @@ import { ordenesWeb } from '@core/services/ordenesWeb.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
-import { direccionOrden, telefonoWa } from '../domain/constants.js';
+import { direccionOrden, envioOrden, mapaOrden, telefonoWa, totalConEnvio } from '../domain/constants.js';
 import {
   Table, PanelHead, Btn, Di, ModalShell, money, num, fmtFechaHora, usePaginado, s,
 } from '../components/ui.jsx';
@@ -48,10 +48,12 @@ function nombreOrden(p, getCliente) {
 function Entrega({ orden }) {
   const direccion = direccionOrden(orden);
   const conEnvio = orden.entrega && orden.entrega !== 'retiro';
-  /* Minorista (0173): el cadete es «Envío a domicilio», y dice si salió gratis por el monto. */
+  /* Minorista (0173): el cadete es «Envío a domicilio», con lo que sale (0185: el costo del barrio; gratis; o se coordina). */
+  const envio = envioOrden(orden);
   const etiqueta = modoDe(orden) === 'minorista' && orden.entrega === 'cadete'
-    ? `Envío a domicilio${orden.webCliente?.envioGratis ? ' · gratis' : ''}`
+    ? `Envío a domicilio · ${envio == null ? 'se coordina' : envio === 0 ? 'gratis' : money(envio)}`
     : ENTREGAS[orden.entrega] ?? orden.entrega;
+  const mapa = mapaOrden(orden);
   return (
     <>
       {etiqueta}
@@ -60,6 +62,7 @@ function Entrega({ orden }) {
           ? <div className={s.hint} style={{ margin: 0 }}>📍 {direccion}</div>
           : <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-danger)' }}>Sin dirección: pedila por WhatsApp</div>
       )}
+      {mapa && <a href={mapa} target="_blank" rel="noopener noreferrer" className={s.hint} style={{ margin: 0, display: 'inline-block' }}>🗺️ Ver en el mapa</a>}
     </>
   );
 }
@@ -82,7 +85,7 @@ function WhatsAppLink({ orden }) {
 
   const nombre = String(wc.nombre ?? '').trim();
   const texto = encodeURIComponent(
-    `Hola${nombre ? ` ${nombre}` : ''}, te escribimos por tu pedido ${orden.codigo} de ${money(orden.total)}.`,
+    `Hola${nombre ? ` ${nombre}` : ''}, te escribimos por tu pedido ${orden.codigo} de ${money(totalConEnvio(orden))}.`,
   );
   return (
     <a
@@ -158,8 +161,15 @@ function DetalleOrdenModal({ orden, getCliente, onCerrar }) {
       <div className={s['detalle-grid']}>
         <Di label="Neto">{money(orden.subtotalNeto)}</Di>
         <Di label="IVA">{money(orden.ivaTotal)}</Di>
-        <Di label="Total"><strong style={{ fontSize: 18 }}>{money(orden.total)}</strong></Di>
+        {envioOrden(orden) > 0 && <Di label="Envío">{money(envioOrden(orden))}</Di>}
+        <Di label={envioOrden(orden) > 0 ? 'Total con envío' : 'Total'}><strong style={{ fontSize: 18 }}>{money(totalConEnvio(orden))}</strong></Di>
       </div>
+      {wc.descuentoBarrio > 0 && (
+        <div className={cx(s.callout, s.info)}>
+          Lleva el <strong>{wc.descuentoBarrio}% del barrio {wc.barrio}</strong> en los productos sin oferta (ya está en los precios).
+          Al cerrarlo en la caja entra solo, sin pedir permiso de descuento.
+        </div>
+      )}
 
       {orden.observaciones && <div className={s.callout}>{orden.observaciones}</div>}
     </ModalShell>
@@ -299,20 +309,26 @@ export function OrdenesPanel() {
   const [cargandoId, setCargandoId] = useState(0);
   /** Filtro por modo de la tienda (0173): '' = todas. */
   const [modo, setModo] = useState('');
+  /** Filtro por barrio (0185): '' = todos. */
+  const [barrio, setBarrio] = useState('');
 
   const { data, loading, error, reload } = useResource('ordenes-web', async () => {
     const todos = await ventasApi.presupuestos();
     return todos.filter((p) => p.estado === 'pendiente');
   });
   const todas = useMemo(() => data ?? [], [data]);
-  const ordenes = useMemo(() => (modo ? todas.filter((p) => modoDe(p) === modo) : todas), [todas, modo]);
+  const barrios = useMemo(() => [...new Set(todas.map((p) => p.webCliente?.barrio).filter(Boolean))].sort(), [todas]);
+  const ordenes = useMemo(
+    () => todas.filter((p) => (!modo || modoDe(p) === modo) && (!barrio || p.webCliente?.barrio === barrio)),
+    [todas, modo, barrio],
+  );
   const cuenta = (m) => todas.filter((p) => modoDe(p) === m).length;
 
   // La bandeja se recarga sola cuando el poller detecta que el contador
   // cambió: el pedido nuevo aparece sin tocar nada (igual que el badge).
   const pendientesWeb = useSyncExternalStore(ordenesWeb.subscribe, ordenesWeb.count, ordenesWeb.count);
   useEffect(() => { reload(); }, [pendientesWeb, reload]);
-  const pag = usePaginado(ordenes, 'ordenesWeb', modo);
+  const pag = usePaginado(ordenes, 'ordenesWeb', `${modo}|${barrio}`);
 
   /** El detalle (con stock por renglón) se pide al abrir cualquier modal. */
   const abrir = async (tipo, p) => {
@@ -349,6 +365,13 @@ export function OrdenesPanel() {
             {label}
           </button>
         ))}
+        {/* Los barrios que salieron del mapa (0185): para juntar los envíos de una zona. */}
+        {barrios.length > 0 && (
+          <select value={barrio} onChange={(e) => setBarrio(e.target.value)} aria-label="Filtrar por barrio" style={{ width: 'auto' }}>
+            <option value="">Todos los barrios</option>
+            {barrios.map((b) => <option key={b} value={b}>B° {b}</option>)}
+          </select>
+        )}
       </div>
 
       <Table
@@ -372,7 +395,7 @@ export function OrdenesPanel() {
             <td onClick={(e) => e.stopPropagation()}><WhatsAppLink orden={p} /></td>
             <td><Entrega orden={p} /></td>
             <td className={s.num}>{p.items.length}</td>
-            <td className={s.num}><strong>{money(p.total)}</strong></td>
+            <td className={s.num}><strong>{money(totalConEnvio(p))}</strong>{envioOrden(p) > 0 && <div className={s.hint} style={{ margin: 0 }}>con envío</div>}</td>
             <td className={s['actions-col']}>
               <div className={s['row-actions']}>
                 <Btn small onClick={() => abrir('ver', p)}>Ver</Btn>

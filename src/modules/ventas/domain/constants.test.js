@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { direccionOrden, esNotaCredito, norm, telefonoWa } from './constants.js';
+import { direccionOrden, envioOrden, esNotaCredito, mapaOrden, norm, telefonoWa, totalConEnvio } from './constants.js';
 
 test('telefonoWa: arma el número de WhatsApp o devuelve vacío', () => {
   assert.equal(telefonoWa('370 4123456'), '5493704123456');
@@ -39,4 +39,23 @@ test('esNotaCredito: por el prefijo del tipo', () => {
   assert.equal(esNotaCredito('nota_credito_ticket'), true);
   assert.equal(esNotaCredito('ticket'), false);
   assert.equal(esNotaCredito(undefined), false);
+});
+
+test('direccionOrden: con el barrio del mapa (0185)', () => {
+  assert.equal(direccionOrden({ webCliente: { direccion: 'Calle 1', localidad: 'Formosa', barrio: 'Independencia' } }), 'Calle 1, Formosa · B° Independencia');
+});
+
+test('envioOrden y totalConEnvio: costo, gratis, se coordina y las órdenes de antes', () => {
+  assert.equal(envioOrden({ webCliente: { envio: 1500 } }), 1500);
+  assert.equal(envioOrden({ webCliente: { envio: 0, envioGratis: true } }), 0);
+  assert.equal(envioOrden({ webCliente: { envioGratis: true } }), 0, 'minorista de antes: solo la marca');
+  assert.equal(envioOrden({ webCliente: { nombre: 'Ana' } }), null, 'se coordina');
+  assert.equal(envioOrden(null), null);
+  assert.equal(totalConEnvio({ total: 10000, webCliente: { envio: 1500 } }), 11500);
+  assert.equal(totalConEnvio({ total: 10000, webCliente: {} }), 10000);
+});
+
+test('mapaOrden: el link al punto, o nada', () => {
+  assert.equal(mapaOrden({ webCliente: { ubicacion: { lat: -26.18, lng: -58.17 } } }), 'https://www.google.com/maps/search/?api=1&query=-26.18,-58.17');
+  assert.equal(mapaOrden({ webCliente: {} }), '');
 });

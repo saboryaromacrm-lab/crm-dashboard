@@ -16,7 +16,8 @@ import { configImpresion, esc, imprimirDocumento } from '@core/services/imprimir
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
-import { direccionOrden, telefonoWa } from '../domain/constants.js';
+import { direccionOrden, envioOrden, telefonoWa, totalConEnvio } from '../domain/constants.js';
+import { r2 } from '../domain/pos.js';
 import {
   Table, PanelHead, Btn, Pill, ModalShell, money, num, fmtFecha, usePaginado, s,
 } from '../components/ui.jsx';
@@ -116,7 +117,8 @@ function textoWhatsApp(p, cliente, empresaNombre) {
     ...lineas,
     '',
     '━━━━━━━━━━━━━━',
-    `💰 *TOTAL: ${money(p.total)}* _(IVA incluido)_`,
+    envioOrden(p) != null ? `🛵 Envío a domicilio: ${envioOrden(p) ? money(envioOrden(p)) : 'gratis'}` : null,
+    `💰 *TOTAL: ${money(totalConEnvio(p))}* _(IVA incluido${envioOrden(p) ? ', con envío' : ''})_`,
     p.vencimiento ? `⏳ Válido hasta el *${fmtFecha(p.vencimiento)}*` : null,
     `🚚 Entrega: ${ENTREGAS[p.entrega] ?? p.entrega}`,
     direccionOrden(p) ? `📍 ${direccionOrden(p)}` : null,
@@ -365,7 +367,8 @@ export function PresupuestosPanel() {
          * aunque el cliente cambie la cantidad—. Pasarlo además como descuento la
          * cobraba dos veces y lo frenaba el tope de descuento a mano del cajero.
          */
-        descuento: p.origen === 'web' ? 0 : (it.descuento || 0), iva: it.iva, lista: it.lista || undefined,
+        /* La excepción es el % del BARRIO (0185), que va en los renglones sin oferta: lo calculó el servidor y entra sin tope. */
+        descuento: p.origen === 'web' && it.ofertaId ? 0 : (it.descuento || 0), iva: it.iva, lista: it.lista || undefined,
         /*
          * Viaja el `listaId` con el que se COTIZÓ, no el nombre. El servidor
          * reconoce el precio congelado contra el renglón del presupuesto (que
@@ -375,6 +378,8 @@ export function PresupuestosPanel() {
         listaId: it.listaId ?? undefined,
       }));
     if (!items.length) { toast('No hay nada armado para vender.', 'err'); return; }
+    /* El envío del sitio (0185) va como cargo extra: se carga neto, con el IVA del flete. */
+    const envio = envioOrden(p);
     const ok = await accion(() => ventasApi.abrirVenta({
       clienteId: p.clienteId,
       sucursalId: p.sucursalId,
@@ -382,6 +387,7 @@ export function PresupuestosPanel() {
       presupuestoId: p.id,
       observaciones: `Cierra ${p.codigo}`,
       items,
+      ...(envio > 0 ? { extras: [{ concepto: `Envío a domicilio${p.webCliente?.barrio ? ` (B° ${p.webCliente.barrio})` : ''}`, importe: r2(envio / 1.21), iva: 21 }] } : {}),
     }), `Venta en curso creada desde ${p.codigo}: se termina en el punto de venta.`);
     if (ok) goPanel('pos');
   };

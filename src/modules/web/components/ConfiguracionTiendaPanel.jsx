@@ -16,6 +16,7 @@ import { httpClient } from '@core/services/httpClient.js';
 import { cx } from '@shared/utils/classNames.js';
 import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 import { PortadaMinoristaEditor } from './PortadaMinoristaEditor.jsx';
+import { BarriosEnvio } from './BarriosEnvio.jsx';
 
 /** Las llaves de la tienda y la pestaña donde se cambia cada una. */
 const LLAVES = {
@@ -24,6 +25,7 @@ const LLAVES = {
   montoMinimoCamioneta: 'mayorista',
   tiendaMinoristaActiva: 'minorista',
   tiendaMinoristaEnvioGratisDesde: 'minorista',
+  tiendaMinoristaMapsKey: 'minorista',
 };
 const PESTANAS = [
   { id: 'general', label: 'General' },
@@ -208,7 +210,17 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
           <div className={s.hint} style={{ margin: 0 }}>
             Se publica todo producto con precio en la lista base y stock en la Distribuidora. El granel va por paquetes fraccionados y, como bolsa cerrada, solo el que en la lista base vende «por N kg».
           </div>
+          <div className={s.field} style={{ maxWidth: 520 }}>
+            <label htmlFor="cfg-tienda-maps">Clave de Google Maps</label>
+            <input id="cfg-tienda-maps" value={draft.tiendaMinoristaMapsKey ?? ''} maxLength={100} placeholder="AIza…" autoComplete="off" spellCheck={false} onChange={(e) => set('tiendaMinoristaMapsKey')(e.target.value.trim())} />
+            <div className={s.hint} style={{ margin: '6px 0 0' }}>
+              Con la clave, el cliente marca en el mapa dónde recibe y la tienda sabe su barrio. Se crea en Google Cloud (Credenciales › Crear clave de API)
+              con <strong>Maps JavaScript API</strong> y <strong>Places API (New)</strong> habilitadas, y se restringe a los sitios web
+              {' '}<code>tiendaonline.saboryaroma.com/*</code> y <code>erp.saboryaroma.com/*</code>. Vacía = el checkout sin mapa, como antes.
+            </div>
+          </div>
         </Seccion>
+        <BarriosEnvio mapsKey={config.tiendaMinoristaMapsKey} avisar={avisar} />
         {/* Los textos de la portada (17/10/2026): guardan con su propio botón, como los datos del sitio. */}
         <PortadaMinoristaEditor avisar={avisar} />
       </>)}

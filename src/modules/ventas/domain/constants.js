@@ -165,16 +165,37 @@ export function telefonoWa(tel) {
 /**
  * La dirección de entrega que dejó el cliente en el checkout del sitio (viaja
  * en `webCliente`, solo con envío): "Calle 123, Barrio (referencia)". Vacío si
- * es retiro o si la orden es de antes de que el sitio la pidiera.
+ * es retiro o si la orden es de antes de que el sitio la pidiera. Con el
+ * barrio que salió del mapa (0185): "… · B° Independencia".
  */
 export function direccionOrden(p) {
   const wc = p?.webCliente ?? {};
   const calle = String(wc.direccion ?? '').trim();
   const localidad = String(wc.localidad ?? '').trim();
   const referencia = String(wc.referencia ?? '').trim();
+  const barrio = String(wc.barrio ?? '').trim();
   const base = [calle, localidad].filter(Boolean).join(', ');
   if (!base) return '';
-  return referencia ? `${base} (${referencia})` : base;
+  return `${referencia ? `${base} (${referencia})` : base}${barrio ? ` · B° ${barrio}` : ''}`;
+}
+
+/**
+ * EL ENVÍO DE UNA ORDEN DEL SITIO (0185): lo que se le cobra al cliente por
+ * recibir en casa. 0 = gratis; null = no tiene costo cargado (se coordina).
+ * Las minoristas de antes del 0185 solo traían la marca de «gratis».
+ */
+export function envioOrden(p) {
+  const wc = p?.webCliente ?? {};
+  return typeof wc.envio === 'number' ? wc.envio : wc.envioGratis ? 0 : null;
+}
+
+/** Lo que paga el cliente: la mercadería (con el descuento del barrio, si hubo) más el envío. */
+export const totalConEnvio = (p) => (Number(p?.total) || 0) + (envioOrden(p) || 0);
+
+/** El punto que marcó el cliente en el mapa, para el cadete. Vacío si no marcó. */
+export function mapaOrden(p) {
+  const u = p?.webCliente?.ubicacion;
+  return u ? `https://www.google.com/maps/search/?api=1&query=${u.lat},${u.lng}` : '';
 }
 
 /** Documento legible: "CUIT 30-71234567-8". Vacío → guion. */
