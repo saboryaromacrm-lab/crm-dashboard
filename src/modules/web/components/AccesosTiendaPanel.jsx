@@ -14,8 +14,14 @@
  * `await` el navegador la toma como emergente y la bloquea. Rechazar y
  * deshabilitar piden un segundo clic.
  *
- * MINORISTAS (0178): la pestaña con los clientes de la tienda minorista, que
- * entran con su WhatsApp sin aprobación (`CompradoresMinoristas`).
+ * MINORISTAS (0178): los clientes de la tienda minorista, que entran con su
+ * WhatsApp sin aprobación (`CompradoresMinoristas`).
+ *
+ * LAS DOS TIENDAS, BIEN SEPARADAS (19/10/2026, pedido del dueño): «Minoristas»
+ * era una pestaña más al lado de Pendientes / Habilitados / Bloqueados, que son
+ * los estados de la MAYORISTA, y se mezclaban. Ahora se elige primero la tienda
+ * —verde la mayorista, naranja la minorista, los colores de la portada— y
+ * adentro de la mayorista van sus tres estados.
  */
 import { useRef, useState, useSyncExternalStore } from 'react';
 import { accesosTienda } from '@core/services/accesosTienda.js';
@@ -45,19 +51,52 @@ const api = {
   avisoRecibida: (id) => httpClient.post(`/tienda-accesos/${id}/avisado-recibida`, {}),
 };
 
+/** Los estados de un pedido de ingreso a la MAYORISTA. */
 const VISTAS = [
   { id: 'pendiente', label: 'Pendientes' },
   { id: 'habilitado', label: 'Habilitados' },
   { id: 'bloqueado', label: 'Bloqueados' },
-  { id: 'minoristas', label: 'Minoristas' },
 ];
+
+/** Las dos tiendas, cada una con su color (tokens del tema: andan en claro y en oscuro). */
+const TIENDAS = {
+  mayorista: { titulo: 'Tienda mayorista', como: 'Entran con su DNI · los habilitás vos', color: 'var(--crm-color-primary)', suave: 'var(--crm-color-primary-soft)' },
+  minorista: { titulo: 'Tienda minorista', como: 'Entran con su WhatsApp · sin aprobación', color: 'var(--crm-color-accent-2)', suave: 'var(--crm-color-accent-2-soft)' },
+};
+
+/** La tarjeta para elegir la tienda: elegida, con su color de fondo y de borde. */
+function ElegirTienda({ id, elegida, extra, onElegir }) {
+  const t = TIENDAS[id];
+  return (
+    <button
+      type="button"
+      aria-pressed={elegida}
+      onClick={onElegir}
+      style={{
+        flex: '1 1 240px', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+        padding: '12px 16px', borderRadius: 12,
+        border: `2px solid ${elegida ? t.color : 'var(--crm-color-border)'}`,
+        background: elegida ? t.suave : 'var(--crm-color-surface)',
+        color: 'var(--crm-color-text)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ width: 10, height: 10, borderRadius: '50%', background: t.color, flex: 'none' }} />
+        <strong style={{ fontSize: 16, color: elegida ? t.color : 'var(--crm-color-text)' }}>{t.titulo}</strong>
+        {extra}
+      </div>
+      <div className={s.hint} style={{ margin: '2px 0 0 18px' }}>{t.como}</div>
+    </button>
+  );
+}
 
 
 /** `avisar(tipo, texto)`: el aviso de la página de Tienda online ('ok' | 'err'). */
 export function AccesosTiendaPanel({ avisar }) {
+  const [tienda, setTienda] = useState('mayorista');
   const [vista, setVista] = useState('pendiente');
   const pendientes = useSyncExternalStore(accesosTienda.subscribe, accesosTienda.count, accesosTienda.count);
-  const minoristas = vista === 'minoristas';
+  const minoristas = tienda === 'minorista';
   const { data, loading, error, reload } = useResource(`accesos:${vista}`, () => api.listar(vista), { enabled: !minoristas });
   /* Rechazar / deshabilitar: el primer clic arma la confirmación de ESA fila, el segundo ejecuta. */
   const [armado, setArmado] = useState(null);
@@ -101,19 +140,36 @@ export function AccesosTiendaPanel({ avisar }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Accesos a la tienda online"
-        desc="Los precios de la tienda online los ven solo los que ingresaron. Mayorista: llegan los pedidos de ingreso; al habilitar, se abre WhatsApp con el aviso listo para enviar y desde ahí entran con su DNI. Minorista: entran con su WhatsApp, sin aprobación."
+        desc="Los precios de la tienda online los ven solo los que ingresaron. Elegí la tienda: cada una tiene sus clientes y su forma de entrar."
         actions={!minoristas && <Btn onClick={reload}>Actualizar</Btn>}
       />
 
-      <div className={s.toolbar}>
-        {VISTAS.map((v) => (
-          <Btn key={v.id} small variant={vista === v.id ? 'btn-primary' : 'btn-ghost'} onClick={() => { setVista(v.id); setArmado(null); }}>
-            {v.label}{v.id === 'pendiente' && pendientes > 0 ? ` (${pendientes})` : ''}
-          </Btn>
-        ))}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <ElegirTienda
+          id="mayorista"
+          elegida={!minoristas}
+          onElegir={() => { setTienda('mayorista'); setArmado(null); }}
+          extra={pendientes > 0 && (
+            <span className={s.pill} style={{ background: 'var(--crm-color-danger)', color: '#fff' }}>
+              {pendientes} pendiente{pendientes === 1 ? '' : 's'}
+            </span>
+          )}
+        />
+        <ElegirTienda id="minorista" elegida={minoristas} onElegir={() => { setTienda('minorista'); setArmado(null); }} />
       </div>
 
       {minoristas ? <CompradoresMinoristas avisar={avisar} /> : (<>
+        <div className={s.toolbar}>
+          {VISTAS.map((v) => (
+            <Btn key={v.id} small variant={vista === v.id ? 'btn-primary' : 'btn-ghost'} onClick={() => { setVista(v.id); setArmado(null); }}>
+              {v.label}{v.id === 'pendiente' && pendientes > 0 ? ` (${pendientes})` : ''}
+            </Btn>
+          ))}
+        </div>
+        <div className={s.hint} style={{ margin: 0 }}>
+          Llegan los pedidos de ingreso; al habilitar se abre WhatsApp con el aviso listo para enviar, y desde ahí entran con su DNI.
+        </div>
+
         {error && <div className={s.hint} style={{ color: 'var(--crm-color-danger)' }}>{error}</div>}
 
         <Table
