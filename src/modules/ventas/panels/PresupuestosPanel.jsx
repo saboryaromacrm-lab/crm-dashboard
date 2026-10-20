@@ -442,6 +442,7 @@ export function PresupuestosPanel() {
           <div className={s.hint} style={{ margin: 0 }}>
             {ENTREGAS[p.entrega] ?? p.entrega}
             {direccionOrden(p) && ` · 📍 ${direccionOrden(p)}`}
+            {p.cuponCodigo && ` · 🎟 Cupón ${p.cuponCodigo}${p.webCliente?.medioPago ? ` (paga con ${p.webCliente.medioPago})` : ''}`}
             {p.observaciones && ` · ${p.observaciones}`}
           </div>
         </td>

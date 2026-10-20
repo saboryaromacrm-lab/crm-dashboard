@@ -3,8 +3,8 @@
  * configuración de la tienda online, que esté concentrado todo ahí, aparte para
  * la mayorista y la minorista»). Antes vivía en Ventas › Configuración.
  *
- * Tres pestañas: General (cómo se ven los productos y los datos del sitio),
- * Tienda mayorista y Tienda minorista. Las llaves de la tienda viven en la
+ * Cuatro pestañas: General (cómo se ven los productos y los datos del sitio),
+ * Tienda mayorista, Tienda minorista y Cupones (0190, los de la minorista). Las llaves de la tienda viven en la
  * config de ventas (las lee la tienda) y las guarda quien tiene «Configuración
  * de la tienda online» (`permisosParaGuardar` en la API). La compra mínima y la
  * modalidad mayorista se comparten con la caja: acá se muestran, se cambian en
@@ -18,6 +18,7 @@ import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 import { PortadaMinoristaEditor } from './PortadaMinoristaEditor.jsx';
 import { BarriosEnvio } from './BarriosEnvio.jsx';
 import { VistaPreviaTienda } from './VistaPreviaTienda.jsx';
+import { CuponesTienda } from './CuponesTienda.jsx';
 import { telLegible, telefonoWa } from '@modules/ventas/domain/constants.js';
 
 /** Las llaves de la tienda y la pestaña donde se cambia cada una. */
@@ -36,6 +37,7 @@ const PESTANAS = [
   { id: 'general', label: 'General' },
   { id: 'mayorista', label: 'Tienda mayorista' },
   { id: 'minorista', label: 'Tienda minorista' },
+  { id: 'cupones', label: 'Cupones' },
 ];
 const TAB_KEY = 'crm.web.configuracion.tab';
 const pesos = (n) => `$${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
@@ -281,6 +283,9 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
         {/* Los textos de la portada (17/10/2026): guardan con su propio botón, como los datos del sitio. */}
         <PortadaMinoristaEditor avisar={avisar} />
       </>)}
+
+      {/* Los cupones de la tienda minorista (0190): guardan con sus propios botones. */}
+      {activa === 'cupones' && <CuponesTienda avisar={avisar} />}
     </div>
   );
 }

@@ -31,6 +31,8 @@ const ENTREGAS = { retiro: 'Retiro en local', cadete: 'Cadete', camioneta: 'Env�
 /** De qué modo de la tienda vino la orden (0173): las anteriores a la tienda minorista son mayoristas. */
 const MODOS = { mayorista: { label: 'Mayorista', pill: 'est-transito' }, minorista: { label: 'Minorista', pill: 'est-recibida' } };
 const modoDe = (p) => (p.modoTienda === 'minorista' ? 'minorista' : 'mayorista');
+/** Cómo dijo que va a pagar (0190: lo pide un cupón que exige un medio). */
+const MEDIOS_TIENDA = { efectivo: 'Efectivo', transferencia: 'Transferencia' };
 function ModoPill({ orden }) {
   const m = MODOS[modoDe(orden)];
   return (
@@ -128,6 +130,8 @@ function DetalleOrdenModal({ orden, getCliente, onCerrar }) {
         <Di label="DNI">{wc.dni || '—'}</Di>
         <Di label="Modo"><ModoPill orden={orden} /></Di>
         <Di label="Entrega"><Entrega orden={orden} /></Di>
+        {orden.cuponCodigo && <Di label="Cupón">🎟 {orden.cuponCodigo}{orden.cuponDescuento > 0 ? ` · −${money(orden.cuponDescuento)}` : ''}{orden.cuponEnvio != null ? ' · envío gratis' : ''}</Di>}
+        {wc.medioPago && <Di label="Va a pagar con">{MEDIOS_TIENDA[wc.medioPago] ?? wc.medioPago}</Di>}
       </div>
 
       <Table cols={[
@@ -406,7 +410,14 @@ export function OrdenesPanel() {
             <td onClick={(e) => e.stopPropagation()}><WhatsAppLink orden={p} /></td>
             <td><Entrega orden={p} /></td>
             <td className={s.num}>{p.items.length}</td>
-            <td className={s.num}><strong>{money(totalConEnvio(p))}</strong>{envioOrden(p) > 0 && <div className={s.hint} style={{ margin: 0 }}>con envío</div>}</td>
+            <td className={s.num}>
+              <strong>{money(totalConEnvio(p))}</strong>{envioOrden(p) > 0 && <div className={s.hint} style={{ margin: 0 }}>con envío</div>}
+              {p.cuponCodigo && (
+                <div className={s.hint} style={{ margin: 0 }} title="Cupón de descuento: ya está en los precios del pedido">
+                  🎟 {p.cuponCodigo}{p.cuponDescuento > 0 ? ` −${money(p.cuponDescuento)}` : ' · envío gratis'}
+                </div>
+              )}
+            </td>
             <td className={s['actions-col']}>
               <div className={s['row-actions']}>
                 <Btn small onClick={() => abrir('ver', p)}>Ver</Btn>

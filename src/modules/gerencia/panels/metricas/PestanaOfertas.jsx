@@ -86,7 +86,8 @@ export function PestanaOfertas({ qs, version }) {
     { k: 'lista', label: 'Venta a precio de lista', v: g.lista, fuerte: true },
     { k: 'precio', label: '− Precio cambiado a mano', v: -g.precio, nota: 'Cuando en la caja se cobró otro precio que el de la lista.' },
     { k: 'nombrados', label: '− Descuentos con nombre', v: -g.enNombrados, detalle: g.nombrados },
-    { k: 'cliente', label: '− Descuento del cliente o puesto a mano', v: -g.cliente },
+    { k: 'cliente', label: '− Descuento del cliente, a mano o del barrio', v: -g.cliente },
+    { k: 'cupones', label: '− Cupones de la tienda', v: -g.enCupones, detalle: g.cupones },
     { k: 'ofertas', label: '− Ofertas', v: -g.enOfertas, detalle: g.ofertas },
     ...(Math.abs(g.redondeo) >= 0.01 ? [{ k: 'redondeo', label: '± Redondeo al centavo de cada renglón', v: -g.redondeo }] : []),
     { k: 'neto', label: '= Venta neta de productos', v: g.neto, fuerte: true },
@@ -257,7 +258,8 @@ export function PestanaOfertas({ qs, version }) {
         <div className={s.hint} style={{ margin: 0, display: 'grid', gap: 6 }}>
           <div><strong>Precio de lista:</strong> lo que se habría cobrado con el precio de la lista del renglón, sin ningún descuento.</div>
           <div><strong>Precio cambiado a mano:</strong> la diferencia cuando en la caja se cobró otro precio que el de la lista.</div>
-          <div><strong>Descuentos con nombre:</strong> los que se eligen por nombre (Efectivo, Empleados…); <strong>del cliente o a mano:</strong> el % que tiene el cliente o que puso quien vendió.</div>
+          <div><strong>Descuentos con nombre:</strong> los que se eligen por nombre (Efectivo, Empleados…); <strong>del cliente, a mano o del barrio:</strong> el % que tiene el cliente, que puso quien vendió o el del barrio de un pedido de la tienda.</div>
+          <div><strong>Cupones de la tienda:</strong> lo que descontó cada código en los pedidos minoristas cerrados en la caja. El detalle de cada cupón está en Tienda online › Configuración › Cupones.</div>
           <div><strong>Descuento dado (oferta):</strong> lo que la oferta le restó al precio, neto. Es lo que «costó» la oferta.</div>
           <div><strong>Ganancia:</strong> venta neta menos el costo congelado al vender, solo de lo que tiene costo cargado. <strong>Sobre el costo:</strong> cuánto se ganó por cada $100 de mercadería.</div>
           <div><strong>A precio normal:</strong> lo que habrían dejado esas mismas unidades sin la oferta. La diferencia con la ganancia es lo que se resignó para vender más.</div>
