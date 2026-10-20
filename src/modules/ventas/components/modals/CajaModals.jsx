@@ -590,11 +590,12 @@ function billetesLimpios(cant) {
  * quedan de fondo. Nunca más de los contados: se corta al escribir y, si
  * después se corrige el conteo para abajo, quien lo usa toma el menor
  * (`quedaDe`). El sobre no se escribe: es lo contado menos lo que queda.
+ * «Dejar todo» deja en la caja todos los contados de ese billete.
  */
 function ConteoBilletes({ cant, setCant, dejar = null, setDejar = null }) {
   const refs = useRef({});
   const total = totalBilletes(cant);
-  const columnas = dejar ? '90px 90px 90px 1fr' : '90px 90px 1fr';
+  const columnas = dejar ? '90px 90px 90px 90px 1fr' : '90px 90px 1fr';
   const soloDigitos = (e) => e.target.value.replace(/[^\d]/g, '');
   const bajar = (col, i) => (e) => {
     if (e.key === 'Enter') { e.preventDefault(); refs.current[`${col}${DENOMINACIONES[i + 1]}`]?.focus(); }
@@ -607,7 +608,7 @@ function ConteoBilletes({ cant, setCant, dejar = null, setDejar = null }) {
       </div>
       {dejar && (
         <div className={s.hint} style={{ display: 'grid', gridTemplateColumns: columnas, gap: 8, margin: 0, fontWeight: 700 }}>
-          <span /><span>Contaste</span><span>Queda en caja</span><span style={{ textAlign: 'right' }}>Importe contado</span>
+          <span /><span>Contaste</span><span>Queda en caja</span><span /><span style={{ textAlign: 'right' }}>Importe contado</span>
         </div>
       )}
       {DENOMINACIONES.map((d, i) => {
@@ -635,6 +636,14 @@ function ConteoBilletes({ cant, setCant, dejar = null, setDejar = null }) {
                 }}
                 onKeyDown={bajar('q', i)}
               />
+            )}
+            {dejar && (
+              <Btn
+                small onClick={() => setDejar((q) => ({ ...q, [d]: String(n) }))}
+                disabled={!n || Number(dejar[d]) >= n} aria-label={`Dejar en caja los ${n} de $${d}`}
+              >
+                Dejar todo
+              </Btn>
             )}
             <span className={cx(s.mono, !n && s.muted)} style={{ textAlign: 'right' }}>{n ? money(d * n) : '—'}</span>
           </div>
