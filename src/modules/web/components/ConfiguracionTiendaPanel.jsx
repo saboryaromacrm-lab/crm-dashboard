@@ -17,13 +17,16 @@ import { cx } from '@shared/utils/classNames.js';
 import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 import { PortadaMinoristaEditor } from './PortadaMinoristaEditor.jsx';
 import { BarriosEnvio } from './BarriosEnvio.jsx';
+import { VistaPreviaTienda } from './VistaPreviaTienda.jsx';
 
 /** Las llaves de la tienda y la pestaña donde se cambia cada una. */
 const LLAVES = {
   tiendaVistaLista: 'general',
+  tiendaMayoristaPublica: 'general',
+  tiendaMinoristaPublica: 'general',
+  tiendaMinoristaActiva: 'general',
   envioCamionetaActivo: 'mayorista',
   montoMinimoCamioneta: 'mayorista',
-  tiendaMinoristaActiva: 'minorista',
   tiendaMinoristaEnvioGratisDesde: 'minorista',
   tiendaMinoristaMapsKey: 'minorista',
 };
@@ -55,6 +58,29 @@ function Interruptor({ label, hint, checked, onChange }) {
         {label}
       </label>
       {hint && <div className={s.hint} style={{ margin: '4px 0 0 26px' }}>{hint}</div>}
+    </div>
+  );
+}
+
+/**
+ * PUBLICACIÓN DE CADA TIENDA (20/10/2026): abierta, en preparación (solo con
+ * la vista previa) y, la minorista, también apagada. En la config son dos
+ * llaves por tienda (si existe y si es pública); acá, un solo selector.
+ */
+const ESTADOS = {
+  abierta: 'Abierta al público',
+  preparacion: 'En preparación (solo con la vista previa)',
+  apagada: 'Apagada (no existe, ni en vista previa)',
+};
+const estadoMinorista = (d) => (d.tiendaMinoristaActiva === false ? 'apagada' : d.tiendaMinoristaPublica === false ? 'preparacion' : 'abierta');
+
+function Estado({ id, label, value, opciones, onChange }) {
+  return (
+    <div className={s.field} style={{ maxWidth: 420, margin: 0 }}>
+      <label htmlFor={id}>{label}</label>
+      <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+        {opciones.map((o) => <option key={o} value={o}>{ESTADOS[o]}</option>)}
+      </select>
     </div>
   );
 }
@@ -151,6 +177,22 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
 
       {activa === 'general' && (
         <>
+          <Seccion
+            titulo="Publicación"
+            desc="Cada tienda abierta al público o en preparación. En preparación no la ve nadie salvo con el link de vista previa: ahí se ve entera, con el cartel «Vista previa», y lo que se compre entra a Órdenes web marcado PRUEBA. Con las dos en preparación, el sitio muestra «Muy pronto»."
+          >
+            <Estado
+              id="cfg-pub-mayorista" label="Tienda mayorista" opciones={['abierta', 'preparacion']}
+              value={draft.tiendaMayoristaPublica === false ? 'preparacion' : 'abierta'}
+              onChange={(v) => set('tiendaMayoristaPublica')(v === 'abierta')}
+            />
+            <Estado
+              id="cfg-pub-minorista" label="Tienda minorista" opciones={['abierta', 'preparacion', 'apagada']}
+              value={estadoMinorista(draft)}
+              onChange={(v) => setDraft((d) => ({ ...d, tiendaMinoristaActiva: v !== 'apagada', ...(v === 'apagada' ? {} : { tiendaMinoristaPublica: v === 'abierta' }) }))}
+            />
+            <VistaPreviaTienda avisar={avisar} />
+          </Seccion>
           <Seccion titulo="Cómo se ven los productos" desc="La forma del catálogo, en los dos modos.">
             <Interruptor
               label="Catálogo sin fotos (vista de lista)"
@@ -195,13 +237,7 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
       )}
 
       {activa === 'minorista' && (<>
-        <Seccion titulo="Tienda minorista" desc="La misma tienda, en modo Minorista: precio de mostrador (la lista base de la caja), sin compra mínima. Para ver los precios y comprar, el cliente ingresa con su WhatsApp: la primera vez se registra (nombre, apellido y dirección) y entra en el momento. Los ves y los bloqueás en Tienda online › Accesos › Minoristas.">
-          <Interruptor
-            label="Modo minorista encendido"
-            hint="Encendido, al entrar a la tienda se elige Minorista o Mayorista y se puede cambiar desde el cartel de arriba. Apagado, la tienda queda solo mayorista y el servidor rechaza los pedidos minoristas."
-            checked={draft.tiendaMinoristaActiva !== false}
-            onChange={set('tiendaMinoristaActiva')}
-          />
+        <Seccion titulo="Tienda minorista" desc="La misma tienda, en modo Minorista: precio de mostrador (la lista base de la caja), sin compra mínima. Para ver los precios y comprar, el cliente ingresa con su WhatsApp: la primera vez se registra (nombre, apellido y dirección) y entra en el momento. Los ves y los bloqueás en Tienda online › Accesos › Minoristas. Si está abierta, en preparación o apagada se elige en General › Publicación.">
           <Monto
             id="cfg-tienda-envio-gratis" label="Envío a domicilio gratis desde"
             hint="0 = nunca es gratis: el costo del envío se coordina por WhatsApp. Con un monto, el pedido que lo supera queda marcado «gratis» en Órdenes web. Retiro en el local se ofrece siempre."

@@ -26,6 +26,8 @@ export const env = Object.freeze({
   apiBaseUrl: raw.VITE_API_BASE_URL || '/api',
   /** La API (y con ella la base) es la de esta computadora: se avisa arriba, para no confundirla con producción. */
   apiLocal: /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(raw.VITE_API_BASE_URL || ''),
+  /** La tienda online, para armar links hacia ella (la vista previa). `||` por lo mismo que la API. */
+  tiendaUrl: raw.VITE_TIENDA_URL || 'https://tiendaonline.saboryaroma.com',
   appName: raw.VITE_APP_NAME ?? 'ERP Sabor y Aroma',
   defaultTheme: raw.VITE_DEFAULT_THEME ?? 'light',
 

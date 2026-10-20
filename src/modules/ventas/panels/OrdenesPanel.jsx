@@ -31,7 +31,13 @@ const MODOS = { mayorista: { label: 'Mayorista', pill: 'est-transito' }, minoris
 const modoDe = (p) => (p.modoTienda === 'minorista' ? 'minorista' : 'mayorista');
 function ModoPill({ orden }) {
   const m = MODOS[modoDe(orden)];
-  return <span className={cx(s.pill, s[m.pill])}>{m.label}</span>;
+  return (
+    <>
+      <span className={cx(s.pill, s[m.pill])}>{m.label}</span>
+      {/* Hecha desde la vista previa de una tienda en preparación (20/10/2026): para rechazar, no para armar. */}
+      {orden.webCliente?.prueba && <span className={cx(s.pill, s['est-pendiente'])} style={{ marginLeft: 6 }} title="Pedido hecho desde la vista previa: es de prueba">PRUEBA</span>}
+    </>
+  );
 }
 
 /** Quién es, para el ERP: el DNI del mayorista o el WhatsApp del minorista (que no tiene DNI). */
