@@ -1,5 +1,5 @@
 import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { useSeccion } from '../hooks/useSeccion.js';
 import { num, money, fmtFechaHora } from '../domain/format.js';
@@ -39,28 +39,49 @@ export function HistorialPanel({ preset, embedded }) {
   const [sucF, setSucF] = useState(() => (ini?.sucursalId ? String(ini.sucursalId) : ''));
   const fp = useFiltroProducto(store);
 
-  /* RANGO DE FECHAS (28/8, pedido del dueño). No puede ser un filtro de
-   * pantalla: acá abajo hay solo los últimos 300 movimientos, y filtrar eso
-   * por una fecha vieja mostraría un día incompleto sin avisar. Con rango
-   * puesto se le piden al servidor los movimientos de ESAS fechas (hasta
-   * 1000) y la tabla trabaja sobre esa respuesta; sin rango, todo sigue
-   * igual que siempre. */
+  /*
+   * LOS FILTROS VAN AL SERVIDOR (28/8 fechas; 20/10/2026 todo lo demás, pedido
+   * del dueño). Acá abajo hay solo los últimos 300 movimientos de TODO el
+   * sistema —unas horas de ventas—: buscar «chipitas» ahí mostraba las ventas
+   * de hoy y parecía que no se vendían. Con cualquier filtro puesto se le piden
+   * al servidor los 1000 más recientes QUE LO CUMPLEN (el texto y la marca se
+   * convierten en los productos que encuentran); sin filtros, como siempre.
+   */
   const [desdeF, setDesdeF] = useState('');
   const [hastaF, setHastaF] = useState('');
-  const [porFechas, setPorFechas] = useState(null);
+  const [filtrados, setFiltrados] = useState(null);
   const [cargandoRango, setCargandoRango] = useState(false);
+  /** Los productos que encuentra el buscador (texto y marca), o null si no se busca. Más de 500: muy amplio para mandarlos. */
+  const { q: buscado, marca: marcaBuscada, coincide } = fp;
+  const idsBuscados = useMemo(() => {
+    if (prodF) return [Number(prodF)];
+    if (!buscado.trim() && !marcaBuscada) return null;
+    return store.state.productos.filter((p) => deSaborYAroma(p) && coincide(p.id, p.nombre)).map((p) => p.id);
+  }, [prodF, buscado, marcaBuscada, coincide, store.state.productos]);
+  const amplia = idsBuscados != null && idsBuscados.length > 500;
+  const hayFiltro = !!(desdeF || hastaF || sucF || tipoF || idsBuscados);
+  const claveServidor = hayFiltro
+    ? JSON.stringify([desdeF, hastaF, sucF, tipoF, amplia ? 'amplia' : idsBuscados])
+    : '';
   useEffect(() => {
-    if (!desdeF && !hastaF) { setPorFechas(null); return undefined; }
+    if (!claveServidor) { setFiltrados(null); return undefined; }
+    if (idsBuscados && !idsBuscados.length) { setFiltrados([]); return undefined; }
     let vivo = true;
     setCargandoRango(true);
-    store.movimientosPorFechas({ desde: desdeF, hasta: hastaF })
-      .then((rows) => { if (vivo) setPorFechas(rows); })
-      .catch(() => { if (vivo) toast('No se pudieron cargar los movimientos de ese rango.', 'err'); })
-      .finally(() => { if (vivo) setCargandoRango(false); });
-    return () => { vivo = false; };
-  }, [desdeF, hastaF]); // eslint-disable-line react-hooks/exhaustive-deps
+    /* Una pausa corta: el buscador cambia con cada letra. */
+    const t = setTimeout(() => {
+      store.movimientosFiltrados({
+        desde: desdeF, hasta: hastaF, sucursalId: sucF, tipo: tipoF,
+        productoIds: amplia ? null : idsBuscados,
+      })
+        .then((rows) => { if (vivo) setFiltrados(rows); })
+        .catch(() => { if (vivo) toast('No se pudieron cargar los movimientos con ese filtro.', 'err'); })
+        .finally(() => { if (vivo) setCargandoRango(false); });
+    }, 350);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [claveServidor]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const movs = (porFechas ?? store.state.movimientos)
+  const movs = (filtrados ?? store.state.movimientos)
     .slice()
     .sort((a, b) => b.id - a.id)
     .filter((m) => {
@@ -165,7 +186,9 @@ export function HistorialPanel({ preset, embedded }) {
       {!embedded && (
         <PanelHead
           title="Historial de movimientos"
-          desc={`Registro inmutable de toda alta y baja de inventario: cuándo, qué, dónde, por qué y quién. ${store.state.movimientos.length} movimientos.`}
+          desc={filtrados
+            ? `Registro inmutable de toda alta y baja de inventario: cuándo, qué, dónde, por qué y quién. ${movs.length} movimiento(s) con ese filtro, buscados en toda la historia.`
+            : `Registro inmutable de toda alta y baja de inventario: cuándo, qué, dónde, por qué y quién. Sin filtros se ven los últimos ${store.state.movimientos.length}; con un filtro se busca en toda la historia.`}
         />
       )}
       <div className={s.toolbar}>
@@ -192,10 +215,16 @@ export function HistorialPanel({ preset, embedded }) {
       </div>
       {/* El techo del rango, dicho: callarlo haría pasar un listado recortado
           por el día completo. */}
-      {porFechas && porFechas.length >= 1000 && (
+      {filtrados && filtrados.length >= 1000 && (
         <div className={s.hint} style={{ margin: 0 }}>
-          El rango tiene más de 1000 movimientos y se muestran los últimos 1000 — achicalo para
-          ver el detalle completo.
+          Hay más de 1000 movimientos con ese filtro y se muestran los últimos 1000 — acotá las fechas, el producto o la
+          sucursal para ver el detalle completo.
+        </div>
+      )}
+      {amplia && (
+        <div className={s.hint} style={{ margin: 0 }}>
+          La búsqueda encuentra más de 500 productos: se buscó entre los últimos movimientos con los otros filtros. Escribí
+          algo más preciso o elegí el producto para buscar en toda la historia.
         </div>
       )}
       <Table

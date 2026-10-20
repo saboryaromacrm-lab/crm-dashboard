@@ -599,15 +599,20 @@ function _enriquecerMovimientos(rows) {
 }
 
 /**
- * Movimientos de un RANGO DE FECHAS, pedidos aparte (27/8, pedido del dueño):
- * la sección `movimientos` carga los últimos 300, y para atrás de eso hay que
- * ir al servidor. NO pisa `state.movimientos` — el resumen del inventario y el
- * historial sin rango siguen viendo lo suyo; el panel guarda esto en su estado.
+ * Movimientos FILTRADOS EN EL SERVIDOR (27/8 fechas; 20/10/2026 producto,
+ * sucursal y tipo, pedido del dueño): la sección `movimientos` carga solo los
+ * últimos 300 de TODO el sistema, que son unas horas de ventas. Buscar un
+ * producto ahí decía «vendió 9» cuando eran solo las ventas de hoy. Con un
+ * filtro puesto se le piden al servidor los 1000 más recientes QUE LO CUMPLEN.
+ * NO pisa `state.movimientos`: el panel guarda esto en su estado.
  */
-async function movimientosPorFechas({ desde, hasta }) {
+async function movimientosFiltrados({ desde, hasta, productoIds, sucursalId, tipo }) {
   const q = new URLSearchParams({ limit: '1000' });
   if (desde) q.set('desde', desde);
   if (hasta) q.set('hasta', hasta);
+  if (productoIds?.length) q.set('productoIds', productoIds.join(','));
+  if (sucursalId) q.set('sucursalId', String(sucursalId));
+  if (tipo) q.set('tipo', tipo);
   return _enriquecerMovimientos(await httpClient.get('/movimientos?' + q.toString()));
 }
 
@@ -1566,7 +1571,7 @@ export const inventoryStore = {
   get loaded() { return _loaded; },
   get loadError() { return _loadError; },
   subscribe, getVersion,
-  init, reset, refetch, revalidar, cargarSeccion, movimientosPorFechas,
+  init, reset, refetch, revalidar, cargarSeccion, movimientosFiltrados,
   getProducto, getSucursal, getProveedor, getUsuario, presDe, distribuidora,
   unidadDe, presLabel, fmtCant, cant, suma, movimientosDe, valorEntry, granelLibre, enterosLibre, stockLibre, controlDe,
   rolActual, can, tiposMovPermitidos, setCtx,
