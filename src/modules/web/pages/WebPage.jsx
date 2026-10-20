@@ -32,6 +32,8 @@ import { WEB_SECCIONES } from '../config/web.config.js';
 import { SubirImagenBtn } from '../components/SubirImagenBtn.jsx';
 import { AccesosTiendaPanel } from '../components/AccesosTiendaPanel.jsx';
 import { ConfiguracionTiendaPanel } from '../components/ConfiguracionTiendaPanel.jsx';
+import { BuscadoresEditor } from '../components/BuscadoresEditor.jsx';
+import { LocalesEditor } from '../components/LocalesEditor.jsx';
 import { MetricasTiendaPanel } from '../panels/MetricasTiendaPanel.jsx';
 import { accesosTienda, sinSuscripcion } from '@core/services/accesosTienda.js';
 import { PRESETS_IMAGEN, srcImagen } from '../services/imagenes.js';
@@ -435,7 +437,7 @@ function ConfiguracionSitioPanel({ catalogo, recargar, avisar }) {
             borderRadius: 6, fontSize: 11, color: 'var(--crm-color-text-muted)', padding: '0 10px',
           }}
           >
-            sin {tipo === 'logo' ? 'logo (se muestra el nombre en texto)' : 'favicon'}
+            {PRESETS_IMAGEN[tipo].vacio}
           </span>
         )}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -457,12 +459,13 @@ function ConfiguracionSitioPanel({ catalogo, recargar, avisar }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Datos del sitio"
-        desc="La identidad y los datos de contacto que ve el cliente: logo, favicon, WhatsApp, correo, ubicación y redes. Se guardan con sus propios botones."
+        desc="La identidad y los datos que ve el cliente: logo, favicon, imagen para compartir, contacto, redes, cartel, lo que muestra Google y los locales con sus horarios. Cada bloque se guarda con su propio botón."
       />
 
       <div className={s['section-title']}>Identidad</div>
       {identidad('logo', catalogo?.sitio?.logoUrl, 54)}
       {identidad('favicon', catalogo?.sitio?.faviconUrl, 42)}
+      {identidad('compartir', catalogo?.sitio?.seo?.imagenUrl, 63)}
 
       <div className={s['section-title']}>Contacto</div>
       <div className={s['form-grid']}>
@@ -509,6 +512,8 @@ function ConfiguracionSitioPanel({ catalogo, recargar, avisar }) {
       </div>
 
       <CartelBienvenida web={web} setWeb={setWeb} recargar={recargar} avisar={avisar} />
+      <BuscadoresEditor web={web} setWeb={setWeb} imagenUrl={catalogo?.sitio?.seo?.imagenUrl} avisar={avisar} />
+      <LocalesEditor web={web} setWeb={setWeb} avisar={avisar} />
     </div>
   );
 }

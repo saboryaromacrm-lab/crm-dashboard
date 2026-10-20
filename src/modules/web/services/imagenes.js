@@ -75,6 +75,7 @@ export const PRESETS_IMAGEN = {
     objetivoKb: 25, calidadMin: 0.7,
     titulo: 'Logo del sitio',
     hint: 'Ideal 400×120 (apaisado) con fondo transparente: es el logo del encabezado del sitio. Sin logo, se muestra el nombre en texto.',
+    vacio: 'sin logo (se muestra el nombre en texto)',
   },
   favicon: {
     ancho: 128, alto: 128, modo: 'encajar', fondo: null,
@@ -82,6 +83,21 @@ export const PRESETS_IMAGEN = {
     objetivoKb: 12, calidadMin: 0.7,
     titulo: 'Favicon',
     hint: 'Cuadrado, ideal 128×128 o más grande: es el ícono de la pestaña del navegador. Conviene un símbolo simple, no el logo completo.',
+    vacio: 'sin favicon',
+  },
+  /**
+   * La imagen que se ve al compartir el link de la tienda (20/10/2026):
+   * 1200×630 es la medida que piden WhatsApp, Facebook y Google. Va en JPG y
+   * no en WebP: es el formato que toda app muestra seguro en la vista previa,
+   * y WhatsApp no la muestra si pasa de ~300 KB.
+   */
+  compartir: {
+    ancho: 1200, alto: 630, modo: 'cubrir', fondo: '#ffffff', formato: 'image/jpeg',
+    quitarFondo: false, calidad: 0.85,
+    objetivoKb: 200, calidadMin: 0.6,
+    titulo: 'Imagen para compartir',
+    hint: '1200×630 (apaisada): la que aparece cuando alguien manda el link de la tienda por WhatsApp o Facebook. Una foto del local o de productos con el logo. Otra medida se recorta al centro — revisá la vista previa.',
+    vacio: 'sin imagen (solo el texto)',
   },
   /**
    * Foto del comprobante de un gasto. Va en 'encajar' con fondo blanco a
@@ -284,8 +300,9 @@ export function quitarFondo(canvas, tolerancia = 30) {
 /**
  * Exporta el canvas listo para subir: aplica el fondo del preset (salvo que
  * se haya quitado el fondo — ahí la transparencia ES el resultado) y comprime
- * a WebP con el MENOR PESO que entra en el objetivo del preset sin bajar de
- * su calidad mínima. Si el navegador no sabe exportar WebP (Safari), cae a PNG.
+ * a WebP (o al `formato` del preset) con el MENOR PESO que entra en el
+ * objetivo del preset sin bajar de su calidad mínima. Si el navegador no sabe
+ * exportar ese formato (WebP en Safari), cae a PNG.
  */
 export function exportar(canvas, preset, { fondoQuitado = false } = {}) {
   let final = canvas;
@@ -300,9 +317,10 @@ export function exportar(canvas, preset, { fondoQuitado = false } = {}) {
     ctx.drawImage(canvas, 0, 0);
   }
   const pesoKb = (u) => Math.round(((u.length - u.indexOf(',') - 1) * 3) / 4 / 1024);
+  const tipo = preset.formato ?? 'image/webp';
   let calidad = preset.calidad;
-  let dataUrl = final.toDataURL('image/webp', calidad);
-  if (!dataUrl.startsWith('data:image/webp')) {
+  let dataUrl = final.toDataURL(tipo, calidad);
+  if (!dataUrl.startsWith(`data:${tipo}`)) {
     dataUrl = final.toDataURL('image/png');
     return { dataUrl, kb: pesoKb(dataUrl), calidad: 1, formato: 'PNG' };
   }
@@ -310,9 +328,9 @@ export function exportar(canvas, preset, { fondoQuitado = false } = {}) {
   const piso = preset.calidadMin ?? preset.calidad;
   while (pesoKb(dataUrl) > objetivo && calidad - 0.05 >= piso - 1e-9) {
     calidad = Math.round((calidad - 0.05) * 100) / 100;
-    dataUrl = final.toDataURL('image/webp', calidad);
+    dataUrl = final.toDataURL(tipo, calidad);
   }
-  return { dataUrl, kb: pesoKb(dataUrl), calidad, formato: 'WebP' };
+  return { dataUrl, kb: pesoKb(dataUrl), calidad, formato: tipo === 'image/jpeg' ? 'JPG' : 'WebP' };
 }
 
 /** «2,4 MB» / «830 KB» para mostrar lo que pesaba el original. */
