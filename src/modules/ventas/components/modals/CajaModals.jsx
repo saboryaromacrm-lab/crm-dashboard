@@ -6,7 +6,7 @@ import { errorMsg, ventasApi } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
 import { imprimirArqueoCaja, imprimirEnvioCaja } from '@core/services/imprimir.js';
-import { separarEnvio, sumaBilletes } from '../../domain/separarEnvio.js';
+import { separarEnvio } from '../../domain/separarEnvio.js';
 import { Table, Di, Btn, Pill, ModalShell, money, fmtFechaHora, s } from '../ui.jsx';
 import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@modules/gastos/components/segundaConfirmacion.jsx';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
@@ -584,31 +584,58 @@ function billetesLimpios(cant) {
  * EL CONTADOR DE BILLETES EN LA PANTALLA, sin campo de monto (0111): el total
  * sale SOLO de los billetes. Es la forma de contar del cajero al cerrar y al
  * abrir con el fondo incompleto — no hay manera de tipear un número.
+ *
+ * QUÉ QUEDA EN LA CAJA (20/10/2026, pedido del dueño): al cerrar, con
+ * `dejar`/`setDejar`, una segunda columna para elegir cuántos de esos billetes
+ * quedan de fondo. Nunca más de los contados: se corta al escribir y, si
+ * después se corrige el conteo para abajo, quien lo usa toma el menor
+ * (`quedaDe`). El sobre no se escribe: es lo contado menos lo que queda.
  */
-function ConteoBilletes({ cant, setCant }) {
+function ConteoBilletes({ cant, setCant, dejar = null, setDejar = null }) {
   const refs = useRef({});
   const total = totalBilletes(cant);
+  const columnas = dejar ? '90px 90px 90px 1fr' : '90px 90px 1fr';
+  const soloDigitos = (e) => e.target.value.replace(/[^\d]/g, '');
+  const bajar = (col, i) => (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); refs.current[`${col}${DENOMINACIONES[i + 1]}`]?.focus(); }
+  };
   return (
     <div className={s.callout} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div className={s.hint} style={{ margin: 0 }}>Cuántos de cada billete. Enter baja al siguiente; el total se calcula solo.</div>
+      <div className={s.hint} style={{ margin: 0 }}>
+        Cuántos de cada billete. Enter baja al siguiente; el total se calcula solo.
+        {dejar && ' En «Queda en caja», cuántos de esos billetes dejás de fondo: el resto va en el sobre.'}
+      </div>
+      {dejar && (
+        <div className={s.hint} style={{ display: 'grid', gridTemplateColumns: columnas, gap: 8, margin: 0, fontWeight: 700 }}>
+          <span /><span>Contaste</span><span>Queda en caja</span><span style={{ textAlign: 'right' }}>Importe contado</span>
+        </div>
+      )}
       {DENOMINACIONES.map((d, i) => {
         const n = Math.floor(Number(cant[d])) || 0;
         return (
-          <div key={d} style={{ display: 'grid', gridTemplateColumns: '90px 90px 1fr', gap: 8, alignItems: 'center' }}>
+          <div key={d} style={{ display: 'grid', gridTemplateColumns: columnas, gap: 8, alignItems: 'center' }}>
             <span className={s.mono} style={{ textAlign: 'right', fontWeight: 600 }}>$ {d.toLocaleString('es-AR')}</span>
             <input
-              ref={(el) => { refs.current[d] = el; }}
+              ref={(el) => { refs.current[`c${d}`] = el; }}
               type="number" min="0" step="1" placeholder="0" inputMode="numeric"
-              autoFocus={i === 0}
+              autoFocus={i === 0} aria-label={`Contaste de $${d}`}
               value={cant[d] ?? ''}
-              onChange={(e) => {
-                const v = e.target.value.replace(/[^\d]/g, '');
-                setCant((c) => ({ ...c, [d]: v }));
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') { e.preventDefault(); refs.current[DENOMINACIONES[i + 1]]?.focus(); }
-              }}
+              onChange={(e) => { const v = soloDigitos(e); setCant((c) => ({ ...c, [d]: v })); }}
+              onKeyDown={bajar('c', i)}
             />
+            {dejar && (
+              <input
+                ref={(el) => { refs.current[`q${d}`] = el; }}
+                type="number" min="0" max={n} step="1" placeholder="0" inputMode="numeric"
+                aria-label={`Queda en caja de $${d}`} disabled={!n}
+                value={dejar[d] ?? ''}
+                onChange={(e) => {
+                  const v = soloDigitos(e);
+                  setDejar((q) => ({ ...q, [d]: v === '' ? '' : String(Math.min(Number(v), n)) }));
+                }}
+                onKeyDown={bajar('q', i)}
+              />
+            )}
             <span className={cx(s.mono, !n && s.muted)} style={{ textAlign: 'right' }}>{n ? money(d * n) : '—'}</span>
           </div>
         );
@@ -1186,17 +1213,21 @@ function LoQueTieneQueHaber({ turno, contado, conto }) {
 /**
  * EL CIERRE DEL CAJERO: CONTAR, DEJAR EL FONDO Y ENVIAR (0111, pedido del dueño).
  *
- * 1. Cuenta el cajón billete por billete — no hay campo de monto.
+ * 1. Cuenta el cajón billete por billete — no hay campo de monto — y, en la
+ *    misma pantalla (20/10/2026), elige cuántos de esos billetes QUEDAN en la
+ *    caja; o que lo proponga el sistema (los más chicos, para el cambio).
  * 2. Ve lo que ÉL contó, lo que queda de fondo para mañana y lo que envía;
  *    nunca el esperado ni la diferencia.
  * 3. Confirma una segunda vez, y el envío cierra el turno.
- * El servidor recibe los billetes y suma él: tampoco por la API se tipea.
+ * El sobre nunca se escribe: es lo contado menos lo que queda, billete por
+ * billete, así que siempre cuadra. El servidor recibe los billetes y suma él,
+ * y vuelve a exigir que el sobre salga de lo contado y que quede el fondo.
  */
 function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
   const { ctx, closeModal, toast, setOperador, sucursales, usuarios, operadorId, config } = useVentas();
   const [billetes, setBilletes] = useState({});
-  /* Los billetes que van al SOBRE (0130): los propone el sistema al pasar a «Separar» y se pueden ajustar. */
-  const [envioB, setEnvioB] = useState({});
+  /* Los billetes que QUEDAN en la caja (20/10/2026): los elige quien cierra, o los propone el sistema. */
+  const [dejar, setDejar] = useState({});
   const [paso, setPaso] = useState('contar');
   const [enviando, setEnviando] = useState(false);
   const candado = useRef(false);
@@ -1211,20 +1242,15 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
   const contado = totalBilletes(billetes);
   const conto = Object.values(billetes).some((c) => Number(c) > 0);
   const debeQuedar = Math.min(contado, fondo);
-  /* Antes de separar: la cuenta de siempre. Separando: lo que dicen los billetes del sobre. */
-  const separando = paso !== 'contar';
-  const envio = separando ? r2(sumaBilletes(envioB)) : r2(contado - debeQuedar);
-  const queda = r2(contado - envio);
-  const faltaFondo = r2(Math.max(0, fondo - queda));
-  const quedaPoco = separando && queda + 0.009 < debeQuedar;
   const cantDe = (b, d) => Math.floor(Number(b[d])) || 0;
-  const proponer = () => setEnvioB(separarEnvio(billetesLimpios(billetes), debeQuedar).envio);
-  const ajustarSobre = (d, delta) => setEnvioB((e) => {
-    const n = Math.max(0, Math.min(cantDe(billetes, d), cantDe(e, d) + delta));
-    const o = { ...e };
-    if (n > 0) o[d] = n; else delete o[d];
-    return o;
-  });
+  /* Lo que queda nunca pasa de lo contado (si se corrigió el conteo para abajo, manda el conteo); el sobre es la resta. */
+  const quedaDe = (d) => Math.min(cantDe(dejar, d), cantDe(billetes, d));
+  const envioB = Object.fromEntries(DENOMINACIONES.map((d) => [d, cantDe(billetes, d) - quedaDe(d)]));
+  const queda = r2(DENOMINACIONES.reduce((a, d) => a + d * quedaDe(d), 0));
+  const envio = r2(contado - queda);
+  const faltaFondo = r2(Math.max(0, fondo - queda));
+  const quedaPoco = conto && queda + 0.009 < debeQuedar;
+  const proponer = () => setDejar(separarEnvio(billetesLimpios(billetes), debeQuedar).queda);
   /* A ciegas salvo que la configuración deje ver lo que tiene que haber: ahí el
    * servidor manda el arqueo completo y se muestra el detalle. Apagada, ni
    * administración lo ve al cerrar («que hagan envíos a ciegas»). */
@@ -1234,13 +1260,9 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
   const dueno = can('gerencia.cashflow');
   const tilde = useTildeControlar(ve && conto ? [r2(contado - (Number(turno.esperadoEfectivo) || 0))] : [], useUmbralControlar(dueno));
 
-  const aSeparar = () => {
-    if (!conto) { toast('Contá los billetes del cajón antes de enviar.', 'err'); return; }
-    proponer();
-    setPaso('separar');
-  };
   const aConfirmar = () => {
-    if (quedaPoco) { toast(`Tienen que quedar por lo menos ${money(debeQuedar)} en la caja: sacá billetes del sobre.`, 'err'); return; }
+    if (!conto) { toast('Contá los billetes del cajón antes de enviar.', 'err'); return; }
+    if (quedaPoco) { toast(`Tienen que quedar por lo menos ${money(debeQuedar)} en la caja: elegí más billetes en «Queda en caja».`, 'err'); return; }
     setPaso('confirmar');
   };
 
@@ -1292,11 +1314,12 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
       </div>
       <div className={s.hint} style={{ margin: '8px 0 0' }}>
         Dejá <strong>{money(queda)}</strong> en la caja: es el fondo para el próximo turno{fondo ? ` (fondo fijo ${money(fondo)})` : ''}.
-        {separando && queda > debeQuedar + 0.009 && ` Con estos billetes no se llega justo al fondo: quedan ${money(r2(queda - debeQuedar))} de más en la caja.`}
+        {queda > debeQuedar + 0.009 && ` Quedan ${money(r2(queda - debeQuedar))} más que el fondo: si no hace falta, pasalos al sobre.`}
       </div>
       {quedaPoco && (
         <div className={cx(s.callout, s.warn)} style={{ margin: '8px 0 0' }}>
-          Así quedarían {money(queda)} en la caja y tienen que quedar {money(debeQuedar)}: sacá billetes del sobre.
+          Así quedarían {money(queda)} en la caja y tienen que quedar {money(debeQuedar)}: elegí más billetes en «Queda en caja»
+          o tocá «Que lo proponga el sistema».
         </div>
       )}
       {conto && faltaFondo > 0.009 && (
@@ -1314,7 +1337,7 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
         title="Cerrar caja — confirmar envío"
         onClose={closeModal}
         footer={[
-          { texto: 'Volver a separar', clase: 'btn-ghost', onClick: () => setPaso('separar'), disabled: enviando },
+          { texto: 'Volver a contar', clase: 'btn-ghost', onClick: () => setPaso('contar'), disabled: enviando },
           { texto: enviando ? 'Enviando…' : `Sí, enviar ${money(envio)} y cerrar`, clase: 'btn-delete', onClick: enviar, disabled: enviando },
         ]}
       >
@@ -1331,54 +1354,6 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
     );
   }
 
-  if (paso === 'separar') {
-    const filas = DENOMINACIONES.filter((d) => cantDe(billetes, d) > 0);
-    return (
-      <ModalShell
-        title="Cerrar caja — separar el sobre"
-        wide
-        onClose={closeModal}
-        footer={[
-          { texto: 'Volver a contar', clase: 'btn-ghost', onClick: () => setPaso('contar') },
-          { texto: `Continuar: sobre de ${money(envio)}`, clase: 'btn-primary', onClick: aConfirmar, disabled: quedaPoco },
-        ]}
-      >
-        <div className={s.hint}>
-          Separá los billetes así: <strong>lo que queda en la caja</strong> (el fondo, con los billetes más chicos para
-          el cambio) y <strong>lo que va en el sobre</strong>. Si querés cambiar qué billetes van, usá − y +.
-        </div>
-        <Table cols={[{ h: 'Billete' }, { h: 'Contaste', num: true }, { h: 'Queda en caja', num: true }, { h: 'Va en el sobre', num: true }]}>
-          {filas.map((d) => {
-            const sobre = cantDe(envioB, d);
-            return (
-              <tr key={d}>
-                <td className={s.mono}>$ {d.toLocaleString('es-AR')}</td>
-                <td className={s.num}>{cantDe(billetes, d)}</td>
-                <td className={s.num}><strong>{cantDe(billetes, d) - sobre}</strong></td>
-                <td className={s.num}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <Btn small onClick={() => ajustarSobre(d, -1)} disabled={sobre <= 0} aria-label={`Uno menos de $${d} en el sobre`}>−</Btn>
-                    <strong className={s.mono} style={{ minWidth: 28, textAlign: 'center' }}>{sobre}</strong>
-                    <Btn small onClick={() => ajustarSobre(d, 1)} disabled={sobre >= cantDe(billetes, d)} aria-label={`Uno más de $${d} en el sobre`}>+</Btn>
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-          <tr>
-            <td><strong>Total</strong></td>
-            <td className={s.num}><strong>{money(contado)}</strong></td>
-            <td className={s.num}><strong>{money(queda)}</strong></td>
-            <td className={s.num}><strong>{money(envio)}</strong></td>
-          </tr>
-        </Table>
-        <div><Btn small onClick={proponer}>Volver a la separación propuesta</Btn></div>
-        {resumen}
-        {ve && <LoQueTieneQueHaber turno={turno} contado={contado} conto={conto} />}
-      </ModalShell>
-    );
-  }
-
   return (
     <ModalShell
       title="Cerrar caja — contar y enviar"
@@ -1386,14 +1361,20 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: 'Separar el sobre', clase: 'btn-primary', onClick: aSeparar, disabled: !conto },
+        { texto: `Continuar: sobre de ${money(envio)}`, clase: 'btn-primary', onClick: aConfirmar, disabled: !conto || quedaPoco },
       ]}
     >
       <div className={s.hint}>
-        Contá <strong>todo el efectivo del cajón</strong>, billete por billete. Después el sistema te dice
-        qué billetes dejar en la caja (el fondo para mañana) y cuáles van en el sobre.
+        Contá <strong>todo el efectivo del cajón</strong>, billete por billete, y elegí cuáles <strong>quedan en la caja</strong>{' '}
+        (el fondo para mañana{fondo ? `: ${money(fondo)}` : ''}). Lo demás va en el sobre.
       </div>
-      <ConteoBilletes cant={billetes} setCant={setBilletes} />
+      <ConteoBilletes cant={billetes} setCant={setBilletes} dejar={dejar} setDejar={setDejar} />
+      {conto && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Btn small onClick={proponer}>Que lo proponga el sistema</Btn>
+          {Object.values(dejar).some((n) => Number(n) > 0) && <Btn small onClick={() => setDejar({})}>Vaciar «Queda en caja»</Btn>}
+        </div>
+      )}
       {conto && resumen}
       {ve && <LoQueTieneQueHaber turno={turno} contado={contado} conto={conto} />}
     </ModalShell>
