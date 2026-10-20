@@ -20,6 +20,20 @@ const COLUMNAS = [
   { estado: 'retomar', titulo: 'Para retomar', hint: 'Aparcado sin fecha' },
 ];
 
+/**
+ * LOS FILTROS DE LA PIZARRA (20/10/2026, pedido del dueño): por estado (la
+ * columna), «pedido enviado» y «ya lo vi». Todos en «Todos» al entrar. Enviado
+ * y visto existen solo en Solicitado: con alguno puesto, se ve esa columna.
+ */
+const FILTROS = {
+  estado: [['', 'Todos los estados'], ...COLUMNAS.map((c) => [c.estado, c.titulo])],
+  enviado: [['', 'Enviado y sin enviar'], ['si', 'Pedido enviado'], ['no', 'Sin enviar']],
+  visto: [['', 'Visto y sin ver'], ['si', 'Ya lo vi'], ['no', 'Sin ver']],
+};
+const SIN_FILTROS = { estado: '', enviado: '', visto: '' };
+/** ¿La tarjeta pasa el filtro de una marca («si» / «no»)? */
+const pasa = (filtro, tiene) => !filtro || (filtro === 'si') === tiene;
+
 /** Días de CALENDARIO hasta hoy (lo de anoche es «ayer», aunque no hayan pasado 24 h). */
 function diasCalendario(fecha) {
   const d = new Date(fecha); d.setHours(0, 0, 0, 0);
@@ -34,8 +48,19 @@ export function PedidosPanel() {
   const [vista, setVista] = useState('pizarra');
   /* 0164: la pizarra solo con los proveedores de la localidad. */
   const [soloLocales, setSoloLocales] = useState(false);
+  const [filtro, setFiltro] = useState(SIN_FILTROS);
   const { data: tarjetas, reload } = useResource('prov-kanban', provApi.kanban);
-  const visibles = (tarjetas ?? []).filter((t) => !soloLocales || getProveedor(t.proveedorId)?.esLocal);
+  const visibles = (tarjetas ?? []).filter((t) => (!soloLocales || getProveedor(t.proveedorId)?.esLocal)
+    && pasa(filtro.enviado, !!t.pedidoEnviado) && pasa(filtro.visto, !!t.revisadoAt));
+  /* Enviado y visto son de Solicitado: en las otras columnas no aplican, así que con alguno puesto se ve solo esa. */
+  const conMarcas = !!(filtro.enviado || filtro.visto);
+  const columnas = COLUMNAS.filter((c) => (filtro.estado ? c.estado === filtro.estado : !conMarcas || c.estado === 'solicitado'));
+  const marcasAplican = !filtro.estado || filtro.estado === 'solicitado';
+  const elegir = (clave) => (e) => setFiltro((f) => {
+    const nuevo = { ...f, [clave]: e.target.value };
+    /* Pasar a Pedido o Para retomar suelta las marcas: allá no existen. */
+    return clave === 'estado' && nuevo.estado && nuevo.estado !== 'solicitado' ? { ...nuevo, enviado: '', visto: '' } : nuevo;
+  });
 
   const mutar = async (promesa, ok) => {
     try {
@@ -139,9 +164,24 @@ export function PedidosPanel() {
           </div>
         }
       />
+      {vista === 'pizarra' && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          {Object.entries(FILTROS).map(([clave, opciones]) => (
+            <select
+              key={clave} id={`pedidos-filtro-${clave}`} aria-label={`Filtrar por ${clave}`}
+              className={s['select-inline']} value={filtro[clave]} onChange={elegir(clave)}
+              disabled={clave !== 'estado' && !marcasAplican}
+              title={clave !== 'estado' && !marcasAplican ? 'Enviado y visto son de las tarjetas en Solicitado' : undefined}
+            >
+              {opciones.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+            </select>
+          ))}
+          {(filtro.estado || conMarcas) && <Btn small onClick={() => setFiltro(SIN_FILTROS)}>Ver todo</Btn>}
+        </div>
+      )}
       {vista === 'pizarra' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
-          {COLUMNAS.map((col) => {
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+          {columnas.map((col) => {
             const filas = visibles.filter((t) => t.estado === col.estado);
             return (
               <div key={col.estado}>

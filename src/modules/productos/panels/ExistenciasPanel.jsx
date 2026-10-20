@@ -73,16 +73,19 @@ export function ExistenciasPanel() {
   const fp = useFiltroProducto(store);
   const { marca: marcaF, coincideTexto } = fp;
   /* Desde Proveedores › Pedidos («Ver stock», 12/10/2026): `?ordenPedido=ID`
-   * filtra por ese proveedor y abre su orden de pedido. El parámetro se saca
-   * enseguida: volver atrás o recargar no la reabre. */
+   * filtra por ese proveedor y abre su orden de pedido; `&volver=` es a dónde
+   * vuelve al cerrarla (20/10/2026) — solo una ruta del propio ERP. Los
+   * parámetros se sacan enseguida: volver atrás o recargar no la reabre. */
   const [params, setParams] = useSearchParams();
   useEffect(() => {
     const pid = params.get('ordenPedido');
     if (!pid) return;
+    const volver = params.get('volver') ?? '';
     setProvF(pid);
-    openModal('ordenPedido', { proveedorId: pid });
+    openModal('ordenPedido', { proveedorId: pid, ...(/^\/(?!\/)/.test(volver) ? { volverA: volver } : {}) });
     const resto = new URLSearchParams(params);
     resto.delete('ordenPedido');
+    resto.delete('volver');
     setParams(resto, { replace: true });
   }, [params, setParams, openModal]);
   const { stock, proveedores, sucursales } = store.state;

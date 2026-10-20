@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { cx } from '@shared/utils/classNames.js';
 import { compararFilasPorMarca } from '@core/services/imprimir.js';
 import { telefonoWa } from '@modules/ventas/domain/constants.js';
@@ -102,9 +103,14 @@ function Recordatorios({ proveedor, nota, onGuardada }) {
   );
 }
 
-/** `sugeridos`: { productoId: cantidad } — lo que manda Bajos en stock, ya cargado y en ese orden. */
-export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: sucInicial = null, sugeridos = null }) {
+/**
+ * `sugeridos`: { productoId: cantidad } — lo que manda Bajos en stock, ya cargado y en ese orden.
+ * `volverA`: la sección del ERP de donde vino (Proveedores › Pedidos): al cerrar vuelve ahí.
+ */
+export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: sucInicial = null, sugeridos = null, volverA = '' }) {
   const { store, closeModal, toast, sucOperativa } = useProductos();
+  const navigate = useNavigate();
+  const cerrar = () => { closeModal(); if (volverA) navigate(volverA); };
   const { isDesktop } = useBreakpoint();
   const [provId, setProvId] = useState(provInicial ? String(provInicial) : '');
   const [sucId, setSucId] = useState(String(sucInicial || sucOperativa() || ''));
@@ -273,8 +279,8 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
       title="Orden de pedido"
       subtitle="Los productos del proveedor (o los que tienen menos stock que el número elegido), en el bulto en que se le compran"
       size="xl"
-      onClose={closeModal}
-      footer={[{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }]}
+      onClose={cerrar}
+      footer={[{ texto: volverA ? 'Cerrar y volver' : 'Cerrar', clase: 'btn-ghost', onClick: cerrar }]}
     >
       {/* En pantalla grande la lista scrollea sola y el pedido queda al costado; en una chica va todo junto, uno abajo del otro. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 16, flex: 1, minHeight: 0, overflow: isDesktop ? 'hidden' : 'auto' }}>

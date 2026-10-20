@@ -27,7 +27,7 @@ const cant = (n, tipo) => `${Number(n).toLocaleString('es-AR', { maximumFraction
 const nroDe = (c) => `${TIPO[c.tipo] ?? c.tipo}${c.tipo === 'factura' ? ` ${c.letra}` : ''} ${c.puntoVenta}-${String(c.numero ?? 0).padStart(8, '0')}`;
 
 export function ProveedorMenu({ proveedorId, nombre, enPadron = false }) {
-  const { openModal, goPanel, panels, getProveedor } = useProveedores();
+  const { openModal, goPanel, panels, panel, getProveedor } = useProveedores();
   const [anchor, setAnchor] = useState(null);
   /* El celular de la ficha en el formato de WhatsApp (el mismo que usa la orden de pedido): solo con el menú abierto. */
   const whatsapp = anchor ? telefonoWa(getProveedor(proveedorId)?.telefono) : '';
@@ -36,11 +36,11 @@ export function ProveedorMenu({ proveedorId, nombre, enPadron = false }) {
   const veEdoc = (panels ?? []).some((p) => p.id === 'edoc');
   /* «Ver stock» lleva a Almacén › Existencias con la orden de pedido de este
    * proveedor abierta (12/10/2026, pedido del dueño). Sin esa sección, la
-   * ventanita de stock de siempre. */
+   * ventanita de stock de siempre. Al cerrarla vuelve a esta sección (20/10/2026). */
   const { can } = usePermissions();
   const navigate = useNavigate();
   const puedeOrden = can('almacen.existencias');
-  const crearOrden = () => navigate(`/almacen?panel=existencias&ordenPedido=${proveedorId}`);
+  const crearOrden = () => navigate(`/almacen?panel=existencias&ordenPedido=${proveedorId}&volver=${encodeURIComponent(`/proveedores?panel=${panel}`)}`);
   const verStock = puedeOrden ? crearOrden : () => openModal('stockProveedor', { proveedorId, nombre });
   const ir = (fn) => () => { cerrar(); fn(); };
   return (
