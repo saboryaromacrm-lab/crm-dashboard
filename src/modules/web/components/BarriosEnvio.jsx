@@ -16,17 +16,8 @@ import { BarrioMapaModal } from './BarrioMapaModal.jsx';
 
 const pesos = (n) => `$${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
 /** De lunes a domingo, como se lee una semana (0 = domingo, como el servidor). */
-const SEMANA = [[1, 'Lun', 'lunes'], [2, 'Mar', 'martes'], [3, 'Mié', 'miércoles'], [4, 'Jue', 'jueves'], [5, 'Vie', 'viernes'], [6, 'Sáb', 'sábados'], [0, 'Dom', 'domingos']];
+const SEMANA = [[1, 'Lun'], [2, 'Mar'], [3, 'Mié'], [4, 'Jue'], [5, 'Vie'], [6, 'Sáb'], [0, 'Dom']];
 const TIPOS = { envio_gratis: 'Envío gratis', envio_fijo: 'Envío a precio fijo', descuento: 'Descuento %' };
-const fecha = (iso) => iso.split('-').reverse().slice(0, 2).join('/');
-
-/** «Los martes y jueves · del 01/11 al 07/11», o «Todos los días». */
-function cuando(p) {
-  const nombres = SEMANA.filter(([d]) => p.dias.includes(d)).map(([, , n]) => n);
-  const dias = nombres.length ? `Los ${nombres.length > 1 ? `${nombres.slice(0, -1).join(', ')} y ${nombres[nombres.length - 1]}` : nombres[0]}` : 'Todos los días';
-  const rango = p.desde && p.hasta ? `del ${fecha(p.desde)} al ${fecha(p.hasta)}` : p.desde ? `desde el ${fecha(p.desde)}` : p.hasta ? `hasta el ${fecha(p.hasta)}` : '';
-  return rango ? `${dias} · ${rango}` : dias;
-}
 
 const PROMO_NUEVA = { barrioIds: [], tipo: 'envio_gratis', valor: 0, dias: [], desde: '', hasta: '', minimo: 0, activa: true };
 
@@ -198,7 +189,7 @@ export function BarriosEnvio({ mapsKey, avisar }) {
         {datos.promos.map((p) => (
           <tr key={p.id}>
             <td>{p.texto}</td>
-            <td>{cuando(p)}</td>
+            <td>{p.cuando}</td>
             <td>{p.activa ? 'Activa' : <span className={s.muted}>Pausada</span>}</td>
             <td style={{ textAlign: 'right' }}><Btn small onClick={() => setAbierto({ promo: p })}>Editar</Btn></td>
           </tr>
