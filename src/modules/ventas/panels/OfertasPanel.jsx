@@ -8,6 +8,10 @@
  * El panel trae su propia lista (`/ofertas`) y el catálogo del POS una sola
  * vez: el catálogo aporta los nombres para el alcance y los precios reales que
  * usa la vista previa del formulario.
+ *
+ * QUIÉN LA CREÓ Y POR VENCIMIENTO (0187, 20/10/2026, pedido del dueño): una
+ * columna con quién la creó y cuándo, y un filtro por las armadas para rematar
+ * mercadería por vencer (`porVencer`).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -17,6 +21,10 @@ import { ventasApi, errorMsg } from '../services/ventas.api.js';
 import { TIPOS_OFERTA, MEDIOS_PAGO } from '../domain/constants.js';
 import { describirOferta, estadoOferta } from '../domain/ofertas.js';
 import { PanelHead, Table, Btn, usePaginado, money, s } from '../components/ui.jsx';
+
+/** El filtro por vencimiento: todas, solo las por vencimiento o las demás. */
+const FILTRO_VENC = [['', 'Todas las ofertas'], ['si', 'Por vencimiento'], ['no', 'Sin las de vencimiento']];
+const fecha = (iso) => new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric', year: '2-digit' });
 
 const PILL_ESTADO = {
   vigente: 'est-recibida',
@@ -149,7 +157,13 @@ export function OfertasPanel() {
     return m;
   }, [venc]);
 
-  const pag = usePaginado(ofertas ?? [], 'ofertas');
+  const [porVencer, setPorVencer] = useState('');
+  const filtradas = useMemo(
+    () => (ofertas ?? []).filter((o) => !porVencer || o.porVencer === (porVencer === 'si')),
+    [ofertas, porVencer],
+  );
+  const cuantasPorVencer = (ofertas ?? []).filter((o) => o.porVencer).length;
+  const pag = usePaginado(filtradas, 'ofertas');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
@@ -183,12 +197,23 @@ export function OfertasPanel() {
         </div>
       )}
 
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+        <select
+          id="ofertas-filtro-vencer" aria-label="Filtrar por vencimiento" className={s['select-inline']}
+          value={porVencer} onChange={(e) => setPorVencer(e.target.value)}
+        >
+          {FILTRO_VENC.map(([v, label]) => <option key={v} value={v}>{v === 'si' ? `${label} (${cuantasPorVencer})` : label}</option>)}
+        </select>
+        {porVencer && <span className={s.hint} style={{ margin: 0 }}>{filtradas.length} de {(ofertas ?? []).length}</span>}
+      </div>
+
       <Table
         cols={[
           { h: 'Oferta' }, { h: 'Mecánica' }, { h: 'Alcanza a' }, { h: 'Condiciones' },
-          { h: 'Estado' }, { h: 'Acciones' },
+          { h: 'Creada por' }, { h: 'Estado' }, { h: 'Acciones' },
         ]}
-        empty={ofertas === null ? 'Cargando…' : 'Sin ofertas todavía. Creá la primera.'}
+        empty={ofertas === null ? 'Cargando…'
+          : porVencer ? 'Ninguna oferta con ese filtro.' : 'Sin ofertas todavía. Creá la primera.'}
         pag={pag}
       >
         {pag.visibles.map((o) => {
@@ -197,6 +222,11 @@ export function OfertasPanel() {
             <tr key={o.id} style={{ opacity: est.id === 'vigente' || est.id === 'programada' ? 1 : 0.55 }}>
               <td>
                 <strong>{o.nombre}</strong>
+                {o.porVencer && (
+                  <div>
+                    <span className={cx(s.pill, s['est-pendiente'])} title="Armada para rematar mercadería por vencer">⏳ por vencimiento</span>
+                  </div>
+                )}
                 {alarmasPorOferta.has(o.id) && (
                   <div>
                     <span className={cx(s.pill, s['est-revision'])} title="Alcanza mercadería vencida">
@@ -211,6 +241,10 @@ export function OfertasPanel() {
               </td>
               <td style={{ maxWidth: 260 }}>{alcanceLegible(o)}</td>
               <td style={{ maxWidth: 220 }}>{condiciones(o)}</td>
+              <td>
+                {o.creadoPorNombre || <span className={s.muted} title="Creada antes de que se registrara quién la crea">Sin dato</span>}
+                {o.creadoEn && <div className={s.muted} style={{ fontSize: 12 }}>{fecha(o.creadoEn)}</div>}
+              </td>
               <td><span className={cx(s.pill, s[PILL_ESTADO[est.id]])}>{est.label}</span></td>
               <td>
                 <div className={s['row-actions']}>

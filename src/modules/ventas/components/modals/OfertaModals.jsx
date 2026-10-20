@@ -247,6 +247,7 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
     listas: oferta?.listas || '',
     incluyeFraccionados: oferta?.incluyeFraccionados ?? false,
     activa: oferta?.activa ?? true,
+    porVencer: oferta?.porVencer ?? false,
   }));
   const [alcances, setAlcances] = useState(() => (oferta?.alcances ?? []).map((a) => ({
     ...a,
@@ -353,6 +354,7 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
       listas: f.listas,
       incluyeFraccionados: f.incluyeFraccionados,
       activa: f.activa,
+      porVencer: f.porVencer,
       alcances: alcances.map(({ tipo, refId }) => ({ tipo, refId })),
       componentes: componentes.map((c) => ({ productoId: c.productoId, cantidad: Number(c.cantidad) || 1 })),
     };
@@ -559,6 +561,16 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
               : 'Todas tildadas = corre sobre cualquier precio. Dejá solo la de mostrador para que un mayorista no reciba además la promo (el doble beneficio).'}
           </div>
         </div>
+
+        {/* Por vencimiento (0187): Ventas › Ofertas la filtra así. La que sale de
+            Almacén › Vencimientos ya viene tildada. */}
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13 }}>
+          <input type="checkbox" checked={f.porVencer} onChange={(e) => set({ porVencer: e.target.checked })} style={{ marginTop: 2 }} />
+          <span>
+            Oferta <strong>por vencimiento</strong>: para rematar mercadería que está por vencer. Sirve para
+            encontrarla con el filtro de Ofertas; no cambia cómo descuenta.
+          </span>
+        </label>
 
         {/* El paquete fraccionado se cotiza solo, así que una oferta a la madre
             no lo alcanza salvo que se diga. Antes lo alcanzaba siempre, sin que
