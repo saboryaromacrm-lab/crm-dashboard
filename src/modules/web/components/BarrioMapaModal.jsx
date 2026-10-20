@@ -31,14 +31,16 @@ export function BarrioMapaModal({ barrio, otros, mapsKey, onGuardar, onBorrar, o
     let vivo = true;
     const limpiar = [];
     cargarGoogleMaps(mapsKey).then(async (maps) => {
-      const { Map, Polygon } = await maps.importLibrary('maps');
+      const [{ Map, Polygon }, { LatLngBounds }] = await Promise.all([maps.importLibrary('maps'), maps.importLibrary('core')]);
       if (!vivo || !mapaRef.current) return;
       const mapa = new Map(mapaRef.current, { center: FORMOSA, zoom: 14, clickableIcons: false, streetViewControl: false, mapTypeControl: false });
       for (const o of otros) {
         const p = new Polygon({ map: mapa, paths: o.poligono.map(([lat, lng]) => ({ lat, lng })), clickable: false, strokeColor: '#6b7280', strokeWeight: 1, fillColor: '#9ca3af', fillOpacity: 0.25 });
         limpiar.push(() => p.setMap(null));
       }
-      const pol = new Polygon({ map: mapa, paths: (barrio?.poligono ?? []).map(([lat, lng]) => ({ lat, lng })), editable: true, strokeColor: VERDE, strokeWeight: 2, fillColor: VERDE, fillOpacity: 0.2 });
+      const pol = new Polygon({ map: mapa, editable: true, strokeColor: VERDE, strokeWeight: 2, fillColor: VERDE, fillOpacity: 0.2 });
+      /* El contorno va con `setPath`, no en `paths`: un polígono que nace sin puntos no tiene camino (getPath() da undefined) y los clics no tendrían dónde ir. */
+      pol.setPath((barrio?.poligono ?? []).map(([lat, lng]) => ({ lat, lng })));
       poligono.current = pol;
       const path = pol.getPath();
       const copiar = () => setPuntos(contornoDe(path));
@@ -47,7 +49,7 @@ export function BarrioMapaModal({ barrio, otros, mapsKey, onGuardar, onBorrar, o
       limpiar.push(() => { escuchas.forEach((x) => x.remove()); clic.remove(); pol.setMap(null); });
       /* Editando, el mapa arranca encuadrado en el barrio. */
       if (path.getLength()) {
-        const caja = new maps.LatLngBounds();
+        const caja = new LatLngBounds();
         path.forEach((p) => caja.extend(p));
         mapa.fitBounds(caja, 40);
       }
