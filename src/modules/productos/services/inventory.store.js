@@ -1439,6 +1439,12 @@ const procesarVencimiento = (id, o) => _mutate(() => httpClient.post(`/vencimien
  * motor de Ventas (un solo lugar para crear ofertas en todo el sistema) y el
  * registro queda atado a ella. Esto es la lectura de ese cruce. */
 const ofertasVencimientos = () => httpClient.get('/vencimientos/ofertas');
+/* Las reglas de oferta por rango (0188): el sistema arma y escala las ofertas
+ * solo. Cambian precios de la caja, no el inventario: sin bajar el snapshot. */
+const reglasVencimientos = () => httpClient.get('/vencimientos/reglas');
+const guardarReglasVencimientos = (reglas) => _sinRecargar(() => httpClient.put('/vencimientos/reglas', { reglas }));
+const aplicarReglasVencimientos = () => _sinRecargar(() => httpClient.post('/vencimientos/reglas/aplicar', {}));
+const volverAReglaVencimiento = (id) => _sinRecargar(() => httpClient.post(`/vencimientos/${id}/volver-a-regla`, {}));
 
 /* ---- Facturas por procesar (la bandeja de papeles subidos) ----
  *
@@ -1602,6 +1608,7 @@ export const inventoryStore = {
   pedidosCafeteria, pedidoCafeteria, crearPedidoCafeteria, tomarPedidoCafeteria, anularPedidoCafeteria,
   vencimientos, resumenVencimientos, reportesVencimientos, crearSesionVencimientos,
   editarVencimiento, eliminarVencimiento, procesarVencimiento, ofertasVencimientos,
+  reglasVencimientos, guardarReglasVencimientos, aplicarReglasVencimientos, volverAReglaVencimiento,
   imputarPago, quitarImputacionPago, anularPago, moverDestinoPago, actualizarPapelPago,
   actualizarCostos, actualizarMargenes, historialPrecios, evolucionPrecios, revertirLotePrecios,
   stockBajo, incidenciasAbiertas, transferenciasPendientes, borradorDeRuta, misBorradores,

@@ -6,11 +6,12 @@
  * stock — es una lista de control con el costo congelado del día — y el stock
  * se toca recién al PROCESAR lo vencido (baja real, movimiento 'vencido').
  *
- * Siete pestañas = los siete momentos del circuito:
+ * Ocho pestañas = los ocho momentos del circuito:
  *   Panel     las alertas por rango EXCLUYENTE (vencido / 0-7 / 8-15 / 16-30)
  *   Control   caminar la góndola: lector USB o buscador, lista, guardar todo
  *   Registros todo lo anotado: filtros, editar, oferta, exportar
  *   Ofertas   el cruce con Ventas: qué está en oferta y qué se desalineó
+ *   Reglas    la oferta de cada rango, sola, con su rentabilidad y lo vendido
  *   Vencidos  cerrar el ciclo: vendidas vs perdidas → pérdida REAL
  *   Mermas    la baja de stock de siempre (se mudó acá: es la misma historia)
  *   Reportes  el análisis: por sucursal, categoría, frecuentes, historial
@@ -39,6 +40,7 @@ const PESTANAS = [
   { id: 'control', label: 'Control' },
   { id: 'registros', label: 'Registros' },
   { id: 'ofertas', label: 'Ofertas' },
+  { id: 'reglas', label: 'Reglas y rentabilidad' },
   { id: 'vencidos', label: 'Vencidos' },
   { id: 'mermas', label: 'Mermas' },
   { id: 'reportes', label: 'Reportes' },
@@ -439,7 +441,7 @@ function TabControl({ sesion, setSesion, alGuardar }) {
 }
 
 /* ============================== REGISTROS ============================== */
-function TabRegistros({ registros, filtroRango, setFiltroRango }) {
+function TabRegistros({ registros, filtroRango, setFiltroRango, recargar }) {
   const { store, openModal, act, can } = useProductos();
   const navigate = useNavigate();
   /* Sin la sección de ofertas de Ventas el botón llevaría a una pantalla que el
@@ -467,7 +469,7 @@ function TabRegistros({ registros, filtroRango, setFiltroRango }) {
       v.nombre, v.codigoBarras, store.getSucursal(v.sucursalId)?.nombre ?? '', fmtFechaVenc(v.fechaVencimiento),
       v.diasParaVencer, String(v.cantidad).replace('.', ','), v.unidad,
       String(v.costoUnitario.toFixed(2)).replace('.', ','), String((v.cantidad * v.costoUnitario).toFixed(2)).replace('.', ','),
-      v.ofertaId ? 'sí' : '', v.procesado ? 'sí' : '', String(v.unidadesVendidas).replace('.', ','),
+      v.ofertaId ? (v.ofertaAuto ? 'automática' : 'manual') : '', v.procesado ? 'sí' : '', String(v.unidadesVendidas).replace('.', ','),
       v.procesado ? String(((v.cantidad - v.unidadesVendidas) * v.costoUnitario).toFixed(2)).replace('.', ',') : '',
       v.observaciones,
     ]),
@@ -488,12 +490,19 @@ function TabRegistros({ registros, filtroRango, setFiltroRango }) {
         <td>{v.procesado ? <Pill pill="est-recibida" label="Procesado" /> : <RangoPill dias={v.diasParaVencer} />}</td>
         <td className={s.num}>{num(v.cantidad)} {v.unidad}</td>
         <td className={s.num}>{money(v.cantidad * v.costoUnitario)}</td>
-        <td>{v.ofertaId ? <Pill pill="est-preparada" label="🏷 En oferta" /> : '—'}</td>
+        <td>{v.ofertaId ? <OfertaPill auto={v.ofertaAuto} /> : '—'}</td>
         <td>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {abierto && !vencido && !v.ofertaId && puedeOfertar && (
               <Btn small onClick={() => navigate(RUTA_NUEVA_OFERTA(v.id))} title="Abre el motor de ofertas con este producto ya cargado">
                 Oferta
+              </Btn>
+            )}
+            {abierto && !vencido && v.ofertaId && !v.ofertaAuto && puedeOfertar && (
+              <Btn small onClick={async () => {
+                if (await act(store.volverAReglaVencimiento(v.id), resumenAplicado)) recargar();
+              }} title="La oferta vuelve a manejarla la regla del rango">
+                Volver a la regla
               </Btn>
             )}
             {abierto && vencido && (
@@ -556,10 +565,11 @@ function TabRegistros({ registros, filtroRango, setFiltroRango }) {
         {filas}
       </Table>
       <div className={s.hint}>
-        La pérdida potencial usa el costo CONGELADO al registrar. «Oferta» abre el motor de
-        ofertas de Ventas con el producto, la fecha y la sucursal ya cargados — se crea ahí,
-        como cualquier oferta, y queda atada a este registro. «Procesar» aparece cuando ya
-        venció: ahí se define la pérdida real.
+        La pérdida potencial usa el costo CONGELADO al registrar. La oferta la arma sola la regla
+        de su rango (pestaña «Reglas y rentabilidad»): <strong>Automática</strong>. Si alguien la
+        edita, queda <strong>Manual</strong> y la regla no la toca hasta «Volver a la regla».
+        «Oferta» abre el motor de Ventas con todo cargado para armar una a mano. «Procesar»
+        aparece cuando ya venció: ahí se define la pérdida real.
       </div>
     </div>
   );
@@ -741,6 +751,417 @@ function ofertaDe(f) {
     tipo: f.ofertaTipo, porcentaje: f.porcentaje, precio: f.precio,
     lleva: f.lleva, paga: f.paga, montoMinimo: f.montoMinimo,
   };
+}
+
+/* ============================== REGLAS (la oferta sola + la plata) ============================== */
+/**
+ * Una regla fija por rango (0188): el sistema arma la oferta de cada registro,
+ * la cambia sola cuando el producto pasa de rango y la quita al procesarlo.
+ * La cuenta vive en la API (`vencimientos/reglas.ts`); acá se ve, se cambia y
+ * se mide: qué gana cada producto con la regla y qué se vendió de verdad.
+ */
+const RANGOS_REGLA = [
+  { rango: 'vigente', titulo: 'Más de 30 días' },
+  { rango: 'd30', titulo: '16 a 30 días' },
+  { rango: 'd15', titulo: '8 a 15 días' },
+  { rango: 'd7', titulo: '0 a 7 días' },
+];
+const MECANICAS_REGLA = [['ninguna', 'Sin oferta'], ['descuento', '% de descuento'], ['costo', 'Costo + %'], ['nxm', 'Llevá N, pagá M']];
+
+/** Qué hace la regla, en palabras: va al lado de cada rango del editor. */
+function explicarRegla(r) {
+  switch (r.mecanica) {
+    case 'descuento':
+      return `Un solo precio para todas las listas: el de mostrador con ${r.valor || '…'} % menos. Si eso queda debajo del costo, queda al costo.`;
+    case 'costo':
+      return Number(r.valor) > 0
+        ? `Precio = costo real + ${r.valor} % (más IVA): eso es lo que se gana sobre el costo.`
+        : 'Precio = costo real (más IVA): no se gana ni se pierde.';
+    case 'nxm':
+      return `Cada lista mantiene su precio. Corre solo en las listas donde llevando ${r.lleva || 'N'} y pagando ${r.paga || 'M'} no queda debajo del costo.`;
+    default:
+      return 'No se arma oferta. Si había una automática, se quita.';
+  }
+}
+
+/** Lo que hizo una pasada de las reglas, en una línea. */
+function resumenAplicado(a) {
+  const partes = [[a.creadas, 'creada', 'creadas'], [a.actualizadas, 'actualizada', 'actualizadas'], [a.quitadas, 'quitada', 'quitadas']]
+    .filter(([n]) => n > 0)
+    .map(([n, uno, varios]) => `${n} ${n === 1 ? uno : varios}`);
+  const base = partes.length ? `Ofertas: ${partes.join(', ')}.` : 'Las ofertas ya estaban al día.';
+  return a.manuales ? `${base} ${a.manuales} manual${a.manuales === 1 ? '' : 'es'} sin tocar.` : base;
+}
+
+/** Quién maneja la oferta del registro: la regla del rango o una persona. */
+function OfertaPill({ auto }) {
+  return auto
+    ? <span title="La arma y la cambia el sistema con la regla del rango"><Pill pill="est-recibida" label="🏷 Automática" /></span>
+    : <span title="La armó o la cambió una persona: la regla no la toca"><Pill pill="est-pendiente" label="🏷 Manual" /></span>;
+}
+
+/**
+ * Lo que se mide: la oferta PUESTA si hay —una manual puede perder plata y se
+ * tiene que ver—; si no hay, la que armaría la regla del rango.
+ */
+const cuentaDe = (f) => (f.oferta ? f.oferta.porLista : f.propuesta?.porLista) ?? [];
+/** La lista donde se lee la ganancia: la de mostrador; si ahí no corre, la primera donde sí. */
+const listaDeReferencia = (f) => {
+  const pl = cuentaDe(f);
+  return pl.find((x) => x.aplica && x.listaId === f.listaBaseId) ?? pl.find((x) => x.aplica) ?? null;
+};
+/** Las listas donde la oferta puesta vende por debajo del costo real. */
+const debajoDelCosto = (f) => (f.oferta?.porLista ?? []).filter((l) => l.aplica && l.ganancia < -0.005);
+
+/** `describirOferta` dice «$1234»; en pantalla va con el formato de plata. */
+const conPlata = (texto) => texto.replace(/\$(\d+(?:\.\d+)?)/, (_, n) => money(Number(n)));
+
+function TabReglas({ alCambiar }) {
+  const { store, toast, can } = useProductos();
+  const puedeEditar = can('ventas.ofertas');
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [borrador, setBorrador] = useState([]);
+  const [ocupado, setOcupado] = useState(false);
+  const candado = useRef(false);
+  const [sucF, setSucF] = useState('');
+  const [rangoF, setRangoF] = useState('');
+  const [abierta, setAbierta] = useState(null);
+
+  const tomar = useCallback((d) => {
+    setData(d);
+    setBorrador(d.reglas.map(({ rango, mecanica, valor, lleva, paga }) => ({ rango, mecanica, valor, lleva, paga })));
+  }, []);
+  useEffect(() => {
+    store.reglasVencimientos().then(tomar).catch((e) => setError(e?.message || 'No se pudieron leer las reglas.'));
+  }, [store, tomar]);
+
+  const original = useMemo(
+    () => JSON.stringify((data?.reglas ?? []).map(({ rango, mecanica, valor, lleva, paga }) => ({ rango, mecanica, valor, lleva, paga }))),
+    [data],
+  );
+  const cambiado = JSON.stringify(borrador) !== original;
+  const setRegla = (rango, patch) => setBorrador((b) => b.map((r) => (r.rango === rango ? { ...r, ...patch } : r)));
+
+  /* Guardar o aplicar cambia precios de la caja: un clic, una pasada. */
+  const correr = async (promesa) => {
+    if (candado.current) return;
+    candado.current = true;
+    setOcupado(true);
+    try {
+      const r = await promesa();
+      if (!r.ok) { toast(r.error || 'No se pudo.', 'err'); return; }
+      tomar(r);
+      toast(resumenAplicado(r.aplicado), 'ok');
+      alCambiar();
+    } catch (e) {
+      toast(e?.message || 'No se pudo.', 'err');
+    } finally {
+      candado.current = false;
+      setOcupado(false);
+    }
+  };
+  const guardar = () => correr(() => store.guardarReglasVencimientos(
+    borrador.map((r) => ({ ...r, valor: Number(r.valor) || 0, lleva: Number(r.lleva) || 0, paga: Number(r.paga) || 0 })),
+  ));
+  const aplicarAhora = () => correr(() => store.aplicarReglasVencimientos());
+  const volver = (id) => correr(async () => {
+    const r = await store.volverAReglaVencimiento(id);
+    return r.ok ? { ...(await store.reglasVencimientos()), ok: true, aplicado: r } : r;
+  });
+
+  const filas = useMemo(() => data?.filas ?? [], [data]);
+  const visibles = useMemo(() => filas.filter((f) => (
+    (!sucF || f.sucursalId === Number(sucF)) && (!rangoF || f.rango === rangoF)
+  )), [filas, sucF, rangoF]);
+
+  /* Los totales miran lo que se ve: con un filtro, son los de ese filtro. Lo vencido no se oferta. */
+  const tot = useMemo(() => {
+    const t = { enJuego: 0, ganancia: 0, conPropuesta: 0, sinPropuesta: 0, auto: 0, manual: 0, perdiendo: 0, neto: 0, gananciaReal: 0, sinCosto: 0, conVenta: 0 };
+    for (const f of visibles) {
+      if (f.rango === 'vencido') continue;
+      t.enJuego += f.enJuego;
+      const ref = listaDeReferencia(f);
+      if (ref) { t.ganancia += f.cantidad * ref.ganancia; t.conPropuesta += 1; } else if (f.regla !== 'Sin oferta') t.sinPropuesta += 1;
+      if (f.oferta) t[f.oferta.auto ? 'auto' : 'manual'] += 1;
+      if (debajoDelCosto(f).length) t.perdiendo += 1;
+      if (f.vendido) {
+        t.conVenta += 1;
+        t.neto += f.vendido.neto;
+        t.gananciaReal += f.vendido.ganancia;
+        t.sinCosto += f.vendido.sinCosto;
+      }
+    }
+    return t;
+  }, [visibles]);
+
+  if (error) return <div className={cx(s.callout, s.warn)}>{error}</div>;
+  if (!data) return <div className={s.hint}>Cargando…</div>;
+
+  const CHIPS = [['', 'Todos'], ['d7', '0-7'], ['d15', '8-15'], ['d30', '16-30'], ['vigente', '+30'], ['vencido', 'Vencidos']];
+
+  const cuerpo = visibles.flatMap((f) => {
+    const ref = listaDeReferencia(f);
+    const p = f.propuesta;
+    const vencido = f.rango === 'vencido';
+    const pierde = debajoDelCosto(f);
+    const fila = (
+      <tr key={f.id}>
+        <td>
+          {f.nombre}
+          <div className={s.hint}>{store.getSucursal(f.sucursalId)?.nombre ?? '—'}</div>
+        </td>
+        <td><RangoPill dias={f.diasParaVencer} /></td>
+        <td className={s.num}>{num(f.cantidad)} {f.unidad}</td>
+        <td className={s.num}>{money(f.enJuego)}</td>
+        <td>
+          {vencido ? <span className={s.muted}>No se oferta</span> : f.regla}
+          {p?.hay && p.topeAlCosto && <div className={s.hint}>pedía menos que el costo: quedó al costo</div>}
+        </td>
+        <td>
+          {f.oferta
+            ? (
+              <>
+                <OfertaPill auto={f.oferta.auto} />
+                <div className={s.hint}>{conPlata(describirOferta(f.oferta))}{f.oferta.activa ? '' : ' · apagada'}</div>
+                {pierde.length > 0 && (
+                  <div className={s.hint} style={{ color: 'var(--crm-color-danger)', fontWeight: 600 }}>
+                    ⚠ Vende debajo del costo en {pierde.map((l) => l.nombre).join(', ')}
+                  </div>
+                )}
+              </>
+            )
+            : <span className={s.muted}>{vencido ? 'Procesarlo' : (p?.motivo ?? 'Sin costo o sin precio')}</span>}
+        </td>
+        <td className={s.num}>
+          {ref
+            ? <><strong>{money(ref.precioOferta)}</strong><div className={s.hint}>{ref.nombre}{f.oferta ? '' : ' · si se arma'}</div></>
+            : '—'}
+        </td>
+        <td className={s.num}>
+          {ref ? (
+            <>
+              <strong style={{ color: ref.ganancia > 0.005 ? 'var(--crm-color-success)' : ref.ganancia < -0.005 ? 'var(--crm-color-danger)' : undefined }}>
+                {money(ref.ganancia)}
+              </strong>
+              <div className={s.hint}>{num(ref.sobreCosto)} % sobre el costo</div>
+            </>
+          ) : '—'}
+        </td>
+        <td className={s.num}>{ref ? money(f.cantidad * ref.ganancia) : '—'}</td>
+        <td className={s.num}>
+          {f.vendido ? (
+            <>
+              <strong>{num(f.vendido.unidades)} {f.unidad}</strong>
+              <div className={s.hint}>neto {money(f.vendido.neto)} · gana {money(f.vendido.ganancia)}</div>
+              {f.vendido.sinCosto > 0 && (
+                <div className={s.hint} style={{ color: 'var(--crm-color-danger)' }}>
+                  {f.vendido.sinCosto} renglón{f.vendido.sinCosto === 1 ? '' : 'es'} sin costo: fuera de la ganancia
+                </div>
+              )}
+            </>
+          ) : <span className={s.muted}>{f.oferta ? 'Nada todavía' : '—'}</span>}
+        </td>
+        <td>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {(p?.porLista?.length > 0 || f.oferta?.porLista?.length > 0) && (
+              <Btn small onClick={() => setAbierta(abierta === f.id ? null : f.id)}>{abierta === f.id ? 'Ocultar' : 'Por lista'}</Btn>
+            )}
+            {puedeEditar && !vencido && f.oferta && !f.oferta.auto && (
+              <Btn small disabled={ocupado} onClick={() => volver(f.id)} title="La oferta vuelve a manejarla la regla del rango">
+                Volver a la regla
+              </Btn>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+    if (abierta !== f.id) return [fila];
+    /* La regla y la oferta puesta, lado a lado por lista. */
+    const puesta = new Map((f.oferta?.porLista ?? []).map((l) => [l.listaId, l]));
+    const regla = new Map((p?.porLista ?? []).map((l) => [l.listaId, l]));
+    const listas = [...new Map([...(p?.porLista ?? []), ...(f.oferta?.porLista ?? [])].map((l) => [l.listaId, l])).values()];
+    const celdas = (l) => (l?.aplica
+      ? <><td className={s.num}>{money(l.precioOferta)}</td><td className={s.num}>{money(l.ganancia)} · {num(l.sobreCosto)} %</td></>
+      : <><td className={s.num}>—</td><td><span className={s.muted}>{l?.motivo || '—'}</span></td></>);
+    return [fila, (
+      <tr key={`${f.id}-listas`}>
+        <td colSpan={11}>
+          <div className={s.hint} style={{ margin: '0 0 6px' }}>
+            Costo real de hoy, por {f.unidad}: <strong>{money(f.costoReal)}</strong> neto. Ganancia = lo que entra sin IVA − ese costo, igual que en Métricas.
+            {' '}En las promos por cantidad, el precio es lo que sale cada una llevando lo que pide la promo.
+          </div>
+          <table className={s.table} style={{ width: 'auto' }}>
+            <thead>
+              <tr>
+                <th>Lista</th><th className={s.num}>Precio de lista</th>
+                <th className={s.num}>Regla: precio</th><th className={s.num}>Regla: gana por {f.unidad}</th>
+                {f.oferta && <><th className={s.num}>Puesta: precio</th><th className={s.num}>Puesta: gana por {f.unidad}</th></>}
+              </tr>
+            </thead>
+            <tbody>
+              {listas.map((l) => (
+                <tr key={l.listaId}>
+                  <td>{l.nombre}{l.listaId === f.listaBaseId ? <span className={s.muted}> · mostrador</span> : null}</td>
+                  <td className={s.num}>{money(l.precioLista)}</td>
+                  {celdas(regla.get(l.listaId))}
+                  {f.oferta && (f.oferta.porLista
+                    ? celdas(puesta.get(l.listaId))
+                    : <td colSpan={2}><span className={s.muted}>Combo o promo de ticket: sin precio por unidad</span></td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </td>
+      </tr>
+    )];
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className={s.card} style={{ padding: '14px 16px' }}>
+        <h3 className={s['card-title']} style={{ marginTop: 0 }}>La regla de cada rango</h3>
+        <div className={s.hint} style={{ margin: '0 0 12px' }}>
+          El sistema arma la oferta de cada registro con la regla de su rango, solo en la sucursal del lote y hasta el día que vence.
+          Cada hora revisa: cuando un producto pasa de rango, su oferta cambia sola. <strong>Nunca queda por debajo del costo real.</strong>{' '}
+          Si alguien edita una oferta a mano, queda <strong>Manual</strong> y la regla no la toca.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {RANGOS_REGLA.map(({ rango, titulo }) => {
+            const r = borrador.find((x) => x.rango === rango);
+            if (!r) return null;
+            return (
+              <div key={rango} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', paddingBottom: 10, borderBottom: '1px solid var(--crm-color-border)' }}>
+                <span style={{ flex: '0 0 130px' }}><Pill pill={RANGOS_VENC[rango].pill} label={titulo} /></span>
+                <select
+                  id={`regla-${rango}-mecanica`} aria-label={`Mecánica para ${titulo}`}
+                  value={r.mecanica} disabled={!puedeEditar}
+                  onChange={(e) => setRegla(rango, { mecanica: e.target.value })}
+                  style={{ flex: '0 1 180px' }}
+                >
+                  {MECANICAS_REGLA.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                </select>
+                {(r.mecanica === 'descuento' || r.mecanica === 'costo') && (
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
+                    {r.mecanica === 'costo' ? 'Costo +' : 'Descuento'}
+                    <input
+                      id={`regla-${rango}-valor`} type="number" inputMode="decimal" min="0" max={r.mecanica === 'costo' ? 300 : 99} step="1"
+                      /* Un descuento de 0 no existe: vacío para escribirlo; «costo + 0» sí (al costo). */
+                      value={r.mecanica === 'descuento' && !Number(r.valor) ? '' : r.valor}
+                      disabled={!puedeEditar} onWheel={(e) => e.currentTarget.blur()}
+                      onChange={(e) => setRegla(rango, { valor: e.target.value })} style={{ width: 70 }}
+                    />
+                    %
+                  </label>
+                )}
+                {r.mecanica === 'nxm' && (
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
+                    Llevá
+                    <input
+                      id={`regla-${rango}-lleva`} type="number" inputMode="numeric" min="2" max="20" step="1"
+                      value={r.lleva || ''} disabled={!puedeEditar} onWheel={(e) => e.currentTarget.blur()}
+                      onChange={(e) => setRegla(rango, { lleva: e.target.value })} style={{ width: 56 }}
+                    />
+                    pagá
+                    <input
+                      id={`regla-${rango}-paga`} type="number" inputMode="numeric" min="1" max="19" step="1"
+                      value={r.paga || ''} disabled={!puedeEditar} onWheel={(e) => e.currentTarget.blur()}
+                      onChange={(e) => setRegla(rango, { paga: e.target.value })} style={{ width: 56 }}
+                    />
+                  </label>
+                )}
+                <span className={s.hint} style={{ margin: 0, flex: '1 1 260px' }}>{explicarRegla(r)}</span>
+              </div>
+            );
+          })}
+        </div>
+        {puedeEditar ? (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+            <Btn variant="btn-primary" disabled={!cambiado || ocupado} onClick={guardar}>
+              {ocupado ? 'Aplicando…' : 'Guardar y aplicar'}
+            </Btn>
+            {cambiado && <Btn disabled={ocupado} onClick={() => tomar(data)}>Descartar cambios</Btn>}
+            <span style={{ flex: 1 }} />
+            <Btn disabled={cambiado || ocupado} onClick={aplicarAhora} title="Vuelve a calcular todas las ofertas automáticas con los precios y costos de hoy">
+              Aplicar ahora
+            </Btn>
+          </div>
+        ) : (
+          <div className={s.hint} style={{ marginTop: 10 }}>Para cambiar las reglas hace falta el permiso de Ofertas.</div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 180px' }}>
+          <span className={s['mini-label']}>EN JUEGO</span>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>{money(tot.enJuego)}</div>
+          <div className={s.hint}>lo que se pierde si no se vende (costo congelado)</div>
+        </div>
+        <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 180px' }}>
+          <span className={s['mini-label']}>SI SE VENDE TODO</span>
+          <div style={{ fontSize: 18, fontWeight: 700, color: tot.ganancia < 0 ? 'var(--crm-color-danger)' : 'var(--crm-color-success)' }}>{money(tot.ganancia)}</div>
+          <div className={s.hint}>
+            de ganancia en mostrador, con la oferta puesta o la de la regla · {tot.conPropuesta} producto{tot.conPropuesta === 1 ? '' : 's'}
+            {tot.sinPropuesta ? ` · ${tot.sinPropuesta} sin oferta posible` : ''}
+          </div>
+        </div>
+        <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 180px' }}>
+          <span className={s['mini-label']}>VENDIDO CON ESTAS OFERTAS</span>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>{money(tot.neto)}</div>
+          <div className={s.hint}>
+            neto · gana {money(tot.gananciaReal)} · {tot.conVenta} producto{tot.conVenta === 1 ? '' : 's'}
+            {tot.sinCosto ? <span style={{ color: 'var(--crm-color-danger)' }}> · {tot.sinCosto} renglón{tot.sinCosto === 1 ? '' : 'es'} sin costo</span> : null}
+          </div>
+        </div>
+        <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 180px' }}>
+          <span className={s['mini-label']}>OFERTAS</span>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>{tot.auto + tot.manual}</div>
+          <div className={s.hint}>
+            {tot.auto} automática{tot.auto === 1 ? '' : 's'} · {tot.manual} manual{tot.manual === 1 ? '' : 'es'}
+            {tot.perdiendo ? <strong style={{ color: 'var(--crm-color-danger)' }}> · {tot.perdiendo} debajo del costo</strong> : null}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {CHIPS.map(([id, label]) => (
+          <button
+            key={id || 'todos'} type="button" className={s.badge}
+            style={{
+              cursor: 'pointer', padding: '5px 12px', fontSize: 12, borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--crm-color-border)',
+              ...(rangoF === id ? { background: 'var(--crm-color-primary)', color: 'var(--crm-color-primary-contrast)', borderColor: 'var(--crm-color-primary)' } : {}),
+            }}
+            onClick={() => setRangoF(id)}
+          >
+            {label}
+          </button>
+        ))}
+        <select id="reglas-sucursal" aria-label="Sucursal" value={sucF} onChange={(e) => setSucF(e.target.value)} style={{ flex: '0 1 180px' }}>
+          {sucursalOptions(store, true)}
+        </select>
+      </div>
+
+      <Table
+        grupos={[{ h: '', span: 6 }, { h: 'Lo que deja, en mostrador', span: 3 }, { h: '', span: 2 }]}
+        cols={[
+          { h: 'Producto' }, { h: 'Vence' }, { h: 'Cantidad', num: true }, { h: 'En juego', num: true }, { h: 'Regla' },
+          { h: 'Oferta' }, { h: 'Precio', num: true }, { h: 'Gana por unidad', num: true }, { h: 'Si se vende todo', num: true },
+          { h: 'Vendido con la oferta', num: true }, { h: '' },
+        ]}
+        empty={filas.length ? 'Nada con esos filtros.' : 'No hay registros abiertos.'}
+      >
+        {cuerpo}
+      </Table>
+
+      <div className={s.hint}>
+        <strong>Cómo se mide:</strong> la ganancia es lo que entra sin IVA menos el costo real de hoy (el mismo que congela la venta),
+        igual que en Métricas. «Lo que deja» es la oferta puesta (una manual puede quedar debajo del costo: se marca en rojo);
+        si todavía no hay oferta, la que armaría la regla. «Por lista» muestra la regla y la puesta lado a lado.
+        «Vendido con la oferta» sale de los tickets que la llevaron, de ese producto y en esa sucursal: no
+        cuenta anuladas, las notas de crédito restan y un renglón sin costo queda afuera de la ganancia (se avisa en rojo).
+      </div>
+    </div>
+  );
 }
 
 /* ============================== VENCIDOS ============================== */
@@ -1194,8 +1615,9 @@ export function VencimientosPanel() {
 
       {pestana === 'panel' && <TabPanel resumen={resumen} irA={irA} cruce={cruce} irAOfertas={() => setPestana('ofertas')} />}
       {pestana === 'control' && <TabControl sesion={sesion} setSesion={setSesion} alGuardar={() => { setFiltroRango(''); setPestana('registros'); }} />}
-      {pestana === 'registros' && <TabRegistros registros={registros} filtroRango={filtroRango} setFiltroRango={setFiltroRango} />}
+      {pestana === 'registros' && <TabRegistros registros={registros} filtroRango={filtroRango} setFiltroRango={setFiltroRango} recargar={cargar} />}
       {pestana === 'ofertas' && <TabOfertas cruce={cruce} registros={registros} recargar={cargar} />}
+      {pestana === 'reglas' && <TabReglas alCambiar={cargar} />}
       {pestana === 'vencidos' && <TabVencidos registros={registros} />}
       {pestana === 'mermas' && <TabMermas />}
       {pestana === 'reportes' && <TabReportes />}

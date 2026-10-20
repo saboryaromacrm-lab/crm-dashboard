@@ -391,6 +391,13 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
     >
       <div className={s.form}>
         {vencimiento && <FichaVencimiento v={vencimiento} />}
+        {oferta?.autoVencimiento && (
+          <div className={cx(s.callout, s.info)} style={{ margin: '0 0 12px' }}>
+            <strong>La maneja la regla de vencimientos:</strong> el sistema la armó y la ajusta solo cuando el
+            producto cambia de rango. Si la guardás, pasa a <strong>manual</strong> y la regla deja de tocarla.
+            Para devolvérsela: Almacén › Vencimientos › Registros, «Volver a la regla».
+          </div>
+        )}
         <div className={s['form-grid']}>
           <div className={s.field}>
             <label>Nombre <span className={s.req}>*</span></label>

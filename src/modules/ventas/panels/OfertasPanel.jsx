@@ -23,7 +23,9 @@ import { describirOferta, estadoOferta } from '../domain/ofertas.js';
 import { PanelHead, Table, Btn, usePaginado, money, s } from '../components/ui.jsx';
 
 /** El filtro por vencimiento: todas, solo las por vencimiento o las demás. */
-const FILTRO_VENC = [['', 'Todas las ofertas'], ['si', 'Por vencimiento'], ['no', 'Sin las de vencimiento']];
+const FILTRO_VENC = [['', 'Todas las ofertas'], ['si', 'Por vencimiento'], ['auto', 'Automáticas (regla de vencimiento)'], ['no', 'Sin las de vencimiento']];
+/** El filtro de arriba: `auto` son las que arma y escala la regla del rango (0188). */
+const pasaFiltroVenc = (o, f) => !f || (f === 'auto' ? o.autoVencimiento : o.porVencer === (f === 'si'));
 const fecha = (iso) => new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric', year: '2-digit' });
 
 const PILL_ESTADO = {
@@ -159,10 +161,10 @@ export function OfertasPanel() {
 
   const [porVencer, setPorVencer] = useState('');
   const filtradas = useMemo(
-    () => (ofertas ?? []).filter((o) => !porVencer || o.porVencer === (porVencer === 'si')),
+    () => (ofertas ?? []).filter((o) => pasaFiltroVenc(o, porVencer)),
     [ofertas, porVencer],
   );
-  const cuantasPorVencer = (ofertas ?? []).filter((o) => o.porVencer).length;
+  const cuantas = (f) => (ofertas ?? []).filter((o) => pasaFiltroVenc(o, f)).length;
   const pag = usePaginado(filtradas, 'ofertas');
 
   return (
@@ -202,7 +204,7 @@ export function OfertasPanel() {
           id="ofertas-filtro-vencer" aria-label="Filtrar por vencimiento" className={s['select-inline']}
           value={porVencer} onChange={(e) => setPorVencer(e.target.value)}
         >
-          {FILTRO_VENC.map(([v, label]) => <option key={v} value={v}>{v === 'si' ? `${label} (${cuantasPorVencer})` : label}</option>)}
+          {FILTRO_VENC.map(([v, label]) => <option key={v} value={v}>{v === 'si' || v === 'auto' ? `${label} (${cuantas(v)})` : label}</option>)}
         </select>
         {porVencer && <span className={s.hint} style={{ margin: 0 }}>{filtradas.length} de {(ofertas ?? []).length}</span>}
       </div>
@@ -224,7 +226,14 @@ export function OfertasPanel() {
                 <strong>{o.nombre}</strong>
                 {o.porVencer && (
                   <div>
-                    <span className={cx(s.pill, s['est-pendiente'])} title="Armada para rematar mercadería por vencer">⏳ por vencimiento</span>
+                    <span
+                      className={cx(s.pill, s['est-pendiente'])}
+                      title={o.autoVencimiento
+                        ? 'La arma y la escala sola la regla del rango (Almacén › Vencimientos › Reglas). Si la editás, pasa a manual.'
+                        : 'Armada para rematar mercadería por vencer'}
+                    >
+                      ⏳ por vencimiento{o.autoVencimiento ? ' · automática' : ''}
+                    </span>
                   </div>
                 )}
                 {alarmasPorOferta.has(o.id) && (
