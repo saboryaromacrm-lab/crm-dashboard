@@ -12,7 +12,7 @@
  *  - Solo lo ve la ADMINISTRACIÓN. Los pedidos del sitio los revisa y acepta el
  *    administrador; el cajero no maneja esa parte, así que un cartel cada vez
  *    que entra uno solo lo interrumpe en el mostrador. Además se exige la
- *    sección: si a un admin se le quitó Órdenes web, tampoco tiene sentido
+ *    sección: si a un admin se le quitó Pedidos online, tampoco tiene sentido
  *    avisarle de algo que no puede abrir.
  *  - El sonido es sintetizado (WebAudio): sin archivos, y si el navegador no
  *    deja sonar (falta un gesto del usuario), el aviso visual alcanza.
@@ -64,12 +64,12 @@ export function OrdenesWebAlert() {
         onClose={() => setAbierto(false)}
         action={(
           <Button color="inherit" size="small" onClick={irAOrdenes} sx={{ fontWeight: 700 }}>
-            Ver órdenes
+            Ver pedidos
           </Button>
         )}
         sx={{ alignItems: 'center' }}
       >
-        {count === 1 ? 'Nuevo pedido del sitio web' : `${count} pedidos web sin revisar`}
+        {count === 1 ? 'Nuevo pedido online' : `${count} pedidos online sin revisar`}
       </Alert>
     </Snackbar>
   );

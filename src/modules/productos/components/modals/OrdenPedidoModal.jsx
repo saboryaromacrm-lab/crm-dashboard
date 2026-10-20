@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { cx } from '@shared/utils/classNames.js';
 import { compararFilasPorMarca } from '@core/services/imprimir.js';
 import { telefonoWa } from '@modules/ventas/domain/constants.js';
+import { abrirWhatsApp } from '@shared/utils/whatsapp.js';
 import { useBreakpoint } from '@core/hooks/useBreakpoint.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { bultoDelProveedor, bultoTexto, estimarPedido, indiceDisponible, unidadPedido } from '../../domain/bulto.js';
@@ -268,8 +269,7 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
     if (await copiar(mensaje, 'el pedido')) { guardarComoUltimo(); anotar('Pedido copiado.'); }
   };
   const enviarWhatsApp = () => {
-    // Se abre en el mismo clic (si no, el navegador lo toma como ventana emergente y la bloquea).
-    window.open(`https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`, '_blank', 'noopener');
+    abrirWhatsApp(telefono, mensaje);
     guardarComoUltimo();
     anotar('WhatsApp abierto con el pedido.');
   };

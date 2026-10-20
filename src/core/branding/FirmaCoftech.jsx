@@ -1,3 +1,4 @@
+import { urlWhatsApp } from '@shared/utils/whatsapp.js';
 import styles from './Coftech.module.css';
 
 /**
@@ -22,7 +23,7 @@ import styles from './Coftech.module.css';
 /** Una vez por carga, no una por render: es un pie, no un reloj. */
 const ANIO = new Date().getFullYear();
 
-const WHATSAPP = 'https://wa.me/5493704819019?text=Hola,%20me%20contacto%20desde%20su%20aplicaci%C3%B3n.';
+const WHATSAPP = urlWhatsApp('5493704819019', 'Hola, me contacto desde su aplicación.');
 
 const TITULO = 'Coftech · Soluciones digitales — escribinos por WhatsApp';
 
@@ -35,8 +36,6 @@ export function FirmaCoftech() {
           <a
             className={styles.marca}
             href={WHATSAPP}
-            target="_blank"
-            rel="noopener noreferrer"
             aria-label="Coftech — escribinos por WhatsApp"
             title={TITULO}
           >

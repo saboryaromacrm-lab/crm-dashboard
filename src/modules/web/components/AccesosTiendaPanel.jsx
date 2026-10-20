@@ -29,6 +29,7 @@ import { httpClient } from '@core/services/httpClient.js';
 import { useResource } from '@modules/ventas/hooks/useResource.js';
 import { errorMsg } from '@modules/ventas/services/ventas.api.js';
 import { telLegible, telefonoWa } from '@modules/ventas/domain/constants.js';
+import { abrirWhatsApp } from '@shared/utils/whatsapp.js';
 import { fmtFechaHora } from '@modules/productos/domain/format.js';
 import { Table, PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 import { CompradoresMinoristas } from './CompradoresMinoristas.jsx';
@@ -42,7 +43,7 @@ const MENSAJES = {
   habilitado: (nombre) => `¡Hola ${nombre}! Ya estás habilitado para comprar en la tienda mayorista de Sabor y Aroma 🎉 `
     + `Entrá a ${TIENDA}, tocá *Ingresar* y poné tu DNI. ¡Te esperamos!`,
 };
-const urlWa = (a, tipo) => `https://wa.me/${telefonoWa(a.whatsapp)}?text=${encodeURIComponent(MENSAJES[tipo](a.nombre))}`;
+const avisarPorWa = (a, tipo) => abrirWhatsApp(telefonoWa(a.whatsapp), MENSAJES[tipo](a.nombre));
 
 const api = {
   listar: (estado) => httpClient.get(`/tienda-accesos?estado=${estado}`),
@@ -104,22 +105,19 @@ export function AccesosTiendaPanel({ avisar }) {
 
   /**
    * Una acción del servidor, de a una. `tipoWa`: abre WhatsApp con ese mensaje
-   * en el mismo clic (la ventana se pide antes del `await`; si falla, se cierra).
+   * recién cuando el servidor la asentó (si falla, no se avisa nada).
    */
   const accion = async (fn, ok, a, tipoWa) => {
     if (enVuelo.current) return;
     enVuelo.current = true;
-    const ventana = tipoWa ? window.open('', '_blank') : null;
-    if (ventana) ventana.opener = null;
     try {
       await fn();
-      if (ventana) ventana.location.href = urlWa(a, tipoWa);
+      if (tipoWa) avisarPorWa(a, tipoWa);
       avisar('ok', ok);
       setArmado(null);
       reload();
       accesosTienda.refrescar();
     } catch (e) {
-      ventana?.close();
       avisar('err', errorMsg(e));
     } finally {
       enVuelo.current = false;
@@ -220,7 +218,7 @@ export function AccesosTiendaPanel({ avisar }) {
                     </Btn>
                   )}
                   {vista === 'habilitado' && (
-                    <Btn small onClick={() => { window.open(urlWa(a, 'habilitado'), '_blank', 'noopener'); }} disabled={sinWa(a)}>Reenviar WhatsApp</Btn>
+                    <Btn small onClick={() => avisarPorWa(a, 'habilitado')} disabled={sinWa(a)}>Reenviar WhatsApp</Btn>
                   )}
                   {vista !== 'bloqueado' && (
                     armado === a.id ? (

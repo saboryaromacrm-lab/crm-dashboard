@@ -16,14 +16,16 @@ import { configImpresion, esc, imprimirDocumento } from '@core/services/imprimir
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
+import { abrirWhatsApp } from '@shared/utils/whatsapp.js';
 import { direccionOrden, envioOrden, telefonoWa, totalConEnvio } from '../domain/constants.js';
+import { llevaEnvio, pedirCadete } from '../domain/cadete.js';
 import { r2 } from '../domain/pos.js';
 import {
   Table, PanelHead, Btn, Pill, ModalShell, money, num, fmtFecha, usePaginado, s,
 } from '../components/ui.jsx';
 
 const ESTADOS = {
-  // Solo por si una pendiente se cuela por un link viejo: viven en Órdenes web.
+  // Solo por si una pendiente se cuela por un link viejo: viven en Pedidos online.
   pendiente: { label: 'Pendiente (web)', pill: 'est-pendiente' },
   borrador: { label: 'Borrador', pill: 'est-pendiente' },
   enviado: { label: 'Enviado', pill: 'est-preparada' },
@@ -275,7 +277,7 @@ export function PresupuestosPanel() {
   const filtrados = useMemo(() => {
     const ql = q.trim().toLowerCase();
     return lista.filter((p) => {
-      // Los pedidos web sin revisar viven en SU bandeja (Órdenes web): acá
+      // Los pedidos web sin revisar viven en SU bandeja (Pedidos online): acá
       // entran recién al aceptarse — mostrarlos en los dos lados era operarlos
       // dos veces.
       if (p.estado === 'pendiente') return false;
@@ -336,7 +338,7 @@ export function PresupuestosPanel() {
 
     const wa = telefonoWa(p.webCliente?.telefono || cliente?.telefono || '');
     if (wa) {
-      window.open(`https://wa.me/${wa}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
+      abrirWhatsApp(wa, texto);
       toast('Se abrió WhatsApp con el presupuesto listo: revisalo y tocá enviar.', 'ok');
       return;
     }
@@ -403,6 +405,14 @@ export function PresupuestosPanel() {
     if (est !== 'borrador' && est !== 'cancelado') {
       acciones.push(<Btn key="i" small onClick={() => imprimirCliente(p, cli)}>Imprimir</Btn>);
       acciones.push(<Btn key="w" small onClick={() => enviarWhatsApp(p)}>WhatsApp</Btn>);
+    }
+    /* Con envío, ya aceptado y sin cerrar: se le pasa al cadete con un botón (20/10/2026). */
+    if (llevaEnvio(p) && (est === 'enviado' || est === 'confirmado')) {
+      acciones.push(
+        <Btn key="cad" small onClick={() => pedirCadete(p, { cliente: cli, cadete: config.tiendaCadeteWhatsapp, toast })} title="Abre WhatsApp con el pedido para el cadete">
+          🛵 Pedir cadete
+        </Btn>,
+      );
     }
     if (puedeCotizar && est === 'enviado') {
       acciones.push(<Btn key="c" variant="btn-primary" small disabled={ocupado} onClick={() => confirmar(p)}>Confirmar</Btn>);

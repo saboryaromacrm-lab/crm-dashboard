@@ -18,6 +18,7 @@ import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 import { PortadaMinoristaEditor } from './PortadaMinoristaEditor.jsx';
 import { BarriosEnvio } from './BarriosEnvio.jsx';
 import { VistaPreviaTienda } from './VistaPreviaTienda.jsx';
+import { telLegible, telefonoWa } from '@modules/ventas/domain/constants.js';
 
 /** Las llaves de la tienda y la pestaña donde se cambia cada una. */
 const LLAVES = {
@@ -29,6 +30,7 @@ const LLAVES = {
   montoMinimoCamioneta: 'mayorista',
   tiendaMinoristaEnvioGratisDesde: 'minorista',
   tiendaMinoristaMapsKey: 'minorista',
+  tiendaCadeteWhatsapp: 'general',
 };
 const PESTANAS = [
   { id: 'general', label: 'General' },
@@ -147,7 +149,7 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
   const compra = [
     ['Precios', mod ? `Modalidad ${mod.nombre}, con todas sus listas` : 'Sin modalidad mayorista: la tienda mayorista no muestra productos'],
     ['Compra mínima', Number(config.montoMinimoMayorista) > 0 ? `${pesos(config.montoMinimoMayorista)} en total (o cumplir las reglas de marca y los mínimos por artículo)` : 'Sin mínimo por monto'],
-    ['Cada pedido', `Entra como presupuesto en Ventas › Órdenes web, válido ${config.presupuestoValidezDias ?? 7} días`],
+    ['Cada pedido', `Entra como presupuesto en Ventas › Pedidos online, válido ${config.presupuestoValidezDias ?? 7} días`],
   ];
 
   return (
@@ -179,7 +181,7 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
         <>
           <Seccion
             titulo="Publicación"
-            desc="Cada tienda abierta al público o en preparación. En preparación no la ve nadie salvo con el link de vista previa: ahí se ve entera, con el cartel «Vista previa», y lo que se compre entra a Órdenes web marcado PRUEBA. Con las dos en preparación, el sitio muestra «Muy pronto»."
+            desc="Cada tienda abierta al público o en preparación. En preparación no la ve nadie salvo con el link de vista previa: ahí se ve entera, con el cartel «Vista previa», y lo que se compre entra a Pedidos online marcado PRUEBA. Con las dos en preparación, el sitio muestra «Muy pronto»."
           >
             <Estado
               id="cfg-pub-mayorista" label="Tienda mayorista" opciones={['abierta', 'preparacion']}
@@ -192,6 +194,25 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
               onChange={(v) => setDraft((d) => ({ ...d, tiendaMinoristaActiva: v !== 'apagada', ...(v === 'apagada' ? {} : { tiendaMinoristaPublica: v === 'abierta' }) }))}
             />
             <VistaPreviaTienda avisar={avisar} />
+          </Seccion>
+          <Seccion
+            titulo="Cadete"
+            desc="Para los pedidos con envío: en Ventas › Pedidos online (y en Presupuestos, ya aceptados) el botón «Pedir cadete» abre WhatsApp en este chat con el pedido escrito: cliente, teléfono, dirección, ubicación y cantidad de artículos."
+          >
+            <div className={s.field} style={{ maxWidth: 320 }}>
+              <label htmlFor="cfg-cadete-wa">WhatsApp del cadete</label>
+              <input
+                id="cfg-cadete-wa" inputMode="tel" autoComplete="off" placeholder="Ej: 3704621563"
+                value={draft.tiendaCadeteWhatsapp ?? ''} onChange={(e) => set('tiendaCadeteWhatsapp')(e.target.value.replace(/\D/g, ''))}
+              />
+              <div className={s.hint} style={{ margin: '6px 0 0', ...(draft.tiendaCadeteWhatsapp && !telefonoWa(draft.tiendaCadeteWhatsapp) ? { color: 'var(--crm-color-danger)' } : {}) }}>
+                {!draft.tiendaCadeteWhatsapp
+                  ? 'Característica y número, por ejemplo 3704621563. Vacío = el botón avisa que falta.'
+                  : telefonoWa(draft.tiendaCadeteWhatsapp)
+                    ? `Se abre el chat con el ${telLegible(telefonoWa(draft.tiendaCadeteWhatsapp).slice(3))}.`
+                    : 'No llega a un celular completo: característica y número (10 dígitos).'}
+              </div>
+            </div>
           </Seccion>
           <Seccion titulo="Cómo se ven los productos" desc="La forma del catálogo, en los dos modos.">
             <Interruptor
@@ -240,7 +261,7 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
         <Seccion titulo="Tienda minorista" desc="La misma tienda, en modo Minorista: precio de mostrador (la lista base de la caja), sin compra mínima. Para ver los precios y comprar, el cliente ingresa con su WhatsApp: la primera vez se registra (nombre, apellido y dirección) y entra en el momento. Los ves y los bloqueás en Tienda online › Accesos › Minoristas. Si está abierta, en preparación o apagada se elige en General › Publicación.">
           <Monto
             id="cfg-tienda-envio-gratis" label="Envío a domicilio gratis desde"
-            hint="0 = nunca es gratis: el costo del envío se coordina por WhatsApp. Con un monto, el pedido que lo supera queda marcado «gratis» en Órdenes web. Retiro en el local se ofrece siempre."
+            hint="0 = nunca es gratis: el costo del envío se coordina por WhatsApp. Con un monto, el pedido que lo supera queda marcado «gratis» en Pedidos online. Retiro en el local se ofrece siempre."
             value={draft.tiendaMinoristaEnvioGratisDesde} disabled={draft.tiendaMinoristaActiva === false} onChange={set('tiendaMinoristaEnvioGratisDesde')}
           />
           <div className={s.hint} style={{ margin: 0 }}>

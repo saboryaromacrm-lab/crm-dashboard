@@ -41,7 +41,7 @@ function PedidosWebModal({ cliente, pedidos, onCerrar }) {
       </Table>
       <div className={s.hint}>
         Todo lo que este cliente pidió desde el sitio, en cualquier estado. Los pendientes
-        se atienden en <strong>Órdenes web</strong>; el resto sigue su ciclo en Presupuestos.
+        se atienden en <strong>Pedidos online</strong>; el resto sigue su ciclo en Presupuestos.
       </div>
     </ModalShell>
   );

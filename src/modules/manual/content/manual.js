@@ -1178,12 +1178,12 @@ export const MANUAL = [
       },
       {
         id: 'ordenes-web',
-        actualizado: '2026-08-06 18:53',
-        titulo: 'Órdenes web (recepción de pedidos del sitio)',
+        actualizado: '2026-10-20 19:00',
+        titulo: 'Pedidos online (recepción de pedidos de la tienda; ex «Órdenes web»)',
         bloques: [
           {
             t: 'p',
-            texto: 'Todo pedido del sitio nace como presupuesto en estado **Pendiente**, en la bandeja de **Ventas › Órdenes web**. No es un documento nuevo: es el MISMO presupuesto de siempre, pero `Enviado` significa "la casa dio su palabra" — y un pedido que nadie miró todavía no puede serla.',
+            texto: 'Todo pedido del sitio nace como presupuesto en estado **Pendiente**, en la bandeja de **Ventas › Pedidos online** (hasta el 20/10/2026 se llamaba «Órdenes web»). No es un documento nuevo: es el MISMO presupuesto de siempre, pero `Enviado` significa "la casa dio su palabra" — y un pedido que nadie miró todavía no puede serla.',
           },
           {
             t: 'tabla',
@@ -1191,6 +1191,8 @@ export const MANUAL = [
             filas: [
               ['**La bandeja**', 'Lista los pendientes con cliente (o chip **NUEVO**), WhatsApp, entrega y total. "Ver" muestra los renglones con el **stock disponible de cada uno** — el faltante se ve ANTES de aceptar, no al confirmar'],
               ['**Responder por WhatsApp**', 'Clic en el teléfono del pedido y se abre el chat con el saludo ya escrito (nombre, código y total). Entiende cómo escribe la gente: con o sin `+54`, con el `0` de larga distancia o el viejo `15`. Si el número quedó incompleto, se muestra sin link — uno roto abre un chat que no existe'],
+              ['**Pedir cadete**', 'En los pedidos con envío, el botón **🛵 Cadete** (en la fila, en «Ver» y en Presupuestos mientras está enviado o confirmado) abre WhatsApp en el chat del cadete con el pedido escrito: código, cliente, teléfono, dirección, ubicación del mapa y cuántos artículos lleva. El número se carga en **Tienda online › Configuración › General › Cadete**; sin número, el botón avisa dónde cargarlo'],
+              ['**WhatsApp en la app**', 'Desde el 20/10/2026 todo el ERP abre **WhatsApp de Windows** (o el del celular) con `whatsapp://`, no wa.me: no queda una pestaña del navegador en el medio. La primera vez el navegador pregunta «¿Abrir WhatsApp?»: con «Permitir siempre» no vuelve a preguntar. Hace falta tener la app instalada en la PC'],
               ['**Aceptar**', 'Pasa la orden a **Enviado** (arranca la validez) y sigue el ciclo normal de Presupuestos. Si el DNI ya era cliente, queda adjudicada sola; si es desconocido, **pregunta si darlo de alta** (o se asigna a mano a uno existente) — el cliente recién se crea acá, nunca antes'],
               ['**Rechazar**', 'Cancela con **motivo obligatorio** (queda en observaciones). El cliente nuevo NO se da de alta: una prueba o un spam no ensucian la base'],
               ['**El aviso**', 'Contador en el sidebar (módulo Ventas) y en el submenu, más una **alerta arriba con campanita** cuando entra un pedido con el ERP abierto. Varios juntos = un solo aviso con el contador. La alerta la ve solo la **administración** (además de tener la sección `ventas.ordenes`): los pedidos del sitio los revisa y acepta el admin, y al cajero un cartel cada vez que entra uno solo lo interrumpe en el mostrador — igual le queda el contador si tiene la sección'],
@@ -1202,7 +1204,7 @@ export const MANUAL = [
             tono: 'info',
             texto: 'La bandeja y los contadores se refrescan solos cada 30 segundos. El aviso FUERA del ERP (WhatsApp/email cuando nadie tiene el sistema abierto) sigue pendiente: necesita un servicio externo.',
           },
-          { t: 'ruta', texto: 'Ventas › Órdenes web (permiso ventas.ordenes) — el pedido se genera en el sitio (localhost:3002)' },
+          { t: 'ruta', texto: 'Ventas › Pedidos online (permiso ventas.ordenes) — el pedido se genera en el sitio (localhost:3002)' },
         ],
       },
       {

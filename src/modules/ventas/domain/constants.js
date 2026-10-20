@@ -140,7 +140,7 @@ export function nroComprobante(doc) {
 }
 
 /**
- * Teléfono en formato wa.me: `549` + área + abonado, sin símbolos.
+ * Teléfono en formato WhatsApp: `549` + área + abonado, sin símbolos.
  *
  * Contempla lo que la gente escribe de verdad: con o sin `+54`, con el `0` de
  * larga distancia y con el viejo `15` del celular (0370 15 4621563). Ningún

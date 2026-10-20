@@ -17,6 +17,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { cx } from '@shared/utils/classNames.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { telefonoWa } from '@modules/ventas/domain/constants.js';
+import { abrirWhatsApp } from '@shared/utils/whatsapp.js';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { provApi } from '../services/proveedores.api.js';
@@ -88,8 +89,7 @@ export function ProveedorMenu({ proveedorId, nombre, enPadron = false }) {
             Ver sus últimos ingresos
           </MenuItem>
         )}
-        {/* Se abre en el mismo clic: si no, el navegador lo toma como ventana emergente y la bloquea. */}
-        <MenuItem disabled={!whatsapp} onClick={ir(() => window.open(`https://wa.me/${whatsapp}`, '_blank', 'noopener'))}>
+        <MenuItem disabled={!whatsapp} onClick={ir(() => abrirWhatsApp(whatsapp))}>
           <ListItemIcon><WhatsAppIcon fontSize="small" sx={{ color: '#25D366' }} /></ListItemIcon>
           {whatsapp ? 'Ir a WhatsApp' : 'WhatsApp: sin celular en la ficha'}
         </MenuItem>

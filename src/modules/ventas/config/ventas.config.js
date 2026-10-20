@@ -6,7 +6,7 @@
  * tenga permitido es con el que abre el módulo.
  *
  * El ORDEN sigue el día del mostrador: se vende (Punto de venta), se maneja el
- * turno (Caja), entran los pedidos del sitio (Órdenes web) y se cotiza a los
+ * turno (Caja), entran los pedidos del sitio (Pedidos online) y se cotiza a los
  * mayoristas (Presupuestos). Después viene lo que se consulta de vez en cuando
  * —clientes, cobranzas— y al final lo que se configura y casi no se toca.
  */
@@ -43,7 +43,7 @@ export const VENTAS_PANELS = [
   { id: 'arca', label: 'Caídas por ARCA', icon: CloudOffIcon, permiso: 'ventas.listado', badge: 'arca' },
   /* Cuánto subió o bajó lo vendido entre dos períodos (14/10/2026). Sin costos. */
   { id: 'variaciones', label: 'Variaciones', icon: CompareArrowsIcon, permiso: 'ventas.variaciones' },
-  { id: 'ordenes', label: 'Órdenes web', icon: PublicIcon, permiso: 'ventas.ordenes', badge: 'ordenes' },
+  { id: 'ordenes', label: 'Pedidos online', icon: PublicIcon, permiso: 'ventas.ordenes', badge: 'ordenes' },
   { id: 'presupuestos', label: 'Presupuestos', icon: RequestQuoteIcon, permiso: 'ventas.presupuestos' },
   { id: 'clientes', label: 'Clientes', icon: PeopleAltIcon, permiso: 'ventas.clientes' },
   { id: 'cobranzas', label: 'Cobranzas', icon: PaymentsIcon, permiso: 'ventas.cobranzas' },

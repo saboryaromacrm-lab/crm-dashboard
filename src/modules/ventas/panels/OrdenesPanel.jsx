@@ -1,5 +1,5 @@
 /**
- * ÓRDENES WEB — la bandeja de los pedidos del sitio
+ * PEDIDOS ONLINE (ex «Órdenes web», 20/10/2026) — la bandeja de los pedidos del sitio
  * ============================================================================
  * Todo pedido del sitio nace acá, en estado `pendiente`: el cliente propuso y
  * NADIE de la casa lo miró todavía. No es una entidad nueva — es el mismo
@@ -18,7 +18,9 @@ import { ordenesWeb } from '@core/services/ordenesWeb.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
+import { urlWhatsApp } from '@shared/utils/whatsapp.js';
 import { direccionOrden, envioOrden, mapaOrden, telefonoWa, totalConEnvio } from '../domain/constants.js';
+import { llevaEnvio, pedirCadete } from '../domain/cadete.js';
 import {
   Table, PanelHead, Btn, Di, ModalShell, money, num, fmtFechaHora, usePaginado, s,
 } from '../components/ui.jsx';
@@ -90,14 +92,10 @@ function WhatsAppLink({ orden }) {
   }
 
   const nombre = String(wc.nombre ?? '').trim();
-  const texto = encodeURIComponent(
-    `Hola${nombre ? ` ${nombre}` : ''}, te escribimos por tu pedido ${orden.codigo} de ${money(totalConEnvio(orden))}.`,
-  );
+  const texto = `Hola${nombre ? ` ${nombre}` : ''}, te escribimos por tu pedido ${orden.codigo} de ${money(totalConEnvio(orden))}.`;
   return (
     <a
-      href={`https://wa.me/${wa}?text=${texto}`}
-      target="_blank"
-      rel="noopener noreferrer"
+      href={urlWhatsApp(wa, texto)}
       title={`Responder a ${nombre || tel} por WhatsApp`}
       style={{ color: '#25D366', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}
     >
@@ -111,11 +109,18 @@ function WhatsAppLink({ orden }) {
  * ==================================================================== */
 
 function DetalleOrdenModal({ orden, getCliente, onCerrar }) {
+  const { config, toast } = useVentas();
   const wc = orden.webCliente ?? {};
   const faltantes = orden.items.filter((it) => !it.alcanza);
   return (
     <ModalShell title={`Orden ${orden.codigo}`} wide onClose={onCerrar}
-      footer={[{ texto: 'Cerrar', clase: 'btn-ghost', onClick: onCerrar }]}
+      footer={[
+        ...(llevaEnvio(orden) ? [{
+          texto: '🛵 Pedir cadete', clase: 'btn-ghost',
+          onClick: () => pedirCadete(orden, { cliente: getCliente(orden.clienteId), cadete: config.tiendaCadeteWhatsapp, toast }),
+        }] : []),
+        { texto: 'Cerrar', clase: 'btn-ghost', onClick: onCerrar },
+      ]}
     >
       <div className={s['detalle-grid']}>
         <Di label="Cliente">{nombreOrden(orden, getCliente)}{!orden.clienteId && <span className={cx(s.pill, s['est-pendiente'])} style={{ marginLeft: 6 }}>NUEVO</span>}</Di>
@@ -310,7 +315,7 @@ function RechazarOrdenModal({ orden, onListo, onCerrar }) {
  * ==================================================================== */
 
 export function OrdenesPanel() {
-  const { getCliente } = useVentas();
+  const { getCliente, config, toast } = useVentas();
   const [modal, setModal] = useState(null); // { tipo: 'ver'|'aceptar'|'rechazar', orden }
   const [cargandoId, setCargandoId] = useState(0);
   /** Filtro por modo de la tienda (0173): '' = todas. */
@@ -351,8 +356,8 @@ export function OrdenesPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
-        title="Órdenes web"
-        desc="Los pedidos del sitio esperando revisión. Aceptar los pasa a Presupuestos (ciclo normal); rechazar los cancela con motivo. El cliente nuevo recién se da de alta al aceptar."
+        title="Pedidos online"
+        desc="Los pedidos de la tienda online esperando revisión. Aceptar los pasa a Presupuestos (ciclo normal); rechazar los cancela con motivo. El cliente nuevo recién se da de alta al aceptar. Los que van a domicilio se le pasan al cadete con «Pedir cadete»."
       />
 
       {error && <div className={cx(s.callout, s.warn)}>No se pudieron cargar las órdenes: <strong>{error}</strong></div>}
@@ -386,7 +391,7 @@ export function OrdenesPanel() {
           { h: 'Entrega' }, { h: 'Renglones', num: true }, { h: 'Total', num: true },
           { h: 'Acciones', cls: 'actions-col' },
         ]}
-        empty={loading ? 'Cargando…' : 'No hay pedidos web esperando revisión. Los nuevos aparecen solos.'}
+        empty={loading ? 'Cargando…' : 'No hay pedidos online esperando revisión. Los nuevos aparecen solos.'}
         pag={pag}
       >
         {pag.visibles.map((p) => (
@@ -405,6 +410,11 @@ export function OrdenesPanel() {
             <td className={s['actions-col']}>
               <div className={s['row-actions']}>
                 <Btn small onClick={() => abrir('ver', p)}>Ver</Btn>
+                {llevaEnvio(p) && (
+                  <Btn small onClick={() => pedirCadete(p, { cliente: getCliente(p.clienteId), cadete: config.tiendaCadeteWhatsapp, toast })} title="Abre WhatsApp con el pedido para el cadete">
+                    🛵 Cadete
+                  </Btn>
+                )}
                 <Btn variant="btn-primary" small onClick={() => abrir('aceptar', p)}>Aceptar</Btn>
                 <Btn variant="btn-delete" small onClick={() => abrir('rechazar', p)}>Rechazar</Btn>
               </div>
