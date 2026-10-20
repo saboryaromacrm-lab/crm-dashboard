@@ -15,6 +15,7 @@ import WarehouseIcon from '@mui/icons-material/Warehouse';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
 import LocalCafeIcon from '@mui/icons-material/LocalCafe';
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBag';
+import EventBusyIcon from '@mui/icons-material/EventBusy';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { RetiroDirectoModal } from '@modules/ventas/components/modals/RetiroDirectoModal.jsx';
 import styles from '../styles/Dashboard.module.css';
@@ -25,6 +26,8 @@ const ACCESOS = [
   { label: 'Existencias', modulo: 'Almacén', ruta: '/almacen?panel=existencias', permiso: 'almacen.existencias', Icono: WarehouseIcon },
   { label: 'Fraccionamiento', modulo: 'Almacén', ruta: '/almacen?panel=fraccionamiento', permiso: 'almacen.fraccionamiento', Icono: CallSplitIcon },
   { label: 'Coffit', modulo: 'Almacén', ruta: '/almacen?panel=cafeteria', permiso: 'almacen.cafeteria', Icono: LocalCafeIcon },
+  /* Vencimientos (20/10/2026, pedido del dueño): abre en Registros. */
+  { label: 'Vencimientos', modulo: 'Almacén', ruta: '/almacen?panel=vencimientos', permiso: 'almacen.vencimientos', Icono: EventBusyIcon },
 ];
 
 function Acceso({ modulo, label, Icono, onClick }) {

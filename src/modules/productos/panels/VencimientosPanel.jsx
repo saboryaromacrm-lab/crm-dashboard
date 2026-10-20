@@ -1113,7 +1113,8 @@ function TabReportes() {
 /* ============================== EL PANEL ============================== */
 export function VencimientosPanel() {
   const { store } = useProductos();
-  const [pestana, setPestana] = useState('panel');
+  /* Abre en Registros (20/10/2026, pedido del dueño): es la lista que se trabaja todos los días. */
+  const [pestana, setPestana] = useState('registros');
   const [registros, setRegistros] = useState([]);
   const [resumen, setResumen] = useState(null);
   /** El cruce con las ofertas de Ventas (lista + avisos). */
