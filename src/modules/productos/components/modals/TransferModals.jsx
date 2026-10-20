@@ -202,12 +202,10 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
   const [obs, setObs] = useState(obsInicial ?? '');
   const [items, setItems] = useState([]);
   const [q, setQ] = useState('');
-  /* «Sin stock en mi local» y «con stock en el origen» arrancan tildados (15/10/2026, pedido del dueño). */
+  /* «Sin stock en mi local» arranca tildado (15/10/2026, pedido del dueño); lo que el origen no tiene ni aparece (20/10/2026). */
   const [soloSinStock, setSoloSinStock] = useState(true);
   /** Lo que el local que pide tiene bajo (menos de BAJO_STOCK_PEDIDO); suma con «sin stock». */
   const [soloBajos, setSoloBajos] = useState(false);
-  /** Solo lo que la sucursal a la que se le pide puede mandar (14/10/2026): no pedir lo que no hay. */
-  const [soloConStockOrigen, setSoloConStockOrigen] = useState(true);
   /*
    * NOVEDADES (0083) — lo que llegó al depósito que este local no sabe.
    *
@@ -313,7 +311,6 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
 
   const busqueda = useMemo(() => {
     const ql = normTxt(q);
-    if (!ql && !soloSinStock && !soloBajos && !soloNovedades && !soloConStockOrigen) return { lista: [], otros: 0 };
     const cod = q.trim();
     /* Tipeando alcanza con las primeras coincidencias (se sigue escribiendo
      * para afinar). RECORRIENDO no (sin stock, bajos, novedades): cortarla en 8
@@ -326,15 +323,17 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
     const filasDe = (p) => (listaDeProducto(p) === 'granel' && (p.presentaciones || []).length ? p.presentaciones : [null]);
     const lista = [];
     let otros = 0;
+    /** Los que coinciden con lo tipeado pero el origen no tiene: se avisa, no se ofrecen (20/10/2026). */
+    let sinStockOrigen = 0;
     for (const p of store.state.productos) {
       if (!deSaborYAroma(p)) continue;
       if (soloNovedades && !novedades?.mapa?.has(p.id)) continue;
-      if (soloConStockOrigen && !hayParaMandar(store, p, origenNum)) continue;
       if (ql && !(normTxt(p.nombre).includes(ql) || normTxt(p.marca).includes(ql)
         || (p.codigoBarras || '').includes(cod) || (p.codigoPropio || '').includes(cod)
         // También por el código del PAQUETE: escanear un 500 g tiene que
         // encontrarlo, y ese código es de la presentación, no de la madre.
         || (p.presentaciones || []).some((pr) => (pr.codigoBarras || '').includes(cod)))) continue;
+      if (!hayParaMandar(store, p, origenNum)) { if (ql) sinStockOrigen += 1; continue; }
       if (listaDeProducto(p) !== grupo) { if (filasDe(p).some((pr) => pasaFila(p, pr))) otros += 1; continue; }
       /* Con el filtro de novedades NO se corta acá: el recorrido va en el
        * orden del catálogo, y cortar antes de ordenar dejaría afuera justo lo
@@ -371,9 +370,9 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
       lista.sort((a, b) => fechaDe(b) - fechaDe(a));
       if (lista.length > TOPE) lista.length = TOPE;
     }
-    return { lista, otros };
+    return { lista, otros, sinStockOrigen };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.state.productos, store.state.stock, q, soloSinStock, soloBajos, soloConStockOrigen, soloNovedades, novedades, origenNum, destinoNum, grupo]);
+  }, [store.state.productos, store.state.stock, q, soloSinStock, soloBajos, soloNovedades, novedades, origenNum, destinoNum, grupo]);
   const resultados = busqueda.lista;
 
   /** Cuántos renglones cayeron en cada pestaña (el pedido sigue siendo UNO). */
@@ -518,6 +517,11 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
    * producto. */
   const agregar = (p, presId = '', cant = 1, { limpiar = true } = {}) => {
     if (!p) return;
+    /* La puerta de todas las formas de sumar (buscador, Enter, explorador): lo que el origen no tiene no entra. */
+    if (!hayParaMandar(store, p, origenNum)) {
+      toast(`${p.nombre}: ${origen?.nombre ?? 'el origen'} no tiene stock para mandar, no se puede pedir.`, 'err');
+      return;
+    }
     const pres = presId ? String(presId) : '';
     setItems((rows) => {
       const i = rows.findIndex((r) => parseInt(r.prodId, 10) === p.id && (r.presId || '') === pres);
@@ -607,6 +611,8 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
     let enteros = 0; let granel = 0; let kgAFraccionar = 0;
     const sinCantidad = [];
     const cortos = [];
+    /** Lo que el origen no tiene: no se puede enviar así (20/10/2026). */
+    const sinStockOrigen = [];
     /* Los renglones de cada parte, para leerlos antes de mandar (26/9/2026). */
     const lineas = { granel: [], enteros: [] };
     for (const it of items) {
@@ -628,8 +634,9 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
         presentacion: pres ? store.presLabel(prod, pres.id) : (esGranel ? 'Suelto' : ''),
         cantidad: store.fmtCant(prod, presNum, cant),
         kg: esGranel ? pide : null,
-        corto: pide > hay + 1e-9 && !store.stockLibre(prod),
+        corto: !(hay > 1e-9) || (pide > hay + 1e-9 && !store.stockLibre(prod)),
       });
+      if (!(hay > 1e-9)) { sinStockOrigen.push(prod.nombre); continue; }
       // Granel sin control de stock: viaja aunque no alcance, no es un faltante.
       if (pide > hay + 1e-9 && !store.stockLibre(prod)) {
         cortos.push({
@@ -643,7 +650,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
     const porNombre = (a, b) => a.nombre.localeCompare(b.nombre, 'es');
     lineas.granel.sort(porNombre);
     lineas.enteros.sort(porNombre);
-    return { enteros, granel, kgAFraccionar, sinCantidad, cortos, lineas, conCantidad: enteros + granel };
+    return { enteros, granel, kgAFraccionar, sinCantidad, cortos, sinStockOrigen, lineas, conCantidad: enteros + granel };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, store.state.productos, store.state.stock, origenNum]);
 
@@ -665,6 +672,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
           texto: resumen.conCantidad ? `Enviar pedido (${resumen.conCantidad})` : 'Enviar pedido',
           clase: 'btn-primary',
           onClick: enviar,
+          disabled: resumen.sinStockOrigen.length > 0,
         },
       ];
 
@@ -852,10 +860,6 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
             <input id="pedido-bajos" type="checkbox" checked={soloBajos} onChange={(e) => setSoloBajos(e.target.checked)} />
             Ver bajos en stock en {destino?.nombre ?? 'mi sucursal'} (menos de {BAJO_STOCK_PEDIDO})
           </label>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
-            <input id="pedido-con-stock-origen" type="checkbox" checked={soloConStockOrigen} onChange={(e) => setSoloConStockOrigen(e.target.checked)} />
-            Ver solo con stock en {origen?.nombre ?? 'el origen'}
-          </label>
           {cuentaNovedades.total > 0 && (
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
               <input type="checkbox" checked={soloNovedades} onChange={(e) => setSoloNovedades(e.target.checked)} />
@@ -956,12 +960,18 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
         )}
         {/* Un buscador acotado puede decir "no existe" de algo que sí existe: si
             la coincidencia está en la otra pestaña, se avisa y se ofrece ir. */}
-        {(q || soloSinStock || soloBajos || soloConStockOrigen || soloNovedades) && !resultados.length && (
+        {busqueda.sinStockOrigen > 0 && (
+          <div className={s.hint}>
+            {busqueda.sinStockOrigen === 1 ? 'Un producto coincide' : `${busqueda.sinStockOrigen} productos coinciden`} pero{' '}
+            {origen?.nombre ?? 'el origen'} no tiene stock para mandar: no se puede{busqueda.sinStockOrigen === 1 ? '' : 'n'} pedir.
+          </div>
+        )}
+        {!resultados.length && !busqueda.sinStockOrigen && (
           <div className={s.hint}>
             {busqueda.otros > 0 ? (
               <>
                 Nada coincide entre los productos {grupo === 'granel' ? 'a granel' : 'enteros'}
-                {soloSinStock ? ' sin stock' : ''}{soloBajos ? `${soloSinStock ? ' o' : ''} con menos de ${BAJO_STOCK_PEDIDO}` : ''}{soloConStockOrigen ? ` con stock en ${origen?.nombre ?? 'el origen'}` : ''}{soloNovedades ? ' de las novedades' : ''}, pero hay {busqueda.otros}{' '}
+                {soloSinStock ? ' sin stock' : ''}{soloBajos ? `${soloSinStock ? ' o' : ''} con menos de ${BAJO_STOCK_PEDIDO}` : ''} con stock en {origen?.nombre ?? 'el origen'}{soloNovedades ? ' de las novedades' : ''}, pero hay {busqueda.otros}{' '}
                 {grupo === 'granel' ? 'entre los enteros' : 'a granel'}.{' '}
                 <button
                   type="button"
@@ -974,7 +984,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
             ) : (
               <>
                 Nada coincide{soloSinStock || soloBajos ? ` entre los productos ${[soloSinStock && 'sin stock', soloBajos && `con menos de ${BAJO_STOCK_PEDIDO}`].filter(Boolean).join(' o ')}` : ''}
-                {soloConStockOrigen ? ` con stock en ${origen?.nombre ?? 'el origen'}` : ''}
+                {` con stock en ${origen?.nombre ?? 'el origen'}`}
                 {soloNovedades ? ` entre las novedades ${grupo === 'granel' ? 'a granel' : 'enteras'}` : ''}.
               </>
             )}
@@ -1143,13 +1153,14 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
                       )
                       : <span className={s.hint} style={{ margin: 0 }}>—</span>}
                   </td>
-                  {/* El disponible es informativo: orienta el pedido, no lo limita. */}
+                  {/* El disponible orienta la cantidad; en 0 el renglón no se puede enviar (20/10/2026). */}
                   <td
                     className={cx(s.num, s.mono)}
                     style={alcanza && enOrigen > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}
                   >
                     {store.fmtCant(prod, esGranel ? null : presNum, enOrigen)}
-                    {esGranel && pideKg > 0 && (
+                    {!(enOrigen > 1e-9) && <div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>sin stock: sacalo</div>}
+                    {esGranel && pideKg > 0 && enOrigen > 1e-9 && (
                       <div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
                         {alcanza
                           ? `se fraccionan ${num(pideKg, 3)} kg`
@@ -1232,6 +1243,15 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
           </Table>
         </div>
       ))}
+
+      {/* Lo que el origen NO TIENE (20/10/2026, pedido del dueño): así no se envía. */}
+      {resumen.sinStockOrigen.length > 0 && (
+        <div className={cx(s.callout, s.err)}>
+          <strong>{origen?.nombre ?? 'El origen'} no tiene stock de {resumen.sinStockOrigen.length === 1 ? 'un producto' : `${resumen.sinStockOrigen.length} productos`}:</strong>{' '}
+          {resumen.sinStockOrigen.slice(0, 6).join(', ')}{resumen.sinStockOrigen.length > 6 ? ` y ${resumen.sinStockOrigen.length - 6} más` : ''}.
+          {' '}Volvé al paso anterior y sacalos del pedido para poder enviarlo.
+        </div>
+      )}
 
       {/* Los renglones que el origen no puede cubrir HOY. No frena el pedido —es
           demanda, y mañana puede haber— pero pedir 20 kg de algo que allá tienen

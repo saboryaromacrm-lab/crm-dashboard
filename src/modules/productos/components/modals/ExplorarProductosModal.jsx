@@ -40,7 +40,6 @@ export function ExplorarProductosModal({ grupo, origenId, destinoId, yaEnPedido,
   const [proveedorId, setProveedorId] = useState('');
   const [categoria, setCategoria] = useState('');
   const [marca, setMarca] = useState('');
-  const [soloConStock, setSoloConStock] = useState(false);
 
   const origen = store.getSucursal(origenId);
   const destino = store.getSucursal(destinoId);
@@ -80,10 +79,9 @@ export function ExplorarProductosModal({ grupo, origenId, destinoId, yaEnPedido,
         || norm(p.categoria).includes(ql) || (p.codigoBarras || '').includes(q.trim())
         || (p.presentaciones || []).some((pr) => (pr.codigoBarras || '').includes(q.trim())))) continue;
 
-      // El filtro de stock mira el ORIGEN: es lo que decide si el pedido tiene
-      // con qué cumplirse. (Lo que ME falta a mí lo cubre el otro tilde, el del
-      // buscador de la pestaña.)
-      if (soloConStock && !hayParaMandar(store, p, origenId)) continue;
+      // Solo lo que el ORIGEN puede mandar (20/10/2026: lo que no tiene no se
+      // puede pedir). Lo que ME falta a mí lo cubre el tilde del buscador de la pestaña.
+      if (!hayParaMandar(store, p, origenId)) continue;
 
       if (p.tipo !== 'granel') {
         out.push({ clave: `p${p.id}`, p, pres: null });
@@ -108,13 +106,13 @@ export function ExplorarProductosModal({ grupo, origenId, destinoId, yaEnPedido,
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.state.productos, store.state.stock, grupo, q, proveedorId, categoria, marca, soloConStock, origenId]);
+  }, [store.state.productos, store.state.stock, grupo, q, proveedorId, categoria, marca, origenId]);
 
-  const hayFiltro = !!(q || proveedorId || categoria || marca || soloConStock);
+  const hayFiltro = !!(q || proveedorId || categoria || marca);
   const limpiar = () => {
-    setQ(''); setProveedorId(''); setCategoria(''); setMarca(''); setSoloConStock(false);
+    setQ(''); setProveedorId(''); setCategoria(''); setMarca('');
   };
-  const pag = usePaginado(filas, 'explorarPedido', `${grupo}|${q}|${proveedorId}|${categoria}|${marca}|${soloConStock}`);
+  const pag = usePaginado(filas, 'explorarPedido', `${grupo}|${q}|${proveedorId}|${categoria}|${marca}`);
 
   return (
     <ModalShell
@@ -170,13 +168,6 @@ export function ExplorarProductosModal({ grupo, origenId, destinoId, yaEnPedido,
               <option value="">Todas</option>
               {opciones.marcas.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
-          </div>
-          <div className={c.campo}>
-            <label>Stock</label>
-            <label className={c.tilde}>
-              <input type="checkbox" checked={soloConStock} onChange={(e) => setSoloConStock(e.target.checked)} />
-              Solo lo que <strong>{origen?.nombre ?? 'el origen'}</strong> puede mandar
-            </label>
           </div>
         </div>
 

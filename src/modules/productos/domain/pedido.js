@@ -44,14 +44,13 @@ export const puedeMandar = (store, p, sucId) => {
 };
 
 /**
- * ¿HAY ALLÁ PARA MANDAR? El filtro «con stock» del origen, en el buscador del
- * pedido y en el explorador del catálogo (14/10/2026: una sola regla para los
- * dos). Mide lo mismo que dice el renglón: si dice «0 kg», no pasa.
+ * ¿HAY ALLÁ PARA MANDAR? Mide lo mismo que dice el renglón: si dice «0 kg», no.
  *
- * Un producto SIN CONTROL DE STOCK también se filtra por lo que hay (18/10/2026,
- * pedido del dueño: con el granel sin control, el tilde dejaba pasar todo el
- * granel en 0). El control decide si el pedido se puede confirmar sin stock;
- * el tilde es solo qué se ve. Para pedir algo en 0 se saca el tilde.
+ * NO SE PIDE LO QUE EL ORIGEN NO TIENE (20/10/2026, pedido del dueño): antes
+ * era un tilde que se podía sacar; ahora es la regla. El buscador y el
+ * explorador muestran solo esto, el pedido no deja agregar ni enviar lo que no
+ * pasa, y el servidor lo vuelve a exigir al enviar (`exigirStockEnOrigen`). Vale
+ * también sin control de stock (18/10/2026: con el granel sin control, 0 kg es 0 kg).
  */
 export const hayParaMandar = (store, p, sucId) => puedeMandar(store, p, sucId) > 1e-9;
 
