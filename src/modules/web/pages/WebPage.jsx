@@ -34,6 +34,7 @@ import { AccesosTiendaPanel } from '../components/AccesosTiendaPanel.jsx';
 import { ConfiguracionTiendaPanel } from '../components/ConfiguracionTiendaPanel.jsx';
 import { BuscadoresEditor } from '../components/BuscadoresEditor.jsx';
 import { LocalesEditor } from '../components/LocalesEditor.jsx';
+import { NosotrosEditor } from '../components/NosotrosEditor.jsx';
 import { MetricasTiendaPanel } from '../panels/MetricasTiendaPanel.jsx';
 import { accesosTienda, sinSuscripcion } from '@core/services/accesosTienda.js';
 import { PRESETS_IMAGEN, srcImagen } from '../services/imagenes.js';
@@ -459,7 +460,7 @@ function ConfiguracionSitioPanel({ catalogo, recargar, avisar }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Datos del sitio"
-        desc="La identidad y los datos que ve el cliente: logo, favicon, imagen para compartir, contacto, redes, cartel, lo que muestra Google y los locales con sus horarios. Cada bloque se guarda con su propio botón."
+        desc="La identidad y los datos que ve el cliente: logo, favicon, imagen para compartir, contacto, redes, cartel, lo que muestra Google, los locales con sus horarios y lo que leen las IA. Cada bloque se guarda con su propio botón."
       />
 
       <div className={s['section-title']}>Identidad</div>
@@ -514,6 +515,7 @@ function ConfiguracionSitioPanel({ catalogo, recargar, avisar }) {
       <CartelBienvenida web={web} setWeb={setWeb} recargar={recargar} avisar={avisar} />
       <BuscadoresEditor web={web} setWeb={setWeb} imagenUrl={catalogo?.sitio?.seo?.imagenUrl} avisar={avisar} />
       <LocalesEditor web={web} setWeb={setWeb} avisar={avisar} />
+      <NosotrosEditor web={web} setWeb={setWeb} avisar={avisar} />
     </div>
   );
 }
