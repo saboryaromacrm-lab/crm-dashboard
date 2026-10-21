@@ -1,5 +1,6 @@
 import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { useEffect, useMemo, useState } from 'react';
+import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { useSeccion } from '../hooks/useSeccion.js';
 import { num, money, fmtFechaHora } from '../domain/format.js';
@@ -9,6 +10,8 @@ import { FiltroProductoControles } from '../components/FiltroProducto.jsx';
 import { useFiltroProducto } from '../hooks/useFiltroProducto.js';
 import { Table, PanelHead, MovTag, Btn, usePaginado, s } from '../components/ui.jsx';
 import { imprimirDocumento, cuerpoValeOperacion } from '@core/services/imprimir.js';
+import { httpClient } from '@core/services/httpClient.js';
+import { FichaMovimientos } from './FichaMovimientos.jsx';
 
 /**
  * HISTORIAL DE MOVIMIENTOS — la película del stock, fila por fila.
@@ -59,7 +62,8 @@ export function HistorialPanel({ preset, embedded }) {
     return store.state.productos.filter((p) => deSaborYAroma(p) && coincide(p.id, p.nombre)).map((p) => p.id);
   }, [prodF, buscado, marcaBuscada, coincide, store.state.productos]);
   const amplia = idsBuscados != null && idsBuscados.length > 500;
-  const hayFiltro = !!(desdeF || hastaF || sucF || tipoF || idsBuscados);
+  /* Con un producto elegido se muestra su ficha (que pide lo suyo): la lista general no hace falta. */
+  const hayFiltro = !prodF && !!(desdeF || hastaF || sucF || tipoF || idsBuscados);
   const claveServidor = hayFiltro
     ? JSON.stringify([desdeF, hastaF, sucF, tipoF, amplia ? 'amplia' : idsBuscados])
     : '';
@@ -91,6 +95,20 @@ export function HistorialPanel({ preset, embedded }) {
       if (sucF && m.sucursalId !== parseInt(sucF, 10) && m.sucursalDestinoId !== parseInt(sucF, 10)) return false;
       return fp.coincide(m.productoId, m.productoNombre);
     });
+
+  /* LA REVISIÓN DE TODO EL STOCK (20/10/2026): producto por producto, ¿se explica con sus movimientos? */
+  const [coherencia, setCoherencia] = useState(null);
+  const [revisando, setRevisando] = useState(false);
+  const revisarCoherencia = async () => {
+    setRevisando(true);
+    try {
+      setCoherencia(await httpClient.get(`/movimientos/coherencia${sucF ? `?sucursalId=${sucF}` : ''}`));
+    } catch (e) {
+      toast(e?.data?.message || 'No se pudo revisar el stock.', 'err');
+    } finally {
+      setRevisando(false);
+    }
+  };
 
   const pag = usePaginado(movs, 'movimientos', `${tipoF}|${prodF}|${sucF}|${desdeF}|${hastaF}|${fp.clave}`);
 
@@ -185,6 +203,7 @@ export function HistorialPanel({ preset, embedded }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       {!embedded && (
         <PanelHead
+          actions={<Btn onClick={revisarCoherencia} disabled={revisando}>{revisando ? 'Revisando…' : 'Revisar que todo el stock cierre'}</Btn>}
           title="Historial de movimientos"
           desc={filtrados
             ? `Registro inmutable de toda alta y baja de inventario: cuándo, qué, dónde, por qué y quién. ${movs.length} movimiento(s) con ese filtro, buscados en toda la historia.`
@@ -227,17 +246,23 @@ export function HistorialPanel({ preset, embedded }) {
           algo más preciso o elegí el producto para buscar en toda la historia.
         </div>
       )}
-      <Table
-        cols={[
-          { h: 'Fecha y hora' }, { h: 'Tipo' }, { h: 'Producto' }, { h: 'Sucursal' },
-          { h: 'Cant.', num: true }, { h: 'Detalle' }, { h: 'Valor', num: true },
-          { h: 'Usuario' }, { h: '', cls: 'actions-col' },
-        ]}
-        empty="Sin movimientos."
-        pag={pag}
-      >
-        {filas}
-      </Table>
+      {coherencia && <ResultadoCoherencia r={coherencia} onCerrar={() => setCoherencia(null)} onVer={(id) => { setCoherencia(null); setProdF(String(id)); }} />}
+      {/* Un producto elegido: su FICHA completa (20/10/2026), con saldos y si cierra. */}
+      {prodF ? (
+        <FichaMovimientos productoId={Number(prodF)} sucursalId={sucF ? Number(sucF) : null} desde={desdeF} hasta={hastaF} tipo={tipoF} />
+      ) : (
+        <Table
+          cols={[
+            { h: 'Fecha y hora' }, { h: 'Tipo' }, { h: 'Producto' }, { h: 'Sucursal' },
+            { h: 'Cant.', num: true }, { h: 'Detalle' }, { h: 'Valor', num: true },
+            { h: 'Usuario' }, { h: '', cls: 'actions-col' },
+          ]}
+          empty="Sin movimientos."
+          pag={pag}
+        >
+          {filas}
+        </Table>
+      )}
       <div className={s.hint}>
         <strong>Detalle</strong> es el documento o motivo que generó el movimiento (la venta, la
         factura, el remito, el conteo, el ajuste con su porqué). <strong>Valor</strong> aparece solo
@@ -245,6 +270,33 @@ export function HistorialPanel({ preset, embedded }) {
         movimiento y ese número no cambia después. El filtro <strong>Venta fraccionada</strong> trae
         también las ventas por unidad: por dentro son el mismo registro.
       </div>
+    </div>
+  );
+}
+
+/** Lo que encontró la revisión de todo el stock: o que todo cierra, o qué no y dónde. */
+function ResultadoCoherencia({ r, onCerrar, onVer }) {
+  const ok = !r.problemas.length;
+  return (
+    <div className={cx(s.callout, ok ? s.info : s.warn)} style={{ margin: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+        <div>
+          {ok
+            ? <strong>✓ Todo cierra: el stock de los {num(r.revisados, 0)} productos se explica con sus {num(r.movimientos, 0)} movimientos (más la carga inicial).</strong>
+            : <strong>⚠ {r.problemas.length} renglón(es) de stock no cierran con sus movimientos ({num(r.revisados, 0)} productos y {num(r.movimientos, 0)} movimientos revisados)</strong>}
+        </div>
+        <Btn small variant="btn-ghost" onClick={onCerrar}>Cerrar</Btn>
+      </div>
+      {!ok && (
+        <ul style={{ margin: '6px 0 0', paddingLeft: 20, maxHeight: 260, overflowY: 'auto' }}>
+          {r.problemas.map((x) => (
+            <li key={`${x.productoId}-${x.sucursalId}-${x.articulo}-${x.estado}`} style={{ marginBottom: 4 }}>
+              <strong>{x.articulo}</strong> · {x.sucursal} · {ESTADOS_STOCK[x.estado]?.label ?? x.estado}: {num(x.cantidad, 3)} {x.unidad === 'kg' ? 'kg' : 'u.'}
+              <div className={s.hint} style={{ margin: 0 }}>{x.motivo} <Btn small variant="btn-ghost" onClick={() => onVer(x.productoId)}>Ver su ficha</Btn></div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

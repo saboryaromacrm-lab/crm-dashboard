@@ -23,6 +23,8 @@ export const TIPOS_MOV = {
   defectuoso:        { label: 'Producto defectuoso', tag: 'tag-baja',    dir: -1 },
   transferencia:     { label: 'Transferencia',       tag: 'tag-transf',  dir: 0 },
   envio_cafeteria:   { label: 'Envío a Coffit',   tag: 'tag-venta',   dir: -1 },
+  // 0097: lo que Coffit elabora y manda a una sucursal. Faltaba: el historial mostraba el tipo crudo.
+  ingreso_cafeteria: { label: 'Ingreso de Coffit',   tag: 'tag-ingreso', dir: +1 },
   // 0146: lo que se llevan los socios. Sale con −1; su anulación vuelve con +1.
   retiro:            { label: 'Retiro sin costo',    tag: 'tag-ajuste',  dir: 0 },
 };
