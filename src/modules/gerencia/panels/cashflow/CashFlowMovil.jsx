@@ -54,7 +54,7 @@ import {
   AnularModal, Arranque, ConteoModal, MovimientoModal, PagoProveedorModal, SobreModal, SobreVer,
 } from './CashFlowPanel.jsx';
 import {
-  ANULABLES, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, ORIGEN, ORIGENES_REPORTE, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso,
+  ANULABLES, DONDE, DONDE_A_CAMPOS, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, donde, esConceptoCambio, ORIGEN, textoDonde, ORIGENES_REPORTE, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso,
   hayFiltrosReporte, horaCorta, hoy, primerDiaMes, qsFiltrosReporte, queEs, textoAnular, textoFiltrosReporte, tituloPeriodo,
 } from './formato.js';
 import { CajasAControlar } from './CajasAControlar.jsx';
@@ -638,7 +638,7 @@ function Conceptos({ conceptos, abrir, cambiarActivo, ocupado }) {
   return (
     <>
       <button type="button" className={cx(c.btn, c.btnPrimario, c.btnAncho)} onClick={() => abrir({ tipo: 'conceptoNuevo' })}><AddRoundedIcon /> Nuevo concepto</button>
-      <p className={c.nota}>El concepto es el motivo del movimiento. «Movimiento de plata» (retiro, depósito) no es gasto; «Gasto» se carga también en Gastos, en su rubro. Tocá uno para renombrarlo.</p>
+      <p className={c.nota}>El concepto es el motivo del movimiento. Es la misma lista para tu Cash Flow y para la caja de los locales. «Movimiento de plata» (retiro, depósito) no es gasto; «Gasto» se carga también en Gastos, en su rubro. Tocá uno para editarlo.</p>
       {grupos.map(([t, titulo]) => {
         const lista = conceptos.filter((x) => x.tipo === t);
         return (
@@ -648,7 +648,8 @@ function Conceptos({ conceptos, abrir, cambiarActivo, ocupado }) {
                 <div key={x.id} className={c.fila} style={x.activo ? undefined : { opacity: 0.6 }}>
                   <button type="button" className={c.filaTexto} style={{ border: 0, background: 'none', padding: 0, font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer' }} onClick={() => abrir({ tipo: 'concepto', concepto: x })}>
                     <strong>{x.nombre}</strong>
-                    <small>{x.clase === 'gasto' ? `Gasto · ${x.gastoCategoria || 'sin rubro'}` : t === 'egreso' ? 'Movimiento de plata' : 'Ingreso'} · {plural(x.usos, 'uso', 'usos')}</small>
+                    <small>{x.clase === 'gasto' ? `Gasto · ${x.gastoCategoria || 'sin rubro'}` : t === 'egreso' ? 'Movimiento de plata' : 'Ingreso'} · {plural(x.usos, 'uso', 'usos')}{Number(x.usosCaja) > 0 ? ` + ${x.usosCaja} en cajas` : ''}</small>
+                    <small>{textoDonde(x)}{x.pideDetalle ? ' · pide descripción' : ''}</small>
                   </button>
                   <button type="button" role="switch" aria-checked={x.activo} aria-label={`${x.nombre}: ${x.activo ? 'activo' : 'desactivado'}`}
                     className={c.switch} disabled={ocupado === x.id} onClick={() => cambiarActivo(x)} />
@@ -670,6 +671,10 @@ function ConceptoForm({ concepto, onCerrar, onHecho, avisar }) {
   const [tipo, setTipo] = useState(concepto?.tipo ?? 'egreso');
   const [clase, setClase] = useState(concepto?.clase ?? 'movimiento');
   const [rubro, setRubro] = useState(concepto?.gastoCategoriaId ? String(concepto.gastoCategoriaId) : '');
+  /* 0192: dónde se usa y si pide descripción. El cambio por transferencia es solo del Cash Flow. */
+  const soloCashflow = esConceptoCambio(nombre);
+  const [dondeSel, setDondeSel] = useState(concepto ? donde(concepto) : 'ambos');
+  const [pide, setPide] = useState(!!concepto?.pideDetalle);
   const [error, setError] = useState('');
   const enVuelo = useRef(false);
   const [guardando, setGuardando] = useState(false);
@@ -682,12 +687,18 @@ function ConceptoForm({ concepto, onCerrar, onHecho, avisar }) {
     enVuelo.current = true; setGuardando(true);
     try {
       if (nuevo) {
-        await httpClient.post('/cashflow/conceptos', { nombre: nombre.trim(), tipo, clase: esGasto ? 'gasto' : 'movimiento', gastoCategoriaId: esGasto ? Number(rubro) : null });
+        await httpClient.post('/cashflow/conceptos', {
+          nombre: nombre.trim(), tipo, clase: esGasto ? 'gasto' : 'movimiento', gastoCategoriaId: esGasto ? Number(rubro) : null,
+          ...DONDE_A_CAMPOS(soloCashflow ? 'cashflow' : dondeSel), pideDetalle: pide,
+        });
         avisar('ok', `Concepto «${nombre.trim()}» creado.`);
       } else {
         const cambios = {};
         if (nombre.trim() !== concepto.nombre) cambios.nombre = nombre.trim();
         if (concepto.clase === 'gasto' && Number(rubro) !== concepto.gastoCategoriaId) cambios.gastoCategoriaId = rubro ? Number(rubro) : null;
+        const campos = DONDE_A_CAMPOS(soloCashflow ? 'cashflow' : dondeSel);
+        if (campos.enCashflow !== (concepto.enCashflow !== false) || campos.enCaja !== (concepto.enCaja !== false)) Object.assign(cambios, campos);
+        if (pide !== !!concepto.pideDetalle) cambios.pideDetalle = pide;
         if (Object.keys(cambios).length) await httpClient.patch(`/cashflow/conceptos/${concepto.id}`, cambios);
         avisar('ok', 'Concepto guardado.');
       }
@@ -728,6 +739,16 @@ function ConceptoForm({ concepto, onCerrar, onHecho, avisar }) {
             </select>
           </label>
         )}
+        <label className={c.campo}>
+          <span>Dónde se usa</span>
+          <select value={soloCashflow ? 'cashflow' : dondeSel} onChange={(e) => setDondeSel(e.target.value)} disabled={soloCashflow}>
+            {DONDE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </label>
+        <label className={c.campo} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <input type="checkbox" checked={pide} onChange={(e) => setPide(e.target.checked)} style={{ width: 22, height: 22 }} />
+          <span>La descripción es obligatoria</span>
+        </label>
         {error && <Aviso tono="error">{error}</Aviso>}
       </div>
     </ModalShell>

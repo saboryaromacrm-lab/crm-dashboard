@@ -207,6 +207,19 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
 
   const esPagoProveedor = tipo === 'egreso' && destino === 'proveedor';
 
+  /*
+   * SIEMPRE UN CONCEPTO (0192, pedido del dueño): la misma lista del Cash Flow
+   * (los que se usan en la caja de los locales) y la descripción, obligatoria
+   * si el concepto la pide. Un concepto de GASTO se carga también en Gastos,
+   * pagado con el efectivo de este turno. El pago a proveedor no lleva concepto:
+   * ya dice a quién.
+   */
+  const [conceptoId, setConceptoId] = useState('');
+  const { data: conceptosData, loading: cargandoConceptos } = useResource('caja-conceptos', () => ventasApi.conceptosCaja());
+  const conceptos = (conceptosData ?? []).filter((c) => c.tipo === tipo);
+  const concepto = conceptos.find((c) => c.id === Number(conceptoId));
+  const cambiarTipo = (v) => { setTipo(v); setConceptoId(''); };
+
   /**
    * Primero el TIPO, después el proveedor: la lista se pide filtrada
    * (mercadería o gastos) y el que provee las dos cosas aparece en ambas. La
@@ -244,7 +257,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
    * pago igual al mismo proveedor; el siguiente "Sí" lo confirma a propósito. */
   const [gemelo, setGemelo] = useState(null);
   const enviando = useRef(false);
-  const firma = [tipo, destino, importe, motivo, tipoProveedor, proveedorId, referencia, esFlete].join('|');
+  const firma = [tipo, destino, importe, motivo, conceptoId, tipoProveedor, proveedorId, referencia, esFlete].join('|');
   const firmaConfirmada = useRef('');
   if (confirmando && firmaConfirmada.current !== firma) { setConfirmando(false); setGemelo(null); }
 
@@ -253,7 +266,10 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
     if (esPagoProveedor) {
       if (!tipoProveedor) { toast('Elegí el tipo de proveedor: mercadería o gastos.', 'err'); return false; }
       if (!proveedorId) { toast('Elegí a qué proveedor se le pagó.', 'err'); return false; }
-    } else if (!motivo.trim()) { toast('Indicá el motivo.', 'err'); return false; }
+    } else {
+      if (!concepto) { toast('Elegí el concepto.', 'err'); return false; }
+      if (concepto.pideDetalle && !motivo.trim()) { toast(`Escribí la descripción: «${concepto.nombre}» la pide.`, 'err'); return false; }
+    }
     return true;
   };
 
@@ -303,12 +319,12 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
 
     const ok = await act(
       ventasApi.movimientoCaja(cajaSesionId, {
-        tipo, importe: r2(importe), motivo,
+        tipo, importe: r2(importe), conceptoId: concepto.id, detalle: motivo.trim(),
         usuarioId: ctx.usuarioId ?? undefined,
         // El relevo (0088): el movimiento manual lo firma quien está en la caja.
         operadorId: operadorId ?? undefined,
       }),
-      'Movimiento registrado.',
+      concepto.clase === 'gasto' ? `Egreso registrado y cargado en Gastos (${concepto.gastoCategoria}).` : 'Movimiento registrado.',
       { recargar: false },
     );
     if (ok) onChange?.();
@@ -338,7 +354,10 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
           <div>
             {esPagoProveedor
               ? <>{esFlete ? 'Flete' : 'Pago'} en efectivo a <strong>{elegido?.nombre ?? 'el proveedor'}</strong>{motivo.trim() ? <> · {motivo.trim()}</> : null}</>
-              : <>Motivo: <strong>{motivo.trim()}</strong></>}
+              : <>
+                Concepto: <strong>{concepto?.nombre}</strong>{motivo.trim() ? <> · {motivo.trim()}</> : null}
+                {concepto?.clase === 'gasto' && <> · se carga también como <strong>gasto pagado</strong> en Gastos ({concepto.gastoCategoria})</>}
+              </>}
           </div>
           <div className={s.hint} style={{ margin: '6px 0 0' }}>
             Cambia el efectivo esperado del arqueo y no se puede borrar. Revisá el importe antes de confirmar.
@@ -359,7 +378,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Tipo</label>
-          <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+          <select value={tipo} onChange={(e) => cambiarTipo(e.target.value)}>
             <option value="egreso">Egreso (sale dinero)</option>
             <option value="ingreso">Ingreso (entra dinero)</option>
           </select>
@@ -368,7 +387,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
           <div className={s.field}>
             <label>¿A quién sale?</label>
             <select value={destino} onChange={(e) => setDestino(e.target.value)}>
-              <option value="comun">Movimiento común (retiro, gasto menor)</option>
+              <option value="comun">Con un concepto (retiro, gasto, depósito…)</option>
               <option value="proveedor">Pago a un proveedor</option>
             </select>
           </div>
@@ -435,6 +454,28 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
         </>
       )}
 
+      {!esPagoProveedor && (
+        <div className={s.field}>
+          <label>Concepto <span className={s.req}>*</span></label>
+          <select value={conceptoId} onChange={(e) => setConceptoId(e.target.value)} disabled={cargandoConceptos && !conceptosData}>
+            <option value="">{cargandoConceptos && !conceptosData ? 'Cargando…' : 'Elegí el concepto'}</option>
+            {conceptos.map((c) => (
+              <option key={c.id} value={c.id}>{c.nombre}{c.clase === 'gasto' ? ` (gasto · ${c.gastoCategoria})` : ''}</option>
+            ))}
+          </select>
+          {conceptosData && !conceptos.length && (
+            <div className={cx(s.callout, s.warn)} style={{ margin: '6px 0 0' }}>
+              No hay conceptos de {tipo} para la caja. Los arma el dueño en Gerencia › Cash Flow › Configuración › Conceptos.
+            </div>
+          )}
+          {concepto?.clase === 'gasto' && (
+            <div className={s.hint} style={{ margin: '6px 0 0' }}>
+              Es un gasto: se carga también en <strong>Gastos</strong> ({concepto.gastoCategoria}), pagado con el efectivo de este turno.
+            </div>
+          )}
+        </div>
+      )}
+
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Importe <span className={s.req}>*</span></label>
@@ -453,12 +494,13 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
       </div>
 
       <div className={s.field}>
-        <label>{esPagoProveedor ? 'Concepto' : 'Motivo'} {!esPagoProveedor && <span className={s.req}>*</span>}</label>
+        <label>{esPagoProveedor ? 'Detalle' : 'Descripción'} {!esPagoProveedor && concepto?.pideDetalle && <span className={s.req}>*</span>}</label>
         <input
           value={motivo}
+          maxLength={300}
           placeholder={esFlete
             ? 'Ej: flete del pedido del martes · transportista'
-            : esPagoProveedor ? 'Ej: pedido de gaseosas · arreglo del baño' : 'Ej: refuerzo de cambio'}
+            : esPagoProveedor ? 'Ej: pedido de gaseosas · arreglo del baño' : concepto?.pideDetalle ? 'Obligatoria: qué fue' : 'Opcional: qué fue, a quién'}
           onChange={(e) => setMotivo(e.target.value)}
         />
       </div>
@@ -1434,21 +1476,30 @@ function MovimientoPosterior({ sesion, onHecho, onCancelar }) {
   const [importe, setImporte] = useState('');
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState('');
+  /*
+   * Con concepto, como cualquier movimiento de caja (0192). Los de gasto no se
+   * ofrecen: el gasto olvidado se carga en Gastos y acá su egreso («Otro egreso»).
+   */
+  const [conceptoId, setConceptoId] = useState('');
+  const { data: conceptosData } = useResource('caja-conceptos', () => ventasApi.conceptosCaja());
+  const conceptos = (conceptosData ?? []).filter((c) => c.tipo === tipo && c.clase !== 'gasto');
+  const concepto = conceptos.find((c) => c.id === Number(conceptoId));
   const n = Number(importe);
   const valido = Number.isFinite(n) && n > 0;
   const difAntes = Number(sesion.diferencia) || 0;
   const difDespues = valido ? r2(difAntes + (tipo === 'egreso' ? n : -n)) : difAntes;
-  const sc = useSegundaConfirmacion(`${tipo}|${importe}|${motivo}`);
+  const sc = useSegundaConfirmacion(`${tipo}|${importe}|${conceptoId}|${motivo}`);
   const confirmar = () => sc.clic(
     () => {
       setError('');
       if (!valido) { setError('Escribí el importe.'); return false; }
-      if (motivo.trim().length < 5) { setError('Escribí el motivo: qué fue y quién avisó.'); return false; }
+      if (!concepto) { setError('Elegí el concepto.'); return false; }
+      if (motivo.trim().length < 5) { setError('Escribí la descripción: qué fue y quién avisó.'); return false; }
       return true;
     },
     async () => {
       try {
-        const r = await ventasApi.movimientoPosterior(sesion.id, { tipo, importe: n, motivo: motivo.trim(), confirmado: true });
+        const r = await ventasApi.movimientoPosterior(sesion.id, { tipo, importe: n, conceptoId: concepto.id, detalle: motivo.trim(), confirmado: true });
         toast(`${tipo === 'egreso' ? 'Egreso' : 'Ingreso'} asentado en el turno #${sesion.id}. Diferencia del cierre: ${money(r.sesion.diferencia)}.`, 'ok');
         onHecho();
       } catch (e) { setError(errorMsg(e)); }
@@ -1461,7 +1512,7 @@ function MovimientoPosterior({ sesion, onHecho, onCancelar }) {
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Qué fue</label>
-          <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+          <select value={tipo} onChange={(e) => { setTipo(e.target.value); setConceptoId(''); }}>
             <option value="egreso">Egreso (salió plata del cajón)</option>
             <option value="ingreso">Ingreso (entró plata al cajón)</option>
           </select>
@@ -1472,12 +1523,22 @@ function MovimientoPosterior({ sesion, onHecho, onCancelar }) {
         </div>
       </div>
       <div className={s.field}>
-        <label>Motivo <span className={s.req}>*</span></label>
+        <label>Concepto <span className={s.req}>*</span></label>
+        <select value={conceptoId} onChange={(e) => setConceptoId(e.target.value)}>
+          <option value="">Elegí el concepto</option>
+          {conceptos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+        </select>
+        <div className={s.hint} style={{ margin: '6px 0 0' }}>
+          Los conceptos de gasto no van acá: el gasto olvidado se carga en Gastos (pagado) y acá su egreso, por ejemplo con «Otro egreso».
+        </div>
+      </div>
+      <div className={s.field}>
+        <label>Descripción <span className={s.req}>*</span></label>
         <input value={motivo} maxLength={300} placeholder="Ej: pago al flete de $5.000; avisó Ale el 6/10" onChange={(e) => setMotivo(e.target.value)} />
       </div>
       <div>Diferencia del cierre: <DifCierre v={difAntes} /> → <DifCierre v={difDespues} /></div>
       <AvisoSegundaConfirmacion {...sc}>
-        Se asienta un <strong>{tipo}</strong> de <strong>{money(valido ? n : 0)}</strong> en el turno #{sesion.id} y la diferencia pasa a <DifCierre v={difDespues} />.
+        Se asienta un <strong>{tipo}</strong> de <strong>{money(valido ? n : 0)}</strong> ({concepto?.nombre ?? '—'}) en el turno #{sesion.id} y la diferencia pasa a <DifCierre v={difDespues} />.
       </AvisoSegundaConfirmacion>
       {error && <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

@@ -50,6 +50,14 @@ export const depositoAplicable = (m) => !m.anuladoEn && m.origen === 'concepto' 
 export const ANULABLES = ['concepto', 'pago_proveedor', 'gasto', 'conteo'];
 /** Días desde el cierre de un sobre (calendario local): «hoy», «1 día», «4 días». */
 export const diasDesde = (v) => Math.max(0, Math.round((Date.parse(hoy()) - Date.parse(iso(new Date(v)))) / 86_400_000));
+/**
+ * DÓNDE SE USA UN CONCEPTO (0192): la misma lista sirve al Cash Flow y a la
+ * caja de los locales. `donde(c)` lo lee; `DONDE_A_CAMPOS` lo vuelve a la API.
+ */
+export const DONDE = [['ambos', 'Cash Flow y cajas de los locales'], ['cashflow', 'Solo Cash Flow'], ['caja', 'Solo cajas de los locales']];
+export const donde = (c) => (c.enCashflow !== false && c.enCaja !== false ? 'ambos' : c.enCaja !== false ? 'caja' : 'cashflow');
+export const DONDE_A_CAMPOS = (v) => ({ enCashflow: v !== 'caja', enCaja: v !== 'cashflow' });
+export const textoDonde = (c) => DONDE.find(([k]) => k === donde(c))?.[1] ?? '';
 /** Un concepto que es en sí un cambio («Cambio a mi cuenta (efectivo por transferencia)», 0191): se elige ya como cambio. */
 export const esConceptoCambio = (nombre) => String(nombre ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes('efectivo por transferencia');
 /**

@@ -32,7 +32,7 @@ import { iso } from '../metricas/formato.js';
 import { CajasAControlar, TildeControlar } from './CajasAControlar.jsx';
 import { PlanillaDia } from './PlanillaDia.jsx';
 import { useTildeControlar, useUmbralControlar } from './tildeControlar.js';
-import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, esConceptoCambio, esDeposito, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
+import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, DONDE, DONDE_A_CAMPOS, donde, esConceptoCambio, esDeposito, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
 
 /** La diferencia, con su color: rojo faltó, verde sobró, gris nada. */
 export function Diferencia({ v }) {
@@ -687,7 +687,8 @@ function Disponible({ saldo, importe, fecha }) {
  *     en su cuenta (lo mismo que «Pagar a un proveedor» por transferencia).
  */
 export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avisar }) {
-  const opciones = conceptos.filter((c) => c.tipo === tipo && c.activo && (c.clase !== 'gasto' || c.gastoCategoriaId));
+  /* Los del Cash Flow (0192: la misma lista sirve también a la caja de los locales). */
+  const opciones = conceptos.filter((c) => c.tipo === tipo && c.activo && c.enCashflow !== false && (c.clase !== 'gasto' || c.gastoCategoriaId));
   /*
    * Cada forma de sacar ofrece lo suyo: en efectivo, todo menos el concepto que
    * ya es un cambio («… (efectivo por transferencia)»); por cambio, todo menos
@@ -727,6 +728,7 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
   const valido = () => {
     setError('');
     if (!cambioAProv && !concepto) { setError('Elegí el concepto.'); return false; }
+    if (!cambioAProv && concepto?.pideDetalle && !detalle.trim()) { setError(`Escribí el detalle: «${concepto.nombre}» lo pide.`); return false; }
     if (!Number.isFinite(n) || n <= 0) { setError('Escribí el importe.'); return false; }
     if (!fecha || fecha > hoy()) { setError('La fecha tiene que ser hoy o anterior.'); return false; }
     if (esCambio && !cambioPor.trim()) { setError('Escribí quién hizo la transferencia (a quién le diste el efectivo).'); return false; }
@@ -806,7 +808,7 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
       )}
       <div className={s['form-grid']}>
         <Campo label="Fecha"><input type="date" value={fecha} max={hoy()} onChange={(e) => setFecha(e.target.value)} /></Campo>
-        <Campo label="Detalle"><input maxLength={300} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Opcional: para qué, a quién" /></Campo>
+        <Campo label={!cambioAProv && concepto?.pideDetalle ? 'Detalle *' : 'Detalle'}><input maxLength={300} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder={!cambioAProv && concepto?.pideDetalle ? 'Obligatorio: qué fue' : 'Opcional: para qué, a quién'} /></Campo>
       </div>
       {esDep && (
         <div>
@@ -1129,6 +1131,9 @@ function Conceptos({ conceptos, bump, avisar }) {
   const [tipo, setTipo] = useState('egreso');
   const [clase, setClase] = useState('movimiento');
   const [rubro, setRubro] = useState('');
+  /* 0192: dónde se usa (la misma lista sirve a la caja de los locales) y si pide descripción. */
+  const [dondeNuevo, setDondeNuevo] = useState('ambos');
+  const [pide, setPide] = useState(false);
   const [editando, setEditando] = useState(null); // { id, nombre }
   const [error, setError] = useState('');
   const guardar = async (fn, ok) => {
@@ -1139,12 +1144,15 @@ function Conceptos({ conceptos, bump, avisar }) {
     if (!nombre.trim()) { setError('Escribí el nombre del concepto.'); return; }
     const esGasto = tipo === 'egreso' && clase === 'gasto';
     if (esGasto && !rubro) { setError('Elegí el rubro de Gastos al que va este concepto.'); return; }
-    guardar(() => httpClient.post('/cashflow/conceptos', { nombre: nombre.trim(), tipo, clase: esGasto ? 'gasto' : 'movimiento', gastoCategoriaId: esGasto ? Number(rubro) : null }), `Concepto «${nombre.trim()}» creado.`).then(() => setNombre(''));
+    guardar(() => httpClient.post('/cashflow/conceptos', {
+      nombre: nombre.trim(), tipo, clase: esGasto ? 'gasto' : 'movimiento', gastoCategoriaId: esGasto ? Number(rubro) : null,
+      ...DONDE_A_CAMPOS(dondeNuevo), pideDetalle: pide,
+    }), `Concepto «${nombre.trim()}» creado.`).then(() => { setNombre(''); setPide(false); });
   };
   const grupos = [['egreso', 'Egresos (plata que sacás)'], ['ingreso', 'Ingresos (plata que entra, aparte de los sobres)']];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <Bloque titulo="Nuevo concepto" sub="Un concepto es el motivo del movimiento. «Movimiento de plata» (retiro, depósito en el banco) no es un gasto del negocio; «Gasto» se carga también en Gastos, en su rubro, y entra en la rentabilidad.">
+      <Bloque titulo="Nuevo concepto" sub="Un concepto es el motivo del movimiento. Es la MISMA lista para tu Cash Flow y para los ingresos y egresos de la caja de los locales: elegí dónde se usa cada uno. «Movimiento de plata» (retiro, depósito en el banco) no es un gasto del negocio; «Gasto» se carga también en Gastos, en su rubro, y entra en la rentabilidad (desde la caja de un local, pagado con el efectivo de ese turno).">
         <div className={s.toolbar}>
           <input value={nombre} maxLength={60} placeholder="Nombre del concepto" onChange={(e) => setNombre(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && crear()} />
           <select className={s['select-inline']} value={tipo} onChange={(e) => setTipo(e.target.value)}><option value="egreso">Egreso</option><option value="ingreso">Ingreso</option></select>
@@ -1160,13 +1168,19 @@ function Conceptos({ conceptos, bump, avisar }) {
               {(rubros ?? []).map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
             </select>
           )}
+          <select className={s['select-inline']} value={dondeNuevo} onChange={(e) => setDondeNuevo(e.target.value)} aria-label="Dónde se usa">
+            {DONDE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <input type="checkbox" checked={pide} onChange={(e) => setPide(e.target.checked)} /> Pide descripción
+          </label>
           <Btn variant="btn-primary" small onClick={crear}>Agregar</Btn>
         </div>
         {error && <Aviso tono="warn">{error}</Aviso>}
       </Bloque>
       {grupos.map(([t, titulo]) => (
         <Bloque key={t} titulo={titulo}>
-          <Table cols={[{ h: 'Concepto' }, { h: 'Qué es' }, { h: 'Usos', num: true }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' }]} empty="Ninguno todavía.">
+          <Table cols={[{ h: 'Concepto' }, { h: 'Qué es' }, { h: 'Dónde se usa' }, { h: 'Descripción' }, { h: 'Usos', num: true }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' }]} empty="Ninguno todavía.">
             {conceptos.filter((c) => c.tipo === t).map((c) => (
               <tr key={c.id} style={c.activo ? undefined : { opacity: 0.6 }}>
                 <td>
@@ -1189,7 +1203,26 @@ function Conceptos({ conceptos, bump, avisar }) {
                     </span>
                   ) : c.tipo === 'egreso' ? 'Movimiento de plata' : 'Ingreso'}
                 </td>
-                <td className={s.num}>{num(c.usos, 0)}</td>
+                <td>
+                  {/* El cambio por transferencia es solo del Cash Flow (pide quién y a qué cuenta). */}
+                  {esConceptoCambio(c.nombre) ? 'Solo Cash Flow' : (
+                    <select className={s['select-inline']} value={donde(c)} aria-label={`Dónde se usa ${c.nombre}`}
+                      onChange={(e) => guardar(() => httpClient.patch(`/cashflow/conceptos/${c.id}`, DONDE_A_CAMPOS(e.target.value)), 'Listo: cambió dónde se usa.')}>
+                      {DONDE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                    </select>
+                  )}
+                </td>
+                <td>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }} title="Si está tildado, la descripción es obligatoria">
+                    <input type="checkbox" checked={!!c.pideDetalle}
+                      onChange={(e) => guardar(() => httpClient.patch(`/cashflow/conceptos/${c.id}`, { pideDetalle: e.target.checked }), e.target.checked ? 'Ahora pide descripción.' : 'La descripción quedó opcional.')} />
+                    Obligatoria
+                  </label>
+                </td>
+                <td className={s.num}>
+                  {num(c.usos, 0)}
+                  {Number(c.usosCaja) > 0 && <div className={s.hint} style={{ margin: 0 }}>+ {num(c.usosCaja, 0)} en cajas</div>}
+                </td>
                 <td><Pill pill={c.activo ? 'st-disponible' : 'st-retenido'} label={c.activo ? 'Activo' : 'Desactivado'} /></td>
                 <td className={s['actions-col']}>
                   <div className={s['row-actions']}>

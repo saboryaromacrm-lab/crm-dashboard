@@ -8,8 +8,12 @@ import { Table, Stat, Btn, Pill, usePaginado, money, fmtFechaHora, s } from '../
 import { ATAJOS, diaAtras, primeroDelMes } from '../domain/diasCaja.js';
 
 
-/** Cómo nació cada movimiento (lo decide el servidor, no el texto). */
-const CLASES = { pago_proveedor: 'Pago a proveedor', devolucion: 'Devolución', otro: 'Cargado a mano' };
+/**
+ * Cómo nació cada movimiento (lo decide el servidor, no el texto). «Con
+ * concepto» es lo cargado en Ingreso / egreso desde el 0192; «A mano» es el
+ * motivo escrito de antes, sin concepto.
+ */
+const CLASES = { concepto: 'Con concepto', pago_proveedor: 'Pago a proveedor', devolucion: 'Devolución', otro: 'A mano (antes de los conceptos)' };
 
 /**
  * INGRESOS Y EGRESOS DE CAJA (9/10/2026, pedido del dueño: «dónde veo los
@@ -21,13 +25,16 @@ const CLASES = { pago_proveedor: 'Pago a proveedor', devolucion: 'Devolución', 
 export function CajaMovimientos() {
   const { sucursales, ctx, openModal, esJefe } = useVentas();
   const [f, setF] = useState(() => ({
-    sucursalId: String(ctx.sucursalId ?? ''), desde: primeroDelMes(), hasta: diaAtras(0), tipo: 'egreso', clase: '', q: '', anulados: false,
+    sucursalId: String(ctx.sucursalId ?? ''), desde: primeroDelMes(), hasta: diaAtras(0), tipo: 'egreso', clase: '', conceptoId: '', q: '', anulados: false,
   }));
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
   const filtros = {
     sucursalId: f.sucursalId || undefined, desde: f.desde || undefined, hasta: f.hasta || undefined,
-    tipo: f.tipo || undefined, clase: f.clase || undefined, q: f.q.trim() || undefined, anulados: f.anulados ? '1' : undefined,
+    tipo: f.tipo || undefined, clase: f.clase || undefined, conceptoId: f.conceptoId || undefined, q: f.q.trim() || undefined, anulados: f.anulados ? '1' : undefined,
   };
+  /* Todos los conceptos de la caja, también los desactivados: lo ya registrado se sigue pudiendo filtrar. */
+  const { data: conceptos } = useResource('caja-conceptos:todos', () => ventasApi.conceptosCaja(true));
+  const conceptosDelTipo = (conceptos ?? []).filter((c) => !f.tipo || c.tipo === f.tipo);
   const clave = JSON.stringify(filtros);
   const { data, loading, error, reload } = useResource(`caja-movs:${clave}`, () => ventasApi.cajaMovimientos(filtros));
   const filas = data?.filas ?? [];
@@ -40,9 +47,9 @@ export function CajaMovimientos() {
 
   const exportar = () => descargarCsv(
     `caja-${f.tipo || 'movimientos'}-${sucursalNombre || 'todas'}-${f.desde}-${f.hasta}.csv`,
-    ['Fecha', 'Sucursal', 'Turno', 'Cajero', 'Tipo', 'Qué', 'Motivo', 'Cargó', 'Ingreso', 'Egreso', 'Anulado'],
+    ['Fecha', 'Sucursal', 'Turno', 'Cajero', 'Tipo', 'Qué', 'Concepto', 'Detalle', 'Cargó', 'Ingreso', 'Egreso', 'Anulado'],
     filas.map((m) => [
-      fmtFechaHora(m.fecha), m.sucursal, m.cajaSesionId, m.cajero || '', m.tipo, CLASES[m.clase], m.motivo, m.cargo || '',
+      fmtFechaHora(m.fecha), m.sucursal, m.cajaSesionId, m.cajero || '', m.tipo, CLASES[m.clase], m.concepto || '', m.motivo, m.cargo || '',
       m.tipo === 'ingreso' ? csvNum(m.importe) : '', m.tipo === 'egreso' ? csvNum(m.importe) : '', m.anuladoEn ? `Sí: ${m.anuladoMotivo}` : '',
     ]),
   );
@@ -54,7 +61,7 @@ export function CajaMovimientos() {
           {esJefe && <option value="">Todas las sucursales</option>}
           {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
         </select>
-        <select className={s['select-inline']} value={f.tipo} onChange={set('tipo')} aria-label="Ingresos o egresos">
+        <select className={s['select-inline']} value={f.tipo} onChange={(e) => setF((x) => ({ ...x, tipo: e.target.value, conceptoId: '' }))} aria-label="Ingresos o egresos">
           <option value="egreso">Solo egresos</option>
           <option value="ingreso">Solo ingresos</option>
           <option value="">Ingresos y egresos</option>
@@ -63,7 +70,11 @@ export function CajaMovimientos() {
           <option value="">Todo</option>
           {Object.entries(CLASES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </select>
-        <input type="search" value={f.q} onChange={set('q')} placeholder="Buscar motivo o proveedor…" aria-label="Buscar" />
+        <select className={s['select-inline']} value={f.conceptoId} onChange={set('conceptoId')} aria-label="Concepto">
+          <option value="">Todos los conceptos</option>
+          {conceptosDelTipo.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.activo ? '' : ' (desactivado)'}</option>)}
+        </select>
+        <input type="search" value={f.q} onChange={set('q')} placeholder="Buscar concepto, descripción o proveedor…" aria-label="Buscar" />
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
           <input type="checkbox" checked={f.anulados} onChange={set('anulados')} /> Ver anulados
         </label>
@@ -93,7 +104,7 @@ export function CajaMovimientos() {
 
       {(data?.porMotivo ?? []).length > 0 && (
         <div>
-          <div className={s['section-title']}>Por motivo o proveedor</div>
+          <div className={s['section-title']}>Por concepto o proveedor</div>
           <Table cols={[{ h: 'Qué' }, { h: 'Veces', num: true }, { h: 'Importe', num: true }]} empty="">
             {data.porMotivo.map((g) => (
               <tr key={`${g.tipo}|${g.clase}|${g.nombre}`}>
@@ -111,7 +122,7 @@ export function CajaMovimientos() {
 
       <Table
         cols={[
-          { h: 'Fecha' }, { h: 'Sucursal' }, { h: 'Turno' }, { h: 'Qué' }, { h: 'Motivo' }, { h: 'Cargó' }, { h: 'Importe', num: true },
+          { h: 'Fecha' }, { h: 'Sucursal' }, { h: 'Turno' }, { h: 'Qué' }, { h: 'Detalle' }, { h: 'Cargó' }, { h: 'Importe', num: true },
         ]}
         empty={loading ? 'Cargando…' : 'No hay movimientos de caja con esos filtros.'}
         pag={pag}
@@ -151,7 +162,8 @@ export function CajaMovimientos() {
       )}
       <div className={s.hint} style={{ margin: 0 }}>
         Son los movimientos de caja de los turnos: lo que se cargó en «Ingreso / egreso», los pagos a proveedores en efectivo
-        desde la caja y las devoluciones de dinero. Lo anulado se lista con «Ver anulados» pero no suma.
+        desde la caja y las devoluciones de dinero. Desde el 21/10/2026 cada ingreso o egreso lleva su concepto (la misma lista del
+        Cash Flow); lo de antes figura «A mano», con el motivo que se escribió. Lo anulado se lista con «Ver anulados» pero no suma.
       </div>
     </div>
   );

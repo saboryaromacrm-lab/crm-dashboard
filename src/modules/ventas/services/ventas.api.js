@@ -205,6 +205,8 @@ export const ventasApi = {
   /** El cierre del cajero (0111): billetes contados, fondo que queda y envío. */
   enviarCierreCaja: (id, data) => httpClient.post(`/caja/${id}/enviar`, data),
   movimientoCaja: (id, data) => httpClient.post(`/caja/${id}/movimiento`, data),
+  /** 0192: los conceptos de la caja (la lista del Cash Flow que se usa en los locales). */
+  conceptosCaja: (todos = false) => httpClient.get(`/caja/conceptos${todos ? '?todos=1' : ''}`),
   /** Superadmin (0137): lo que el cajero se olvidó, asentado en un turno YA cerrado; y su anulación. */
   movimientoPosterior: (id, data) => httpClient.post(`/caja/${id}/movimiento-posterior`, data),
   anularMovimientoPosterior: (id, movId, data) => httpClient.post(`/caja/${id}/movimiento-posterior/${movId}/anular`, data),
