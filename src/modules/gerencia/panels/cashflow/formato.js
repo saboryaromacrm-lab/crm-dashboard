@@ -50,12 +50,19 @@ export const depositoAplicable = (m) => !m.anuladoEn && m.origen === 'concepto' 
 export const ANULABLES = ['concepto', 'pago_proveedor', 'gasto', 'conteo'];
 /** Días desde el cierre de un sobre (calendario local): «hoy», «1 día», «4 días». */
 export const diasDesde = (v) => Math.max(0, Math.round((Date.parse(hoy()) - Date.parse(iso(new Date(v)))) / 86_400_000));
+/** Un concepto que es en sí un cambio («Cambio a mi cuenta (efectivo por transferencia)», 0191): se elige ya como cambio. */
+export const esConceptoCambio = (nombre) => String(nombre ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes('efectivo por transferencia');
+/**
+ * « (efectivo por transferencia · Juan → mi cuenta del Galicia)» cuando la plata salió como cambio (0191).
+ * Si el concepto ya lo dice en el nombre, no se repite: « (Juan → mi cuenta del Galicia)».
+ */
+const porCambio = (m, yaLoDice = false) => (m.cambioPor ? ` (${yaLoDice ? '' : `${MEDIO.cambio} · `}${m.cambioPor}${m.cambioCuenta ? ` → ${m.cambioCuenta}` : ''})` : '');
 /** Qué es cada movimiento, en una línea. */
 export const queEs = (m) => {
-  if (m.origen === 'concepto') return m.concepto;
+  if (m.origen === 'concepto') return `${m.concepto}${porCambio(m, esConceptoCambio(m.concepto))}`;
   if (m.origen === 'sobre') return `Sobre ${m.sucursal ?? ''}`;
   if (m.origen === 'pago_proveedor') return `Pago a ${m.proveedor ?? 'proveedor'} (${m.cambioPor ? `${MEDIO.cambio} · ${m.cambioPor}` : MEDIO[m.medio] ?? m.medio ?? ''})`;
-  if (m.origen === 'gasto') return `Gasto: ${m.concepto ?? m.gastoDescripcion ?? ''}${m.gastoCategoria ? ` · ${m.gastoCategoria}` : ''}`;
+  if (m.origen === 'gasto') return `Gasto: ${m.concepto ?? m.gastoDescripcion ?? ''}${m.gastoCategoria ? ` · ${m.gastoCategoria}` : ''}${porCambio(m)}`;
   return ORIGEN[m.origen] ?? m.origen;
 };
 /** El texto con que se anula un movimiento (lo mismo en las dos pantallas). */

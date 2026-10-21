@@ -15,8 +15,11 @@ const TOPE = 1000;
  * PROVEEDORES › EFECTIVO POR TRANSFERENCIA (0175, 16/10/2026, pedido del dueño):
  * los pagos que se hicieron dándole efectivo a otra persona para que le
  * transfiera al proveedor — desde Proveedores o desde el Cash Flow. Cuánto se
- * cambió, con quién y a qué proveedor fue.
+ * cambió, con quién y a qué proveedor fue. Desde el 21/10 también los gastos
+ * pagados así desde «Sacar plata» del Cash Flow (sin proveedor: se nombra el gasto).
+ * Lo que se cambió para que vaya a tu cuenta no es un pago: está en Cash Flow › Movimientos.
  */
+const aQuien = (p) => (p.proveedorId ? p.proveedorNombre : `Gasto: ${p.concepto || '—'}`);
 export function CambiosPanel() {
   const [[desde, hasta], setFechas] = useState(() => rangoDe('mes'));
   const { data, loading, error } = useResource(
@@ -30,14 +33,14 @@ export function CambiosPanel() {
   const exportar = () => descargarCsv(
     `efectivo-por-transferencia-${desde || 'inicio'}-${hasta || 'hoy'}.csv`,
     ['Fecha', 'Proveedor', 'Quién hizo la transferencia', 'Importe', 'De dónde salió el efectivo', 'Referencia', 'Lo registró'],
-    pagos.map((p) => [fmtFecha(p.fecha), p.proveedorNombre, p.cambioPor, csvNum(p.importe), caja(p), p.referencia, p.usuarioNombre]),
+    pagos.map((p) => [fmtFecha(p.fecha), aQuien(p), p.cambioPor, csvNum(p.importe), caja(p), p.referencia, p.usuarioNombre]),
   );
 
   return (
     <div>
       <PanelHead
         title="Efectivo por transferencia"
-        desc="Pagos a proveedores que se hicieron dándole efectivo a otra persona para que les transfiera. El proveedor los ve como transferencia; la plata salió como efectivo."
+        desc="Pagos a proveedores (y gastos) que se hicieron dándole efectivo a otra persona para que les transfiera. El proveedor los ve como transferencia; la plata salió como efectivo. Lo que se cambió para que vaya a tu cuenta está en Cash Flow › Movimientos."
         actions={<Btn small onClick={exportar} disabled={!pagos.length}>Exportar CSV</Btn>}
       />
       <div className={s.toolbar} style={{ flexWrap: 'wrap', gap: 6 }}>
@@ -68,7 +71,7 @@ export function CambiosPanel() {
         {pagos.map((p) => (
           <tr key={p.id}>
             <td>{fmtFecha(p.fecha)}</td>
-            <td>{p.proveedorNombre}</td>
+            <td>{aQuien(p)}</td>
             <td>{p.cambioPor}</td>
             <td>{caja(p)}</td>
             <td>{p.referencia || <span className={s.muted}>—</span>}</td>

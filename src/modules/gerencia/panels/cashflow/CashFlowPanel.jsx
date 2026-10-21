@@ -32,7 +32,7 @@ import { iso } from '../metricas/formato.js';
 import { CajasAControlar, TildeControlar } from './CajasAControlar.jsx';
 import { PlanillaDia } from './PlanillaDia.jsx';
 import { useTildeControlar, useUmbralControlar } from './tildeControlar.js';
-import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, esDeposito, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
+import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, esConceptoCambio, esDeposito, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
 
 /** La diferencia, con su color: rojo faltó, verde sobró, gris nada. */
 export function Diferencia({ v }) {
@@ -675,25 +675,62 @@ function Disponible({ saldo, importe, fecha }) {
   );
 }
 
+/**
+ * ENTRÓ PLATA / SACAR PLATA. Al sacar, «¿Cómo sale?» (21/10/2026, pedido del
+ * dueño): en efectivo, o como EFECTIVO POR TRANSFERENCIA: le das el efectivo a
+ * alguien y esa persona transfiere. Para tu caja es la misma salida de
+ * efectivo; queda quién hizo la transferencia y a qué cuenta fue:
+ *   · a tu cuenta (o a la de otro): cualquier concepto menos un depósito, que
+ *     es el efectivo que llevás vos al banco;
+ *   · para un gasto: el gasto queda pagado por transferencia;
+ *   · a un proveedor: el paso siguiente es el pago, con este importe, y queda
+ *     en su cuenta (lo mismo que «Pagar a un proveedor» por transferencia).
+ */
 export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avisar }) {
   const opciones = conceptos.filter((c) => c.tipo === tipo && c.activo && (c.clase !== 'gasto' || c.gastoCategoriaId));
-  const [conceptoId, setConceptoId] = useState(opciones[0]?.id ?? '');
+  /*
+   * Cada forma de sacar ofrece lo suyo: en efectivo, todo menos el concepto que
+   * ya es un cambio («… (efectivo por transferencia)»); por cambio, todo menos
+   * un depósito, que es el efectivo que llevás vos al banco.
+   */
+  const conceptosDe = (forma) => (tipo !== 'egreso' ? opciones
+    : opciones.filter((c) => (forma === 'cambio' ? !esDeposito(c.nombre) : !esConceptoCambio(c.nombre))));
+  const [conceptoId, setConceptoId] = useState(conceptosDe('efectivo')[0]?.id ?? '');
   const [importe, setImporte] = useState('');
   const [fecha, setFecha] = useState(hoy());
   const [detalle, setDetalle] = useState('');
   const [error, setError] = useState('');
-  /* Un depósito se puede aplicar a un proveedor (16/10/2026): el paso siguiente es el pago, con este importe. */
+  /* Un depósito (o un cambio) se puede aplicar a un proveedor: el paso siguiente es el pago, con este importe. */
   const [aProveedor, setAProveedor] = useState(false);
   const [alProveedor, setAlProveedor] = useState(false);
+  /* Efectivo por transferencia (0191). */
+  const [como, setComo] = useState('efectivo');
+  const [cambioPor, setCambioPor] = useState('');
+  const [cambioCuenta, setCambioCuenta] = useState('');
+  const esCambio = tipo === 'egreso' && como === 'cambio';
+  const lista = conceptosDe(como);
   const n = Number(importe);
-  const concepto = opciones.find((c) => c.id === Number(conceptoId));
-  const esDep = tipo === 'egreso' && esDeposito(concepto?.nombre);
-  const sc = useSegundaConfirmacion(`${conceptoId}|${importe}|${fecha}|${detalle}`);
+  const concepto = lista.find((c) => c.id === Number(conceptoId));
+  const esDep = tipo === 'egreso' && !esCambio && esDeposito(concepto?.nombre);
+  /* Un cambio que va a un proveedor no lleva concepto: es un pago a proveedor, a su cuenta. */
+  const aProv = (esDep || esCambio) && aProveedor;
+  const cambioAProv = esCambio && aProveedor;
+  /* Al pasar a cambio se propone «Cambio a mi cuenta»; al volver a efectivo, el primero que corresponde. */
+  const cambiarComo = (v) => {
+    setComo(v);
+    setAProveedor(false);
+    const nueva = conceptosDe(v);
+    const propuesto = v === 'cambio' ? nueva.find((c) => esConceptoCambio(c.nombre)) : nueva.find((c) => c.id === Number(conceptoId));
+    setConceptoId((propuesto ?? nueva[0])?.id ?? '');
+  };
+  const sc = useSegundaConfirmacion(`${conceptoId}|${importe}|${fecha}|${detalle}|${como}|${cambioPor}|${cambioCuenta}`);
   const valido = () => {
     setError('');
-    if (!concepto) { setError('Elegí el concepto.'); return false; }
+    if (!cambioAProv && !concepto) { setError('Elegí el concepto.'); return false; }
     if (!Number.isFinite(n) || n <= 0) { setError('Escribí el importe.'); return false; }
     if (!fecha || fecha > hoy()) { setError('La fecha tiene que ser hoy o anterior.'); return false; }
+    if (esCambio && !cambioPor.trim()) { setError('Escribí quién hizo la transferencia (a quién le diste el efectivo).'); return false; }
+    if (esCambio && !cambioAProv && !cambioCuenta.trim()) { setError('Escribí a qué cuenta transfirió (por ejemplo, tu cuenta del banco).'); return false; }
     if (tipo === 'egreso' && fecha === hoy() && n > saldo + 0.009) { setError(`No alcanza: tenés ${money(saldo)} en mano.`); return false; }
     return true;
   };
@@ -701,17 +738,21 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
     valido,
     async () => {
       try {
-        const r = await httpClient.post('/cashflow/movimientos', { tipo, conceptoId: concepto.id, importe: n, fecha, detalle: detalle.trim(), confirmado: true });
+        const r = await httpClient.post('/cashflow/movimientos', {
+          tipo, conceptoId: concepto.id, importe: n, fecha, detalle: detalle.trim(), confirmado: true,
+          ...(esCambio ? { cambioPor: cambioPor.trim(), cambioCuenta: cambioCuenta.trim() } : {}),
+        });
         avisar('ok', `${tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} registrado. Efectivo en mano: ${money(r.saldo)}.`);
         onHecho();
       } catch (e) { setError(errorMsg(e)); }
     },
   );
-  const aplicar = esDep && aProveedor;
-  if (aplicar && alProveedor) {
+  if (aProv && alProveedor) {
     return (
       <PagoProveedorModal
-        deposito={{ importe: n, fecha, detalle: detalle.trim(), conceptoId: concepto.id }}
+        {...(esCambio
+          ? { cambio: { importe: n, fecha, detalle: detalle.trim(), cambioPor: cambioPor.trim() } }
+          : { deposito: { importe: n, fecha, detalle: detalle.trim(), conceptoId: concepto.id } })}
         saldo={saldo} onCerrar={onCerrar} onHecho={onHecho} onVolver={() => setAlProveedor(false)} avisar={avisar}
       />
     );
@@ -719,19 +760,50 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
   return (
     <ModalShell title={tipo === 'ingreso' ? 'Registrar un ingreso de efectivo' : 'Sacar efectivo de la caja'} onClose={onCerrar} footer={[
       { texto: 'Cancelar', onClick: onCerrar },
-      aplicar
+      aProv
         ? { texto: 'Seguir: elegir el proveedor', clase: 'btn-primary', onClick: () => { if (valido()) setAlProveedor(true); } }
         : { texto: textoBoton(sc, tipo === 'ingreso' ? 'Registrar ingreso' : 'Registrar egreso', 'Sí, confirmar'), clase: 'btn-primary', onClick: confirmar },
     ]}>
       {!opciones.length && <Aviso tono="warn">No hay conceptos de {tipo} activos. Crealos en la pestaña «Conceptos».</Aviso>}
+      {tipo === 'egreso' && (
+        <div className={s['form-grid']}>
+          <Campo label="¿Cómo sale?" hint={esCambio ? 'Le das el efectivo a alguien y esa persona transfiere.' : undefined}>
+            <select value={como} onChange={(e) => cambiarComo(e.target.value)}>
+              <option value="efectivo">En efectivo</option>
+              <option value="cambio">Efectivo por transferencia</option>
+            </select>
+          </Campo>
+          {esCambio && (
+            <Campo label="¿Quién hizo la transferencia? *">
+              <input maxLength={80} value={cambioPor} onChange={(e) => setCambioPor(e.target.value)} placeholder="A quién le diste el efectivo" />
+            </Campo>
+          )}
+        </div>
+      )}
+      {esCambio && (
+        <div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            <input type="checkbox" checked={aProveedor} onChange={(e) => setAProveedor(e.target.checked)} />
+            Le transfirió a un proveedor (para pagarle)
+          </label>
+          <div className={s.hint} style={{ margin: '4px 0 0 26px' }}>Queda en la cuenta del proveedor: en el paso siguiente tildás qué facturas paga y el resto queda a cuenta.</div>
+        </div>
+      )}
       <div className={s['form-grid']}>
-        <Campo label="Concepto *">
-          <select value={conceptoId} onChange={(e) => setConceptoId(e.target.value)}>
-            {opciones.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.clase === 'gasto' ? ` (gasto · ${c.gastoCategoria})` : ''}</option>)}
-          </select>
-        </Campo>
+        {!cambioAProv && (
+          <Campo label="Concepto *">
+            <select value={conceptoId} onChange={(e) => setConceptoId(e.target.value)}>
+              {lista.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.clase === 'gasto' ? ` (gasto · ${c.gastoCategoria})` : ''}</option>)}
+            </select>
+          </Campo>
+        )}
         <Campo label="Importe *"><input type="number" min="0" step="0.01" inputMode="decimal" value={importe} onChange={(e) => setImporte(e.target.value)} autoFocus /></Campo>
       </div>
+      {esCambio && !cambioAProv && (
+        <Campo label="¿A qué cuenta transfirió? *">
+          <input maxLength={120} value={cambioCuenta} onChange={(e) => setCambioCuenta(e.target.value)} placeholder="Ej.: mi cuenta del banco, Mercado Pago…" />
+        </Campo>
+      )}
       <div className={s['form-grid']}>
         <Campo label="Fecha"><input type="date" value={fecha} max={hoy()} onChange={(e) => setFecha(e.target.value)} /></Campo>
         <Campo label="Detalle"><input maxLength={300} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Opcional: para qué, a quién" /></Campo>
@@ -748,7 +820,8 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
       {tipo === 'egreso' && <Disponible saldo={saldo} importe={n > 0 ? n : 0} fecha={fecha} />}
       <AvisoSegundaConfirmacion {...sc}>
         {tipo === 'ingreso' ? 'Entra' : 'Sale'} <strong>{money(n || 0)}</strong> {tipo === 'ingreso' ? 'a' : 'de'} tu caja por <strong>{concepto?.nombre ?? '—'}</strong> el {fechaIso(fecha)}.
-        {concepto?.clase === 'gasto' && <> Se carga también como <strong>gasto pagado</strong> en Gastos ({concepto.gastoCategoria}).</>}
+        {esCambio && <> Se lo das a <strong>{cambioPor.trim()}</strong>, que transfiere a <strong>{cambioCuenta.trim()}</strong>.</>}
+        {concepto?.clase === 'gasto' && <> Se carga también como <strong>gasto pagado</strong>{esCambio ? ' por transferencia' : ''} en Gastos ({concepto.gastoCategoria}).</>}
       </AvisoSegundaConfirmacion>
       {error && <Aviso tono="warn">{error}</Aviso>}
     </ModalShell>
@@ -764,29 +837,35 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
  * proveedor, el importe es FIJO (el del depósito) y lo que no se tilda queda a
  * cuenta. Recién cargado desde «Sacar plata» (`conceptoId`) sale de la caja acá;
  * ya cargado (`movimientoId`) la plata ya salió y solo se pasa a la cuenta.
+ *
+ * CON `cambio` (21/10/2026): el efectivo por transferencia cargado desde «Sacar
+ * plata» que fue a un proveedor. Igual que el depósito recién cargado: importe
+ * fijo, sale de la caja acá, y queda pagado por transferencia con quién la hizo.
  */
-export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar, deposito = null }) {
+export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar, deposito = null, cambio = null }) {
   const { movil } = useModalModo();
   const { data: provs } = useResource('cashflow:proveedores', () => httpClient.get('/cashflow/proveedores'));
+  /* Lo que viene de «Sacar plata» (o un depósito ya cargado): el importe es fijo. */
+  const fijo = deposito ?? cambio;
   const [proveedorId, setProveedorId] = useState('');
   const [destino, setDestino] = useState('mercaderia');
-  const [medio, setMedio] = useState(deposito ? 'deposito' : 'efectivo');
+  const [medio, setMedio] = useState(deposito ? 'deposito' : cambio ? 'cambio' : 'efectivo');
   const [referencia, setReferencia] = useState('');
-  const [cambioPor, setCambioPor] = useState('');
-  const [fecha, setFecha] = useState(deposito?.fecha ?? hoy());
-  const [detalle, setDetalle] = useState(deposito?.detalle ?? '');
+  const [cambioPor, setCambioPor] = useState(cambio?.cambioPor ?? '');
+  const [fecha, setFecha] = useState(fijo?.fecha ?? hoy());
+  const [detalle, setDetalle] = useState(fijo?.detalle ?? '');
   const [aCuenta, setACuenta] = useState('');
   const [tildes, setTildes] = useState({}); // docId -> importe (string)
   const [error, setError] = useState('');
   const { data: docs, loading } = useResource(`cashflow:pend:${proveedorId}:${destino}`, () => httpClient.get(`/cashflow/proveedores/${proveedorId}/pendientes?destino=${destino}`), { enabled: !!proveedorId });
   const prov = (provs ?? []).find((p) => p.id === Number(proveedorId));
   const aplicado = Math.round(Object.values(tildes).reduce((a, v) => a + (Number(v) || 0), 0) * 100) / 100;
-  const extra = deposito ? Math.round((deposito.importe - aplicado) * 100) / 100 : Number(aCuenta) || 0;
-  const total = deposito ? deposito.importe : Math.round((aplicado + extra) * 100) / 100;
-  /* Con importe fijo se tilda por lo que todavía queda del depósito. */
+  const extra = fijo ? Math.round((fijo.importe - aplicado) * 100) / 100 : Number(aCuenta) || 0;
+  const total = fijo ? fijo.importe : Math.round((aplicado + extra) * 100) / 100;
+  /* Con importe fijo se tilda por lo que todavía queda. */
   const tildar = (d, on) => setTildes((t) => {
     const n = { ...t };
-    if (on) n[d.docId] = String(deposito ? Math.max(0, Math.min(d.saldo, Math.round((deposito.importe - aplicado) * 100) / 100)) : d.saldo);
+    if (on) n[d.docId] = String(fijo ? Math.max(0, Math.min(d.saldo, Math.round((fijo.importe - aplicado) * 100) / 100)) : d.saldo);
     else delete n[d.docId];
     return n;
   });
@@ -801,7 +880,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
         const v = Number(tildes[d.docId]);
         if (tildes[d.docId] != null && (!(v > 0) || v > d.saldo + 0.009)) { setError(`En ${d.etiqueta} el importe tiene que ser mayor a 0 y hasta ${money(d.saldo)}.`); return false; }
       }
-      if (extra < -0.009) { setError(`Lo tildado (${money(aplicado)}) supera el depósito (${money(total)}).`); return false; }
+      if (extra < -0.009) { setError(`Lo tildado (${money(aplicado)}) supera ${deposito ? 'el depósito' : 'lo que transfirió'} (${money(total)}).`); return false; }
       if (medio === 'cambio' && !cambioPor.trim()) { setError('Escribí quién hizo la transferencia (a quién le diste el efectivo).'); return false; }
       if (medio === 'deposito' && !referencia.trim()) { setError('Para un depósito escribí la referencia (número de depósito o comprobante del banco).'); return false; }
       if (!yaSalio && fecha === hoy() && total > saldo + 0.009) { setError(`No alcanza: tenés ${money(saldo)} en mano.`); return false; }
@@ -827,8 +906,12 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
   );
   return (
     <ModalShell
-      title={deposito ? 'Aplicar el depósito a un proveedor' : 'Pagar a un proveedor desde tu caja'}
-      subtitle={deposito ? `Depósito de ${money(total)} del ${fechaIso(fecha)}: queda en la cuenta del proveedor, aplicado a lo que tildes y el resto a cuenta.` : 'Queda en la cuenta del proveedor, aplicado a lo que tildes.'}
+      title={deposito ? 'Aplicar el depósito a un proveedor' : cambio ? 'Pagar a un proveedor con efectivo por transferencia' : 'Pagar a un proveedor desde tu caja'}
+      subtitle={deposito
+        ? `Depósito de ${money(total)} del ${fechaIso(fecha)}: queda en la cuenta del proveedor, aplicado a lo que tildes y el resto a cuenta.`
+        : cambio
+          ? `${money(total)} del ${fechaIso(fecha)} que le transfirió ${cambioPor.trim() || '—'}: queda en la cuenta del proveedor, aplicado a lo que tildes y el resto a cuenta.`
+          : 'Queda en la cuenta del proveedor, aplicado a lo que tildes.'}
       wide onClose={onCerrar} footer={[
         onVolver ? { texto: 'Volver', onClick: onVolver } : { texto: 'Cancelar', onClick: onCerrar },
         { texto: textoBoton(sc, deposito ? `Aplicar ${money(total)}` : `Pagar ${money(total)}`, 'Sí, confirmar'), clase: 'btn-primary', onClick: confirmar, disabled: !prov },
@@ -849,7 +932,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
         </Campo>
       </div>
       <div className={s['form-grid']}>
-        {!deposito && (
+        {!fijo && (
           <Campo label="Con qué">
             <select value={medio} onChange={(e) => setMedio(e.target.value)}>
               <option value="efectivo">Efectivo en mano</option>
@@ -866,9 +949,9 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
         <Campo label={medio === 'deposito' ? 'Referencia del depósito *' : 'Referencia'}>
           <input maxLength={200} value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder={medio === 'deposito' ? 'Nº de depósito / comprobante' : 'Opcional'} />
         </Campo>
-        {deposito && <Campo label="Detalle"><input maxLength={300} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Opcional" /></Campo>}
+        {fijo && <Campo label="Detalle"><input maxLength={300} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Opcional" /></Campo>}
       </div>
-      {!deposito && (
+      {!fijo && (
         <div className={s['form-grid']}>
           <Campo label="Fecha"><input type="date" value={fecha} max={hoy()} onChange={(e) => setFecha(e.target.value)} /></Campo>
           <Campo label="Detalle"><input maxLength={300} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Opcional" /></Campo>
@@ -925,7 +1008,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
         </div>
       )}
       <div className={s['form-grid']}>
-        {deposito ? (
+        {fijo ? (
           <div className={s.hint} style={{ margin: 0 }}>
             Lo que no tildes queda <strong>a cuenta</strong>: saldo a favor en la cuenta del proveedor, que se aplica después desde Proveedores.
           </div>
@@ -935,7 +1018,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
           </Campo>
         )}
         <div>
-          <div className={s['mini-label']}>{deposito ? 'El depósito' : 'Total del pago'}</div>
+          <div className={s['mini-label']}>{deposito ? 'El depósito' : cambio ? 'Lo que transfirió' : 'Total del pago'}</div>
           <div style={{ fontSize: 22, fontWeight: 800 }}>{money(total)}</div>
           <div className={s.hint} style={{ margin: 0, color: extra < -0.009 ? 'var(--crm-color-danger)' : undefined }}>aplicado {money(aplicado)} · a cuenta {money(extra)}</div>
         </div>
@@ -944,7 +1027,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
         ? <Aviso tono="info">Esta plata ya salió de tu caja cuando cargaste el depósito: el efectivo en mano no cambia.</Aviso>
         : <Disponible saldo={saldo} importe={total} fecha={fecha} />}
       <AvisoSegundaConfirmacion {...sc}>
-        {yaSalio ? 'El depósito de ' : 'Sale '}<strong>{money(total)}</strong> {yaSalio ? 'pasa a la cuenta de' : 'de tu caja para'} <strong>{prov?.nombre ?? '—'}</strong> ({MEDIO[medio]}), aplicado a {Object.keys(tildes).length} documento{Object.keys(tildes).length === 1 ? '' : 's'}{extra > 0.009 ? ` y ${money(extra)} a cuenta` : ''}.
+        {yaSalio ? 'El depósito de ' : 'Sale '}<strong>{money(total)}</strong> {yaSalio ? 'pasa a la cuenta de' : 'de tu caja para'} <strong>{prov?.nombre ?? '—'}</strong> ({MEDIO[medio]}{medio === 'cambio' && cambioPor.trim() ? `: le transfiere ${cambioPor.trim()}` : ''}), aplicado a {Object.keys(tildes).length} documento{Object.keys(tildes).length === 1 ? '' : 's'}{extra > 0.009 ? ` y ${money(extra)} a cuenta` : ''}.
       </AvisoSegundaConfirmacion>
       {error && <Aviso tono="warn">{error}</Aviso>}
     </ModalShell>
@@ -965,7 +1048,7 @@ function AccionesCaja({ saldo, enTransito, conceptos, conConteo, small, onHecho,
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
       <Btn variant="btn-ingreso" small={small} title="Un ingreso de efectivo aparte de los sobres" onClick={() => setAbierta('ingreso')}>+ Entró plata</Btn>
-      <Btn variant="btn-delete" small={small} title="Un retiro, un depósito o un gasto" onClick={() => setAbierta('egreso')}>− Sacar plata</Btn>
+      <Btn variant="btn-delete" small={small} title="Un retiro, un depósito o un gasto, en efectivo o como efectivo por transferencia" onClick={() => setAbierta('egreso')}>− Sacar plata</Btn>
       <Btn small={small} onClick={() => setAbierta('pago')}>Pagar a un proveedor</Btn>
       {conConteo && <Btn variant="btn-primary" small={small} onClick={() => setAbierta('conteo')}>Contar mi caja</Btn>}
       {(abierta === 'ingreso' || abierta === 'egreso') && (
@@ -982,10 +1065,12 @@ function Movimientos({ version, bump, avisar, conceptos, saldo }) {
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [anulados, setAnulados] = useState(false);
+  /* Solo lo que salió como efectivo por transferencia (0191). */
+  const [soloCambio, setSoloCambio] = useState(false);
   /* 'mov' = cuándo entró a tu caja; 'caja' = el cierre del turno del local (solo sobres). */
   const [fechaDe, setFechaDe] = useState('mov');
   const [modal, setModal] = useState(null);
-  const qs = `${tipo ? `tipo=${tipo}&` : ''}${desde ? `desde=${desde}&` : ''}${hasta ? `hasta=${hasta}&` : ''}${anulados ? 'anulados=1&' : ''}${fechaDe === 'caja' ? 'fechaDe=caja&' : ''}`;
+  const qs = `${tipo ? `tipo=${tipo}&` : ''}${desde ? `desde=${desde}&` : ''}${hasta ? `hasta=${hasta}&` : ''}${anulados ? 'anulados=1&' : ''}${fechaDe === 'caja' ? 'fechaDe=caja&' : ''}${soloCambio ? 'cambio=1&' : ''}`;
   const { data, loading, error } = useResource(`cashflow:mov:${qs}:${version}`, () => httpClient.get(`/cashflow/movimientos?${qs}`));
   const filas = data ?? [];
   const vivos = filas.filter((m) => !m.anuladoEn);
@@ -1004,6 +1089,7 @@ function Movimientos({ version, bump, avisar, conceptos, saldo }) {
         <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} aria-label="Desde" />
         <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} aria-label="Hasta" />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}><input type="checkbox" checked={anulados} onChange={(e) => setAnulados(e.target.checked)} /> Ver anulados</label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}><input type="checkbox" checked={soloCambio} onChange={(e) => setSoloCambio(e.target.checked)} /> Solo efectivo por transferencia</label>
         <div style={{ marginLeft: 'auto' }}>
           <AccionesCaja saldo={saldo} conceptos={conceptos} small onHecho={bump} avisar={avisar} />
         </div>

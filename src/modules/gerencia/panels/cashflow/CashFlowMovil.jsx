@@ -238,7 +238,7 @@ function Inicio({ d, abrir, irA, actualizado, version, bump, avisar }) {
         </button>
         <button type="button" className={c.accion} onClick={() => abrir({ tipo: 'egreso' })}>
           <span className={c.accionIcono} data-tono="rojo"><ArrowUpwardRoundedIcon /></span>
-          Sacar plata<small>retiro, depósito, gasto</small>
+          Sacar plata<small>retiro, depósito, gasto o cambio</small>
         </button>
         <button type="button" className={c.accion} onClick={() => abrir({ tipo: 'ingreso' })}>
           <span className={c.accionIcono} data-tono="azul"><ArrowDownwardRoundedIcon /></span>
@@ -370,7 +370,7 @@ function Sobres({ f, setF, version, abrir, pendientes: nPend }) {
  * Movimientos
  * ==================================================================== */
 function Movimientos({ f, setF, version, abrir }) {
-  const qs = `${f.tipo ? `tipo=${f.tipo}&` : ''}${f.desde ? `desde=${f.desde}&` : ''}${f.hasta ? `hasta=${f.hasta}&` : ''}${f.anulados ? 'anulados=1&' : ''}${f.porCaja ? 'fechaDe=caja&' : ''}`;
+  const qs = `${f.tipo ? `tipo=${f.tipo}&` : ''}${f.desde ? `desde=${f.desde}&` : ''}${f.hasta ? `hasta=${f.hasta}&` : ''}${f.anulados ? 'anulados=1&' : ''}${f.porCaja ? 'fechaDe=caja&' : ''}${f.cambio ? 'cambio=1&' : ''}`;
   const { data, loading, error } = useResource(`cfm:mov:${qs}:${version}`, () => httpClient.get(`/cashflow/movimientos?${qs}`));
   const filas = useMemo(() => data ?? [], [data]);
   const vivos = filas.filter((m) => !m.anuladoEn);
@@ -388,7 +388,7 @@ function Movimientos({ f, setF, version, abrir }) {
     }
     return g;
   }, [filas, f.porCaja]);
-  const filtrando = !!(f.desde || f.hasta || f.anulados || f.porCaja);
+  const filtrando = !!(f.desde || f.hasta || f.anulados || f.porCaja || f.cambio);
   return (
     <>
       <div className={c.seg} role="group" aria-label="Tipo de movimiento">
@@ -402,7 +402,8 @@ function Movimientos({ f, setF, version, abrir }) {
         </button>
         <button type="button" className={c.chip} aria-pressed={!!f.anulados} onClick={() => setF({ ...f, anulados: !f.anulados })}>Ver anulados</button>
         <button type="button" className={c.chip} aria-pressed={!!f.porCaja} onClick={() => setF({ ...f, porCaja: !f.porCaja })}>Sobres por fecha de caja</button>
-        {filtrando && <button type="button" className={c.chip} onClick={() => setF({ ...f, desde: '', hasta: '', anulados: false, porCaja: false, verFiltros: false })}>Quitar filtros</button>}
+        <button type="button" className={c.chip} aria-pressed={!!f.cambio} onClick={() => setF({ ...f, cambio: !f.cambio })}>Efectivo por transferencia</button>
+        {filtrando && <button type="button" className={c.chip} onClick={() => setF({ ...f, desde: '', hasta: '', anulados: false, porCaja: false, cambio: false, verFiltros: false })}>Quitar filtros</button>}
       </div>
       {f.verFiltros && (
         <div className={c.campos}>
@@ -844,7 +845,7 @@ export function CashFlowMovil() {
 
   /* Los filtros de cada pestaña viven acá: ir y volver no los pierde. */
   const [fSobres, setFSobres] = useState({ estado: 'pendientes', sucursalId: '', desde: '', hasta: '', verFechas: false });
-  const [fMov, setFMov] = useState({ tipo: '', desde: '', hasta: '', anulados: false, porCaja: false, verFiltros: false });
+  const [fMov, setFMov] = useState({ tipo: '', desde: '', hasta: '', anulados: false, porCaja: false, cambio: false, verFiltros: false });
   const [fRep, setFRep] = useState(() => ({ k: 'mes', desde: primerDiaMes(), hasta: hoy(), ...FILTROS_REPORTE_VACIOS }));
 
   const { data: d, loading, error } = useResource(`cfm:resumen:${version}`, () => httpClient.get('/cashflow/resumen'), { enabled: puede });
@@ -1061,7 +1062,7 @@ export function CashFlowMovil() {
             <div className={c.hoja}>
               {[
                 ['ingreso', 'Entró plata', 'Un ingreso aparte de los sobres', 'azul', ArrowDownwardRoundedIcon],
-                ['egreso', 'Sacar plata', 'Retiro, depósito o un gasto', 'rojo', ArrowUpwardRoundedIcon],
+                ['egreso', 'Sacar plata', 'Retiro, depósito, gasto o efectivo por transferencia', 'rojo', ArrowUpwardRoundedIcon],
                 ['pago', 'Pagar a un proveedor', 'Aplicado a sus facturas o gastos', 'naranja', StorefrontOutlinedIcon],
                 ['conteo', 'Contar mi caja', 'Billete por billete, contra el libro', 'verde', CalculateOutlinedIcon],
               ].map(([tipo, t, sub, tono, Icono]) => (
