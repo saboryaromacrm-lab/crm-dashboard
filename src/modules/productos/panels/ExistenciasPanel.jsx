@@ -37,8 +37,9 @@ import { useSeleccionLote } from '../hooks/useSeleccionLote.js';
  *
  * PROVEEDOR, SIN STOCK Y ORDEN DE PEDIDO (12/10/2026, pedido del dueño): el
  * filtro de proveedor mira sus formatos de compra; «Sin stock» lista los
- * productos activos con 0 o menos disponible (no tienen fila de stock, por eso
- * se arman aparte); y «Crear orden de pedido» abre la lista para pedirle al
+ * productos activos con 0 o menos disponible y, de un granel, cada paquete en
+ * 0 o en negativo (21/10/2026) — se arman aparte, porque no tienen fila de
+ * stock con algo; y «Crear orden de pedido» abre la lista para pedirle al
  * proveedor lo que está por debajo de un número.
  *
  * FILTROS QUE SE ACOMODAN SOLOS (13/10/2026, pedido del dueño): un solo filtro
@@ -100,9 +101,22 @@ export function ExistenciasPanel() {
     tipo: p.tipo, marca: p.marca || '', provs: new Set((p.formatosCompra || []).map((e) => e.proveedorId)),
   }])), [productos]);
   const conStock = useMemo(() => stock.filter((st) => st.cantidad > 1e-9 && infoProd.has(st.productoId)), [stock, infoProd]);
-  /* Sin stock: producto activo × sucursal activa con 0 o menos disponible (en kg el granel, con sus paquetes). */
+  /*
+   * SIN STOCK, producto activo × sucursal activa:
+   *   · el producto que en esa sucursal no tiene NADA disponible (el granel cuenta sus paquetes en kg);
+   *   · y cada PAQUETE de un granel que ahí está en 0 o en negativo, aunque el producto tenga otros
+   *     (21/10/2026, pedido del dueño: con «Con y sin stock» tienen que aparecer todos los paquetes en
+   *     cada sucursal, aunque nunca hayan tenido stock). Así también se ve un paquete en negativo, que
+   *     antes no aparecía en ningún lado: no tiene stock para «Con stock» y el producto sí tenía.
+   */
   const faltantes = useMemo(() => {
     const disponible = indiceDisponible(stock, productos);
+    const porPaquete = new Map();
+    for (const st of stock) {
+      if (st.estado !== 'disponible' || !st.presentacionId) continue;
+      const k = `${st.productoId}:${st.sucursalId}:${st.presentacionId}`;
+      porPaquete.set(k, (porPaquete.get(k) ?? 0) + st.cantidad);
+    }
     const sucs = sucursales.filter((su) => su.activa !== false);
     const out = [];
     for (const p of productos) {
@@ -110,6 +124,11 @@ export function ExistenciasPanel() {
       for (const su of sucs) {
         const q = disponible(p.id, su.id);
         if (q <= 1e-9) out.push({ id: `sin-${p.id}-${su.id}`, productoId: p.id, sucursalId: su.id, presentacionId: null, estado: SIN_STOCK, cantidad: q });
+        if (p.tipo !== 'granel') continue;
+        for (const pr of p.presentaciones || []) {
+          const qp = Math.round((porPaquete.get(`${p.id}:${su.id}:${pr.id}`) ?? 0) * 1000) / 1000;
+          if (qp <= 1e-9) out.push({ id: `sin-${p.id}-${su.id}-${pr.id}`, productoId: p.id, sucursalId: su.id, presentacionId: pr.id, estado: SIN_STOCK, cantidad: qp });
+        }
       }
     }
     return out;
@@ -157,7 +176,8 @@ export function ExistenciasPanel() {
         if (info?.marca && (!falla || falla === 'marca')) op.marca.add(info.marca);
       }
     }
-    salen.sort((a, b) => a.productoId - b.productoId || a.sucursalId - b.sucursalId);
+    /* Producto, sucursal y, dentro, el suelto primero y los paquetes en orden: con y sin stock quedan juntos. */
+    salen.sort((a, b) => a.productoId - b.productoId || a.sucursalId - b.sucursalId || (a.presentacionId ?? 0) - (b.presentacionId ?? 0));
     return { entradas: salen, op, marcas: [...op.marca].sort(alfabetico) };
   }, [conStock, faltantes, infoProd, stockF, sucF, prodF, estadoF, tipoF, provIds, marcaF, coincideTexto]);
   const { entradas, op } = filtrar;
