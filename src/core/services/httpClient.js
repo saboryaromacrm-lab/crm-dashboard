@@ -171,7 +171,7 @@ async function request(method, path, opts = {}) {
   throw ultimo;
 }
 
-async function intentarRequest(method, path, { body, headers, signal, sinRedirigir = false } = {}) {
+async function intentarRequest(method, path, { body, headers, signal, sinRedirigir = false, timeoutMs = null } = {}) {
   const url = path.startsWith('http')
     ? path
     : `${appConfig.api.baseUrl}${path}`;
@@ -192,7 +192,8 @@ async function intentarRequest(method, path, { body, headers, signal, sinRedirig
    * ya estaba escrita en `fetchConTimeout` y que hasta ahora valía solo para
    * los binarios.
    */
-  let timeout = setTimeout(() => controller.abort(), appConfig.api.timeoutMs);
+  /* `timeoutMs`: un pedido que se sabe lento (las preguntas al Asesor, 0193) pide más plazo. */
+  let timeout = setTimeout(() => controller.abort(), timeoutMs ?? appConfig.api.timeoutMs);
   const yaContesto = () => { clearTimeout(timeout); timeout = null; };
   encadenarAbort(signal, controller);
 

@@ -3,7 +3,7 @@
  * ============================================================================
  * `permiso` es la clave de SECCIÓN: el manifiesto deriva de acá qué claves
  * hacen visible el módulo, y la página filtra el sub-menú con las mismas.
- * Métricas, Resultados, Cash Flow y Auditoría usan llaves que no están en el catálogo de
+ * Métricas, Resultados, Cash Flow, Asesor y Auditoría usan llaves que no están en el catálogo de
  * permisos, así que no se asignan a ningún rol: solo el superadmin.
  *
  * 8/10/2026 (0144): salieron «Reportes de ventas», «Valorización de stock» y
@@ -16,6 +16,7 @@ import FactCheckIcon from '@mui/icons-material/FactCheck';
 import InsightsIcon from '@mui/icons-material/Insights';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import AssessmentIcon from '@mui/icons-material/Assessment';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 
 export const GERENCIA_SECCIONES = [
   { id: 'usuarios', label: 'Usuarios y roles', icon: GroupIcon, permiso: 'gerencia.usuarios' },
@@ -42,6 +43,11 @@ export const GERENCIA_SECCIONES = [
      * sobres de cada cierre de caja, controlados uno por uno, y lo que se saca. */
     id: 'cashflow', label: 'Cash Flow', icon: PaymentsIcon, permiso: 'gerencia.cashflow',
     desc: 'El efectivo en mano: los sobres de los locales, controlados uno por uno, y cada peso que sale.',
+  },
+  {
+    /* 21/10/2026 (0193): la IA que lee los números del negocio y aconseja. Solo superadmin. */
+    id: 'asesor', label: 'Asesor', icon: AutoAwesomeIcon, permiso: 'gerencia.asesor',
+    desc: 'Una IA que lee tus números (rentabilidad, granel y fraccionado, stock, cajas, gastos), te dice qué le parece raro y qué harías. También le podés preguntar.',
   },
   {
     /* 8/10/2026 (0144): lo que cada operación deja firmado, junto y por persona. */
