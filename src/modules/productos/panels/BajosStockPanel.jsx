@@ -20,10 +20,14 @@ import { Btn, PanelHead, Table, s } from '../components/ui.jsx';
  *
  * Los proveedores con un pedido en curso no se muestran salvo que se tilde
  * «Ver también los ya pedidos» (22/10/2026, pedido del dueño).
+ *
+ * `coffit`: la MISMA pantalla adentro de Almacén › Coffit, con su depósito
+ * (todas las sucursales) y lo que se le manda como consumo; la de Sabor y
+ * Aroma no cuenta nada de Coffit (ver `ALCANCE_BAJOS`).
  */
-const alcanzaTexto = (d) => (d == null ? 'no se vende' : d < 1 ? 'menos de 1 día' : `${Math.floor(d)} día${Math.floor(d) === 1 ? '' : 's'}`);
+const alcanzaTexto = (d, verbo) => (d == null ? `no ${verbo}` : d < 1 ? 'menos de 1 día' : `${Math.floor(d)} día${Math.floor(d) === 1 ? '' : 's'}`);
 
-export function BajosStockPanel() {
+export function BajosStockPanel({ coffit = false }) {
   const { store, openModal, toast, can, isAdmin } = useProductos();
   const puedeMinimo = isAdmin || can('inventario') || can('compras.productos');
   /** '' = la Distribuidora (la del globito), 'todas', o el id de otra sucursal. */
@@ -39,8 +43,11 @@ export function BajosStockPanel() {
   const [verBien, setVerBien] = useState(false);
   const [minimos, setMinimos] = useState({});
 
-  /* Al entrar, la venta fresca de la Distribuidora; otra sucursal se pide al elegirla. */
-  useEffect(() => { store.refrescarBajos(true); }, [store]);
+  /* Al entrar, la venta fresca de la Distribuidora (o lo mandado a Coffit); otra sucursal se pide al elegirla. */
+  useEffect(() => {
+    if (coffit) store.refrescarBajosCoffit().then((r) => { if (!r.ok) toast(r.error, 'err'); });
+    else store.refrescarBajos(true);
+  }, [store, coffit, toast]);
   useEffect(() => {
     if (!suc) { setOtros(null); return undefined; }
     let vivo = true;
@@ -52,7 +59,9 @@ export function BajosStockPanel() {
     return () => { vivo = false; };
   }, [suc, store, toast]);
 
-  const datos = suc ? otros : store.state.bajos;
+  const datos = coffit ? store.state.bajosCoffit : suc ? otros : store.state.bajos;
+  /* Lo de Coffit no se vende: se le manda. */
+  const verbo = coffit ? 'se le manda' : 'se vende';
   const { proveedores: analizados, yaPedidos } = store.analisisBajos(datos, soloCtrl, tipo, verPedidos);
   /* 0164: los colores y la lista, solo con los proveedores de la localidad. */
   const proveedores = soloLocales ? analizados.filter((g) => store.getProveedor(g.id)?.esLocal) : analizados;
@@ -86,15 +95,17 @@ export function BajosStockPanel() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Bajos en stock"
-        desc="Por proveedor: cuántos de sus productos están sin stock o por debajo del mínimo. Abrí uno para ver qué falta y armar la orden de pedido con eso ya cargado."
+        desc={coffit
+          ? 'Lo de uso exclusivo de Coffit, por proveedor: cuántos de sus productos están sin stock o por debajo del mínimo en su depósito (todas las sucursales). Abrí uno para ver qué falta y armar la orden de pedido.'
+          : 'Por proveedor: cuántos de sus productos están sin stock o por debajo del mínimo (sin nada de Coffit). Abrí uno para ver qué falta y armar la orden de pedido con eso ya cargado.'}
       />
       <div className={s.toolbar}>
-        <select id="bajos-sucursal" className={s['select-inline']} value={suc} onChange={(e) => { setSuc(e.target.value); setAbierto(null); }} aria-label="Sucursal">
+        {!coffit && <select id="bajos-sucursal" className={s['select-inline']} value={suc} onChange={(e) => { setSuc(e.target.value); setAbierto(null); }} aria-label="Sucursal">
           {/* La del globito: la Distribuidora (o la propia, para quien ve solo su local). */}
           <option value="">{store.getSucursal(store.state.bajos?.sucursalId)?.nombre ?? 'Distribuidora'}</option>
           {isAdmin && <option value="todas">Todas las sucursales</option>}
           {isAdmin && sucursales.filter((x) => x.tipo !== 'distribuidora').map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
-        </select>
+        </select>}
         <input id="bajos-buscar" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar proveedor o producto…" style={{ minWidth: 220 }} />
         <select id="bajos-tipo" className={s['select-inline']} value={tipo} onChange={(e) => setTipo(e.target.value)} aria-label="Tipo">
           <option value="">Enteros y granel</option>
@@ -115,7 +126,7 @@ export function BajosStockPanel() {
         </label>
       </div>
 
-      {datos === undefined || (!suc && !datos) ? (
+      {datos === undefined || ((coffit || !suc) && !datos) ? (
         <div className={s.hint}>Calculando…</div>
       ) : !datos ? (
         <div className={cx(s.callout, s.warn)}>No se pudo traer la venta de esa sucursal.</div>
@@ -138,7 +149,7 @@ export function BajosStockPanel() {
               );
             })}
             <span className={s.hint} style={{ margin: 0 }}>
-              Mínimo: lo que se vende en <strong>{datos.diasCobertura} días</strong> (venta de los últimos {datos.diasVenta}), o el cargado a mano.
+              Mínimo: lo que {verbo} en <strong>{datos.diasCobertura} días</strong> (lo de los últimos {datos.diasVenta}), o el cargado a mano.
               Rojo con <strong>{datos.umbralRojo}%</strong> o más de sus productos en falta; amarillo desde {datos.umbralRojo / 2}%.
               Se cambia en Almacén › Configuración.
             </span>
@@ -182,7 +193,7 @@ export function BajosStockPanel() {
                       <table className={s.table} style={{ fontSize: 13 }}>
                         <thead>
                           <tr>
-                            <th>Producto</th><th className={s.num}>Stock</th><th className={s.num}>Vende/día</th><th>Le alcanza</th>
+                            <th>Producto</th><th className={s.num}>Stock</th><th className={s.num}>{coffit ? 'Se manda/día' : 'Vende/día'}</th><th>Le alcanza</th>
                             <th className={s.num}>Mínimo</th><th className={s.num}>Pedir</th><th>Estado</th>
                           </tr>
                         </thead>
@@ -195,7 +206,7 @@ export function BajosStockPanel() {
                               </td>
                               <td className={cx(s.num, s.mono)}>{store.fmtCant(f.p, null, f.stock)}</td>
                               <td className={cx(s.num, s.mono)}>{f.ventaDia > 0 ? num(f.ventaDia, f.p.tipo === 'granel' ? 2 : 1) : '—'}</td>
-                              <td style={{ color: f.alcanza != null && f.alcanza < datos.diasCobertura ? ESTADO_PRODUCTO.bajo.color : undefined }}>{alcanzaTexto(f.alcanza)}</td>
+                              <td style={{ color: f.alcanza != null && f.alcanza < datos.diasCobertura ? ESTADO_PRODUCTO.bajo.color : undefined }}>{alcanzaTexto(f.alcanza, verbo)}</td>
                               <td className={s.num} style={{ whiteSpace: 'nowrap' }}>
                                 {puedeMinimo ? (
                                   <input

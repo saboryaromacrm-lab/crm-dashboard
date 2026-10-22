@@ -22,6 +22,16 @@
  * pida verlo, queda afuera de la lista y de los colores: ya está resuelto.
  * Vuelve solo cuando el pedido se marca recibido.
  */
+/**
+ * DE QUIÉN ES LA LISTA (22/10/2026, pedido del dueño): la de Sabor y Aroma no
+ * cuenta nada de Coffit —ni lo de su uso exclusivo ni lo que elabora—; la de
+ * Almacén › Coffit es solo su depósito. Lo dice la API en `datos.alcance`.
+ */
+export const ALCANCE_BAJOS = {
+  saborYAroma: (p) => !p.soloCafeteria && !p.origenCafeteria,
+  coffit: (p) => !!p.soloCafeteria,
+};
+
 export const COLOR_PROVEEDOR = {
   rojo: { label: 'En rojo', color: 'var(--crm-color-danger)' },
   amarillo: { label: 'Atención', color: 'var(--crm-color-warning)' },
@@ -49,10 +59,11 @@ export function analizarBajos({ productos, disponible, datos, proveedorDe, contr
   const { sucursalId, diasVenta, diasCobertura, umbralRojo } = datos;
   const vendido = new Map(datos.ventas);
   const controlados = soloControlados ? new Set(datos.controlados) : null;
+  const deLaLista = ALCANCE_BAJOS[datos.alcance] ?? ALCANCE_BAJOS.saborYAroma;
   const porProv = new Map();
 
   for (const p of productos) {
-    if ((p.estado || 'activo') !== 'activo' || !controla(p)) continue;
+    if ((p.estado || 'activo') !== 'activo' || !deLaLista(p) || !controla(p)) continue;
     if (controlados && !controlados.has(p.id)) continue;
     if (tipo && p.tipo !== tipo) continue;
     const granel = p.tipo === 'granel';

@@ -9,7 +9,7 @@
  * Quedan, por decisión del dueño: la compra (es como entra, imputada a Coffit),
  * Compras › Productos (donde se marca y se desmarca), Almacén › Coffit (envíos,
  * pedidos y su stock, que se ajusta desde su Depósito) y la reposición al
- * proveedor (orden de pedido, Bajos en stock).
+ * proveedor (orden de pedido y SU Bajos en stock, adentro de Coffit).
  *
  * Una sola regla para todas las pantallas. La API tiene el mismo candado
  * (crm-api/src/productos/exclusivoCoffit.ts).

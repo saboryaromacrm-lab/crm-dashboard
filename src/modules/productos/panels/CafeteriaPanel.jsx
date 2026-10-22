@@ -28,6 +28,7 @@ import { CafeteriaProductosPanel } from './CafeteriaProductosPanel.jsx';
 import { CoffitCompras, CoffitGastos } from './CoffitComprasGastos.jsx';
 import { CoffitCuenta } from './CoffitCuenta.jsx';
 import { CoffitIngredientes } from './CoffitIngredientes.jsx';
+import { BajosStockPanel } from './BajosStockPanel.jsx';
 
 const inicioDeMes = () => {
   const d = new Date();
@@ -39,6 +40,8 @@ const inicioDeMes = () => {
 const pestanasDe = (v) => [
   { id: 'pedidos', label: v.tabPedidos },
   { id: 'deposito', label: v.tabDeposito },
+  /* Su propio Bajos en stock (22/10/2026, pedido del dueño): el de Sabor y Aroma ya no cuenta lo de Coffit. */
+  { id: 'bajos', label: 'Bajos en stock', opera: true },
   { id: 'envios', label: v.tabSalida },
   { id: 'recibidos', label: v.tabEntrada },
   /* Los productos del café, adentro de la sección (27/9/2026): antes eran una
@@ -249,7 +252,7 @@ export function CafeteriaPanel() {
         */
         actions={(() => {
           /* En Productos el botón es el del producto: vive en la pestaña. */
-          if (pestana === 'productos' || pestana === 'ingredientes') return null;
+          if (pestana === 'productos' || pestana === 'ingredientes' || pestana === 'bajos') return null;
           /* Compras y gastos se cargan en su lugar (Compras › Facturación y
              Gastos); desde acá solo se miran. */
           if (pestana === 'compras' || pestana === 'gastos' || pestana === 'cuenta') return null;
@@ -632,6 +635,7 @@ export function CafeteriaPanel() {
 
       {pestana === 'productos' && <CafeteriaProductosPanel embebido />}
       {pestana === 'ingredientes' && puedeOperar && <CoffitIngredientes />}
+      {pestana === 'bajos' && puedeOperar && <BajosStockPanel coffit />}
 
       {pestana === 'cuenta' && verMetricas && (
         <CoffitCuenta desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} />

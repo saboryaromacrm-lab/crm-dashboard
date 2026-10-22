@@ -91,3 +91,12 @@ test('lo ya pedido: afuera de la lista y del globito, salvo que se pida verlo', 
   assert.deepEqual(todos.proveedores.map((g) => [g.id, g.pedido]).sort(), [[7, '2026-10-20T12:00:00.000Z'], [8, null]]);
   assert.equal(todos.rojos, 1, 'el globito sigue sin contar lo ya pedido');
 });
+
+test('de quién es la lista: Sabor y Aroma sin nada de Coffit; Coffit, solo su depósito', () => {
+  const ps = [prod(1, { prov: 7 }), prod(2, { prov: 7, soloCafeteria: true }), prod(3, { prov: 8, origenCafeteria: true })];
+  const stock = { 1: 0, 2: 0, 3: 0 };
+  const ids = (r) => r.proveedores.flatMap((g) => g.filas.map((f) => f.p.id));
+  assert.deepEqual(ids(correr(ps, stock, base())), [1], 'sin «alcance» es la de Sabor y Aroma');
+  assert.deepEqual(ids(correr(ps, stock, base({ alcance: 'saborYAroma' }))), [1]);
+  assert.deepEqual(ids(correr(ps, stock, base({ alcance: 'coffit', sucursalId: null }))), [2]);
+});

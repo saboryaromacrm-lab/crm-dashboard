@@ -67,6 +67,7 @@ function nuevoEstado() {
     vencimientosUrgentes: 0,
     // Bajos en stock de la Distribuidora (venta de 30 días + regla), para el globito; ver `refrescarBajos`.
     bajos: null,
+    bajosCoffit: null,
     ctx: _loadCtx(),
   };
 }
@@ -1106,8 +1107,11 @@ const anotarPedidoProveedor = async (pedidoId, proveedorId, notas) => {
   const r = await _directo(() => (pedidoId
     ? httpClient.patch(`/pedidos-proveedor/${pedidoId}`, { notas })
     : httpClient.post('/pedidos-proveedor/directo', { proveedorId, notas })));
-  /* Un pedido nuevo saca a ese proveedor de Bajos en stock (y del globito) en el acto. */
-  if (r.ok && !pedidoId) refrescarBajos(true);
+  /* Un pedido nuevo saca a ese proveedor de Bajos en stock (y del globito) en el acto; también del de Coffit si está abierto. */
+  if (r.ok && !pedidoId) {
+    refrescarBajos(true);
+    if (state.bajosCoffit) refrescarBajosCoffit();
+  }
   return r;
 };
 /** El último pedido copiado o mandado a un proveedor desde la orden de pedido (0165): uno solo, el nuevo pisa al anterior. */
@@ -1121,6 +1125,7 @@ const guardarNotaPedido = (proveedorId, texto) => _directo(() => httpClient.put(
  * otra sucursal (o 'todas'); `refrescarBajos` guarda la de la Distribuidora
  * para el globito del menú, y no repregunta antes de 5 minutos salvo que se
  * fuerce. `analisisBajos` es la MISMA cuenta para la sección y el globito.
+ * `refrescarBajosCoffit`: el de Almacén › Coffit (22/10/2026), que se pide al abrirlo.
  */
 const datosBajos = (sucursalId) => _directo(() => httpClient.get('/bajos-stock' + (sucursalId ? `?sucursalId=${sucursalId}` : '')));
 let _bajosEn = 0;
@@ -1129,6 +1134,11 @@ async function refrescarBajos(forzar = false) {
   const r = await datosBajos();
   if (r.ok) { state.bajos = r.data; _bajosEn = Date.now(); emit(); }
   return state.bajos;
+}
+async function refrescarBajosCoffit() {
+  const r = await _directo(() => httpClient.get('/bajos-stock/coffit'));
+  if (r.ok) { state.bajosCoffit = r.data; emit(); }
+  return r;
 }
 /* La cuenta se recuerda por juego de datos (la Distribuidora del globito y la sucursal que mire la
  * sección), y vale mientras el stock y el catálogo sean los mismos. */
@@ -1594,7 +1604,7 @@ export const inventoryStore = {
   pedidosFraccion, guardarPedidoFraccion, descartarPedidoFraccion,
   crearIncidencia, avanzarIncidencia, resolverIncidencia, cerrarIncidenciasAnteriores, anotarPedidoProveedor, ultimoPedido, guardarUltimoPedido, guardarNotaPedido,
   guardarTiendaProducto, subirFotoProducto, quitarFotoProducto, vistaTienda,
-  datosBajos, refrescarBajos, analisisBajos, bajosRojos, guardarStockMinimo,
+  datosBajos, refrescarBajos, refrescarBajosCoffit, analisisBajos, bajosRojos, guardarStockMinimo,
   crearProducto, editarProducto, eliminarProducto, cambiarEstadoProducto, cambiarControlStock,
   sugerenciasArchivado, archivarLote, bajaLote, clasificarLote,
   guardarPresentaciones, importarCatalogo, importarCostos, importarFormatosVenta, importacionesPorProveedor, moverLista, usoLista, borrarListasVacias, importarCostosEnTanda, crearProveedorEnTanda, actualizarClasificacion,
