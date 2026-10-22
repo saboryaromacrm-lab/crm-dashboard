@@ -1138,7 +1138,9 @@ function analisisBajos(datos, soloControlados = false, tipo = '') {
     disponible: indiceDisponible(state.stock, state.productos),
     datos,
     proveedorDe: (p) => formatoActivo(p)?.proveedorId ?? null,
-    controla: (p) => !stockLibre(p),
+    /* Mira TODO lo activo aunque el control general esté apagado (22/10/2026, pedido del dueño): solo
+     * informa, no frena nada. Queda afuera únicamente lo marcado «nunca controlar» en la ficha. */
+    controla: (p) => p.controlStock !== false,
     bultoDe: bultoDelProveedor,
     soloControlados,
     tipo,

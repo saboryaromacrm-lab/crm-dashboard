@@ -4,7 +4,7 @@
  * La usan la sección Almacén › Bajos en stock y el globito del menú: los dos
  * tienen que decir lo mismo.
  *
- * Por producto (activo y con control de stock), en la sucursal elegida:
+ * Por producto (activo y no marcado «nunca controlar»), en la sucursal elegida:
  *   · venta diaria = lo vendido en la ventana (30 días) ÷ los días;
  *   · mínimo = el cargado a mano si hay; si no, venta diaria × días a cubrir
  *     (redondeado para arriba: unidades enteras, o de a 0,1 kg en granel);

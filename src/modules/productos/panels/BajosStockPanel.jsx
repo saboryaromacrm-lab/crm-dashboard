@@ -138,7 +138,7 @@ export function BajosStockPanel() {
 
           <Table
             cols={[{ h: 'Proveedor' }, { h: 'Productos', num: true }, { h: 'Sin stock', num: true }, { h: 'Bajos', num: true }, { h: 'En falta' }, { h: '', cls: 'actions-col' }]}
-            empty={proveedores.length ? 'Ningún proveedor con esos filtros.' : 'No hay productos con control de stock para mirar.'}
+            empty={proveedores.length ? 'Ningún proveedor con esos filtros.' : 'No hay productos activos para mirar.'}
           >
             {visibles.flatMap((g) => {
               const c = COLOR_PROVEEDOR[g.color].color;
