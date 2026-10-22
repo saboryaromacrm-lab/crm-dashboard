@@ -403,8 +403,8 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
               <label>Tipo de proveedor <span className={s.req}>*</span></label>
               <select value={tipoProveedor} onChange={(e) => elegirTipo(e.target.value)}>
                 <option value="">Elegí el tipo</option>
-                <option value="mercaderia">Mercadería (trae stock: Coca-Cola, Molino Sur…)</option>
-                <option value="gastos">Gastos (servicios: plomero, fletero, contador…)</option>
+                <option value="mercaderia">Mercadería (trae stock)</option>
+                <option value="gastos">Gastos (servicios)</option>
               </select>
               <div className={s.hint} style={{ margin: '6px 0 0' }}>
                 Define en qué bandeja cae el pago: Compras o Gastos. Un proveedor que es las dos
