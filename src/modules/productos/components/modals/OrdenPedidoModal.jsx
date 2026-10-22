@@ -6,7 +6,7 @@ import { telefonoWa } from '@modules/ventas/domain/constants.js';
 import { abrirWhatsApp } from '@shared/utils/whatsapp.js';
 import { useBreakpoint } from '@core/hooks/useBreakpoint.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
-import { bultoDelProveedor, bultoTexto, estimarPedido, indiceDisponible, unidadPedido } from '../../domain/bulto.js';
+import { bultoDelProveedor, bultoTexto, estimarPedido, indiceDisponible, totalesPedido, unidadPedido } from '../../domain/bulto.js';
 import { money } from '../../domain/format.js';
 import { norm } from '../CatalogoPicker.jsx';
 import { ModalShell } from '../Modal.jsx';
@@ -198,11 +198,11 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
 
   const pedidos = orden.map((id) => porId.get(id)).filter(Boolean).map((x) => ({ x, n: aNumero(cant[x.id]) }));
   const lineas = pedidos.map(({ x, n }) => `${conBulto(x)} — ${fmtN(n)} ${unidadPedido(x.p, x.bulto, n)}`);
+  const renglones = pedidos.map(({ x, n }) => ({ p: x.p, bulto: x.bulto, cantidad: n }));
   /* Cuánto suma, a costo (13/10/2026): solo para mirar, no va en el mensaje. Solo quien ve costos. */
-  const estimado = verCostos && proveedor
-    ? estimarPedido(pedidos.map(({ x, n }) => ({ p: x.p, bulto: x.bulto, cantidad: n })), proveedor.id, store.costosFormato)
-    : null;
-  const armado = lineas.length ? [`Pedido - ${QUIEN_PIDE} - ${hoy()}`, '', ...lineas, '', CIERRE].join('\n') : '';
+  const estimado = verCostos && proveedor ? estimarPedido(renglones, proveedor.id, store.costosFormato) : null;
+  /* Al final, cuántos bultos y unidades en total (22/10/2026). */
+  const armado = lineas.length ? [`Pedido - ${QUIEN_PIDE} - ${hoy()}`, '', ...lineas, '', totalesPedido(renglones), '', CIERRE].join('\n') : '';
   /** Lo que se ve, se copia, se manda y se anota. */
   const mensaje = editado ? editado.texto : armado;
   const listaCambio = !!editado && editado.base !== armado;

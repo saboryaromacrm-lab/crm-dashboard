@@ -59,6 +59,31 @@ export const unidadPedido = (p, n, q) => {
   return p?.tipo === 'granel' ? 'kg' : 'u.';
 };
 
+const cifra = (n) => String(Math.round(n * 1000) / 1000).replace('.', ',');
+const plural = (n, uno, varios) => `${cifra(n)} ${n === 1 ? uno : varios}`;
+/**
+ * LA LÍNEA DE TOTALES DEL PEDIDO (22/10/2026, pedido del dueño): cuántos
+ * bultos y cuántas unidades en total; del granel, bolsas y kilos aparte (no
+ * se suman con las unidades). `renglones`: [{ p, bulto, cantidad }], la
+ * cantidad en la unidad del renglón (bultos, bolsas, u. o kg). '' sin nada.
+ */
+export function totalesPedido(renglones) {
+  const t = { bultos: 0, unidades: 0, bolsas: 0, kg: 0 };
+  for (const { p, bulto, cantidad: n } of renglones) {
+    if (!(n > 0)) continue;
+    if (p?.tipo === 'granel') {
+      if (bulto > 1) { t.bolsas += n; t.kg += n * bulto; } else t.kg += n;
+    } else if (bulto > 1) { t.bultos += n; t.unidades += n * bulto; } else t.unidades += n;
+  }
+  const partes = [
+    t.bultos > 0 && plural(t.bultos, 'bulto', 'bultos'),
+    t.unidades > 0 && plural(t.unidades, 'unidad', 'unidades'),
+    t.bolsas > 0 && plural(t.bolsas, 'bolsa', 'bolsas'),
+    t.kg > 0 && `${cifra(t.kg)} kg`,
+  ].filter(Boolean);
+  return partes.length ? `Total: ${partes.join(' · ')}` : '';
+}
+
 /**
  * DISPONIBLE POR PRODUCTO Y SUCURSAL, en la unidad en que se le compra al
  * proveedor: unidades en los enteros; kg en el granel, sumando lo ya

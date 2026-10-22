@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BULTO, bultoDe, bultoOfrecible, valorPresentacion, cambioPresentacion, bultosDe, unidadesDeBultos, bultosPartidos, kgBolsa,
-  bultoDelProveedor, bultoTexto, unidadPedido, indiceDisponible, estimarPedido,
+  bultoDelProveedor, bultoTexto, unidadPedido, indiceDisponible, estimarPedido, totalesPedido,
 } from './bulto.js';
 
 const BRACEMA = { id: 1, tipo: 'entero', unidadesPorBulto: 1, formatosCompra: [{ id: 7, cantidad: 6 }, { id: 9, cantidad: 20, usarParaPrecio: true }] };
@@ -124,4 +124,12 @@ test('estimarPedido: bultos × bulto × costo del formato de ESE proveedor; sin 
   assert.equal(r.neto, 25500);
   assert.ok(Math.abs(r.aPagar - 25500 * 1.21) < 1e-6);
   assert.equal(r.sinCosto, 1);
+});
+
+test('totales del pedido: bultos y unidades; el granel en bolsas y kg aparte', () => {
+  const e = { tipo: 'entero' }; const g = { tipo: 'granel' };
+  assert.equal(totalesPedido([{ p: e, bulto: 18, cantidad: 3 }, { p: e, bulto: 24, cantidad: 1 }, { p: e, bulto: 0, cantidad: 5 }]), 'Total: 4 bultos · 83 unidades');
+  assert.equal(totalesPedido([{ p: e, bulto: 18, cantidad: 1 }]), 'Total: 1 bulto · 18 unidades');
+  assert.equal(totalesPedido([{ p: g, bulto: 25, cantidad: 2 }, { p: g, bulto: 0, cantidad: 2.5 }]), 'Total: 2 bolsas · 52,5 kg');
+  assert.equal(totalesPedido([{ p: e, bulto: 12, cantidad: 0 }]), '');
 });
