@@ -77,5 +77,17 @@ test('sin proveedor va aparte y no suma al globito; sin datos no hay nada', () =
   assert.equal(r.proveedores[0].id, 0);
   assert.equal(r.proveedores[0].color, 'rojo');
   assert.equal(r.rojos, 0);
-  assert.deepEqual(correr([prod(1)], {}, null), { proveedores: [], rojos: 0 });
+  assert.deepEqual(correr([prod(1)], {}, null), { proveedores: [], rojos: 0, yaPedidos: 0 });
+});
+
+test('lo ya pedido: afuera de la lista y del globito, salvo que se pida verlo', () => {
+  const ps = [prod(1, { prov: 7 }), prod(2, { prov: 7 }), prod(3, { prov: 8 }), prod(4, { prov: 8 })];
+  const datos = base({ pedidos: [[7, '2026-10-20T12:00:00.000Z']] });
+  const r = correr(ps, { 1: 0, 2: 0, 3: 0, 4: 0 }, datos);
+  assert.deepEqual(r.proveedores.map((g) => g.id), [8]);
+  assert.equal(r.rojos, 1);
+  assert.equal(r.yaPedidos, 1);
+  const todos = correr(ps, { 1: 0, 2: 0, 3: 0, 4: 0 }, datos, { verPedidos: true });
+  assert.deepEqual(todos.proveedores.map((g) => [g.id, g.pedido]).sort(), [[7, '2026-10-20T12:00:00.000Z'], [8, null]]);
+  assert.equal(todos.rojos, 1, 'el globito sigue sin contar lo ya pedido');
 });

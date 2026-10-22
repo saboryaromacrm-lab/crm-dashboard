@@ -1102,9 +1102,14 @@ const resolverIncidencia = (id, resolucion, contado) => _mutate(() => httpClient
  * La orden de pedido queda anotada en Proveedores › Pedidos (12/10/2026): la
  * primera vez nace la tarjeta en «Pedido»; después se le actualiza la nota.
  */
-const anotarPedidoProveedor = (pedidoId, proveedorId, notas) => _directo(() => (pedidoId
-  ? httpClient.patch(`/pedidos-proveedor/${pedidoId}`, { notas })
-  : httpClient.post('/pedidos-proveedor/directo', { proveedorId, notas })));
+const anotarPedidoProveedor = async (pedidoId, proveedorId, notas) => {
+  const r = await _directo(() => (pedidoId
+    ? httpClient.patch(`/pedidos-proveedor/${pedidoId}`, { notas })
+    : httpClient.post('/pedidos-proveedor/directo', { proveedorId, notas })));
+  /* Un pedido nuevo saca a ese proveedor de Bajos en stock (y del globito) en el acto. */
+  if (r.ok && !pedidoId) refrescarBajos(true);
+  return r;
+};
 /** El último pedido copiado o mandado a un proveedor desde la orden de pedido (0165): uno solo, el nuevo pisa al anterior. */
 const ultimoPedido = (proveedorId) => _directo(() => httpClient.get(`/orden-pedido/ultimo/${proveedorId}`));
 const guardarUltimoPedido = (proveedorId, texto) => _directo(() => httpClient.put(`/orden-pedido/ultimo/${proveedorId}`, { texto }));
@@ -1128,10 +1133,10 @@ async function refrescarBajos(forzar = false) {
 /* La cuenta se recuerda por juego de datos (la Distribuidora del globito y la sucursal que mire la
  * sección), y vale mientras el stock y el catálogo sean los mismos. */
 const _bajosMemo = new WeakMap();
-function analisisBajos(datos, soloControlados = false, tipo = '') {
-  if (!datos) return { proveedores: [], rojos: 0 };
+function analisisBajos(datos, soloControlados = false, tipo = '', verPedidos = false) {
+  if (!datos) return { proveedores: [], rojos: 0, yaPedidos: 0 };
   const vigentes = (_bajosMemo.get(datos) ?? []).filter((m) => m.stock === state.stock && m.productos === state.productos);
-  const hit = vigentes.find((m) => m.solo === soloControlados && m.tipo === tipo);
+  const hit = vigentes.find((m) => m.solo === soloControlados && m.tipo === tipo && m.verPedidos === verPedidos);
   if (hit) return hit.valor;
   const valor = analizarBajos({
     productos: state.productos,
@@ -1144,8 +1149,9 @@ function analisisBajos(datos, soloControlados = false, tipo = '') {
     bultoDe: bultoDelProveedor,
     soloControlados,
     tipo,
+    verPedidos,
   });
-  _bajosMemo.set(datos, [...vigentes, { stock: state.stock, productos: state.productos, solo: soloControlados, tipo, valor }]);
+  _bajosMemo.set(datos, [...vigentes, { stock: state.stock, productos: state.productos, solo: soloControlados, tipo, verPedidos, valor }]);
   return valor;
 }
 /** Cuántos proveedores están en rojo en la Distribuidora (el globito). */

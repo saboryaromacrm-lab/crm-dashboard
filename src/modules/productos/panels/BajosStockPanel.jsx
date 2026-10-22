@@ -3,7 +3,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { COLOR_PROVEEDOR, ESTADO_PRODUCTO } from '../domain/bajosStock.js';
 import { unidadPedido } from '../domain/bulto.js';
-import { num } from '../domain/format.js';
+import { fmtFecha, num } from '../domain/format.js';
 import { norm } from '../components/CatalogoPicker.jsx';
 import { Btn, PanelHead, Table, s } from '../components/ui.jsx';
 
@@ -17,6 +17,9 @@ import { Btn, PanelHead, Table, s } from '../components/ui.jsx';
  * orden de pedido sale con eso ya cargado. La cuenta es `domain/bajosStock.js`
  * (la misma del globito del menú). Solo lee: el único dato que se guarda acá
  * es el mínimo a mano del producto.
+ *
+ * Los proveedores con un pedido en curso no se muestran salvo que se tilde
+ * «Ver también los ya pedidos» (22/10/2026, pedido del dueño).
  */
 const alcanzaTexto = (d) => (d == null ? 'no se vende' : d < 1 ? 'menos de 1 día' : `${Math.floor(d)} día${Math.floor(d) === 1 ? '' : 's'}`);
 
@@ -31,6 +34,7 @@ export function BajosStockPanel() {
   const [color, setColor] = useState('');
   const [soloCtrl, setSoloCtrl] = useState(false);
   const [soloLocales, setSoloLocales] = useState(false);
+  const [verPedidos, setVerPedidos] = useState(false);
   const [abierto, setAbierto] = useState(null);
   const [verBien, setVerBien] = useState(false);
   const [minimos, setMinimos] = useState({});
@@ -49,7 +53,7 @@ export function BajosStockPanel() {
   }, [suc, store, toast]);
 
   const datos = suc ? otros : store.state.bajos;
-  const { proveedores: analizados } = store.analisisBajos(datos, soloCtrl, tipo);
+  const { proveedores: analizados, yaPedidos } = store.analisisBajos(datos, soloCtrl, tipo, verPedidos);
   /* 0164: los colores y la lista, solo con los proveedores de la localidad. */
   const proveedores = soloLocales ? analizados.filter((g) => store.getProveedor(g.id)?.esLocal) : analizados;
   const nombreProv = (id) => (id ? store.getProveedor(id)?.nombre ?? `Proveedor #${id}` : 'Sin proveedor');
@@ -105,6 +109,10 @@ export function BajosStockPanel() {
           <input id="bajos-locales" type="checkbox" checked={soloLocales} onChange={(e) => setSoloLocales(e.target.checked)} />
           Solo proveedores locales
         </label>
+        <label className={s.hint} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }} title="Los que tienen un pedido en curso en Proveedores › Pedidos: vuelven solos cuando el pedido se marca recibido">
+          <input id="bajos-pedidos" type="checkbox" checked={verPedidos} onChange={(e) => setVerPedidos(e.target.checked)} />
+          Ver también los ya pedidos{yaPedidos ? ` (${yaPedidos})` : ''}
+        </label>
       </div>
 
       {datos === undefined || (!suc && !datos) ? (
@@ -146,6 +154,7 @@ export function BajosStockPanel() {
                 <tr key={g.id} className={s.clickable} onClick={() => { setAbierto(abierto === g.id ? null : g.id); setVerBien(false); }}>
                   <td style={{ borderLeft: `4px solid ${c}` }}>
                     <strong>{nombreProv(g.id)}</strong> <span className={s.hint} style={{ margin: 0 }}>{abierto === g.id ? '▾' : '▸'}</span>
+                    {g.pedido && <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-success)' }}>Pedido el {fmtFecha(g.pedido)}</div>}
                   </td>
                   <td className={cx(s.num, s.mono)}>{g.total}</td>
                   <td className={cx(s.num, s.mono)} style={{ color: g.sin ? ESTADO_PRODUCTO.sin.color : undefined }}>{g.sin}</td>
