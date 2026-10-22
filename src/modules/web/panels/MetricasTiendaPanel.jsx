@@ -14,9 +14,18 @@
  *
  * Es medición propia y anónima: el sitio reporta a esta misma base. Nada de
  * Google Analytics ni cookies de terceros.
+ *
+ * DE DÓNDE LLEGAN y «EMPEZAR DE 0» (0194, 22/10/2026, pedido del dueño): el
+ * canal de entrada de cada visitante (y cuántos de cada canal piden), y un
+ * botón del superadmin que borra la telemetría de una tienda y hace que sus
+ * métricas cuenten desde ese momento (pedidos y clientes no se borran).
  */
 import { useMemo, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
+import { errorMsg } from '@modules/ventas/services/ventas.api.js';
+import { ModalShell } from '@modules/productos/components/Modal.jsx';
+import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@modules/gastos/components/segundaConfirmacion.jsx';
 import { useResource } from '@modules/ventas/hooks/useResource.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { money, num } from '@modules/productos/domain/format.js';
@@ -38,6 +47,7 @@ const ENTREGAS = { retiro: 'Retiro en el local', cadete: 'Envío a domicilio', c
 const entero = (v) => num(v, 0);
 const ESTADO_OFERTA = { vigente: ['Vigente', 'st-disponible'], programada: ['Programada', 'est-transito'], vencida: ['Vencida', 'est-recibida'], inactiva: ['Inactiva', 'est-cancelada'] };
 const HORAS = Array.from({ length: 24 }, (_, h) => `${h} h`);
+const fechaHora = (v) => new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /** Un número del resumen con su comparación: la API manda {ahora, antes, variacion}. */
 const TileCmp = ({ label, dato, formato = entero, detalle, periodoAntes }) => (
@@ -50,7 +60,11 @@ const PorMomento = ({ valores, etiquetas, que }) => (
 );
 
 export function MetricasTiendaPanel() {
+  const { can } = usePermissions();
   const [modo, setModo] = useState('minorista');
+  const [version, setVersion] = useState(0);
+  const [reiniciando, setReiniciando] = useState(false);
+  const [aviso, setAviso] = useState('');
   const [preset, setPreset] = useState('30d');
   const [manual, setManual] = useState(() => rangoDe('30d'));
   const [desde, hasta] = preset === 'otro' ? manual : rangoDe(preset);
@@ -58,7 +72,7 @@ export function MetricasTiendaPanel() {
   const paso = pasoElegido || pasoPara(desde, hasta);
 
   const qs = `modo=${modo}&desde=${desde}&hasta=${hasta}&paso=${paso}`;
-  const { data: d, loading, error } = useResource(`web-metricas:${qs}`, () => httpClient.get(`/web/metricas?${qs}`));
+  const { data: d, loading, error } = useResource(`web-metricas:${qs}:${version}`, () => httpClient.get(`/web/metricas?${qs}`));
   const ranking = useMemo(() => d?.productos?.ranking ?? [], [d]);
   const pag = usePaginado(ranking, 'web-metricas-productos', qs);
   const periodoAntes = d ? `${fechaLarga(d.periodo.antes.desde)} – ${fechaLarga(d.periodo.antes.hasta)}` : '';
@@ -72,8 +86,30 @@ export function MetricasTiendaPanel() {
       <PanelHead
         title="Métricas de la tienda online"
         desc="Qué se visita, qué se mira, qué se pide y quién compra, por separado en la tienda mayorista y la minorista. Medición propia y anónima: el sitio reporta a esta misma base, sin Google Analytics ni cookies de terceros."
-        actions={<Btn onClick={exportar} disabled={!ranking.length}>Exportar productos (CSV)</Btn>}
+        actions={(
+          <>
+            <Btn onClick={exportar} disabled={!ranking.length}>Exportar productos (CSV)</Btn>
+            {can('*') && <Btn variant="btn-delete" onClick={() => { setAviso(''); setReiniciando(true); }}>Empezar de 0…</Btn>}
+          </>
+        )}
       />
+      {aviso && <Aviso>{aviso}</Aviso>}
+      {d?.periodo?.reinicio && (
+        <div className={s.hint} style={{ margin: 0 }}>
+          Las métricas de la tienda {modo} cuentan desde el <strong>{fechaHora(d.periodo.reinicio)}</strong> (la última vez que se empezó de 0).
+        </div>
+      )}
+      {reiniciando && (
+        <EmpezarDeCero
+          modo={modo}
+          onCerrar={() => setReiniciando(false)}
+          onHecho={(r) => {
+            setReiniciando(false);
+            setAviso(`Listo: las métricas de la tienda ${r.modo} empiezan de 0 desde el ${fechaHora(r.desde)} (${entero(r.eventosBorrados)} registros de navegación borrados).`);
+            setVersion((v) => v + 1);
+          }}
+        />
+      )}
 
       <div className={s.toolbar} style={{ margin: 0 }}>
         {MODOS.map(([k, l]) => (
@@ -178,6 +214,8 @@ export function MetricasTiendaPanel() {
                 : <div className={s.hint} style={{ margin: 0 }}>Sin visitas en el período.</div>}
             </Bloque>
           </Grilla>
+
+          <DeDondeLlegan o={d.trafico.origenes} sesiones={d.resumen.sesiones.ahora} />
 
           {/* ============================ PEDIDOS ============================ */}
           <Grilla>
@@ -315,5 +353,86 @@ export function MetricasTiendaPanel() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * DE DÓNDE LLEGAN (0194): por canal, cuántos visitantes entraron y cuántos de
+ * ellos cargaron el carrito y pidieron — lo que dice qué canal TRAE compras.
+ */
+function DeDondeLlegan({ o, sesiones }) {
+  const sinDato = Math.max(0, sesiones - (o?.sesiones ?? 0));
+  /* Columnas más anchas que la Grilla común: las tablas entran sin correrse; en pantallas chicas, una abajo de la otra. */
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(480px, 100%), 1fr))', gap: 12 }}>
+      <Bloque titulo="De dónde llegan" sub="Por dónde entró cada visitante, y cuántos de cada canal cargaron el carrito y mandaron el pedido.">
+        {!o?.canales?.length ? (
+          <div className={s.hint} style={{ margin: 0 }}>Todavía sin datos de llegada en este período: se miden desde el 22/10/2026.</div>
+        ) : (
+          <>
+            <Table cols={[{ h: 'Canal' }, { h: 'Visitantes', num: true }, { h: 'Carrito', num: true }, { h: 'Pidieron', num: true }, { h: 'Conversión', num: true }]}>
+              {o.canales.map((c) => (
+                <tr key={c.canal}>
+                  <td>{c.nombre}</td>
+                  <td className={s.num}>{entero(c.sesiones)} <span className={s.muted}>· {pctTxt(c.pct)}</span></td>
+                  <td className={s.num}>{entero(c.carrito)}</td>
+                  <td className={s.num}>{entero(c.pedidos)}</td>
+                  <td className={s.num}>{pctTxt(c.conversion)}</td>
+                </tr>
+              ))}
+            </Table>
+          </>
+        )}
+        {sinDato > 0 && <div className={s.hint} style={{ margin: 0 }}>{entero(sinDato)} visitante(s) del período entraron antes de que se midiera la llegada (22/10/2026): no tienen este dato.</div>}
+      </Bloque>
+      <Bloque titulo="Sitios y campañas que más mandan" sub="El sitio que trajo la visita o la campaña del link.">
+        {o?.detalle?.length
+          ? (
+            <Table cols={[{ h: 'Sitio o campaña' }, { h: 'Canal' }, { h: 'Visitantes', num: true }]}>
+              {o.detalle.map((x) => (
+                <tr key={`${x.canal}|${x.detalle}`}><td style={{ wordBreak: 'break-word' }}>{x.detalle}</td><td>{x.nombre}</td><td className={s.num}>{entero(x.sesiones)}</td></tr>
+              ))}
+            </Table>
+          )
+          : <div className={s.hint} style={{ margin: 0 }}>Sin sitios ni campañas en el período.</div>}
+        <div className={s.hint} style={{ margin: 0 }}>
+          «Directo» es quien escribió la dirección o abrió un link sin datos: WhatsApp y la bio de Instagram casi nunca dicen de dónde viene la visita. Para distinguirlos, compartí el link con
+          {' '}<code>?utm_source=whatsapp</code> o <code>?utm_source=instagram</code> (y si es una promo, <code>&amp;utm_campaign=dia-madre</code>).
+        </div>
+      </Bloque>
+    </div>
+  );
+}
+
+/**
+ * «EMPEZAR DE 0» (0194, solo superadmin): borra la navegación registrada de
+ * esa tienda y las métricas cuentan desde ahora. Pide confirmar dos veces.
+ */
+function EmpezarDeCero({ modo, onCerrar, onHecho }) {
+  const [error, setError] = useState('');
+  const sc = useSegundaConfirmacion(modo);
+  const confirmar = () => sc.clic(
+    () => true,
+    async () => {
+      setError('');
+      try { onHecho(await httpClient.post('/web/metricas/reiniciar', { modo, confirmado: true })); } catch (e) { setError(errorMsg(e)); }
+    },
+  );
+  return (
+    <ModalShell title={`Empezar de 0 la tienda ${modo}`} onClose={onCerrar} footer={[
+      { texto: 'Cancelar', onClick: onCerrar },
+      { texto: textoBoton(sc, 'Empezar de 0', 'Sí, empezar de 0'), clase: 'btn-delete', onClick: confirmar },
+    ]}>
+      <div className={s.desc}>
+        Se <strong>borran</strong> las visitas, los productos mirados, los agregados al carrito, las búsquedas y de dónde llegaron de la
+        {' '}<strong>tienda {modo}</strong>, y todas sus métricas empiezan a contar <strong>desde ahora</strong>.
+      </div>
+      <div className={s.desc}>
+        Los <strong>pedidos</strong> y los <strong>clientes</strong> no se borran (siguen en Ventas y en Accesos), pero dejan de contar en estas métricas.
+        La otra tienda no se toca.
+      </div>
+      <AvisoSegundaConfirmacion {...sc}>No se puede deshacer: lo borrado no se recupera.</AvisoSegundaConfirmacion>
+      {error && <Aviso tono="warn">{error}</Aviso>}
+    </ModalShell>
   );
 }
