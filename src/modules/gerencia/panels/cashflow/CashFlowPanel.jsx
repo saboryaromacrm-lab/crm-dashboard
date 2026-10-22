@@ -94,7 +94,6 @@ export function Arranque({ caja, onHecho, avisar, onCancelar }) {
  * Resumen
  * ==================================================================== */
 function Resumen({ d, conceptos, irA, avisar, onHecho }) {
-  const [cambiando, setCambiando] = useState(false);
   const negativo = d.saldo < -0.009;
   return (
     <>
@@ -131,18 +130,24 @@ function Resumen({ d, conceptos, irA, avisar, onHecho }) {
             ))}
           </Table>
         </Bloque>
-        <Bloque titulo="Arranque" sub={`Desde el ${fechaIso(d.caja.fechaInicio)} con ${money(d.caja.saldoInicial)} en mano.`}>
-          {cambiando
-            ? <Arranque caja={d.caja} avisar={avisar} onHecho={() => { setCambiando(false); onHecho(); }} onCancelar={() => setCambiando(false)} />
-            : (
-              <div style={{ display: 'grid', gap: 8 }}>
-                <div className={s.hint} style={{ margin: 0 }}>El arranque solo se cambia mientras no haya movimientos registrados. Después, el efectivo se corrige con un ingreso o un egreso con su motivo.</div>
-                <div><Btn small onClick={() => setCambiando(true)}>Cambiar el arranque</Btn></div>
-              </div>
-            )}
-        </Bloque>
       </Grilla>
     </>
+  );
+}
+
+/**
+ * EL ARRANQUE, EN CONFIGURACIÓN (22/10/2026, pedido del dueño): es un dato que
+ * casi no se toca, así que salió del Resumen (que quedó con movimientos y
+ * conteos a lo ancho) y vive acá, con los conceptos.
+ */
+function ArranqueConfig({ caja, avisar, onHecho }) {
+  const [cambiando, setCambiando] = useState(false);
+  if (cambiando) return <Arranque caja={caja} avisar={avisar} onHecho={() => { setCambiando(false); onHecho(); }} onCancelar={() => setCambiando(false)} />;
+  return (
+    <Bloque titulo="Arranque" sub={`Desde el ${fechaIso(caja.fechaInicio)} con ${money(caja.saldoInicial)} en mano.`}>
+      <div className={s.hint} style={{ margin: 0 }}>El arranque solo se cambia mientras no haya movimientos registrados. Después, el efectivo se corrige con un ingreso o un egreso con su motivo.</div>
+      <div><Btn small onClick={() => setCambiando(true)}>Cambiar el arranque</Btn></div>
+    </Bloque>
   );
 }
 
@@ -1552,6 +1557,7 @@ export function CashFlowPanel() {
           {pestana === 'reportes' && <Reportes version={version} conceptos={conceptos ?? []} />}
           {pestana === 'configuracion' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <ArranqueConfig caja={d.caja} avisar={avisar} onHecho={bump} />
               <div className={s['section-title']} style={{ margin: 0 }}>Conceptos</div>
               <Conceptos conceptos={conceptos ?? []} bump={bump} avisar={avisar} />
             </div>
