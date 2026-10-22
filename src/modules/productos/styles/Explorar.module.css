@@ -53,6 +53,23 @@
 .campo input,
 .campo select { width: 100%; }
 
+.tilde {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--crm-color-text);
+  cursor: pointer;
+  white-space: nowrap;
+  /* Se alinea con la base de los selects de al lado. */
+  padding: 7px 0;
+}
+.tilde strong { margin: 0 3px; }
+.tilde input { width: auto; }
+
 .espacio { flex: 1; }
 
 /* La lista: la ÚNICA zona que scrollea, en los dos ejes. */

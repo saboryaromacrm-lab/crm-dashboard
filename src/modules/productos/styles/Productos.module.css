@@ -401,7 +401,6 @@
 .callout.warn { background: color-mix(in srgb, var(--crm-color-warning) 12%, transparent); border-color: color-mix(in srgb, var(--crm-color-warning) 40%, transparent); color: var(--crm-color-warning); }
 .callout.ok { background: color-mix(in srgb, var(--crm-color-success) 12%, transparent); border-color: color-mix(in srgb, var(--crm-color-success) 40%, transparent); color: var(--crm-color-success); }
 .callout.info { background: color-mix(in srgb, var(--crm-color-info) 12%, transparent); border-color: color-mix(in srgb, var(--crm-color-info) 40%, transparent); color: var(--crm-color-info); }
-.callout.err { background: color-mix(in srgb, var(--crm-color-danger) 10%, transparent); border-color: color-mix(in srgb, var(--crm-color-danger) 40%, transparent); color: var(--crm-color-danger); }
 
 .section-title { font-size: 13px; font-weight: 700; margin: 16px 0 8px; color: var(--crm-color-text); }
 
