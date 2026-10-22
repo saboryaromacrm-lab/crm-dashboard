@@ -16,6 +16,7 @@ import CallSplitIcon from '@mui/icons-material/CallSplit';
 import LocalCafeIcon from '@mui/icons-material/LocalCafe';
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBag';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { RetiroDirectoModal } from '@modules/ventas/components/modals/RetiroDirectoModal.jsx';
 import styles from '../styles/Dashboard.module.css';
@@ -23,6 +24,8 @@ import styles from '../styles/Dashboard.module.css';
 const ACCESOS = [
   { label: 'Cash Flow', modulo: 'Gerencia', ruta: '/gerencia?seccion=cashflow', permiso: 'gerencia.cashflow', Icono: PaymentsIcon },
   { label: 'Proveedores', modulo: 'Proveedores', ruta: '/proveedores?panel=padron', permiso: 'proveedores.padron', Icono: LocalShippingIcon },
+  /* Echeqs (22/10/2026, pedido del dueño): los emitidos, con su tarjeta de vencimientos más abajo. */
+  { label: 'Echeqs', modulo: 'Proveedores', ruta: '/proveedores?panel=echeqs', permiso: 'proveedores.echeqs', Icono: AccountBalanceIcon },
   { label: 'Existencias', modulo: 'Almacén', ruta: '/almacen?panel=existencias', permiso: 'almacen.existencias', Icono: WarehouseIcon },
   { label: 'Fraccionamiento', modulo: 'Almacén', ruta: '/almacen?panel=fraccionamiento', permiso: 'almacen.fraccionamiento', Icono: CallSplitIcon },
   { label: 'Coffit', modulo: 'Almacén', ruta: '/almacen?panel=cafeteria', permiso: 'almacen.cafeteria', Icono: LocalCafeIcon },

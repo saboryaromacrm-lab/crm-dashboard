@@ -7,6 +7,7 @@ import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { ProductosProvider, useProductos } from '@modules/productos/context/ProductosContext.jsx';
 import { ResumenInventario } from '@modules/productos/panels/ResumenInventario.jsx';
 import { AccesosDirectos } from '../components/AccesosDirectos.jsx';
+import { EcheqsResumen } from '../components/EcheqsResumen.jsx';
 import styles from '../styles/Dashboard.module.css';
 
 /**
@@ -62,11 +63,18 @@ function ResumenConHeader() {
           </Button>
         }
       />
-      {/* Los accesos directos (13/10/2026): no esperan al inventario. */}
+      {/* Los accesos directos (13/10/2026) y los echeqs (22/10/2026): no esperan al inventario. */}
       <AccesosDirectos />
+      <Echeqs />
       {store.loaded ? <ResumenInventario /> : <FullScreenLoader label="Cargando datos…" />}
     </>
   );
+}
+
+/** La tarjeta de echeqs, solo para quien tiene esa sección (la API pide la misma llave). */
+function Echeqs() {
+  const { can } = usePermissions();
+  return can('proveedores.echeqs') ? <EcheqsResumen /> : null;
 }
 
 export function DashboardPage() {
@@ -78,6 +86,7 @@ export function DashboardPage() {
       <div className={styles.page}>
         <PageHeader title="Dashboard" subtitle="El estado del inventario, en una pantalla" />
         <AccesosDirectos />
+        <Echeqs />
         <p className={styles.sinAcceso}>
           Tu usuario no tiene acceso al inventario. Entrá por el menú al módulo con el que
           trabajás.
