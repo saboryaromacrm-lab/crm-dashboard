@@ -24,6 +24,7 @@ import { telLegible, telefonoWa } from '@modules/ventas/domain/constants.js';
 /** Las llaves de la tienda y la pestaña donde se cambia cada una. */
 const LLAVES = {
   tiendaVistaLista: 'general',
+  tiendaSoloConStock: 'general',
   tiendaMayoristaPublica: 'general',
   tiendaMinoristaPublica: 'general',
   tiendaMinoristaActiva: 'general',
@@ -222,6 +223,14 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
               hint="Encendido, la tienda muestra los productos como renglones de una lista, sin imagen: marca, nombre, etiquetas, oferta, precio y el botón de agregar en un solo renglón. Para cuando los productos no tienen fotos cargadas. Apagado, las tarjetas con foto de siempre. La portada no cambia."
               checked={draft.tiendaVistaLista === true}
               onChange={set('tiendaVistaLista')}
+            />
+          </Seccion>
+          <Seccion titulo="Stock" desc="Qué se puede comprar en la tienda, en los dos modos.">
+            <Interruptor
+              label="La tienda solo vende lo que tiene stock"
+              hint="Encendido, la tienda respeta el stock de la Distribuidora aunque el control de stock general (Almacén › Configuración) esté apagado: lo que está en 0 se ve con «Sin stock», al final del listado, y no se puede pedir. La caja no cambia. Los productos marcados «nunca controlar» en su ficha se siguen vendiendo sin tope."
+              checked={draft.tiendaSoloConStock === true}
+              onChange={set('tiendaSoloConStock')}
             />
           </Seccion>
           <div className={cx(s.card, s.cardPad)}>{sitio}</div>
