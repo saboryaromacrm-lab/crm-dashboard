@@ -14,6 +14,8 @@ import { httpClient } from '@core/services/httpClient.js';
 import { TildeControlar } from '@modules/gerencia/panels/cashflow/CajasAControlar.jsx';
 import { useTildeControlar, useUmbralControlar } from '@modules/gerencia/panels/cashflow/tildeControlar.js';
 
+const norm = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+
 /* ==================================================================== *
  * Apertura
  * ==================================================================== */
@@ -233,10 +235,34 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
   );
   const proveedores = data ?? [];
 
+  /*
+   * BUSCADOR DE PROVEEDOR (22/10/2026, pedido del dueño): filtra la lista por
+   * nombre (todas las palabras, sin importar acentos) o por CUIT. Si queda uno
+   * solo, se elige solo. El elegido sigue en la lista aunque no coincida.
+   */
+  const [buscarProv, setBuscarProv] = useState('');
+  const coincidenProv = (texto) => {
+    const palabras = norm(texto).split(/\s+/).filter(Boolean);
+    const digitos = texto.replace(/\D/g, '');
+    if (!palabras.length) return proveedores;
+    return proveedores.filter((pv) => palabras.every((w) => norm(pv.nombre).includes(w))
+      || (digitos.length >= 3 && String(pv.cuit ?? '').replace(/\D/g, '').includes(digitos)));
+  };
+  const coincidentes = coincidenProv(buscarProv);
+  const visiblesProv = proveedorId && !coincidentes.some((pv) => pv.id === Number(proveedorId))
+    ? [...proveedores.filter((pv) => pv.id === Number(proveedorId)), ...coincidentes]
+    : coincidentes;
+  const buscarProveedor = (texto) => {
+    setBuscarProv(texto);
+    const lista = coincidenProv(texto);
+    if (texto.trim() && lista.length === 1) setProveedorId(String(lista[0].id));
+  };
+
   const elegirTipo = (valor) => {
     setTipoProveedor(valor);
     // El proveedor elegido puede no existir en la lista nueva: se limpia.
     setProveedorId('');
+    setBuscarProv('');
     // El flete que el proveedor descuenta solo existe del lado de mercadería:
     // el que se le paga a un fletero propio es un gasto y va por su módulo.
     if (valor !== 'mercaderia') setEsFlete(false);
@@ -414,15 +440,19 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
           </div>
 
           <div className={s.field}>
-            <label>Proveedor <span className={s.req}>*</span></label>
-            {/* Un solo campo: el desplegable ya se abre tipeando la primera
-                letra, y la lista viene filtrada por tipo — un buscador aparte
-                era otro control que hacía exactamente lo mismo. */}
-            <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)} disabled={!tipoProveedor || loading}>
+            <label htmlFor="caja-prov-buscar">Proveedor <span className={s.req}>*</span></label>
+            <input
+              id="caja-prov-buscar" type="search" value={buscarProv} onChange={(e) => buscarProveedor(e.target.value)}
+              placeholder={tipoProveedor ? 'Buscar por nombre o CUIT…' : 'Primero elegí el tipo'} disabled={!tipoProveedor || loading}
+              style={{ marginBottom: 6 }} autoComplete="off"
+            />
+            <select id="caja-prov" aria-label="Proveedor" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)} disabled={!tipoProveedor || loading}>
               <option value="">
-                {!tipoProveedor ? 'Primero elegí el tipo' : loading ? 'Cargando…' : 'Elegí el proveedor'}
+                {!tipoProveedor ? 'Primero elegí el tipo' : loading ? 'Cargando…'
+                  : buscarProv.trim() && !visiblesProv.length ? 'Ningún proveedor con esa búsqueda'
+                    : buscarProv.trim() ? `Elegí el proveedor (${visiblesProv.length})` : 'Elegí el proveedor'}
               </option>
-              {proveedores.map((pv) => (
+              {visiblesProv.map((pv) => (
                 <option key={pv.id} value={pv.id}>{pv.nombre}{pv.cuit ? ` · ${pv.cuit}` : ''}</option>
               ))}
             </select>
