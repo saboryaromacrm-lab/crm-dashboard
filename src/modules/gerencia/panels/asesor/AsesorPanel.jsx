@@ -1,7 +1,10 @@
 /**
- * GERENCIA › ASESOR (0193, 21/10/2026, pedido del dueño)
+ * EL ASESOR (0193, 21/10/2026, pedido del dueño)
  * ============================================================================
- * La IA que mira los números del negocio. Tres pestañas:
+ * La pantalla de los especialistas de IA: Gerencia › Asesor (el negocio) y
+ * Ventas › Asesor comercial. Es UNA sola pantalla; lo que cambia de uno a otro
+ * (la ruta de la API, los textos, los ejemplos y las partes propias del
+ * informe o de la configuración) viene en `cfg`. Tres pestañas:
  *   · Análisis: el botón «Analizar ahora» (con un enfoque opcional), el informe
  *     con sus alertas («Útil / No aplica / Ya lo sé»: así aprende), el granel,
  *     lo que pregunta y lo que propone recordar, y las señales del sistema
@@ -11,7 +14,7 @@
  *     «Ver los números que mira» (la foto entera, para comprobar).
  * Todo se calcula en el servidor (crm-api/src/asesor); acá se pide y se muestra.
  */
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { httpClient } from '@core/services/httpClient.js';
 import { useResource } from '@modules/ventas/hooks/useResource.js';
@@ -27,48 +30,78 @@ const PRIORIDAD = {
 };
 const NIVEL = { urgente: PRIORIDAD.urgente, mirar: PRIORIDAD.mirar, dato: PRIORIDAD.dato };
 const ESTADO = { bien: ['st-disponible', 'Bien'], atencion: ['st-comprometido', 'Atención'], problema: ['st-defectuoso', 'Problema'] };
-const AREA = {
-  ventas: 'Ventas', rentabilidad: 'Rentabilidad', granel: 'Granel', stock: 'Stock', precios: 'Precios', caja: 'Caja', gastos: 'Gastos',
-  resultados: 'Resultados', ofertas: 'Ofertas', datos: 'Datos',
-};
 const OPINIONES = [['util', 'Útil'], ['no_aplica', 'No aplica'], ['ya_lo_se', 'Ya lo sé']];
-const EJEMPLOS = [
-  '¿Qué granel conviene fraccionar esta semana y en qué tamaños?',
-  '¿Qué productos me dejan menos margen este mes y por qué?',
-  '¿Qué costos subieron y todavía no pasé al precio?',
-  '¿Cómo viene cada local contra el mes pasado?',
-];
-const usd = (n) => `USD ${(Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const fechaHora = (v) => (v ? new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+export const usd = (n) => `USD ${(Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+export const fechaHora = (v) => (v ? new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+
+/** El de Gerencia: el negocio entero (ventas, márgenes, granel, stock, cajas, gastos, resultados). */
+const NEGOCIO = {
+  api: '/asesor',
+  titulo: 'Asesor',
+  analizarTitulo: 'Analizar el negocio',
+  informeTitulo: 'Cómo está el negocio',
+  desc: 'Una IA que lee los números de tu sistema, te dice qué pasa, qué le parece raro y qué harías. No hace cuentas: interpreta las que ya hace el sistema.',
+  analizarSub: 'Arma la foto del negocio con tus números (ventas, márgenes, granel y fraccionado, stock, costos, cajas, gastos y resultados) y la IA la lee. Tarda uno o dos minutos; podés seguir usando el sistema mientras tanto.',
+  enfoqueEjemplo: 'el granel de Fontana',
+  areas: {
+    ventas: 'Ventas', rentabilidad: 'Rentabilidad', granel: 'Granel', stock: 'Stock', precios: 'Precios', caja: 'Caja', gastos: 'Gastos',
+    resultados: 'Resultados', ofertas: 'Ofertas', datos: 'Datos',
+  },
+  ejemplos: [
+    '¿Qué granel conviene fraccionar esta semana y en qué tamaños?',
+    '¿Qué productos me dejan menos margen este mes y por qué?',
+    '¿Qué costos subieron y todavía no pasé al precio?',
+    '¿Cómo viene cada local contra el mes pasado?',
+  ],
+  ficha: {
+    titulo: 'Tu negocio, contado por vos',
+    sub: 'La IA lo lee en cada análisis y en cada pregunta. Lo que no está en los números: qué vende cada local, a quién le vende, qué margen esperás, temporadas, decisiones tomadas, qué no hace falta que te repita.',
+    ejemplo: 'Ej.: La Distribuidora le vende a comercios con la lista mayorista; los Express son minoristas. El granel tiene que dejar al menos 35 %. Enero y febrero son flojos. Coffit va aparte.',
+  },
+};
+
+const CfgAsesor = createContext(NEGOCIO);
+const useCfg = () => useContext(CfgAsesor);
 
 export function AsesorPanel() {
+  return <Asesor cfg={NEGOCIO} />;
+}
+
+/**
+ * La pantalla de un especialista. `cfg`: { api, titulo, desc, analizarTitulo, analizarSub, informeTitulo,
+ * enfoqueEjemplo, areas, ejemplos, ficha: {titulo, sub, ejemplo},
+ * InformeExtra?: ({ informe, onCambio }) => …, ConfigExtra?: () => … }.
+ */
+export function Asesor({ cfg }) {
   const [pestana, setPestana] = useState('analisis');
   const [version, setVersion] = useState(0);
   const bump = () => setVersion((v) => v + 1);
-  const { data: estado, error } = useResource(`asesor:estado:${version}`, () => httpClient.get('/asesor/estado'));
+  const { data: estado, error } = useResource(`${cfg.api}:estado:${version}`, () => httpClient.get(`${cfg.api}/estado`));
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
-      <PanelHead
-        title="Asesor"
-        desc="Una IA que lee los números de tu sistema, te dice qué pasa, qué le parece raro y qué harías. No hace cuentas: interpreta las que ya hace el sistema."
-        actions={estado && <span className={s.hint} style={{ margin: 0 }}>Este mes: <strong>{usd(estado.gastadoMesUsd)}</strong> de {usd(estado.topeMensualUsd)}</span>}
-      />
-      {error && <Aviso tono="warn">{error}</Aviso>}
-      {estado && !estado.configurado && (
-        <Aviso tono="warn">
-          <strong>Falta la clave de la IA en el servidor</strong> (ANTHROPIC_API_KEY, en Dokploy). Mientras tanto el análisis muestra solo las señales que detecta el sistema, y no se pueden hacer preguntas.
-        </Aviso>
-      )}
-      {estado?.avisoTope && estado.configurado && (
-        <Aviso tono="warn">Este mes ya se usó el {estado.usoTopePct} % del tope de gasto del asesor. Al llegar al tope deja de llamar a la IA hasta el mes que viene (podés subirlo en Configuración).</Aviso>
-      )}
-      <Tabs value={pestana} onChange={(e, v) => setPestana(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}>
-        {PESTANAS.map(([id, label]) => <Tab key={id} value={id} label={label} sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />)}
-      </Tabs>
-      {pestana === 'analisis' && <Analisis estado={estado} bump={bump} irA={setPestana} />}
-      {pestana === 'preguntar' && <Preguntar estado={estado} bump={bump} />}
-      {pestana === 'configuracion' && <Configuracion estado={estado} bump={bump} />}
-    </div>
+    <CfgAsesor.Provider value={cfg}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
+        <PanelHead
+          title={cfg.titulo}
+          desc={cfg.desc}
+          actions={estado && <span className={s.hint} style={{ margin: 0 }}>Este mes: <strong>{usd(estado.gastadoMesUsd)}</strong> de {usd(estado.topeMensualUsd)}</span>}
+        />
+        {error && <Aviso tono="warn">{error}</Aviso>}
+        {estado && !estado.configurado && (
+          <Aviso tono="warn">
+            <strong>Falta la clave de la IA en el servidor</strong> (ANTHROPIC_API_KEY, en Dokploy). Mientras tanto el análisis muestra solo las señales que detecta el sistema, y no se pueden hacer preguntas.
+          </Aviso>
+        )}
+        {estado?.avisoTope && estado.configurado && (
+          <Aviso tono="warn">Este mes ya se usó el {estado.usoTopePct} % del tope de gasto del asesor. Al llegar al tope deja de llamar a la IA hasta el mes que viene (podés subirlo en Configuración).</Aviso>
+        )}
+        <Tabs value={pestana} onChange={(e, v) => setPestana(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}>
+          {PESTANAS.map(([id, label]) => <Tab key={id} value={id} label={label} sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />)}
+        </Tabs>
+        {pestana === 'analisis' && <Analisis estado={estado} bump={bump} irA={setPestana} />}
+        {pestana === 'preguntar' && <Preguntar estado={estado} bump={bump} />}
+        {pestana === 'configuracion' && <Configuracion estado={estado} bump={bump} />}
+      </div>
+    </CfgAsesor.Provider>
   );
 }
 
@@ -76,15 +109,16 @@ export function AsesorPanel() {
  * Análisis
  * ==================================================================== */
 function Analisis({ estado, bump, irA }) {
+  const cfg = useCfg();
   const [enfoque, setEnfoque] = useState('');
   const [analizando, setAnalizando] = useState(false);
   const [error, setError] = useState('');
   const [elegido, setElegido] = useState(null);
   const [lista, setLista] = useState(0);
   const enVuelo = useRef(false);
-  const { data: informes } = useResource(`asesor:informes:${lista}`, () => httpClient.get('/asesor/informes'));
+  const { data: informes } = useResource(`${cfg.api}:informes:${lista}`, () => httpClient.get(`${cfg.api}/informes`));
   const id = elegido ?? informes?.[0]?.id ?? null;
-  const { data: informe, loading } = useResource(`asesor:informe:${id}:${lista}`, () => httpClient.get(`/asesor/informes/${id}`), { enabled: !!id });
+  const { data: informe, loading } = useResource(`${cfg.api}:informe:${id}:${lista}`, () => httpClient.get(`${cfg.api}/informes/${id}`), { enabled: !!id });
   /* Mientras la IA escribe (en el servidor, en segundo plano), se vuelve a mirar cada 4 segundos. */
   const enCurso = informe?.estado === 'analizando';
   useEffect(() => {
@@ -104,7 +138,7 @@ function Analisis({ estado, bump, irA }) {
     if (enVuelo.current) return;
     enVuelo.current = true; setAnalizando(true); setError('');
     try {
-      const r = await httpClient.post('/asesor/analizar', { enfoque: enfoque.trim() });
+      const r = await httpClient.post(`${cfg.api}/analizar`, { enfoque: enfoque.trim() });
       setElegido(r.id); setLista((n) => n + 1);
     } catch (e) { setError(errorMsg(e)); } finally { enVuelo.current = false; setAnalizando(false); }
   };
@@ -112,13 +146,13 @@ function Analisis({ estado, bump, irA }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <Bloque
-        titulo="Analizar el negocio"
-        sub="Arma la foto del negocio con tus números (ventas, márgenes, granel y fraccionado, stock, costos, cajas, gastos y resultados) y la IA la lee. Tarda uno o dos minutos; podés seguir usando el sistema mientras tanto."
+        titulo={cfg.analizarTitulo}
+        sub={cfg.analizarSub}
       >
         <div className={s.toolbar} style={{ flexWrap: 'wrap', gap: 8 }}>
           <input
             id="asesor-enfoque" value={enfoque} maxLength={400} onChange={(e) => setEnfoque(e.target.value)} disabled={ocupado}
-            placeholder="Opcional: en qué querés que se fije (ej.: el granel de Fontana)" style={{ flex: '1 1 320px', minWidth: 0 }}
+            placeholder={`Opcional: en qué querés que se fije (ej.: ${cfg.enfoqueEjemplo})`} style={{ flex: '1 1 320px', minWidth: 0 }}
           />
           <Btn variant="btn-primary" onClick={analizar} disabled={ocupado}>{ocupado ? 'Analizando…' : 'Analizar ahora'}</Btn>
         </div>
@@ -145,6 +179,7 @@ function Analisis({ estado, bump, irA }) {
 }
 
 function Informe({ informe, onCambio, irA, bump, aprendidos }) {
+  const { InformeExtra, informeTitulo } = useCfg();
   const inf = informe.informe;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -156,7 +191,7 @@ function Informe({ informe, onCambio, irA, bump, aprendidos }) {
       {informe.error && <Aviso tono="warn">{informe.error}</Aviso>}
       {inf && (
         <Bloque
-          titulo={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>Cómo está el negocio <Pill pill={ESTADO[inf.estado]?.[0]} label={ESTADO[inf.estado]?.[1] ?? inf.estado} /></span>}
+          titulo={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{informeTitulo} <Pill pill={ESTADO[inf.estado]?.[0]} label={ESTADO[inf.estado]?.[1] ?? inf.estado} /></span>}
           sub={`Análisis del ${fechaHora(informe.fecha)}${informe.enfoque ? ` · enfoque: ${informe.enfoque}` : ''}`}
         >
           <div style={{ fontSize: 15, lineHeight: 1.55 }}>{inf.resumen}</div>
@@ -164,6 +199,7 @@ function Informe({ informe, onCambio, irA, bump, aprendidos }) {
       )}
       {inf?.alertas?.map((a, i) => <Alerta key={i} a={a} i={i} informeId={informe.id} opinion={informe.opiniones?.[i]} onCambio={onCambio} />)}
       {inf?.granel && <GranelInforme g={inf.granel} />}
+      {inf && InformeExtra && <InformeExtra informe={informe} onCambio={onCambio} />}
       {inf && (inf.preguntas?.length > 0 || inf.aprendizajesSugeridos?.length > 0) && (
         <Bloque titulo="Para conocer mejor tu negocio" sub="Lo que el asesor no puede saber con los números. Respondé en la ficha (Configuración) o guardá lo que propone recordar.">
           {inf.preguntas?.length > 0 && (
@@ -192,19 +228,20 @@ function Informe({ informe, onCambio, irA, bump, aprendidos }) {
 }
 
 function Alerta({ a, i, informeId, opinion, onCambio }) {
+  const { api, areas } = useCfg();
   const [enviando, setEnviando] = useState(false);
   const [err, setErr] = useState('');
   const opinar = async (valor) => {
     if (enviando) return;
     setEnviando(true); setErr('');
-    try { await httpClient.put(`/asesor/informes/${informeId}/opinion`, { alerta: i, valor }); onCambio(); } catch (e) { setErr(errorMsg(e)); } finally { setEnviando(false); }
+    try { await httpClient.put(`${api}/informes/${informeId}/opinion`, { alerta: i, valor }); onCambio(); } catch (e) { setErr(errorMsg(e)); } finally { setEnviando(false); }
   };
   const [pill, label] = PRIORIDAD[a.prioridad] ?? ['st-vencido', a.prioridad];
   return (
     <div className={cx(s.card, s.cardPad)} style={{ display: 'grid', gap: 8, opacity: opinion?.valor === 'no_aplica' ? 0.6 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <Pill pill={pill} label={label} />
-        <span className={s.hint} style={{ margin: 0 }}>{AREA[a.area] ?? a.area}</span>
+        <span className={s.hint} style={{ margin: 0 }}>{areas[a.area] ?? a.area}</span>
         <strong style={{ flex: '1 1 260px', fontSize: 15 }}>{a.titulo}</strong>
       </div>
       <div style={{ display: 'grid', gap: 6, lineHeight: 1.5 }}>
@@ -253,11 +290,12 @@ function GranelInforme({ g }) {
 }
 
 function Sugerencia({ texto, yaEsta, bump }) {
+  const { api } = useCfg();
   const [guardada, setGuardada] = useState(yaEsta);
   const [err, setErr] = useState('');
   const guardar = async () => {
     setErr('');
-    try { await httpClient.post('/asesor/aprendizajes', { texto }); setGuardada(true); bump(); } catch (e) { setErr(errorMsg(e)); }
+    try { await httpClient.post(`${api}/aprendizajes`, { texto }); setGuardada(true); bump(); } catch (e) { setErr(errorMsg(e)); }
   };
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -296,6 +334,7 @@ function Senales({ senales }) {
  * Preguntar
  * ==================================================================== */
 function Preguntar({ estado, bump }) {
+  const { api, ejemplos } = useCfg();
   const [convId, setConvId] = useState(null);
   const [lista, setLista] = useState(0);
   const [pregunta, setPregunta] = useState('');
@@ -303,8 +342,8 @@ function Preguntar({ estado, bump }) {
   const [error, setError] = useState('');
   const enVuelo = useRef(false);
   const fin = useRef(null);
-  const { data: convs } = useResource(`asesor:convs:${lista}`, () => httpClient.get('/asesor/conversaciones'));
-  const { data: conv, loading } = useResource(`asesor:conv:${convId}:${lista}`, () => httpClient.get(`/asesor/conversaciones/${convId}`), { enabled: !!convId });
+  const { data: convs } = useResource(`${api}:convs:${lista}`, () => httpClient.get(`${api}/conversaciones`));
+  const { data: conv, loading } = useResource(`${api}:conv:${convId}:${lista}`, () => httpClient.get(`${api}/conversaciones/${convId}`), { enabled: !!convId });
   const mensajes = convId ? (conv?.mensajes ?? []) : [];
   useEffect(() => { fin.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [mensajes.length, esperando]);
 
@@ -314,13 +353,13 @@ function Preguntar({ estado, bump }) {
     enVuelo.current = true; setEsperando(q); setError(''); setPregunta('');
     try {
       /* Con herramientas puede tardar un minuto: más plazo que el de siempre. */
-      const r = await httpClient.post('/asesor/preguntar', { pregunta: q, ...(convId ? { conversacionId: convId } : {}) }, { timeoutMs: 5 * 60_000 });
+      const r = await httpClient.post(`${api}/preguntar`, { pregunta: q, ...(convId ? { conversacionId: convId } : {}) }, { timeoutMs: 5 * 60_000 });
       setConvId(r.id); setLista((n) => n + 1); bump();
     } catch (e) { setError(errorMsg(e)); setPregunta(q); } finally { enVuelo.current = false; setEsperando(null); }
   };
   const borrar = async () => {
     if (!convId || !window.confirm('¿Borrar esta conversación?')) return;
-    try { await httpClient.delete(`/asesor/conversaciones/${convId}`); setConvId(null); setLista((n) => n + 1); } catch (e) { setError(errorMsg(e)); }
+    try { await httpClient.delete(`${api}/conversaciones/${convId}`); setConvId(null); setLista((n) => n + 1); } catch (e) { setError(errorMsg(e)); }
   };
   const deshabilitado = !estado?.configurado;
 
@@ -341,7 +380,7 @@ function Preguntar({ estado, bump }) {
           <div style={{ display: 'grid', gap: 8 }}>
             <div className={s.hint} style={{ margin: 0 }}>Preguntale lo que quieras de tus números: consulta el sistema en el momento para responder. Por ejemplo:</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {EJEMPLOS.map((x) => <Btn key={x} small onClick={() => preguntar(x)} disabled={deshabilitado || !!esperando}>{x}</Btn>)}
+              {ejemplos.map((x) => <Btn key={x} small onClick={() => preguntar(x)} disabled={deshabilitado || !!esperando}>{x}</Btn>)}
             </div>
           </div>
         )}
@@ -392,6 +431,7 @@ function Mensaje({ m }) {
  * Configuración
  * ==================================================================== */
 function Configuracion({ estado, bump }) {
+  const { api, ficha: textos, ConfigExtra } = useCfg();
   const [ficha, setFicha] = useState(estado?.ficha ?? '');
   const [tope, setTope] = useState(String(estado?.topeMensualUsd ?? ''));
   const [nuevo, setNuevo] = useState('');
@@ -405,34 +445,36 @@ function Configuracion({ estado, bump }) {
   };
   const verFoto = async () => {
     setCargandoFoto(true); setMsg(null);
-    try { setFoto(await httpClient.get('/asesor/foto')); } catch (e) { setMsg({ tono: 'warn', texto: errorMsg(e) }); } finally { setCargandoFoto(false); }
+    try { setFoto(await httpClient.get(`${api}/foto`)); } catch (e) { setMsg({ tono: 'warn', texto: errorMsg(e) }); } finally { setCargandoFoto(false); }
   };
   if (!estado) return <Cargando />;
   const topeN = Number(tope);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {msg && <Aviso tono={msg.tono}>{msg.texto}</Aviso>}
-      <Bloque titulo="Tu negocio, contado por vos" sub="La IA lo lee en cada análisis y en cada pregunta. Lo que no está en los números: qué vende cada local, a quién le vende, qué margen esperás, temporadas, decisiones tomadas, qué no hace falta que te repita.">
+      <Bloque titulo={textos.titulo} sub={textos.sub}>
         <textarea id="asesor-ficha" value={ficha} maxLength={8000} rows={8} onChange={(e) => setFicha(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical' }}
-          placeholder="Ej.: La Distribuidora le vende a comercios con la lista mayorista; los Express son minoristas. El granel tiene que dejar al menos 35 %. Enero y febrero son flojos. Coffit va aparte." />
+          placeholder={textos.ejemplo} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span className={s.hint} style={{ margin: 0 }}>{ficha.length} / 8000</span>
-          <Btn variant="btn-primary" small disabled={ficha === (estado.ficha ?? '')} onClick={() => hacer(() => httpClient.patch('/asesor/config', { ficha }), 'Ficha guardada.')}>Guardar la ficha</Btn>
+          <Btn variant="btn-primary" small disabled={ficha === (estado.ficha ?? '')} onClick={() => hacer(() => httpClient.patch(`${api}/config`, { ficha }), 'Ficha guardada.')}>Guardar la ficha</Btn>
         </div>
       </Bloque>
+
+      {ConfigExtra && <ConfigExtra />}
 
       <Bloque titulo="Lo que ya sabe" sub="Hechos de tu negocio que confirmaste (desde los análisis o escritos acá). Desactivá lo que ya no vale.">
         {!estado.aprendizajes?.length && <div className={s.hint} style={{ margin: 0 }}>Nada todavía.</div>}
         {estado.aprendizajes?.map((a) => (
           <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', opacity: a.activo ? 1 : 0.55 }}>
             <span style={{ flex: '1 1 260px' }}>{a.texto}</span>
-            <Btn small onClick={() => hacer(() => httpClient.patch(`/asesor/aprendizajes/${a.id}`, { activo: !a.activo }), a.activo ? 'Desactivado: ya no lo tiene en cuenta.' : 'Activado.')}>{a.activo ? 'Desactivar' : 'Activar'}</Btn>
-            <Btn small variant="btn-delete" onClick={() => window.confirm('¿Borrarlo?') && hacer(() => httpClient.delete(`/asesor/aprendizajes/${a.id}`), 'Borrado.')}>Borrar</Btn>
+            <Btn small onClick={() => hacer(() => httpClient.patch(`${api}/aprendizajes/${a.id}`, { activo: !a.activo }), a.activo ? 'Desactivado: ya no lo tiene en cuenta.' : 'Activado.')}>{a.activo ? 'Desactivar' : 'Activar'}</Btn>
+            <Btn small variant="btn-delete" onClick={() => window.confirm('¿Borrarlo?') && hacer(() => httpClient.delete(`${api}/aprendizajes/${a.id}`), 'Borrado.')}>Borrar</Btn>
           </div>
         ))}
         <div className={s.toolbar} style={{ gap: 8 }}>
           <input id="asesor-aprendizaje" value={nuevo} maxLength={400} onChange={(e) => setNuevo(e.target.value)} placeholder="Agregar un hecho (ej.: Todo el fraccionado se hace en la Distribuidora)" style={{ flex: '1 1 320px', minWidth: 0 }} />
-          <Btn small disabled={nuevo.trim().length < 5} onClick={() => hacer(async () => { await httpClient.post('/asesor/aprendizajes', { texto: nuevo.trim() }); setNuevo(''); }, 'Agregado.')}>Agregar</Btn>
+          <Btn small disabled={nuevo.trim().length < 5} onClick={() => hacer(async () => { await httpClient.post(`${api}/aprendizajes`, { texto: nuevo.trim() }); setNuevo(''); }, 'Agregado.')}>Agregar</Btn>
         </div>
       </Bloque>
 
@@ -447,7 +489,7 @@ function Configuracion({ estado, bump }) {
             <span className={s['mini-label']}>Tope mensual (USD)</span>
             <input id="asesor-tope" type="number" min="0" step="1" inputMode="decimal" value={tope} onChange={(e) => setTope(e.target.value)} style={{ width: 120 }} />
           </label>
-          <Btn small disabled={!(topeN >= 0) || tope === '' || topeN === estado.topeMensualUsd} onClick={() => hacer(() => httpClient.patch('/asesor/config', { topeMensualUsd: topeN }), 'Tope guardado.')}>Guardar el tope</Btn>
+          <Btn small disabled={!(topeN >= 0) || tope === '' || topeN === estado.topeMensualUsd} onClick={() => hacer(() => httpClient.patch(`${api}/config`, { topeMensualUsd: topeN }), 'Tope guardado.')}>Guardar el tope</Btn>
         </div>
       </Bloque>
 

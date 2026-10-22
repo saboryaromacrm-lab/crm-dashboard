@@ -23,6 +23,7 @@ import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import SettingsIcon from '@mui/icons-material/Settings';
 import PercentIcon from '@mui/icons-material/Percent';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 
 /**
  * `permiso`: clave de sección del catálogo — sin ella, el panel no existe para
@@ -48,6 +49,9 @@ export const VENTAS_PANELS = [
   { id: 'clientes', label: 'Clientes', icon: PeopleAltIcon, permiso: 'ventas.clientes' },
   { id: 'cobranzas', label: 'Cobranzas', icon: PaymentsIcon, permiso: 'ventas.cobranzas' },
   { id: 'ofertas', label: 'Ofertas', icon: LocalOfferIcon, permiso: 'ventas.ofertas' },
+  /* La IA especialista en ofertas, combos, fechas, tienda online y por vencer
+     (0193, 21/10/2026): el superadmin y los administradores (`ventas.asesor`). */
+  { id: 'asesorComercial', label: 'Asesor comercial', icon: AutoAwesomeIcon, permiso: 'ventas.asesor' },
   { id: 'cambiosPrecio', label: 'Cambios de precio', icon: TrendingUpIcon, permiso: 'ventas.cambios' },
   /* LISTAS DE PRECIOS (3/10/2026, pedido del dueño: estaba en Compras). Mismo
      permiso que allá —`compras.productos`— porque muestra costos. */
