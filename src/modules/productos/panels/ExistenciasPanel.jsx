@@ -46,11 +46,19 @@ import { useSeleccionLote } from '../hooks/useSeleccionLote.js';
  * de stock (con / sin / los dos, con cuántos hay) y cada desplegable ofrece lo
  * que tiene resultados con los demás filtros puestos. Todo sale de UNA pasada
  * por las filas (ver `filtrar`).
+ *
+ * EN NEGATIVO (22/10/2026, pedido del dueño): cada fila DISPONIBLE que quedó
+ * por debajo de 0 (−1, −2…), tal cual está en la base: un entero, el suelto de
+ * un granel o un paquete. Es siempre un error a corregir (se vendió o se
+ * fraccionó sin haberlo cargado), por eso entra aunque el producto ya no esté
+ * activo, y ofrece «Ajustar» para dejarlo en lo que de verdad hay.
  */
 /** El estado de las filas «sin stock»: no es un estado de una fila, es la falta de ella. */
 const SIN_STOCK = 'sin_stock';
-/** El filtro de stock: con (lo que hay; por defecto), sin (0 o menos disponible) o los dos. */
-const OPCIONES_STOCK = [['con', 'Con stock'], ['sin', 'Sin stock'], ['', 'Con y sin stock']];
+/** Las filas en negativo: se listan solas, con la opción «En negativo». */
+const NEGATIVO = 'negativo';
+/** El filtro de stock: con (lo que hay; por defecto), sin (0 o menos disponible), en negativo, o con y sin. */
+const OPCIONES_STOCK = [['con', 'Con stock'], ['sin', 'Sin stock'], ['neg', 'En negativo'], ['', 'Con y sin stock']];
 const cruza = (a, b) => { for (const x of a) if (b.has(x)) return true; return false; };
 const alfabetico = (a, b) => a.localeCompare(b, 'es');
 
@@ -101,6 +109,9 @@ export function ExistenciasPanel() {
     tipo: p.tipo, marca: p.marca || '', provs: new Set((p.formatosCompra || []).map((e) => e.proveedorId)),
   }])), [productos]);
   const conStock = useMemo(() => stock.filter((st) => st.cantidad > 1e-9 && infoProd.has(st.productoId)), [stock, infoProd]);
+  const negativos = useMemo(() => stock
+    .filter((st) => st.estado === 'disponible' && st.cantidad < -1e-9 && infoProd.has(st.productoId))
+    .map((st) => ({ ...st, id: `neg-${st.id}`, estado: NEGATIVO })), [stock, infoProd]);
   /*
    * SIN STOCK, producto activo × sucursal activa:
    *   · el producto que en esa sucursal no tiene NADA disponible (el granel cuenta sus paquetes en kg);
@@ -145,7 +156,7 @@ export function ExistenciasPanel() {
     const suc = sucF ? Number(sucF) : null;
     const prod = prodF ? Number(prodF) : null;
     const pruebas = [
-      ['stock', (r) => !stockF || (stockF === 'sin') === (r.estado === SIN_STOCK)],
+      ['stock', (r) => (r.estado === NEGATIVO ? stockF === 'neg' : stockF !== 'neg' && (!stockF || (stockF === 'sin') === (r.estado === SIN_STOCK)))],
       ['suc', (r) => !suc || r.sucursalId === suc],
       ['prod', (r) => !prod || r.productoId === prod],
       ['estado', (r) => !estadoF || r.estado === estadoF],
@@ -154,9 +165,9 @@ export function ExistenciasPanel() {
       ['marca', (r, i) => !marcaF || i?.marca === marcaF],
       ['texto', (r) => coincideTexto(r.productoId)],
     ];
-    const op = { stock: { con: 0, sin: 0 }, estado: new Map(), prod: new Set(), prov: new Set(), marca: new Set() };
+    const op = { stock: { con: 0, sin: 0, neg: 0 }, estado: new Map(), prod: new Set(), prov: new Set(), marca: new Set() };
     const salen = [];
-    for (const lista of [conStock, faltantes]) {
+    for (const lista of [conStock, faltantes, negativos]) {
       for (const r of lista) {
         const info = infoProd.get(r.productoId);
         let falla = null;
@@ -168,9 +179,9 @@ export function ExistenciasPanel() {
         }
         if (fallas > 1) continue;
         if (!falla) salen.push(r);
-        const sin = r.estado === SIN_STOCK;
-        if (!falla || falla === 'stock') op.stock[sin ? 'sin' : 'con'] += 1;
-        if ((!falla || falla === 'estado') && !sin) op.estado.set(r.estado, (op.estado.get(r.estado) ?? 0) + 1);
+        const sin = r.estado === SIN_STOCK, neg = r.estado === NEGATIVO;
+        if (!falla || falla === 'stock') op.stock[neg ? 'neg' : sin ? 'sin' : 'con'] += 1;
+        if ((!falla || falla === 'estado') && !sin && !neg) op.estado.set(r.estado, (op.estado.get(r.estado) ?? 0) + 1);
         if (!falla || falla === 'prod') op.prod.add(r.productoId);
         if (info && (!falla || falla === 'prov')) for (const id of info.provs) op.prov.add(id);
         if (info?.marca && (!falla || falla === 'marca')) op.marca.add(info.marca);
@@ -179,10 +190,10 @@ export function ExistenciasPanel() {
     /* Producto, sucursal y, dentro, el suelto primero y los paquetes en orden: con y sin stock quedan juntos. */
     salen.sort((a, b) => a.productoId - b.productoId || a.sucursalId - b.sucursalId || (a.presentacionId ?? 0) - (b.presentacionId ?? 0));
     return { entradas: salen, op, marcas: [...op.marca].sort(alfabetico) };
-  }, [conStock, faltantes, infoProd, stockF, sucF, prodF, estadoF, tipoF, provIds, marcaF, coincideTexto]);
+  }, [conStock, faltantes, negativos, infoProd, stockF, sucF, prodF, estadoF, tipoF, provIds, marcaF, coincideTexto]);
   const { entradas, op } = filtrar;
   const provsVisibles = proveedoresMerc.filter((p) => op.prov.has(p.id) || String(p.id) === provF);
-  const cambiarStock = (v) => { setStockF(v); if (v === 'sin') setEstadoF(''); };
+  const cambiarStock = (v) => { setStockF(v); if (v === 'sin' || v === 'neg') setEstadoF(''); };
 
   /* La FOTO y la PELÍCULA como pestañas de la misma pantalla (27/8, pedido del
    * dueño). `movsPreset.k` cuenta los clics en "Movs." y va en la key del
@@ -202,15 +213,16 @@ export function ExistenciasPanel() {
 
   const filas = pag.visibles.map((st) => {
       const p = store.getProducto(st.productoId), su = store.getSucursal(st.sucursalId);
+      const falta = st.estado === SIN_STOCK || st.estado === NEGATIVO;
       return (
         <tr key={st.id}>
           {puedeLote && <CasillaLote sel={sel} id={st.productoId} nombre={p.nombre} alternar={alternar} />}
           <td>{p.nombre} <TipoBadge prod={p} /></td>
           <td>{su.nombre}</td>
           <td>{store.presLabel(p, st.presentacionId)}</td>
-          <td>{st.estado === SIN_STOCK ? <Pill pill="st-defectuoso" label="Sin stock" /> : <StockPill estado={st.estado} />}</td>
+          <td>{falta ? <Pill pill="st-defectuoso" label={st.cantidad < -1e-9 ? 'En negativo' : 'Sin stock'} /> : <StockPill estado={st.estado} />}</td>
           <td className={s.num}>{store.fmtCant(p, st.presentacionId, st.cantidad)}</td>
-          <td className={s.num}>{st.estado === SIN_STOCK ? '—' : money(store.valorEntry(st))}</td>
+          <td className={s.num}>{falta ? '—' : money(store.valorEntry(st))}</td>
           <td className={s['actions-col']}>
             <div className={s['row-actions']}>
               {/* La película de ESTA fila: abre la pestaña Movimientos con el
@@ -219,7 +231,7 @@ export function ExistenciasPanel() {
               <Btn small variant="btn-ghost" onClick={() => irAMovs(st)}>
                 Movs.
               </Btn>
-              {puedeAjustar && (st.estado === 'disponible' || st.estado === SIN_STOCK) && (
+              {puedeAjustar && (st.estado === 'disponible' || falta) && (
                 <Btn
                   small
                   onClick={() => openModal('movimiento', {
@@ -231,7 +243,7 @@ export function ExistenciasPanel() {
                   Ajustar
                 </Btn>
               )}
-              {st.estado !== SIN_STOCK && puedeDescartar(st.estado) && (
+              {!falta && puedeDescartar(st.estado) && (
                 <Btn small variant="btn-delete" onClick={() => openModal('descartarEstado', { stockId: st.id })}>
                   Descartar
                 </Btn>
@@ -285,14 +297,14 @@ export function ExistenciasPanel() {
               <option value="entero">Solo enteros</option>
               <option value="granel">Solo granel</option>
             </select>
-            <select id="exist-stock" className={s['select-inline']} value={stockF} onChange={(e) => cambiarStock(e.target.value)} aria-label="Stock" title="Sin stock: 0 o menos disponible">
+            <select id="exist-stock" className={s['select-inline']} value={stockF} onChange={(e) => cambiarStock(e.target.value)} aria-label="Stock" title="Sin stock: 0 o menos disponible · En negativo: por debajo de 0, hay que ajustarlo">
               {OPCIONES_STOCK.map(([v, label]) => (
                 <option key={v} value={v}>{label} ({v ? op.stock[v] : op.stock.con + op.stock.sin})</option>
               ))}
             </select>
             <select
               id="exist-estado" className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)} aria-label="Estado"
-              disabled={stockF === 'sin'} title={stockF === 'sin' ? 'Lo que no tiene stock no tiene estado' : undefined}
+              disabled={stockF === 'sin' || stockF === 'neg'} title={stockF === 'sin' || stockF === 'neg' ? 'Lo que no tiene stock no tiene estado' : undefined}
             >
               <option value="">Todos los estados</option>
               {Object.keys(ESTADOS_STOCK).filter((k) => op.estado.has(k) || k === estadoF).map((k) => (
@@ -308,7 +320,7 @@ export function ExistenciasPanel() {
               { h: 'Estado' }, { h: 'Cantidad', num: true }, { h: 'Valor', num: true },
               { h: '', cls: 'actions-col' },
             ]}
-            empty={stockF === 'sin' ? 'Ningún producto sin stock con esos filtros.' : 'Sin existencias con esos filtros.'}
+            empty={stockF === 'sin' ? 'Ningún producto sin stock con esos filtros.' : stockF === 'neg' ? 'Ningún producto en negativo con esos filtros.' : 'Sin existencias con esos filtros.'}
             pag={pag}
           >
             {filas}
