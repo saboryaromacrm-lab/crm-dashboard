@@ -234,6 +234,14 @@ export function GastoFormModal({ gastoId, onChange }) {
   const hayTurno = !!caja?.id && caja.estado === 'abierta';
   const saleDeCaja = pagaAhora && medioPago === 'efectivo' && hayTurno && desdeCaja;
 
+  /* LO QUE YA SE ESCRIBIÓ ALGUNA VEZ (22/10/2026, pedido del dueño): cada renglón
+   * sugiere los conceptos de gastos anteriores mientras se tipea (los de ese
+   * proveedor primero). Sale del historial: no hay lista aparte que mantener. */
+  const { data: conceptosUsados } = useResource(
+    `conceptos:${f.proveedorId}`,
+    () => gastosApi.conceptosUsados(Number(f.proveedorId) || undefined),
+  );
+
   // Pagos a cuenta del proveedor elegido: el aviso que cierra el circuito.
   const { data: disponibles } = useResource(
     `disp:${f.proveedorId}`,
@@ -609,9 +617,14 @@ export function GastoFormModal({ gastoId, onChange }) {
           <option value="netos">…son sin IVA y el IVA va aparte (factura A)</option>
         </select>
       </div>
+      <datalist id="gasto-conceptos">
+        {(conceptosUsados ?? []).map((c) => <option key={c} value={c} />)}
+      </datalist>
       {items.map((it, i) => (
         <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
           <input
+            list="gasto-conceptos"
+            autoComplete="off"
             value={it.concepto}
             placeholder={i === 0 ? 'Ej: factura de luz de julio' : 'Otro concepto…'}
             onChange={setItem(i, 'concepto')}

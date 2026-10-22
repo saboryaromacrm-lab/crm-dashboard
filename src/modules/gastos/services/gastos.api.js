@@ -45,6 +45,8 @@ export const gastosApi = {
   anularGasto: (id, motivo) => httpClient.post(`/gastos/${id}/anular`, { motivo }),
   cuentasAPagar: (filtros) => httpClient.get(`/gastos/cuentas-a-pagar${qs(filtros)}`),
   pendientes: () => httpClient.get('/gastos/pendientes'),
+  /** Los conceptos ya cargados alguna vez, los de ese proveedor primero (para sugerir). */
+  conceptosUsados: (proveedorId) => httpClient.get(`/gastos/conceptos${qs({ proveedorId })}`),
   resumen: (filtros) => httpClient.get(`/gastos/resumen${qs(filtros)}`),
 
   /* Pagar un gasto (crea el pago al proveedor y lo imputa de una) */
