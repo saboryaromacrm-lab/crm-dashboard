@@ -119,7 +119,10 @@ export function GastosPanel() {
             // hacen falta para entender el papel dentro de seis meses.
             observaciones: [full.descripcion, full.observaciones].filter(Boolean).join(' · '),
           },
-          filas: (full.items ?? []).map((it) => ({ concepto: it.concepto, importe: it.monto })),
+          filas: (full.items ?? []).map((it) => ({
+            concepto: it.cantidad ? `${it.concepto} (${it.cantidad.toLocaleString('es-AR')} × ${money(it.monto / it.cantidad)})` : it.concepto,
+            importe: it.monto,
+          })),
           moneda: money,
           ahora: fmtFechaHora(new Date()),
           usuario: leerSesion()?.usuario?.nombre,

@@ -62,6 +62,38 @@ function DescuentaDeGasto({ f, setF, opciones, setProvNc, gastoId, original }) {
   );
 }
 
+const RENGLON_VACIO = { concepto: '', monto: '', cantidad: '' };
+const claveConcepto = (c) => (c ?? '').trim().toLowerCase();
+const conIva = (sinIva) => (sinIva ? ' sin IVA' : '');
+
+/**
+ * CUÁNTO SALE CADA UNIDAD (0196, pedido del dueño: «compro descartables y
+ * quiero ver cuánto me sale una bandeja»). Con cantidad, el renglón dice su
+ * precio por unidad; si ese concepto ya se compró por unidad, también cuánto
+ * salía la última vez y cuánto cambió (solo si las dos son con IVA o las dos
+ * sin IVA: comparar un neto con un final mentiría).
+ */
+function PorUnidad({ renglon, sinIva, anterior }) {
+  const cant = Number(renglon.cantidad);
+  const monto = Number(renglon.monto);
+  const ahora = cant > 0 && monto > 0 ? monto / cant : null;
+  if (ahora == null && !anterior) return null;
+  const antes = anterior
+    ? `la última vez ${money(anterior.unitario)} c/u${conIva(anterior.sinIva)} (${fmtFecha(anterior.fecha)})`
+    : null;
+  const cambio = ahora != null && anterior && anterior.sinIva === sinIva && anterior.unitario > 0
+    ? (ahora / anterior.unitario - 1) * 100 : null;
+  return (
+    <div className={s.hint} style={{ margin: '2px 0 0' }}>
+      {[
+        ahora != null ? `${money(ahora)} c/u${conIva(sinIva)}` : null,
+        antes,
+        cambio != null && Math.abs(cambio) >= 0.5 ? `${cambio > 0 ? 'subió' : 'bajó'} ${Math.abs(cambio).toFixed(0)} %` : null,
+      ].filter(Boolean).join(' · ')}
+    </div>
+  );
+}
+
 export function GastoFormModal({ gastoId, onChange }) {
   const {
     categoriasActivas, proveedores, sucursales, ctx, esJefe, closeModal, toast,
@@ -127,8 +159,8 @@ export function GastoFormModal({ gastoId, onChange }) {
    * inscripto van a 27, y son justo los gastos de todos los meses.
    */
   const [alicuota, setAlicuota] = useState('21');
-  /** Los renglones: concepto + monto final. Siempre queda al menos una fila. */
-  const [items, setItems] = useState([{ concepto: '', monto: '' }]);
+  /** Los renglones: concepto + monto del renglón (+ cantidad opcional, 0196). Siempre queda al menos una fila. */
+  const [items, setItems] = useState([RENGLON_VACIO]);
 
   /**
    * CÓMO VIENEN LOS MONTOS de los renglones. `false`: finales, con el IVA
@@ -168,8 +200,8 @@ export function GastoFormModal({ gastoId, onChange }) {
     /* Un gasto viejo no tiene renglones: se le arma UNO con su descripción y
      * su total, así editarlo lo migra al formato nuevo sin perder nada. */
     setItems(original.items?.length
-      ? original.items.map((i) => ({ concepto: i.concepto, monto: String(i.monto) }))
-      : [{ concepto: original.descripcion || 'Gasto', monto: String(Math.abs(original.total || 0) || '') }]);
+      ? original.items.map((i) => ({ concepto: i.concepto, monto: String(i.monto), cantidad: i.cantidad ? String(i.cantidad) : '' }))
+      : [{ ...RENGLON_VACIO, concepto: original.descripcion || 'Gasto', monto: String(Math.abs(original.total || 0) || '') }]);
     /* El modo no se guarda: SE DEDUCE. Si el neto guardado coincide con la
      * suma de los renglones y hay IVA, se cargaron netos (factura A). El gasto
      * viejo migrado cae en `false` solo: su renglón único es el total. */
@@ -240,6 +272,11 @@ export function GastoFormModal({ gastoId, onChange }) {
   const { data: conceptosUsados } = useResource(
     `conceptos:${f.proveedorId}`,
     () => gastosApi.conceptosUsados(Number(f.proveedorId) || undefined),
+  );
+  /* Cuánto salió la unidad la última vez (0196), por concepto sin importar mayúsculas. */
+  const ultimaPorUnidad = useMemo(
+    () => new Map((conceptosUsados ?? []).filter((c) => c.ultimaPorUnidad).map((c) => [claveConcepto(c.concepto), c.ultimaPorUnidad])),
+    [conceptosUsados],
   );
 
   // Pagos a cuenta del proveedor elegido: el aviso que cierra el circuito.
@@ -396,7 +433,7 @@ export function GastoFormModal({ gastoId, onChange }) {
         /* Los RENGLONES mandan (0067): el servidor suma, arma la descripción
          * con los conceptos, y `ivaAparte` le dice cómo leer los montos —
          * finales (IVA adentro, acotado) o netos de factura A (IVA sumado). */
-        items: filasValidas.map((i) => ({ concepto: i.concepto.trim(), monto: r2(i.monto) })),
+        items: filasValidas.map((i) => ({ concepto: i.concepto.trim(), monto: r2(i.monto), cantidad: Number(i.cantidad) > 0 ? Number(i.cantidad) : null })),
         iva: r2(f.iva),
         ivaAparte,
         /* El pie abierto (0071). Van SIEMPRE los cuatro, incluso en 0: si un
@@ -618,35 +655,50 @@ export function GastoFormModal({ gastoId, onChange }) {
         </select>
       </div>
       <datalist id="gasto-conceptos">
-        {(conceptosUsados ?? []).map((c) => <option key={c} value={c} />)}
+        {(conceptosUsados ?? []).map((c) => <option key={c.concepto} value={c.concepto} />)}
       </datalist>
       {items.map((it, i) => (
-        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-          <input
-            list="gasto-conceptos"
-            autoComplete="off"
-            value={it.concepto}
-            placeholder={i === 0 ? 'Ej: factura de luz de julio' : 'Otro concepto…'}
-            onChange={setItem(i, 'concepto')}
-            disabled={bloqueado}
-            style={{ flex: 1 }}
-          />
-          <input
-            type="number" min="0" step="0.01"
-            value={it.monto}
-            placeholder={ivaAparte ? 'Sin IVA' : 'Monto'}
-            onChange={setItem(i, 'monto')}
-            disabled={bloqueado}
-            style={{ width: 130, textAlign: 'right' }}
-          />
-          {!bloqueado && items.length > 1 && (
-            <Btn small onClick={() => setItems((xs) => xs.filter((_, j) => j !== i))}>×</Btn>
-          )}
+        <div key={i} style={{ marginBottom: 6 }}>
+          {/* En el celular el concepto toma el renglón entero y cantidad + monto bajan. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+            <input
+              list="gasto-conceptos"
+              autoComplete="off"
+              value={it.concepto}
+              placeholder={i === 0 ? 'Ej: factura de luz de julio' : 'Otro concepto…'}
+              onChange={setItem(i, 'concepto')}
+              disabled={bloqueado}
+              style={{ flex: '1 1 220px', minWidth: 0 }}
+            />
+            <input
+              type="number" min="0" step="any"
+              value={it.cantidad}
+              placeholder="Cant."
+              title="Cantidad (opcional): para saber cuánto sale cada unidad"
+              aria-label="Cantidad"
+              onChange={setItem(i, 'cantidad')}
+              disabled={bloqueado}
+              style={{ width: 80, textAlign: 'right' }}
+            />
+            <input
+              type="number" min="0" step="0.01"
+              value={it.monto}
+              placeholder={Number(it.cantidad) > 0 ? (ivaAparte ? 'Total sin IVA' : 'Total') : (ivaAparte ? 'Sin IVA' : 'Monto')}
+              title={Number(it.cantidad) > 0 ? 'El total del renglón (todas las unidades), como figura en el papel' : undefined}
+              onChange={setItem(i, 'monto')}
+              disabled={bloqueado}
+              style={{ width: 130, textAlign: 'right' }}
+            />
+            {!bloqueado && items.length > 1 && (
+              <Btn small onClick={() => setItems((xs) => xs.filter((_, j) => j !== i))}>×</Btn>
+            )}
+          </div>
+          <PorUnidad renglon={it} sinIva={ivaAparte} anterior={ultimaPorUnidad.get(claveConcepto(it.concepto))} />
         </div>
       ))}
       {!bloqueado && (
         <div style={{ marginBottom: 4 }}>
-          <Btn small onClick={() => setItems((xs) => [...xs, { concepto: '', monto: '' }])}>
+          <Btn small onClick={() => setItems((xs) => [...xs, RENGLON_VACIO])}>
             + Agregar concepto
           </Btn>
         </div>
