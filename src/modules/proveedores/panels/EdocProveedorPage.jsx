@@ -379,7 +379,16 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
                     {m.formas.map((f) => `${MEDIOS_PAGO_REAL[f.medio] ?? f.medio} ${money(f.importe)}`).join(' + ')}
                   </div>
                 )}
-                {m.kind === 'pago' && (
+                {/* Las transferencias de una cuenta disponible van juntas (23/10/2026): una por una, en su sección. */}
+                {m.agrupado && (
+                  <div className={s.hint} style={{ margin: 0 }}>
+                    {[
+                      'cada transferencia, con su cliente y su venta, en Proveedores › Cuentas disponibles',
+                      m.sinAplicar > EPS ? `${money(m.sinAplicar)} sin aplicar` : null,
+                    ].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+                {m.kind === 'pago' && !m.agrupado && (
                   <div className={s.hint} style={{ margin: 0 }}>
                     {[
                       m.usuarioNombre ? `lo registró ${m.usuarioNombre}` : null,
@@ -407,7 +416,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
                 {esAjuste && esJefe && <Btn small onClick={() => borrarAjuste(m)}>×</Btn>}
                 {/* Anular solo si no tiene NADA aplicado: con imputaciones vivas
                     la API lo rechaza, y ofrecerlo sería un botón roto. */}
-                {m.kind === 'pago' && esJefe && m.aplicado <= EPS && (
+                {m.kind === 'pago' && !m.agrupado && esJefe && m.aplicado <= EPS && (
                   <Btn
                     small
                     onClick={() => openModal('anularPago', { pagoId: m.id, importe: m.haber, onChange: refrescar })}
