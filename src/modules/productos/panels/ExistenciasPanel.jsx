@@ -6,7 +6,7 @@ import { proveedoresDelFiltro, SOLO_LOCALES } from '@shared/utils/proveedorLocal
 import { OpcionLocales } from '@shared/components/OpcionLocales.jsx';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money } from '../domain/format.js';
-import { ESTADOS_STOCK } from '../domain/constants.js';
+import { ESTADOS_PRODUCTO, ESTADOS_STOCK } from '../domain/constants.js';
 import { indiceDisponible } from '../domain/bulto.js';
 import { sucursalOptions, productoOptions } from '../components/selectOptions.jsx';
 import { FiltroProductoControles } from '../components/FiltroProducto.jsx';
@@ -79,6 +79,9 @@ export function ExistenciasPanel() {
   const [provF, setProvF] = useState('');
   const [tipoF, setTipoF] = useState('');
   const [stockF, setStockF] = useState('con');
+  /* LOS DADOS DE BAJA (23/10/2026, pedido del dueño: «no quiero ver los productos que di de baja»): el
+   * discontinuado que todavía tiene stock y el archivado con algo suelto quedan afuera; '1' = solo ellos. */
+  const [bajaF, setBajaF] = useState('');
   const fp = useFiltroProducto(store);
   const { marca: marcaF, coincideTexto } = fp;
   /* Desde Proveedores › Pedidos («Ver stock», 12/10/2026): `?ordenPedido=ID`
@@ -107,6 +110,7 @@ export function ExistenciasPanel() {
   /* Por producto, una sola vez: tipo, marca y de qué proveedores es (sus formatos de compra). */
   const infoProd = useMemo(() => new Map(productos.map((p) => [p.id, {
     tipo: p.tipo, marca: p.marca || '', provs: new Set((p.formatosCompra || []).map((e) => e.proveedorId)),
+    baja: p.estado !== 'activo',
   }])), [productos]);
   const conStock = useMemo(() => stock.filter((st) => st.cantidad > 1e-9 && infoProd.has(st.productoId)), [stock, infoProd]);
   const negativos = useMemo(() => stock
@@ -164,8 +168,9 @@ export function ExistenciasPanel() {
       ['prov', (r, i) => !provIds || (!!i && cruza(i.provs, provIds))],
       ['marca', (r, i) => !marcaF || i?.marca === marcaF],
       ['texto', (r) => coincideTexto(r.productoId)],
+      ['baja', (r, i) => !!i?.baja === (bajaF === '1')],
     ];
-    const op = { stock: { con: 0, sin: 0, neg: 0 }, estado: new Map(), prod: new Set(), prov: new Set(), marca: new Set() };
+    const op = { stock: { con: 0, sin: 0, neg: 0 }, estado: new Map(), prod: new Set(), prov: new Set(), marca: new Set(), baja: new Set() };
     const salen = [];
     for (const lista of [conStock, faltantes, negativos]) {
       for (const r of lista) {
@@ -185,12 +190,13 @@ export function ExistenciasPanel() {
         if (!falla || falla === 'prod') op.prod.add(r.productoId);
         if (info && (!falla || falla === 'prov')) for (const id of info.provs) op.prov.add(id);
         if (info?.marca && (!falla || falla === 'marca')) op.marca.add(info.marca);
+        if (info?.baja && (!falla || falla === 'baja')) op.baja.add(r.productoId);
       }
     }
     /* Producto, sucursal y, dentro, el suelto primero y los paquetes en orden: con y sin stock quedan juntos. */
     salen.sort((a, b) => a.productoId - b.productoId || a.sucursalId - b.sucursalId || (a.presentacionId ?? 0) - (b.presentacionId ?? 0));
     return { entradas: salen, op, marcas: [...op.marca].sort(alfabetico) };
-  }, [conStock, faltantes, negativos, infoProd, stockF, sucF, prodF, estadoF, tipoF, provIds, marcaF, coincideTexto]);
+  }, [conStock, faltantes, negativos, infoProd, stockF, sucF, prodF, estadoF, tipoF, provIds, marcaF, coincideTexto, bajaF]);
   const { entradas, op } = filtrar;
   const provsVisibles = proveedoresMerc.filter((p) => op.prov.has(p.id) || String(p.id) === provF);
   const cambiarStock = (v) => { setStockF(v); if (v === 'sin' || v === 'neg') setEstadoF(''); };
@@ -206,7 +212,7 @@ export function ExistenciasPanel() {
     setTab('movs');
   };
 
-  const pag = usePaginado(entradas, 'existencias', `${sucF}|${prodF}|${estadoF}|${provF}|${tipoF}|${stockF}|${fp.clave}`);
+  const pag = usePaginado(entradas, 'existencias', `${sucF}|${prodF}|${estadoF}|${provF}|${tipoF}|${stockF}|${bajaF}|${fp.clave}`);
 
   const idsPagina = [...new Set(pag.visibles.map((st) => st.productoId))];
   const idsFiltro = useMemo(() => [...new Set(entradas.map((st) => st.productoId))], [entradas]);
@@ -217,7 +223,7 @@ export function ExistenciasPanel() {
       return (
         <tr key={st.id}>
           {puedeLote && <CasillaLote sel={sel} id={st.productoId} nombre={p.nombre} alternar={alternar} />}
-          <td>{p.nombre} <TipoBadge prod={p} /></td>
+          <td>{p.nombre} <TipoBadge prod={p} />{p.estado !== 'activo' && <> <Pill pill={ESTADOS_PRODUCTO[p.estado].pill} label={ESTADOS_PRODUCTO[p.estado].label} /></>}</td>
           <td>{su.nombre}</td>
           <td>{store.presLabel(p, st.presentacionId)}</td>
           <td>{falta ? <Pill pill="st-defectuoso" label={st.cantidad < -1e-9 ? 'En negativo' : 'Sin stock'} /> : <StockPill estado={st.estado} />}</td>
@@ -311,6 +317,15 @@ export function ExistenciasPanel() {
                 <option key={k} value={k}>{ESTADOS_STOCK[k].label} ({op.estado.get(k) ?? 0})</option>
               ))}
             </select>
+            {(op.baja.size > 0 || bajaF) && (
+              <select
+                id="exist-baja" className={s['select-inline']} value={bajaF} onChange={(e) => setBajaF(e.target.value)} aria-label="Dados de baja"
+                title="Los productos dados de baja (discontinuados o archivados) que todavía tienen algo de stock"
+              >
+                <option value="">Sin los dados de baja</option>
+                <option value="1">Solo dados de baja ({op.baja.size})</option>
+              </select>
+            )}
           </div>
           {puedeLote && <BarraLote id="exist-lote-accion" sel={sel} idsFiltro={idsFiltro} alternar={alternar} limpiar={limpiar} />}
           <Table
