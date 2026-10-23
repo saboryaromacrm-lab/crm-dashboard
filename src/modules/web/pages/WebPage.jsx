@@ -39,6 +39,7 @@ import { MetricasTiendaPanel } from '../panels/MetricasTiendaPanel.jsx';
 import { accesosTienda, sinSuscripcion } from '@core/services/accesosTienda.js';
 import { PRESETS_IMAGEN, srcImagen } from '../services/imagenes.js';
 import { Miniatura } from '../components/Miniatura.jsx';
+import { SLIDE_NUEVO, SlideForm, SlideMiniatura, contenidoDe, problemaSlide, resumenSlide } from '../components/SlideContenido.jsx';
 
 const money = (n) => new Intl.NumberFormat('es-AR', {
   style: 'currency', currency: 'ARS', minimumFractionDigits: 2, maximumFractionDigits: 2,
@@ -135,11 +136,6 @@ function OfertasWebPanel({ avisar }) {
  * Contenido del sitio (hero + banner + imágenes de categorías y marcas)
  * ==================================================================== */
 
-/** Un slide vacío para el alta. El id lo asigna `agregarSlide` (máximo + 1, sin reciclar). */
-const SLIDE_NUEVO = { badge: '', titulo: '', texto: '', cta: 'Ver catálogo', ctaUrl: '/tienda', posicion: 'left' };
-
-const POSICIONES = [['left', 'Izquierda'], ['center', 'Centro'], ['right', 'Derecha']];
-
 function ContenidoPanel({ catalogo, recargar, avisar }) {
   const [web, setWeb] = useState(null);
   const [guardando, setGuardando] = useState(false);
@@ -174,10 +170,11 @@ function ContenidoPanel({ catalogo, recargar, avisar }) {
   };
 
   const abrirAlta = () => { setForm(SLIDE_NUEVO); setEditando('nuevo'); };
-  const abrirEdicion = (sl) => { setForm({ ...sl }); setEditando(sl.id); };
+  const abrirEdicion = (sl) => { setForm({ ...SLIDE_NUEVO, ...sl, contenido: contenidoDe(sl), tiendas: sl.tiendas || 'mayorista' }); setEditando(sl.id); };
 
   const confirmarForm = async () => {
-    if (!form.titulo.trim()) { avisar('err', 'El slide necesita al menos un título.'); return; }
+    const problema = problemaSlide(form);
+    if (problema) { avisar('err', problema); return; }
     if (editando === 'nuevo') {
       const id = slides.reduce((m, sl) => Math.max(m, sl.id), 0) + 1;
       const ok = await guardarSlides([...slides, { ...form, id }], 'Slide agregado a la portada.');
@@ -259,10 +256,12 @@ function ContenidoPanel({ catalogo, recargar, avisar }) {
         <Btn variant="btn-primary" small onClick={abrirAlta} disabled={editando !== null}>+ Agregar slide</Btn>
       </div>
 
-      {/* La portada mayorista arma sus banners sola (23/10/2026): acá van solo los propios, con imagen. */}
+      {/* Los slides se arman solos con el catálogo (23/10/2026): marca, productos o imagen propia, en una tienda o en las dos. */}
       <div className={cx(s.callout, s.info)}>
-        La portada mayorista arma sus banners sola con el catálogo: las ofertas, las marcas con logo y fotos, y lo que volvió a stock.
-        Acá podés sumar banners propios: van primero y <strong>solo se muestran los que tienen imagen</strong>.
+        Cada slide puede ser de <strong>una marca</strong> (su logo y las fotos de sus productos), de <strong>productos que elegís</strong> o
+        de una <strong>imagen propia</strong>, para la tienda mayorista, la minorista o las dos. Se arman solos con el catálogo del momento:
+        lo que se queda sin stock sale del banner y vuelve cuando entra. En la mayorista se suman solos las ofertas y lo que volvió a stock;
+        las marcas automáticas solo aparecen si no elegiste ninguna marca ni productos.
       </div>
 
       {slides.map((sl, i) => (
@@ -271,33 +270,24 @@ function ContenidoPanel({ catalogo, recargar, avisar }) {
             <Btn small onClick={() => mover(i, -1)} disabled={i === 0 || guardando}>↑</Btn>
             <Btn small onClick={() => mover(i, +1)} disabled={i === slides.length - 1 || guardando}>↓</Btn>
           </div>
-          {bannerDe(sl.id)
-            ? <img src={srcImagen(bannerDe(sl.id))} alt="" style={{ width: 120, height: 54, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--crm-color-border)' }} />
-            : (
-              <span style={{
-                width: 120, height: 54, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                background: 'var(--crm-color-bg)', border: '1px dashed var(--crm-color-border)',
-                borderRadius: 8, fontSize: 10.5, color: 'var(--crm-color-text-muted)', textAlign: 'center',
-              }}
-              >
-                sin imagen: no se muestra
-              </span>
-            )}
+          <SlideMiniatura sl={sl} bannerUrl={bannerDe(sl.id)} catalogo={catalogo} />
           <div style={{ flex: 1, minWidth: 0 }}>
             {sl.badge && <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--crm-color-accent-2)' }}>{sl.badge}</div>}
-            <div style={{ fontWeight: 700 }}>{sl.titulo || <span className={s.muted}>(sin título)</span>}</div>
+            <div style={{ fontWeight: 700 }}>{sl.titulo || <span className={s.muted}>{contenidoDe(sl) === 'marca' ? '(título: el nombre de la marca)' : '(sin título)'}</span>}</div>
             <div className={s.muted} style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {sl.texto}
             </div>
             <div className={s.muted} style={{ fontSize: 11.5 }}>
-              Botón «{sl.cta || '—'}» → {sl.ctaUrl || '—'} · texto {POSICIONES.find(([v]) => v === sl.posicion)?.[1]?.toLowerCase() ?? 'izquierda'}
+              {resumenSlide(sl, catalogo)}
             </div>
           </div>
           <div className={s['row-actions']} style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <SubirImagenBtn preset="banner" onData={(data) => subir('banner', sl.id, data, `Imagen del slide "${sl.titulo}" actualizada.`)}>
-              {bannerDe(sl.id) ? 'Cambiar' : 'Imagen'}
-            </SubirImagenBtn>
-            {bannerDe(sl.id) && (
+            {contenidoDe(sl) === 'imagen' && (
+              <SubirImagenBtn preset="banner" onData={(data) => subir('banner', sl.id, data, `Imagen del slide "${sl.titulo}" actualizada.`)}>
+                {bannerDe(sl.id) ? 'Cambiar' : 'Imagen'}
+              </SubirImagenBtn>
+            )}
+            {contenidoDe(sl) === 'imagen' && bannerDe(sl.id) && (
               <Btn variant="btn-delete" small onClick={() => quitar('banner', sl.id, 'Imagen del slide quitada.')}>Sin img</Btn>
             )}
             <Btn variant="btn-edit" small onClick={() => abrirEdicion(sl)} disabled={editando !== null}>Editar</Btn>
@@ -311,49 +301,14 @@ function ContenidoPanel({ catalogo, recargar, avisar }) {
           <div className={s['mini-label']} style={{ marginBottom: 10 }}>
             {editando === 'nuevo' ? 'Nuevo slide' : 'Editar slide'}
           </div>
-          <div className={s['form-grid']}>
-            <div className={s.field}>
-              <label>Etiqueta chica (badge)</label>
-              <input value={form.badge} placeholder="Ej: Ofertas activas" onChange={(e) => setForm((f) => ({ ...f, badge: e.target.value }))} />
-            </div>
-            <div className={s.field}>
-              <label>Posición del texto</label>
-              <select value={form.posicion} onChange={(e) => setForm((f) => ({ ...f, posicion: e.target.value }))}>
-                {POSICIONES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className={s.field}>
-            <label>Título <span className={s.req}>*</span></label>
-            <input autoFocus value={form.titulo} onChange={(e) => setForm((f) => ({ ...f, titulo: e.target.value }))} />
-          </div>
-          <div className={s.field}>
-            <label>Texto</label>
-            <input value={form.texto} onChange={(e) => setForm((f) => ({ ...f, texto: e.target.value }))} />
-          </div>
-          <div className={s['form-grid']}>
-            <div className={s.field}>
-              <label>Texto del botón</label>
-              <input value={form.cta} onChange={(e) => setForm((f) => ({ ...f, cta: e.target.value }))} />
-            </div>
-            <div className={s.field}>
-              <label>Adónde lleva el botón</label>
-              <select value={form.ctaUrl} onChange={(e) => setForm((f) => ({ ...f, ctaUrl: e.target.value }))}>
-                <option value="/tienda">La tienda</option>
-                <option value="/#ofertas">Las ofertas de la portada</option>
-                <option value="/#marcas">Las marcas de la portada</option>
-                <option value="/carrito">El carrito</option>
-                <option value="/">La portada</option>
-              </select>
-            </div>
-          </div>
+          <SlideForm form={form} setForm={setForm} catalogo={catalogo} />
           <div style={{ display: 'flex', gap: 8 }}>
             <Btn variant="btn-primary" onClick={confirmarForm} disabled={guardando}>
               {guardando ? 'Guardando…' : (editando === 'nuevo' ? 'Agregar slide' : 'Guardar cambios')}
             </Btn>
             <Btn onClick={() => setEditando(null)} disabled={guardando}>Cancelar</Btn>
           </div>
-          {editando !== 'nuevo' && (
+          {editando !== 'nuevo' && contenidoDe(form) === 'imagen' && (
             <div className={s.hint} style={{ marginTop: 8 }}>
               La imagen del slide se cambia desde su tarjeta en la lista (botón Imagen / Cambiar).
             </div>
@@ -362,8 +317,8 @@ function ContenidoPanel({ catalogo, recargar, avisar }) {
       )}
 
       <div className={s.hint}>
-        Los slides rotan solos en la portada, en este orden (usá ↑↓ para acomodarlos). Imagen
-        {PRESETS_IMAGEN.banner.hint} Sin imagen, el slide usa una ilustración por defecto del sitio.
+        Los slides rotan solos en la portada de su tienda, en este orden (usá ↑↓ para acomodarlos). En la minorista van debajo de «¿Qué buscás?».
+        Imagen propia: {PRESETS_IMAGEN.banner.hint} Un slide de imagen sin imagen subida no se muestra.
       </div>
 
       {grillaImagenes(
