@@ -258,7 +258,7 @@ function ContenidoPanel({ catalogo, recargar, avisar }) {
 
       {/* Los slides se arman solos con el catálogo (23/10/2026): marca, productos o imagen propia, en una tienda o en las dos. */}
       <div className={cx(s.callout, s.info)}>
-        Cada slide puede ser de <strong>una marca</strong> (su logo y las fotos de sus productos), de <strong>productos que elegís</strong> o
+        Cada slide puede ser de <strong>marcas que elegís</strong> (hasta 5: sus logos y las fotos de sus productos), de <strong>productos que elegís</strong> o
         de una <strong>imagen propia</strong>, para la tienda mayorista, la minorista o las dos. Se arman solos con el catálogo del momento:
         lo que se queda sin stock sale del banner y vuelve cuando entra. En la mayorista se suman solos las ofertas y lo que volvió a stock;
         las marcas automáticas solo aparecen si no elegiste ninguna marca ni productos.
@@ -273,7 +273,7 @@ function ContenidoPanel({ catalogo, recargar, avisar }) {
           <SlideMiniatura sl={sl} bannerUrl={bannerDe(sl.id)} catalogo={catalogo} />
           <div style={{ flex: 1, minWidth: 0 }}>
             {sl.badge && <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--crm-color-accent-2)' }}>{sl.badge}</div>}
-            <div style={{ fontWeight: 700 }}>{sl.titulo || <span className={s.muted}>{contenidoDe(sl) === 'marca' ? '(título: el nombre de la marca)' : '(sin título)'}</span>}</div>
+            <div style={{ fontWeight: 700 }}>{sl.titulo || <span className={s.muted}>{contenidoDe(sl) === 'marca' ? '(título: el nombre de las marcas)' : '(sin título)'}</span>}</div>
             <div className={s.muted} style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {sl.texto}
             </div>

@@ -1,8 +1,8 @@
 /**
  * QUÉ MUESTRA CADA SLIDE (23/10/2026, pedido del dueño: «elegir marcas o
  * productos y que se arme el contenido solo, en las dos tiendas»). Un slide es
- * de imagen propia (la subida, como siempre), de una marca (su logo y las
- * fotos de sus productos con stock) o de productos elegidos; y va en la tienda
+ * de imagen propia (la subida, como siempre), de marcas (hasta 5: sus logos y
+ * las fotos de sus productos con stock) o de productos elegidos; y va en la tienda
  * mayorista, en la minorista o en las dos. La tienda lo arma con el catálogo
  * del momento (`bannersTienda` en la web): lo que se queda sin stock sale solo.
  * Los textos vacíos de una marca o de productos los completa la tienda.
@@ -11,28 +11,31 @@ import { useMemo, useState } from 'react';
 import { s } from '@modules/productos/components/ui.jsx';
 import { srcImagen } from '../services/imagenes.js';
 
-export const CONTENIDOS = [['marca', 'Una marca'], ['productos', 'Productos que elijo'], ['imagen', 'Imagen propia (la subo)']];
+export const CONTENIDOS = [['marca', 'Marcas que elijo'], ['productos', 'Productos que elijo'], ['imagen', 'Imagen propia (la subo)']];
 export const TIENDAS = [['mayorista', 'Tienda mayorista'], ['minorista', 'Tienda minorista'], ['ambas', 'Las dos tiendas']];
 const POSICIONES = [['left', 'Izquierda'], ['center', 'Centro'], ['right', 'Derecha']];
-/** El tope del servidor (MAX_PRODUCTOS_SLIDE en configuracion.module.ts). */
+/** Los topes del servidor (MAX_PRODUCTOS_SLIDE y MAX_MARCAS_SLIDE en configuracion.module.ts). */
 const MAX_PRODUCTOS = 12;
+const MAX_MARCAS = 5;
 const MAX_RESULTADOS = 8;
 
 /** Un slide vacío para el alta: de marca y para la mayorista. El id lo asigna quien lo guarda. */
 export const SLIDE_NUEVO = {
   badge: '', titulo: '', texto: '', cta: '', ctaUrl: '', posicion: 'left',
-  contenido: 'marca', marcaId: 0, productoIds: '', tiendas: 'mayorista',
+  contenido: 'marca', marcaId: 0, marcaIds: '', productoIds: '', tiendas: 'mayorista',
 };
 
 /** Los slides de antes no tienen `contenido` ni `tiendas`: eran de imagen y de la mayorista. */
 export const contenidoDe = (sl) => sl.contenido || 'imagen';
 const idsDe = (sl) => String(sl.productoIds ?? '').split(',').map(Number).filter(Boolean);
+/** Las marcas del slide: «3,7», o la `marcaId` de los de una sola marca (los primeros, 23/10/2026). */
+const marcasDe = (sl) => (sl.marcaIds ? String(sl.marcaIds).split(',').map(Number).filter(Boolean) : sl.marcaId ? [sl.marcaId] : []);
 const etiqueta = (lista, v) => lista.find(([k]) => k === v)?.[1] ?? '';
 
 /** Por qué no se puede guardar, o null. */
 export function problemaSlide(f) {
   const c = contenidoDe(f);
-  if (c === 'marca' && !f.marcaId) return 'Elegí la marca del slide.';
+  if (c === 'marca' && !marcasDe(f).length) return 'Elegí al menos una marca.';
   if (c === 'productos' && !idsDe(f).length) return 'Elegí al menos un producto.';
   if (c !== 'marca' && !f.titulo.trim()) return 'El slide necesita un título.';
   return null;
@@ -41,7 +44,7 @@ export function problemaSlide(f) {
 /** La línea de abajo de la tarjeta: qué muestra, dónde va y adónde lleva. */
 export function resumenSlide(sl, catalogo) {
   const c = contenidoDe(sl);
-  const que = c === 'marca' ? `Marca ${catalogo?.marcas?.find((m) => m.id === sl.marcaId)?.nombre ?? '(ya no está en la tienda)'}`
+  const que = c === 'marca' ? `Marcas: ${marcasDe(sl).map((id) => catalogo?.marcas?.find((m) => m.id === id)?.nombre ?? '(ya no está)').join(', ')}`
     : c === 'productos' ? `${idsDe(sl).length} producto(s) elegido(s)`
       : `Imagen propia · texto ${etiqueta(POSICIONES, sl.posicion).toLowerCase() || 'izquierda'}`;
   return `${que} · ${etiqueta(TIENDAS, sl.tiendas || 'mayorista')} · botón «${sl.cta || 'automático'}» → ${sl.ctaUrl || 'automático'}`;
@@ -52,7 +55,7 @@ const MINI = { width: 120, height: 54, borderRadius: 8, border: '1px solid var(-
 /** La miniatura de la tarjeta: la imagen subida, el logo de la marca o las fotos de los productos. */
 export function SlideMiniatura({ sl, bannerUrl, catalogo }) {
   const c = contenidoDe(sl);
-  const marca = c === 'marca' ? catalogo?.marcas?.find((m) => m.id === sl.marcaId) : null;
+  const marca = c === 'marca' ? catalogo?.marcas?.find((m) => m.id === marcasDe(sl)[0]) : null;
   const fotos = c === 'productos' ? idsDe(sl).map((id) => catalogo?.items?.find((p) => p.id === id)?.imagenUrl).filter(Boolean).slice(0, 3) : [];
   const url = c === 'imagen' ? bannerUrl : marca?.imagenUrl;
   if (url) return <img src={srcImagen(url)} alt="" style={{ ...MINI, objectFit: c === 'imagen' ? 'cover' : 'contain' }} />;
@@ -75,7 +78,10 @@ export function SlideForm({ form, setForm, catalogo }) {
   const c = contenidoDe(form);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const marcas = useMemo(() => [...(catalogo?.marcas ?? [])].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')), [catalogo]);
-  const marca = marcas.find((m) => m.id === form.marcaId);
+  const elegidas = marcasDe(form).map((id) => marcas.find((m) => m.id === id)).filter(Boolean);
+  const marca = elegidas.length === 1 ? elegidas[0] : null;
+  /* Se guarda siempre en `marcaIds`; `marcaId` queda en 0 (era el de una sola). */
+  const guardarMarcas = (ids) => setForm((f) => ({ ...f, marcaIds: ids.join(','), marcaId: 0 }));
   const auto = c !== 'imagen';
 
   return (
@@ -97,13 +103,26 @@ export function SlideForm({ form, setForm, catalogo }) {
 
       {c === 'marca' && (
         <div className={s.field}>
-          <label htmlFor="slide-marca">Marca <span className={s.req}>*</span></label>
-          <select id="slide-marca" value={form.marcaId || ''} onChange={(e) => setForm((f) => ({ ...f, marcaId: Number(e.target.value) || 0 }))}>
-            <option value="">Elegí la marca…</option>
-            {marcas.map((m) => <option key={m.id} value={m.id}>{m.nombre} ({m.count}){m.imagenUrl ? '' : ' · sin logo'}</option>)}
-          </select>
+          <label htmlFor="slide-marca">Marcas <span className={s.req}>*</span> <span className={s.hint} style={{ margin: 0 }}>({elegidas.length} de {MAX_MARCAS})</span></label>
+          {elegidas.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {elegidas.map((m) => (
+                <span key={m.id} className={s.badge} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px' }}>
+                  {m.imagenUrl && <img src={srcImagen(m.imagenUrl)} alt="" style={{ width: 34, height: 17, objectFit: 'contain' }} />}
+                  {m.nombre}
+                  <button type="button" aria-label={`Sacar ${m.nombre}`} onClick={() => guardarMarcas(marcasDe(form).filter((x) => x !== m.id))} style={{ border: 0, background: 'none', cursor: 'pointer', fontWeight: 700 }}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          {elegidas.length < MAX_MARCAS && (
+            <select id="slide-marca" value="" onChange={(e) => e.target.value && guardarMarcas([...marcasDe(form), Number(e.target.value)])}>
+              <option value="">{elegidas.length ? 'Agregar otra marca…' : 'Elegí la marca…'}</option>
+              {marcas.filter((m) => !marcasDe(form).includes(m.id)).map((m) => <option key={m.id} value={m.id}>{m.nombre} ({m.count}){m.imagenUrl ? '' : ' · sin logo'}</option>)}
+            </select>
+          )}
           <div className={s.hint} style={{ margin: '4px 0 0' }}>
-            Se arma con su logo y las fotos de sus productos con stock. Sin ninguno con foto y stock, el slide no se muestra hasta que vuelva.
+            Se arma con sus logos y las fotos de sus productos con stock, mezcladas. Una marca sin nada con foto y stock no aparece hasta que vuelva.
           </div>
         </div>
       )}
@@ -125,21 +144,21 @@ export function SlideForm({ form, setForm, catalogo }) {
       </div>
       <div className={s.field}>
         <label htmlFor="slide-titulo">Título {c !== 'marca' && <span className={s.req}>*</span>}</label>
-        <input id="slide-titulo" value={form.titulo} placeholder={c === 'marca' ? `Vacío: «${marca?.nombre ?? 'el nombre de la marca'}»` : 'Ej: Lo nuevo de la semana'} onChange={set('titulo')} />
+        <input id="slide-titulo" value={form.titulo} placeholder={c === 'marca' ? `Vacío: «${elegidas.map((m) => m.nombre).join(', ') || 'los nombres de las marcas'}»` : 'Ej: Lo nuevo de la semana'} onChange={set('titulo')} />
       </div>
       <div className={s.field}>
         <label htmlFor="slide-texto">Texto</label>
-        <input id="slide-texto" value={form.texto} placeholder={c === 'marca' ? 'Vacío: cuántos productos tiene, según la tienda' : ''} onChange={set('texto')} />
+        <input id="slide-texto" value={form.texto} placeholder={c === 'marca' ? 'Vacío: cuántos productos tienen, según la tienda' : ''} onChange={set('texto')} />
       </div>
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label htmlFor="slide-cta">Texto del botón</label>
-          <input id="slide-cta" value={form.cta} placeholder={c === 'marca' ? `Vacío: «Ver ${marca?.nombre ?? 'la marca'}»` : c === 'productos' ? 'Vacío: «Ver en la tienda»' : 'Vacío: «Ver catálogo»'} onChange={set('cta')} />
+          <input id="slide-cta" value={form.cta} placeholder={c === 'marca' ? `Vacío: «${marca ? `Ver ${marca.nombre}` : 'Ver la tienda'}»` : c === 'productos' ? 'Vacío: «Ver en la tienda»' : 'Vacío: «Ver catálogo»'} onChange={set('cta')} />
         </div>
         <div className={s.field}>
           <label htmlFor="slide-url">Adónde lleva el botón</label>
           <select id="slide-url" value={form.ctaUrl} onChange={set('ctaUrl')}>
-            {auto && <option value="">{c === 'marca' ? 'A la marca (automático)' : 'A su marca o a la tienda (automático)'}</option>}
+            {auto && <option value="">{c === 'marca' ? 'A la marca, o a la tienda si son varias (automático)' : 'A su marca o a la tienda (automático)'}</option>}
             <option value="/tienda">La tienda</option>
             <option value="/tienda?oferta=1">Las ofertas</option>
             <option value="/#marcas">Las marcas de la portada</option>
