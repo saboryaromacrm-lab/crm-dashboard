@@ -16,7 +16,7 @@ import { useResource } from '@modules/ventas/hooks/useResource.js';
 import { money } from '@modules/productos/domain/format.js';
 import { s } from '@modules/productos/components/ui.jsx';
 import { Aviso, Cargando } from '../metricas/piezas.jsx';
-import { fechaIso, horaCorta, hoy } from './formato.js';
+import { fechaIso, fechaIsoSinDia, horaCorta, hoy } from './formato.js';
 
 /** Cómo se ve cada estado: texto y color (tokens del tema, andan en claro y en oscuro). */
 const ESTADOS = {
@@ -36,7 +36,7 @@ const otroDia = (dia, delta) => {
   return d.toLocaleDateString('sv-SE');
 };
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-const nombreDia = (dia) => `${DIAS[new Date(`${dia}T12:00:00`).getDay()]} ${fechaIso(dia)}`;
+const nombreDia = (dia) => `${DIAS[new Date(`${dia}T12:00:00`).getDay()]} ${fechaIsoSinDia(dia)}`;
 
 function Pastilla({ color, children }) {
   return (

@@ -50,11 +50,12 @@ import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { cx } from '@shared/utils/classNames.js';
 import { ColumnasMulti } from '../metricas/graficos.jsx';
 import { iso } from '../metricas/formato.js';
+import { Fecha } from './Fecha.jsx';
 import {
   AnularModal, Arranque, ConteoModal, MovimientoModal, PagoProveedorModal, SobreModal, SobreVer,
 } from './CashFlowPanel.jsx';
 import {
-  ANULABLES, DONDE, DONDE_A_CAMPOS, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, donde, esConceptoCambio, ORIGEN, textoDonde, ORIGENES_REPORTE, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso,
+  ANULABLES, DONDE, DONDE_A_CAMPOS, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, donde, esConceptoCambio, ORIGEN, textoDonde, ORIGENES_REPORTE, diasDesde, diaSemana, etiquetaPeriodo, fechaCorta, fechaHora, fechaHoraSinDia, fechaIso,
   hayFiltrosReporte, horaCorta, hoy, primerDiaMes, qsFiltrosReporte, queEs, textoAnular, textoFiltrosReporte, tituloPeriodo,
 } from './formato.js';
 import { CajasAControlar } from './CajasAControlar.jsx';
@@ -84,7 +85,7 @@ const nombreDia = (k) => {
   const t = new Date(`${k}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'numeric' });
   return t.charAt(0).toUpperCase() + t.slice(1);
 };
-/** «hoy 21:05», «ayer 9:40», «sáb 4/10 21:40»: en el celular la fecha entera no entra. */
+/** «hoy 21:05», «ayer 9:40», «SAB 4/10 21:40»: en el celular la fecha entera no entra. */
 const cuando = (v) => {
   if (!v) return '—';
   const d = new Date(v);
@@ -92,8 +93,7 @@ const cuando = (v) => {
   const h = horaCorta(v);
   if (k === hoy()) return `hoy ${h}`;
   if (k === ayer()) return `ayer ${h}`;
-  const dia = d.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '');
-  return `${dia} ${d.getDate()}/${d.getMonth() + 1}${d.getFullYear() !== new Date().getFullYear() ? `/${d.getFullYear()}` : ''} ${h}`;
+  return `${diaSemana(v)} ${d.getDate()}/${d.getMonth() + 1}${d.getFullYear() !== new Date().getFullYear() ? `/${d.getFullYear()}` : ''} ${h}`;
 };
 const MESES_LARGOS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 /** Para los totales chicos: sin «,00» cuando no hay centavos (así entran tres por renglón). */
@@ -303,7 +303,7 @@ function Inicio({ d, abrir, irA, actualizado, version, bump, avisar }) {
       <Seccion titulo="Arranque">
         <div className={cx(c.card, c.fila)}>
           <span className={c.filaTexto}>
-            <strong>Desde el {fechaIso(d.caja.fechaInicio)}</strong>
+            <strong>Desde el <Fecha v={d.caja.fechaInicio} corta /></strong>
             <small>con {money(d.caja.saldoInicial)} en mano</small>
           </span>
           <button type="button" className={c.link} onClick={() => abrir({ tipo: 'arranque' })}>Cambiar</button>
@@ -452,12 +452,12 @@ function DetalleMovimiento({ m, onCerrar, onAnular, onAplicar }) {
         <dt>Tipo</dt><dd>{m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} · {ORIGEN[m.origen] ?? m.origen}</dd>
         {m.detalle && <><dt>Detalle</dt><dd>{m.detalle}</dd></>}
         <dt>Lo cargó</dt><dd>{m.usuario || '—'}</dd>
-        {m.cierreCaja && <><dt>Caja del local</dt><dd>{fechaHora(m.cierreCaja)} (cierre del turno)</dd><dt>Entró a tu caja</dt><dd>{fechaHora(m.fecha)} (cuando lo controlaste)</dd></>}
+        {m.cierreCaja && <><dt>Caja del local</dt><dd><Fecha v={m.cierreCaja} /> (cierre del turno)</dd><dt>Entró a tu caja</dt><dd><Fecha v={m.fecha} /> (cuando lo controlaste)</dd></>}
         {m.origen === 'sobre' && m.sobreDiferencia != null && Math.abs(m.sobreDiferencia) > 0.009 && (
           <><dt>Diferencia del sobre</dt><dd><Dif v={m.sobreDiferencia} /></dd></>
         )}
         {m.anuladoEn && (
-          <><dt>Anulado</dt><dd>{m.anuladoPor || '—'} · {fechaHora(m.anuladoEn)}</dd><dt>Motivo</dt><dd>{m.anuladoMotivo || '—'}</dd></>
+          <><dt>Anulado</dt><dd>{m.anuladoPor || '—'} · <Fecha v={m.anuladoEn} /></dd><dt>Motivo</dt><dd>{m.anuladoMotivo || '—'}</dd></>
         )}
       </dl>
       {!m.anuladoEn && !anulable && (
@@ -493,7 +493,7 @@ function Reportes({ f, setF, version, avisar, conceptos }) {
       const movs = await httpClient.get(`/cashflow/movimientos?${qs}&limite=2000&anulados=1`);
       descargarCsv(`cash-flow-${f.desde}-${f.hasta}${filtros ? '-filtrado' : ''}.csv`,
         ['Fecha', 'Tipo', 'Qué', 'Detalle', 'Quién', 'Ingreso', 'Egreso', 'Anulado', 'Motivo anulación'],
-        (movs ?? []).map((m) => [fechaHora(m.fecha), m.tipo, queEs(m), m.detalle || '', m.usuario || '', m.tipo === 'ingreso' ? csvNum(m.importe) : '', m.tipo === 'egreso' ? csvNum(m.importe) : '', m.anuladoEn ? 'Sí' : '', m.anuladoMotivo || '']));
+        (movs ?? []).map((m) => [fechaHoraSinDia(m.fecha), m.tipo, queEs(m), m.detalle || '', m.usuario || '', m.tipo === 'ingreso' ? csvNum(m.importe) : '', m.tipo === 'egreso' ? csvNum(m.importe) : '', m.anuladoEn ? 'Sí' : '', m.anuladoMotivo || '']));
     } catch (e) { avisar('error', errorMsg(e)); } finally { setBajando(false); }
   };
   const nombre = (x) => (x.origen === 'concepto' || x.origen === 'gasto' ? x.concepto : ORIGEN[x.origen] ?? x.origen);
@@ -552,7 +552,7 @@ function Reportes({ f, setF, version, avisar, conceptos }) {
       {error && <Aviso tono="error">{error}</Aviso>}
       {loading && !d ? <div className={cx(c.card, c.vacio)}>Cargando…</div> : !d ? null : (
         <>
-          <div className={c.resumenLinea}><span>Del <strong>{fechaIso(d.desde)}</strong> al <strong>{fechaIso(d.hasta)}</strong></span><span>{plural(d.movimientos, 'movimiento', 'movimientos')}</span></div>
+          <div className={c.resumenLinea}><span>Del <strong><Fecha v={d.desde} corta /></strong> al <strong><Fecha v={d.hasta} corta /></strong></span><span>{plural(d.movimientos, 'movimiento', 'movimientos')}</span></div>
           {d.filtrado ? (
             <>
               <Aviso>Filtrado: <strong>{filtros}</strong>. El efectivo al inicio y al fin es de la caja entera: con filtros no se muestra.</Aviso>

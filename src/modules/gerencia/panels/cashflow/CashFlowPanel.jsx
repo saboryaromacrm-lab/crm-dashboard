@@ -29,10 +29,11 @@ import { imprimirDocumento, esc } from '@core/services/imprimir.js';
 import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles } from '../metricas/piezas.jsx';
 import { ColumnasMulti } from '../metricas/graficos.jsx';
 import { iso } from '../metricas/formato.js';
+import { Fecha } from './Fecha.jsx';
 import { CajasAControlar, TildeControlar } from './CajasAControlar.jsx';
 import { PlanillaDia } from './PlanillaDia.jsx';
 import { useTildeControlar, useUmbralControlar } from './tildeControlar.js';
-import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, DONDE, DONDE_A_CAMPOS, donde, esConceptoCambio, esDeposito, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
+import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, DONDE, DONDE_A_CAMPOS, donde, esConceptoCambio, esDeposito, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaHoraSinDia, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
 
 /** La diferencia, con su color: rojo faltó, verde sobró, gris nada. */
 export function Diferencia({ v }) {
@@ -78,7 +79,7 @@ export function Arranque({ caja, onHecho, avisar, onCancelar }) {
         </Campo>
       </div>
       <AvisoSegundaConfirmacion {...sc}>
-        El Cash Flow arranca el <strong>{fechaIso(fecha)}</strong> con <strong>{money(importe || 0)}</strong> en mano.
+        El Cash Flow arranca el <strong><Fecha v={fecha} corta /></strong> con <strong>{money(importe || 0)}</strong> en mano.
         {caja ? ' Esto reemplaza el arranque anterior.' : ''}
       </AvisoSegundaConfirmacion>
       {error && <Aviso tono="warn">{error}</Aviso>}
@@ -118,7 +119,7 @@ function Resumen({ d, conceptos, irA, avisar, onHecho }) {
           <Table cols={[{ h: 'Fecha' }, { h: 'Contado', num: true }, { h: 'Debía haber', num: true }, { h: 'Diferencia', num: true }, { h: 'Ajuste' }]} empty="Todavía no contaste tu caja.">
             {(d.conteos ?? []).map((c) => (
               <tr key={c.id} title={c.motivo || undefined}>
-                <td>{fechaHora(c.fecha)}</td>
+                <td><Fecha v={c.fecha} /></td>
                 <td className={s.num}>{money(c.contado)}</td>
                 <td className={s.num}>{money(c.esperado)}</td>
                 <td className={s.num}><Diferencia v={c.diferencia} /></td>
@@ -540,7 +541,7 @@ function Sobres({ version, bump, avisar }) {
             const dias = diasDesde(x.cierre);
             return (
               <tr key={x.cajaSesionId}>
-                <td>{fechaHora(x.cierre)}</td>
+                <td><Fecha v={x.cierre} /></td>
                 <td>{x.sucursal}</td>
                 <td>{x.cajero || '—'}</td>
                 <td className={s.num}><strong>{money(x.enviado)}</strong></td>
@@ -555,7 +556,7 @@ function Sobres({ version, bump, avisar }) {
                   <>
                     <td className={s.num}>{x.descartado ? <Pill pill="st-retenido" label="No corresponde" /> : money(x.contado)}</td>
                     <td className={s.num}>{x.descartado ? <span className={s.muted}>—</span> : <Diferencia v={x.diferencia} />}</td>
-                    <td><span title={fechaHora(x.controladoEn)}>{x.controladoPor || '—'}</span><div className={s.hint} style={{ margin: 0 }}>{fechaCorta(x.controladoEn)}</div></td>
+                    <td><span title={fechaHora(x.controladoEn)}>{x.controladoPor || '—'}</span><div className={s.hint} style={{ margin: 0 }}><Fecha v={x.controladoEn} corta /></div></td>
                   </>
                 )}
                 <td className={s['actions-col']}>
@@ -632,19 +633,19 @@ function TablaMovimientos({ filas, compacta, onAnular, onAplicar }) {
         return (
           <tr key={m.id} style={anulado ? { opacity: 0.55, textDecoration: 'line-through' } : undefined} title={anulado ? `Anulado por ${m.anuladoPor || '—'}: ${m.anuladoMotivo}` : undefined}>
             <td>
-              {compacta ? fechaCorta(m.fecha) : fechaHora(m.fecha)}
+              <Fecha v={m.fecha} corta={compacta} />
               {!compacta && m.cierreCaja && <div className={s.hint} style={{ margin: 0 }}>lo controlaste</div>}
             </td>
             {!compacta && (
               <td>
-                {m.cierreCaja ? <>{fechaHora(m.cierreCaja)}<div className={s.hint} style={{ margin: 0 }}>cierre del turno</div></> : <span className={s.muted}>—</span>}
+                {m.cierreCaja ? <><Fecha v={m.cierreCaja} /><div className={s.hint} style={{ margin: 0 }}>cierre del turno</div></> : <span className={s.muted}>—</span>}
               </td>
             )}
             <td>
               <Pill pill={m.tipo === 'ingreso' ? 'st-disponible' : 'st-comprometido'} label={m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} />{' '}{que}
               {m.origen === 'sobre' && m.sobreDiferencia != null && Math.abs(m.sobreDiferencia) > 0.009 && <> · <Diferencia v={m.sobreDiferencia} /></>}
               {compacta && m.detalle && <div className={s.hint} style={{ margin: 0 }}>{m.detalle}</div>}
-              {compacta && m.cierreCaja && <div className={s.hint} style={{ margin: 0 }}>caja del {fechaCorta(m.cierreCaja)} · controlado el {fechaCorta(m.fecha)}</div>}
+              {compacta && m.cierreCaja && <div className={s.hint} style={{ margin: 0 }}>caja del <Fecha v={m.cierreCaja} corta /> · controlado el <Fecha v={m.fecha} corta /></div>}
             </td>
             {!compacta && <td>{m.detalle || <span className={s.muted}>—</span>}{anulado && <div className={s.hint} style={{ margin: 0, textDecoration: 'none' }}>Anulado: {m.anuladoMotivo}</div>}</td>}
             {!compacta && <td>{m.usuario || '—'}</td>}
@@ -826,7 +827,7 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
       )}
       {tipo === 'egreso' && <Disponible saldo={saldo} importe={n > 0 ? n : 0} fecha={fecha} />}
       <AvisoSegundaConfirmacion {...sc}>
-        {tipo === 'ingreso' ? 'Entra' : 'Sale'} <strong>{money(n || 0)}</strong> {tipo === 'ingreso' ? 'a' : 'de'} tu caja por <strong>{concepto?.nombre ?? '—'}</strong> el {fechaIso(fecha)}.
+        {tipo === 'ingreso' ? 'Entra' : 'Sale'} <strong>{money(n || 0)}</strong> {tipo === 'ingreso' ? 'a' : 'de'} tu caja por <strong>{concepto?.nombre ?? '—'}</strong> el <Fecha v={fecha} corta />.
         {esCambio && <> Se lo das a <strong>{cambioPor.trim()}</strong>, que transfiere a <strong>{cambioCuenta.trim()}</strong>.</>}
         {concepto?.clase === 'gasto' && <> Se carga también como <strong>gasto pagado</strong>{esCambio ? ' por transferencia' : ''} en Gastos ({concepto.gastoCategoria}).</>}
       </AvisoSegundaConfirmacion>
@@ -977,7 +978,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
                       <input type="checkbox" checked={on} onChange={(e) => tildar(d, e.target.checked)} aria-label={`Pagar ${d.etiqueta}`} style={{ width: 22, height: 22, marginTop: 1, flex: '0 0 auto' }} />
                       <span style={{ flex: 1, minWidth: 0 }}>
                         <strong>{d.etiqueta}</strong>
-                        <span className={s.hint} style={{ display: 'block', margin: 0 }}>{fechaCorta(d.fecha)}{d.detalle ? ` · ${d.detalle}` : ''}</span>
+                        <span className={s.hint} style={{ display: 'block', margin: 0 }}><Fecha v={d.fecha} corta />{d.detalle ? ` · ${d.detalle}` : ''}</span>
                       </span>
                       <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <span className={s.hint} style={{ display: 'block', margin: 0 }}>saldo</span>
@@ -1002,7 +1003,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
                   <tr key={`${d.tipo}${d.docId}`}>
                     <td><input type="checkbox" checked={on} onChange={(e) => tildar(d, e.target.checked)} aria-label={`Pagar ${d.etiqueta}`} /></td>
                     <td>{d.etiqueta}{d.detalle && <div className={s.hint} style={{ margin: 0 }}>{d.detalle}</div>}</td>
-                    <td>{fechaCorta(d.fecha)}</td>
+                    <td><Fecha v={d.fecha} corta /></td>
                     <td className={s.num}>{money(d.saldo)}</td>
                     <td className={s.num}>
                       {on && <input type="number" min="0" max={d.saldo} step="0.01" value={tildes[d.docId]} onChange={(e) => setTildes((t) => ({ ...t, [d.docId]: e.target.value }))} style={{ width: 120, textAlign: 'right' }} />}
@@ -1390,7 +1391,7 @@ function Reportes({ version, conceptos }) {
   };
   const exportar = () => descargarCsv(`cash-flow-${desde}-${hasta}${filtros ? '-filtrado' : ''}.csv`,
     ['Fecha', 'Tipo', 'Qué', 'Detalle', 'Quién', 'Ingreso', 'Egreso', 'Anulado', 'Motivo anulación'],
-    (movs ?? []).map((m) => [fechaHora(m.fecha), m.tipo, queEs(m), m.detalle || '', m.usuario || '', m.tipo === 'ingreso' ? csvNum(m.importe) : '', m.tipo === 'egreso' ? csvNum(m.importe) : '', m.anuladoEn ? 'Sí' : '', m.anuladoMotivo || '']));
+    (movs ?? []).map((m) => [fechaHoraSinDia(m.fecha), m.tipo, queEs(m), m.detalle || '', m.usuario || '', m.tipo === 'ingreso' ? csvNum(m.importe) : '', m.tipo === 'egreso' ? csvNum(m.importe) : '', m.anuladoEn ? 'Sí' : '', m.anuladoMotivo || '']));
   const imprimir = () => {
     if (!d) return;
     const fila = (cols) => `<tr>${cols.map((c, i) => `<td style="padding:3px 6px;border-bottom:1px solid #ddd;${i > 0 ? 'text-align:right;white-space:nowrap' : ''}">${c}</td>`).join('')}</tr>`;

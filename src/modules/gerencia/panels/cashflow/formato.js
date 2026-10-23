@@ -17,10 +17,25 @@ export const NOTA_ESTA_TODO = 'Está todo: confirmado sin contar billete por bil
 export const DENOMINACIONES_A_CONTAR = DENOMINACIONES.filter((d) => ![50, 20].includes(d));
 
 export const hoy = () => iso(new Date());
-export const fechaHora = (v) => (v ? new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
-export const fechaCorta = (v) => (v ? new Date(v).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
+/**
+ * EL DÍA DE LA SEMANA EN CADA FECHA (23/10/2026, pedido del dueño: «aclarame
+ * el día, chico nomás: LU, MA, MI, JU, VI, SAB, DOM»). Los formatos de abajo
+ * lo llevan adelante, así toda fecha del Cash Flow lo dice sin acordarse en
+ * cada pantalla; donde la fecha va sola, `<Fecha>` (Fecha.jsx) lo pone chico.
+ * Los «SinDia» quedan para lo que ya nombra el día y para las planillas (CSV).
+ */
+export const DIAS_SEMANA = ['DOM', 'LU', 'MA', 'MI', 'JU', 'VI', 'SAB'];
+/** Un día de calendario ('2026-10-23') se toma al mediodía: a medianoche UTC acá todavía es el día anterior. */
+const aFecha = (v) => new Date(typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T12:00:00` : v);
+export const diaSemana = (v) => (v ? DIAS_SEMANA[aFecha(v).getDay()] : '');
+const conDia = (v, texto) => (v ? `${diaSemana(v)} ${texto}` : texto);
+export const fechaHoraSinDia = (v) => (v ? aFecha(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+export const fechaCortaSinDia = (v) => (v ? aFecha(v).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
+export const fechaIsoSinDia = (p) => (p ? `${p.slice(8, 10)}/${p.slice(5, 7)}/${p.slice(0, 4)}` : '—');
+export const fechaHora = (v) => conDia(v, fechaHoraSinDia(v));
+export const fechaCorta = (v) => conDia(v, fechaCortaSinDia(v));
+export const fechaIso = (p) => conDia(p, fechaIsoSinDia(p));
 export const horaCorta = (v) => (v ? new Date(v).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) : '');
-export const fechaIso = (p) => (p ? `${p.slice(8, 10)}/${p.slice(5, 7)}/${p.slice(0, 4)}` : '—');
 export const ORIGEN = { saldo_inicial: 'Saldo inicial', sobre: 'Sobre de caja', concepto: 'Concepto', pago_proveedor: 'Pago a proveedor', gasto: 'Gasto', conteo: 'Conteo' };
 /** `cambio` = efectivo por transferencia (0175): en la base queda como transferencia con `cambioPor`. */
 export const MEDIO = { efectivo: 'efectivo', deposito: 'depósito', transferencia: 'transferencia', cambio: 'efectivo por transferencia' };
