@@ -2,12 +2,14 @@
  * PEDIR CADETE (20/10/2026, pedido del dueño): un pedido con envío se le pasa
  * al cadete con un botón. Abre WhatsApp, en la app, en el chat del cadete
  * cargado en Tienda online › Configuración, con el mensaje ya escrito: pedido,
- * cliente, teléfono, dirección, ubicación del mapa y cuántos artículos lleva.
+ * cliente, teléfono, dirección, ubicación del mapa, para cuándo (23/10/2026)
+ * y cuántos artículos lleva.
  * Queda revisarlo y tocar enviar.
  */
 import { abrirWhatsApp } from '@shared/utils/whatsapp.js';
 import { num } from '@modules/productos/domain/format.js';
 import { direccionOrden, mapaOrden, telLegible, telefonoWa } from './constants.js';
+import { cuandoDe, textoCuando } from './cuandoEnvio.js';
 
 /** El pedido se entrega en un domicilio (todo lo que no es retiro en el local). */
 export const llevaEnvio = (p) => !!p?.entrega && p.entrega !== 'retiro';
@@ -28,6 +30,7 @@ export function textoCadete(p, cliente) {
     `📞 Teléfono: ${tel ? telLegible(tel.slice(3)) : telCrudo || 'sin teléfono'}`,
     `📍 Dirección: ${direccion || 'a confirmar con el cliente'}`,
     mapa && `🗺️ Ubicación: ${mapa}`,
+    cuandoDe(p) && `🕒 Cuándo: ${textoCuando(cuandoDe(p))}`,
     `📦 Artículos: ${num(articulos)} (${items.length} producto${items.length === 1 ? '' : 's'})`,
   ].filter(Boolean).join('\n');
 }

@@ -32,6 +32,7 @@ const LLAVES = {
   montoMinimoCamioneta: 'mayorista',
   tiendaMinoristaEnvioGratisDesde: 'minorista',
   tiendaMinoristaMapsKey: 'minorista',
+  tiendaMinoristaLocalEnvios: 'minorista',
   tiendaCadeteWhatsapp: 'general',
 };
 const PESTANAS = [
@@ -63,6 +64,48 @@ function Interruptor({ label, hint, checked, onChange }) {
         {label}
       </label>
       {hint && <div className={s.hint} style={{ margin: '4px 0 0 26px' }}>{hint}</div>}
+    </div>
+  );
+}
+
+/** Los días como los guardan los locales (General › Locales). */
+const DIAS_LOCAL = [['lun', 'Lun'], ['mar', 'Mar'], ['mie', 'Mié'], ['jue', 'Jue'], ['vie', 'Vie'], ['sab', 'Sáb'], ['dom', 'Dom']];
+
+/**
+ * EL HORARIO DE LOS ENVÍOS (23/10/2026): de qué local es. Con él, el checkout
+ * minorista ofrece «lo antes posible» solo abierto y las franjas de 20 minutos.
+ * Vacío = el primer local con horario. Los locales se cargan en General.
+ */
+function LocalEnvios({ value, onChange, disabled }) {
+  const [locales, setLocales] = useState(null);
+  useEffect(() => {
+    httpClient.get('/configuracion/web').then((w) => setLocales(w.locales ?? [])).catch(() => setLocales([]));
+  }, []);
+  if (!locales) return null;
+  const conHorario = locales.filter((l) => DIAS_LOCAL.some(([d]) => l[d]));
+  const elegido = value ? locales.find((l) => l.nombre === value) : conHorario[0];
+  return (
+    <div className={s.field} style={{ maxWidth: 520 }}>
+      <label htmlFor="cfg-tienda-local-envios">Horario de los envíos a domicilio</label>
+      {conHorario.length ? (
+        <select id="cfg-tienda-local-envios" value={value ?? ''} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+          <option value="">El del primer local con horario ({conHorario[0].nombre || conHorario[0].direccion})</option>
+          {conHorario.map((l) => <option key={l.nombre} value={l.nombre}>El de {l.nombre || l.direccion}</option>)}
+        </select>
+      ) : (
+        <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>
+          Todavía no hay locales con horario: cargalo en <strong>General › Locales y horarios</strong>. Mientras tanto el cliente
+          solo puede pedir «lo antes posible» (sin saber si está abierto) o coordinarlo por WhatsApp.
+        </div>
+      )}
+      {elegido && (
+        <div className={s.hint} style={{ margin: '6px 0 0' }}>
+          {DIAS_LOCAL.map(([d, n]) => `${n} ${elegido[d] || 'cerrado'}`).join(' · ')}.
+          {' '}Al final del checkout el cliente elige: lo antes posible (20 a 40 min, solo con el local abierto), un horario de 20 minutos o coordinarlo por WhatsApp.
+          Un feriado cargado en Sistema › Feriados para la Distribuidora manda sobre este horario.
+        </div>
+      )}
+      {value && !elegido && <div className={s.hint} style={{ margin: '6px 0 0', color: 'var(--crm-color-danger)' }}>El local «{value}» ya no existe: elegí otro.</div>}
     </div>
   );
 }
@@ -287,6 +330,7 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
               {' '}<code>tiendaonline.saboryaroma.com/*</code> y <code>erp.saboryaroma.com/*</code>. Vacía = el checkout sin mapa, como antes.
             </div>
           </div>
+          <LocalEnvios value={draft.tiendaMinoristaLocalEnvios} disabled={draft.tiendaMinoristaActiva === false} onChange={set('tiendaMinoristaLocalEnvios')} />
         </Seccion>
         <BarriosEnvio mapsKey={config.tiendaMinoristaMapsKey} avisar={avisar} />
         {/* Los textos de la portada (17/10/2026): guardan con su propio botón, como los datos del sitio. */}

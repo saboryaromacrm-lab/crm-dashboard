@@ -21,6 +21,7 @@ import { ventasApi, errorMsg } from '../services/ventas.api.js';
 import { urlWhatsApp } from '@shared/utils/whatsapp.js';
 import { direccionOrden, envioOrden, mapaOrden, telefonoWa, totalConEnvio } from '../domain/constants.js';
 import { llevaEnvio, pedirCadete } from '../domain/cadete.js';
+import { PARA, RECIBIDOS, cuandoDe, diaAr, paraCuando, porEntrega, recibidoEn, textoCuando } from '../domain/cuandoEnvio.js';
 import {
   Table, PanelHead, Btn, Di, ModalShell, money, num, fmtFechaHora, usePaginado, s,
 } from '../components/ui.jsx';
@@ -64,9 +65,12 @@ function Entrega({ orden }) {
     ? `Envío a domicilio · ${envio == null ? 'se coordina' : envio === 0 ? 'gratis' : money(envio)}`
     : ENTREGAS[orden.entrega] ?? orden.entrega;
   const mapa = mapaOrden(orden);
+  /* Para cuándo lo quiere (23/10/2026): lo que eligió en el checkout minorista. */
+  const cuando = textoCuando(cuandoDe(orden));
   return (
     <>
       {etiqueta}
+      {cuando && <div className={s.hint} style={{ margin: 0, fontWeight: 600 }}>🕒 {cuando}</div>}
       {conEnvio && (
         direccion
           ? <div className={s.hint} style={{ margin: 0 }}>📍 {direccion}</div>
@@ -326,6 +330,9 @@ export function OrdenesPanel() {
   const [modo, setModo] = useState('');
   /** Filtro por barrio (0185): '' = todos. */
   const [barrio, setBarrio] = useState('');
+  /** Filtros de tiempo (23/10/2026): cuándo se recibió y para cuándo quiere el envío. */
+  const [recibido, setRecibido] = useState('');
+  const [para, setPara] = useState('');
 
   const { data, loading, error, reload } = useResource('ordenes-web', async () => {
     const todos = await ventasApi.presupuestos();
@@ -333,17 +340,21 @@ export function OrdenesPanel() {
   });
   const todas = useMemo(() => data ?? [], [data]);
   const barrios = useMemo(() => [...new Set(todas.map((p) => p.webCliente?.barrio).filter(Boolean))].sort(), [todas]);
-  const ordenes = useMemo(
-    () => todas.filter((p) => (!modo || modoDe(p) === modo) && (!barrio || p.webCliente?.barrio === barrio)),
-    [todas, modo, barrio],
-  );
+  const hoy = diaAr(new Date());
+  const ordenes = useMemo(() => {
+    const l = todas.filter((p) => (!modo || modoDe(p) === modo) && (!barrio || p.webCliente?.barrio === barrio)
+      && recibidoEn(p, recibido, hoy) && paraCuando(p, para, hoy));
+    /* Con «para cuándo», lo que hay que entregar antes va primero. */
+    return para && para !== 'whatsapp' ? l.sort(porEntrega) : l;
+  }, [todas, modo, barrio, recibido, para, hoy]);
   const cuenta = (m) => todas.filter((p) => modoDe(p) === m).length;
+  const conCuando = todas.some((p) => cuandoDe(p));
 
   // La bandeja se recarga sola cuando el poller detecta que el contador
   // cambió: el pedido nuevo aparece sin tocar nada (igual que el badge).
   const pendientesWeb = useSyncExternalStore(ordenesWeb.subscribe, ordenesWeb.count, ordenesWeb.count);
   useEffect(() => { reload(); }, [pendientesWeb, reload]);
-  const pag = usePaginado(ordenes, 'ordenesWeb', `${modo}|${barrio}`);
+  const pag = usePaginado(ordenes, 'ordenesWeb', `${modo}|${barrio}|${recibido}|${para}`);
 
   /** El detalle (con stock por renglón) se pide al abrir cualquier modal. */
   const abrir = async (tipo, p) => {
@@ -385,6 +396,14 @@ export function OrdenesPanel() {
           <select value={barrio} onChange={(e) => setBarrio(e.target.value)} aria-label="Filtrar por barrio" style={{ width: 'auto' }}>
             <option value="">Todos los barrios</option>
             {barrios.map((b) => <option key={b} value={b}>B° {b}</option>)}
+          </select>
+        )}
+        <select value={recibido} onChange={(e) => setRecibido(e.target.value)} aria-label="Cuándo se recibió" style={{ width: 'auto' }}>
+          {RECIBIDOS.map(([v, l]) => <option key={v} value={v}>{l}{v ? ` (${todas.filter((p) => recibidoEn(p, v, hoy)).length})` : ''}</option>)}
+        </select>
+        {conCuando && (
+          <select value={para} onChange={(e) => setPara(e.target.value)} aria-label="Para cuándo es el envío" style={{ width: 'auto' }}>
+            {PARA.map(([v, l]) => <option key={v} value={v}>{l}{v ? ` (${todas.filter((p) => paraCuando(p, v, hoy)).length})` : ''}</option>)}
           </select>
         )}
       </div>
