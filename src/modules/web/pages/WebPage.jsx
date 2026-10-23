@@ -259,12 +259,11 @@ function ContenidoPanel({ catalogo, recargar, avisar }) {
         <Btn variant="btn-primary" small onClick={abrirAlta} disabled={editando !== null}>+ Agregar slide</Btn>
       </div>
 
-      {slides.length === 0 && editando === null && (
-        <div className={cx(s.callout, s.warn)}>
-          La portada no tiene ningún slide: el sitio arranca directo en las secciones de productos.
-          Agregá al menos uno para tener un banner de bienvenida.
-        </div>
-      )}
+      {/* La portada mayorista arma sus banners sola (23/10/2026): acá van solo los propios, con imagen. */}
+      <div className={cx(s.callout, s.info)}>
+        La portada mayorista arma sus banners sola con el catálogo: las ofertas, las marcas con logo y fotos, y lo que volvió a stock.
+        Acá podés sumar banners propios: van primero y <strong>solo se muestran los que tienen imagen</strong>.
+      </div>
 
       {slides.map((sl, i) => (
         <div key={sl.id} className={s.card} style={{ padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -281,7 +280,7 @@ function ContenidoPanel({ catalogo, recargar, avisar }) {
                 borderRadius: 8, fontSize: 10.5, color: 'var(--crm-color-text-muted)', textAlign: 'center',
               }}
               >
-                ilustración por defecto
+                sin imagen: no se muestra
               </span>
             )}
           <div style={{ flex: 1, minWidth: 0 }}>
