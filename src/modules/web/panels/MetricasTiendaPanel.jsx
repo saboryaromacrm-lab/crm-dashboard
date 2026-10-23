@@ -34,6 +34,7 @@ import { describirOferta } from '@modules/ventas/domain/ofertas.js';
 import { Barras, Columnas, Reparto } from '@modules/gerencia/panels/metricas/graficos.jsx';
 import { DIAS_SEMANA, PRESETS, compacto, etiquetaPeriodo, fechaLarga, nombrePaso, pasoPara, pctTxt, rangoDe, tituloPeriodo } from '@modules/gerencia/panels/metricas/formato.js';
 import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles, Variacion } from '@modules/gerencia/panels/metricas/piezas.jsx';
+import { LinksMedibles } from '../components/LinksMedibles.jsx';
 
 const MODOS = [['mayorista', 'Tienda mayorista'], ['minorista', 'Tienda minorista']];
 const ESTADOS = [
@@ -216,6 +217,7 @@ export function MetricasTiendaPanel() {
           </Grilla>
 
           <DeDondeLlegan o={d.trafico.origenes} sesiones={d.resumen.sesiones.ahora} />
+          <LinksMedibles modo={modo} />
 
           {/* ============================ PEDIDOS ============================ */}
           <Grilla>
