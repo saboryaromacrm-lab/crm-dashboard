@@ -140,6 +140,8 @@ function CatalogoProductos() {
   const { store, isAdmin, openModal, toast } = useProductos();
   /* Acciones en lote (13/10/2026): las mismas que en Almacén › Existencias. */
   const puedeLote = store.can('compras.productos');
+  /* Exportar para el ERP Maxi (24/10/2026): lleva costos y proveedores, así que solo el superadmin. */
+  const puedeExportarMaxi = store.rolActual() === 'superadmin';
   const { sel, alternar, limpiar } = useSeleccionLote();
   const [q, setQ] = useState('');
   const [tipo, setTipo] = useState('');
@@ -363,6 +365,14 @@ function CatalogoProductos() {
           <div style={{ display: 'flex', gap: 8 }}>
             {/* Las cargas masivas viven en la pestaña «Actualizar e importar» (4/10/2026). */}
             <Btn onClick={exportar} disabled={!productos.length}>Exportar CSV</Btn>
+            {puedeExportarMaxi && (
+              <Btn
+                onClick={() => openModal('exportarProductos', sel.size ? { ids: [...sel], tildados: true } : { ids: idsFiltro, tildados: false })}
+                disabled={!sel.size && !productos.length}
+              >
+                Exportar para ERP Maxi
+              </Btn>
+            )}
             <Btn variant="btn-primary" onClick={() => openModal('producto', {})}>+ Nuevo producto</Btn>
           </div>
         )}
@@ -448,6 +458,7 @@ function CatalogoProductos() {
           {controlF && ' Se cambia en el detalle de cada producto (pestaña Resumen).'}
           {imagenF && ' La foto se carga en el detalle de cada producto (pestaña Tienda online), o de a muchas con «Fotos en lote» y «Modo ráfaga».'}
           {isAdmin && ' «Exportar CSV» alcanza solo a los filtrados.'}
+          {puedeExportarMaxi && ' «Exportar para ERP Maxi» lleva los filtrados, o solo los tildados si tildaste alguno.'}
         </div>
       )}
       {puedeLote && <BarraLote id="prod-lote-accion" sel={sel} idsFiltro={idsFiltro} alternar={alternar} limpiar={limpiar} />}

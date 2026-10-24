@@ -338,24 +338,34 @@ function olvidarBlobs() {
  * base). Distinto de `urlProtegida` en las dos cosas que importan acá: NO
  * cachea (un respaldo viejo servido como nuevo es peor que ninguno) y dispara
  * la descarga con el nombre que mandó el servidor en Content-Disposition.
+ * Con `cuerpo` va por POST (la exportación de productos manda la lista de ids,
+ * que en una dirección no entra).
  */
-async function descargar(path, nombrePorDefecto = 'archivo') {
+async function descargar(path, nombrePorDefecto = 'archivo', cuerpo) {
   const url = path.startsWith('http') ? path : `${appConfig.api.baseUrl}${path}`;
   const token = leerSesion()?.token;
+  const metodo = cuerpo === undefined ? 'GET' : 'POST';
   let response;
   try {
     response = await fetchConTimeout(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      method: metodo,
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(cuerpo === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      ...(cuerpo === undefined ? {} : { body: JSON.stringify(cuerpo) }),
     });
   } catch {
-    throw new HttpError(`Sin respuesta del servidor: GET ${path}`, {
+    throw new HttpError(`Sin respuesta del servidor: ${metodo} ${path}`, {
       sinRespuesta: true,
       data: { message: 'No llegó la respuesta del servidor.' },
     });
   }
   if (response.status === 401) sesionVencida();
   if (!response.ok) {
-    throw new HttpError(`Request failed: ${response.status}`, { status: response.status });
+    /* El porqué del servidor («Elegí al menos un producto…») viaja para que la pantalla lo muestre. */
+    const data = await response.json().catch(() => null);
+    throw new HttpError(`Request failed: ${response.status}`, { status: response.status, data });
   }
   const nombre =/filename="?([^";]+)"?/.exec(response.headers.get('content-disposition') || '')?.[1]
     || nombrePorDefecto;
