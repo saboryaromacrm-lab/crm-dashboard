@@ -13,8 +13,8 @@ import { ventasApi, errorMsg } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO, TIPOS_OFERTA, norm } from '../../domain/constants.js';
 import { resolverOfertas, describirOferta, alcanzaRenglon } from '../../domain/ofertas.js';
 import { ModalShell, money, s } from '../ui.jsx';
+import { DiasSemana } from '../DiasSemana.jsx';
 
-const DIAS = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
 
 /* ------------------------------------------------------------------ *
  * Alcance: buscador + fichas
@@ -282,14 +282,6 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
     componentes: componentes.map((c) => ({ productoId: c.productoId, cantidad: Number(c.cantidad) || 1 })),
   }), [f, alcances, componentes]);
 
-  const toggleDia = (i) => {
-    const base = (f.dias && f.dias.length === 7 ? f.dias : '1111111').split('');
-    base[i] = base[i] === '1' ? '0' : '1';
-    const mask = base.join('');
-    set({ dias: mask === '1111111' ? '' : mask });
-  };
-  const diaActivo = (i) => !f.dias || f.dias[i] === '1';
-
   const toggleMedio = (m) => {
     const ya = f.mediosPago.split(',').map((x) => x.trim()).filter(Boolean);
     const next = ya.includes(m) ? ya.filter((x) => x !== m) : [...ya, m];
@@ -507,18 +499,7 @@ export function OfertaFormModal({ oferta, items = [], universo = [], onListo, ve
         </div>
         <div className={s.field}>
           <label>Días</label>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {DIAS.map((d, i) => (
-              <button
-                key={d} type="button"
-                className={cx(s.badge)}
-                style={{ cursor: 'pointer', opacity: diaActivo(i) ? 1 : 0.35, userSelect: 'none' }}
-                onClick={() => toggleDia(i)}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
+          <DiasSemana value={f.dias} onChange={(dias) => set({ dias })} />
         </div>
 
         {/* Dónde corre. Existía en el dato y en la tabla, pero no había forma de

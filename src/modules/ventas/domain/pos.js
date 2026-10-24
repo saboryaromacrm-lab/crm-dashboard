@@ -13,7 +13,7 @@ import { contextoResolucion, resolverRenglon } from './listas.js';
 
 /** Los orígenes que dicen "el cajero aceptó el aviso": al retomar un ticket, el mayorista sigue aceptado. */
 const ORIGENES_ACEPTADOS = new Set(['cliente', 'auto', 'marca', 'bulto', 'monto']);
-import { resolverOfertas } from './ofertas.js';
+import { resolverOfertas, textoDias, valeElDia } from './ofertas.js';
 
 export const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 /** Miles con punto, como en toda la caja. Enteros: el bulto no existe en el granel. */
@@ -843,6 +843,7 @@ export function descuentosDisponibles(estado, { esAdmin = false } = {}) {
       const puesto = puestos.includes(d.id);
       let motivo = '';
       if (d.vence && new Date(d.vence).getTime() < t) motivo = 'Venció';
+      else if (!valeElDia(d.dias, new Date(t))) motivo = `Hoy no: es solo ${textoDias(d.dias)}`;
       else if (d.sucursalId != null && sucursalId != null && d.sucursalId !== sucursalId) {
         motivo = 'Es de otra sucursal';
       } else if (d.requiereAdmin && !esAdmin) motivo = 'Lo aplica un administrador';
@@ -876,7 +877,7 @@ export function descuentosParaApi(estado) {
   return (estado.descuentos ?? []).filter((id) => {
     const d = (estado.ctx.descuentos ?? []).find((x) => x.id === id);
     if (!d || !listas.has(d.listaId)) return false;
-    return !(d.vence && new Date(d.vence).getTime() < ahora);
+    return !(d.vence && new Date(d.vence).getTime() < ahora) && valeElDia(d.dias, new Date(ahora));
   });
 }
 
@@ -937,6 +938,7 @@ export function cambioDeDescuento(estado, { esAdmin = false } = {}) {
       : catalogo.find((x) => x.efectivoDeId === d.id);
     if (!otro || otro.activo === false) continue;
     if (otro.vence && new Date(otro.vence).getTime() < ahora) continue;
+    if (!valeElDia(otro.dias, new Date(ahora))) continue;
     if (otro.sucursalId != null && sucursalId != null && otro.sucursalId !== sucursalId) continue;
     if (otro.requiereAdmin && !esAdmin) continue;
     const ids = puestos.map((x) => (x === id ? otro.id : x));

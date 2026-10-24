@@ -31,6 +31,22 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
  * ------------------------------------------------------------------ */
 
 /**
+ * ¿VALE ESTE DÍA DE LA SEMANA? La máscara de ofertas y descuentos va de lunes a
+ * domingo ('0010000' = solo miércoles); vacía, todos los días. `getDay()`
+ * arranca en domingo, de ahí el corrimiento. Espejo de `valeElDia` en la API.
+ */
+export function valeElDia(dias, t) {
+  return !dias || dias.length !== 7 || dias[(t.getDay() + 6) % 7] === '1';
+}
+
+const NOMBRES_DIAS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados', 'domingos'];
+/** «los miércoles», «los lunes y miércoles»: para avisar por qué un descuento hoy no vale. */
+export function textoDias(dias) {
+  const n = NOMBRES_DIAS.filter((_, i) => dias[i] === '1');
+  return `los ${n.length > 1 ? `${n.slice(0, -1).join(', ')} y ${n[n.length - 1]}` : n[0] ?? ''}`;
+}
+
+/**
  * ¿La oferta está viva AHORA, ACÁ? El catálogo manda todas las activas y esto
  * se evalúa en cada recálculo: una promo puede arrancar o vencer en medio del
  * turno sin recargar la caja.
@@ -40,8 +56,7 @@ export function ofertaVigente(o, { ahora, sucursalId }) {
   const t = ahora instanceof Date ? ahora : new Date(ahora || Date.now());
   if (o.desde && t < new Date(o.desde)) return false;
   if (o.hasta && t > new Date(o.hasta)) return false;
-  // Máscara lunes→domingo; getDay() arranca en domingo, de ahí el corrimiento.
-  if (o.dias && o.dias.length === 7 && o.dias[(t.getDay() + 6) % 7] !== '1') return false;
+  if (!valeElDia(o.dias, t)) return false;
   if (o.sucursales && sucursalId != null) {
     const ids = String(o.sucursales).split(',').map((x) => x.trim()).filter(Boolean);
     if (ids.length && !ids.includes(String(sucursalId))) return false;

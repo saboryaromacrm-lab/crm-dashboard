@@ -5,10 +5,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  agruparDescuentos, buscarEnCatalogo, descuentosDisponibles, bultoAbajo, bultoArriba, bultoDeFila, calcularRenglon, cambioDeDescuento, descuentosConMedio, desgloseBulto,
+  agruparDescuentos, buscarEnCatalogo, descuentosDisponibles, descuentosParaApi, bultoAbajo, bultoArriba, bultoDeFila, calcularRenglon, cambioDeDescuento, descuentosConMedio, desgloseBulto,
   empujonMayorista, esPaquete, porBulto, textoBulto, totalesTicket,
   unidadesDeLista, ticketDesdeBorrador, ticketReducer, ticketInicial,
 } from './pos.js';
+import { valeElDia } from './ofertas.js';
 
 test('cantidad: lo que se vende por unidad va entero; el granel suelto admite decimales', () => {
   const base = { precioUnitario: 100, precioLista: 100, descuento: 0, ofertaDescuento: 0, iva: 21 };
@@ -392,6 +393,26 @@ test('descuentosDisponibles: el general y su «(efectivo)» se cambian entre sí
   const d = descuentosDisponibles(e);
   assert.equal(d.find((x) => x.id === 1).aplicable, true, 'el general del mismo descuento se puede elegir');
   assert.equal(d.find((x) => x.id === 3).aplicable, false, 'otro descuento de la misma lista, no');
+});
+
+test('descuentos con días (24/10/2026): otro día se ve con el motivo, no descuenta y no viaja a la API', () => {
+  const catalogo = { listas: [{ listaId: 1, modalidadId: 10, esBase: true, etiqueta: 'Minorista 1' }], reglasMarca: [] };
+  const precios = new Map([['p5', [{ listaId: 1, precio: 100 }]]]);
+  const miercoles = new Date(2026, 9, 21, 12).toISOString();
+  const jueves = new Date(2026, 9, 22, 12).toISOString();
+  const descuentos = [{ id: 7, nombre: 'Miércoles', porcentaje: 10, listaId: 1, activo: true, efectivoDeId: null, dias: '0010000' }];
+  const item = { key: 'p5', productoId: 5, nombre: 'Coca 2L', iva: 21, precio: 100, stock: 50 };
+  const armar = (ahora) => {
+    const e = ticketReducer({ ...ticketInicial, ctx: { ...ticketInicial.ctx, catalogo, precios, descuentos, ahora } }, { tipo: 'agregar', item, cantidad: 1 });
+    return ticketReducer(e, { tipo: 'descuentos', ids: [7] });
+  };
+  const mie = armar(miercoles);
+  assert.equal(descuentosDisponibles(mie)[0].motivo, '');
+  assert.deepEqual(descuentosParaApi(mie), [7]);
+  const jue = armar(jueves);
+  assert.equal(descuentosDisponibles(jue)[0].motivo, 'Hoy no: es solo los miércoles');
+  assert.deepEqual(descuentosParaApi(jue), [], 'no viaja: el servidor lo rechazaría');
+  assert.equal(valeElDia('', new Date(jueves)), true, 'sin días = todos');
 });
 
 test('esPaquete: solo el paquete de un granel se le pide a fraccionado (0170)', () => {

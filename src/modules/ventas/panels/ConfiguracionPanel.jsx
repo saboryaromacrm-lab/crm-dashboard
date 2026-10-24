@@ -7,6 +7,7 @@ import { ventasApi } from '../services/ventas.api.js';
 import { CONDICIONES_IVA, MEDIOS_PAGO, OPCIONES_REDONDEO_PRECIO } from '../domain/constants.js';
 import { PanelHead, Btn, s } from '../components/ui.jsx';
 import { PanelArca } from '../components/PanelArca.jsx';
+import { DiasSemana } from '../components/DiasSemana.jsx';
 import { MercadoPagoPanel } from '../components/MercadoPagoPanel.jsx';
 import { ListasPanel } from './ListasPanel.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
@@ -96,12 +97,12 @@ const fechaInput = (iso) => {
 const estaVencido = (iso) => !!iso && new Date(iso).getTime() < Date.now();
 
 const FILA_VACIA = {
-  nombre: '', porcentaje: '', porcentajeEfectivo: '', vence: '', medioPago: '', listaId: '', sucursalId: '', requiereAdmin: false,
+  nombre: '', porcentaje: '', porcentajeEfectivo: '', vence: '', dias: '', medioPago: '', listaId: '', sucursalId: '', requiereAdmin: false,
 };
 
 /** El borrador de una fila existente; `d.pareja` es su % en efectivo (0149). */
 const filaDe = (d) => ({
-  nombre: d.nombre, porcentaje: d.porcentaje, porcentajeEfectivo: d.pareja?.porcentaje ?? '', vence: fechaInput(d.vence),
+  nombre: d.nombre, porcentaje: d.porcentaje, porcentajeEfectivo: d.pareja?.porcentaje ?? '', vence: fechaInput(d.vence), dias: d.dias ?? '',
   medioPago: d.medioPago ?? '', listaId: d.listaId ?? '', sucursalId: d.sucursalId ?? '',
   requiereAdmin: !!d.requiereAdmin,
 });
@@ -122,6 +123,7 @@ function FilaDescuento({ d, listas, sucursales, sucursalesTodas = [], onGuardar,
     // Vacío = sin % en efectivo (si lo tenía, se saca). Con un medio exigido no corresponde.
     porcentajeEfectivo: f.medioPago || f.porcentajeEfectivo === '' ? null : Number(f.porcentajeEfectivo),
     vence: f.vence || '',
+    dias: f.dias,
     medioPago: f.medioPago || '',
     listaId: Number(f.listaId) || 0,
     sucursalId: f.sucursalId === '' ? null : Number(f.sucursalId),
@@ -187,6 +189,9 @@ function FilaDescuento({ d, listas, sucursales, sucursalesTodas = [], onGuardar,
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 8 }}>
+        {/* Los días en que vale (24/10/2026): todos prendidos = todos los días. */}
+        <span style={{ fontSize: 12.5 }}>Vale</span>
+        <DiasSemana value={f.dias} onChange={(dias) => setF((x) => ({ ...x, dias }))} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}>
           <input
             type="checkbox"
