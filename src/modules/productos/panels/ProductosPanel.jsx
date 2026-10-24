@@ -8,6 +8,7 @@ import { useProductos } from '../context/ProductosContext.jsx';
 import { FormatosPorProveedorPanel } from './FormatosPorProveedorPanel.jsx';
 import { ActualizarImportarPanel } from './ActualizarImportarPanel.jsx';
 import { BarraLote, CasillaLote, CasillaTodos } from '../components/AccionesLote.jsx';
+import { FiltroVarios } from '../components/FiltroVarios.jsx';
 import { useSeleccionLote } from '../hooks/useSeleccionLote.js';
 import { Miniatura } from '@modules/web/components/Miniatura.jsx';
 import { SubirFotosLoteModal } from '@modules/web/components/SubirFotosLoteModal.jsx';
@@ -145,7 +146,8 @@ function CatalogoProductos() {
   const { sel, alternar, limpiar } = useSeleccionLote();
   const [q, setQ] = useState('');
   const [tipo, setTipo] = useState('');
-  const [marca, setMarca] = useState('');
+  /** Las marcas elegidas (24/10/2026: se pueden elegir varias); ninguna = todas. */
+  const [marcas, setMarcas] = useState([]);
   const [categoria, setCategoria] = useState('');
   const [proveedorId, setProveedorId] = useState('');
   /**
@@ -185,12 +187,13 @@ function CatalogoProductos() {
   const productos = useMemo(() => {
     const ql = norm(q);
     const provIds = proveedoresDelFiltro(proveedorId, store.state.proveedores);
+    const marcasSet = new Set(marcas);
     const lista = store.state.productos.filter((p) => {
       const est = p.estado || 'activo';
       if (estadoF === 'vigentes' && est === 'archivado') return false;
       if (estadoF !== 'vigentes' && estadoF !== '' && est !== estadoF) return false;
       if (sinHijos ? !faltanFraccionados(p) : sinBulto ? !faltaBulto(p) : tipo && p.tipo !== tipo) return false;
-      if (marca && p.marca !== marca) return false;
+      if (marcasSet.size && !marcasSet.has(p.marca)) return false;
       if (categoria && p.categoria !== categoria) return false;
       if (provIds && !(p.formatosCompra || []).some((e) => provIds.has(e.proveedorId))) return false;
       if (imagenF === 'con' && !p.fotoUrl) return false;
@@ -214,7 +217,7 @@ function CatalogoProductos() {
       : lista;
     // `configVentas`: el control efectivo depende de las llaves generales.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.state.productos, store.state.proveedores, store.state.configVentas, q, tipo, sinHijos, sinBulto, kgDe, marca, categoria, proveedorId, estadoF, controlF, imagenF]);
+  }, [store.state.productos, store.state.proveedores, store.state.configVentas, q, tipo, sinHijos, sinBulto, kgDe, marcas, categoria, proveedorId, estadoF, controlF, imagenF]);
 
   /*
    * CADA FRACCIONADO ES UNA FILA PROPIA (decisión del dueño, 9/8/2026): el
@@ -232,7 +235,7 @@ function CatalogoProductos() {
     return out;
   }, [productos]);
 
-  const hayFiltro = !!(q || tipo || marca || categoria || proveedorId || controlF || imagenF || estadoF !== 'vigentes');
+  const hayFiltro = !!(q || tipo || marcas.length || categoria || proveedorId || controlF || imagenF || estadoF !== 'vigentes');
   /* El modo ráfaga recorre los de ESTA lista que no tienen foto: se filtra por marca o proveedor y se le pone foto a eso. */
   const sinFoto = useMemo(() => productos.filter((p) => !p.fotoUrl), [productos]);
   const avisar = (tipo, texto) => toast(texto, tipo);
@@ -278,7 +281,7 @@ function CatalogoProductos() {
     }),
   );
 
-  const pag = usePaginado(filasLista, 'productos', `${q}|${tipo}|${marca}|${categoria}|${proveedorId}|${estadoF}|${controlF}|${imagenF}`);
+  const pag = usePaginado(filasLista, 'productos', `${q}|${tipo}|${marcas.join(',')}|${categoria}|${proveedorId}|${estadoF}|${controlF}|${imagenF}`);
   /* Se eligen productos: los renglones de fraccionados no llevan casilla. */
   const idsPagina = pag.visibles.filter((f) => !f.pr).map((f) => f.p.id);
   const idsFiltro = useMemo(() => productos.map((p) => p.id), [productos]);
@@ -385,10 +388,7 @@ function CatalogoProductos() {
           <option value="">Todas las categorías</option>
           {opciones.categorias.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
-        <select className={s['select-inline']} value={marca} onChange={(e) => setMarca(e.target.value)}>
-          <option value="">Todas las marcas</option>
-          {opciones.marcas.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
+        <FiltroVarios opciones={opciones.marcas} elegidas={marcas} onChange={setMarcas} todas="Todas las marcas" plural="marcas" />
         <select className={s['select-inline']} value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
           <option value="">Todos los proveedores</option>
           <OpcionLocales proveedores={store.state.proveedores.filter((p) => p.proveeMercaderia !== false)} />
@@ -439,7 +439,7 @@ function CatalogoProductos() {
           <Btn
             small
             onClick={() => {
-              setQ(''); setTipo(''); setMarca(''); setCategoria(''); setProveedorId('');
+              setQ(''); setTipo(''); setMarcas([]); setCategoria(''); setProveedorId('');
               setControlF(''); setImagenF(''); setEstadoF('vigentes');
             }}
           >
