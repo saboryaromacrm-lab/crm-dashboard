@@ -7,8 +7,9 @@
  * informe o de la configuración) viene en `cfg`. Tres pestañas:
  *   · Análisis: el botón «Analizar ahora» (con un enfoque opcional), el informe
  *     con sus alertas («Útil / No aplica / Ya lo sé»: así aprende), el granel,
- *     lo que pregunta y lo que propone recordar, y las señales del sistema
- *     (reglas fijas, sin IA: se ven aunque la IA no esté configurada).
+ *     lo que pregunta y lo que propone recordar, las señales del sistema
+ *     (reglas fijas, sin IA: se ven aunque la IA no esté configurada) y la
+ *     charla para repreguntarle sobre ESE análisis (0198, 25/10/2026).
  *   · Preguntar: una conversación; la IA consulta el sistema para responder.
  *   · Configuración: la ficha del negocio, lo que ya sabe, el tope de gasto y
  *     «Ver los números que mira» (la foto entera, para comprobar).
@@ -173,14 +174,24 @@ function Analisis({ estado, bump, irA }) {
       )}
 
       {!id && informes && <Aviso tono="info">Todavía no hay análisis. Apretá «Analizar ahora».</Aviso>}
-      {id && loading && !informe ? <Cargando /> : informe && <Informe informe={informe} onCambio={() => setLista((n) => n + 1)} irA={irA} bump={bump} aprendidos={estado?.aprendizajes ?? []} />}
+      {id && loading && !informe ? <Cargando /> : informe && <Informe key={informe.id} informe={informe} onCambio={() => setLista((n) => n + 1)} irA={irA} bump={bump} estado={estado} />}
     </div>
   );
 }
 
-function Informe({ informe, onCambio, irA, bump, aprendidos }) {
+/** Para arrancar la charla de un análisis con un toque. */
+const SOBRE_EL_ANALISIS = ['¿De dónde salen esos números?', '¿Qué hago primero esta semana?', 'Explicámelo más simple.'];
+
+function Informe({ informe, onCambio, irA, bump, estado }) {
   const { InformeExtra, informeTitulo } = useCfg();
   const inf = informe.informe;
+  const aprendidos = estado?.aprendizajes ?? [];
+  /* La charla de este análisis: la que ya tenía o la que se empieza acá. */
+  const [charlaNueva, setCharlaNueva] = useState(null);
+  const charlaId = informe.conversacionId ?? charlaNueva;
+  /* «Preguntar sobre esto» de una alerta: deja el comienzo escrito en la charla. */
+  const [semilla, setSemilla] = useState(null);
+  const sobre = (texto) => setSemilla((x) => ({ texto, n: (x?.n ?? 0) + 1 }));
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {informe.estado === 'analizando' && (
@@ -195,11 +206,25 @@ function Informe({ informe, onCambio, irA, bump, aprendidos }) {
           sub={`Análisis del ${fechaHora(informe.fecha)}${informe.enfoque ? ` · enfoque: ${informe.enfoque}` : ''}`}
         >
           <div style={{ fontSize: 15, lineHeight: 1.55 }}>{inf.resumen}</div>
+          <div><Btn small onClick={() => sobre('')}>Preguntarle sobre este análisis</Btn></div>
         </Bloque>
       )}
-      {inf?.alertas?.map((a, i) => <Alerta key={i} a={a} i={i} informeId={informe.id} opinion={informe.opiniones?.[i]} onCambio={onCambio} />)}
+      {inf?.alertas?.map((a, i) => (
+        <Alerta key={i} a={a} i={i} informeId={informe.id} opinion={informe.opiniones?.[i]} onCambio={onCambio} preguntar={() => sobre(`Sobre «${a.titulo}»: `)} />
+      ))}
       {inf?.granel && <GranelInforme g={inf.granel} />}
       {inf && InformeExtra && <InformeExtra informe={informe} onCambio={onCambio} />}
+      {inf && (
+        <Bloque
+          titulo="Seguí la charla sobre este análisis"
+          sub="Repreguntale lo que no te cerró: tiene este análisis entero a mano y, si hace falta, consulta los números de hoy. La charla queda guardada acá (y en «Preguntar»)."
+        >
+          <Charla
+            convId={charlaId} alCrear={setCharlaNueva} inicio={{ informeId: informe.id }} estado={estado} bump={bump}
+            ejemplos={SOBRE_EL_ANALISIS} semilla={semilla} compacta
+          />
+        </Bloque>
+      )}
       {inf && (inf.preguntas?.length > 0 || inf.aprendizajesSugeridos?.length > 0) && (
         <Bloque titulo="Para conocer mejor tu negocio" sub="Lo que el asesor no puede saber con los números. Respondé en la ficha (Configuración) o guardá lo que propone recordar.">
           {inf.preguntas?.length > 0 && (
@@ -227,7 +252,7 @@ function Informe({ informe, onCambio, irA, bump, aprendidos }) {
   );
 }
 
-function Alerta({ a, i, informeId, opinion, onCambio }) {
+function Alerta({ a, i, informeId, opinion, onCambio, preguntar }) {
   const { api, areas } = useCfg();
   const [enviando, setEnviando] = useState(false);
   const [err, setErr] = useState('');
@@ -256,6 +281,7 @@ function Alerta({ a, i, informeId, opinion, onCambio }) {
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span className={s.hint} style={{ margin: 0, flex: 1, minWidth: 180 }}>Dónde verlo: {a.dondeVerlo}</span>
+        <Btn small onClick={preguntar}>Preguntar sobre esto</Btn>
         {OPINIONES.map(([v, l]) => (
           <Btn key={v} small variant={opinion?.valor === v ? 'btn-primary' : undefined} disabled={enviando} onClick={() => opinar(v)} aria-pressed={opinion?.valor === v}>{l}</Btn>
         ))}
@@ -337,31 +363,14 @@ function Preguntar({ estado, bump }) {
   const { api, ejemplos } = useCfg();
   const [convId, setConvId] = useState(null);
   const [lista, setLista] = useState(0);
-  const [pregunta, setPregunta] = useState('');
-  const [esperando, setEsperando] = useState(null); // la pregunta que se está respondiendo
   const [error, setError] = useState('');
-  const enVuelo = useRef(false);
-  const fin = useRef(null);
   const { data: convs } = useResource(`${api}:convs:${lista}`, () => httpClient.get(`${api}/conversaciones`));
-  const { data: conv, loading } = useResource(`${api}:conv:${convId}:${lista}`, () => httpClient.get(`${api}/conversaciones/${convId}`), { enabled: !!convId });
-  const mensajes = convId ? (conv?.mensajes ?? []) : [];
-  useEffect(() => { fin.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [mensajes.length, esperando]);
-
-  const preguntar = async (texto) => {
-    const q = String(texto ?? pregunta).trim();
-    if (!q || enVuelo.current) return;
-    enVuelo.current = true; setEsperando(q); setError(''); setPregunta('');
-    try {
-      /* Con herramientas puede tardar un minuto: más plazo que el de siempre. */
-      const r = await httpClient.post(`${api}/preguntar`, { pregunta: q, ...(convId ? { conversacionId: convId } : {}) }, { timeoutMs: 5 * 60_000 });
-      setConvId(r.id); setLista((n) => n + 1); bump();
-    } catch (e) { setError(errorMsg(e)); setPregunta(q); } finally { enVuelo.current = false; setEsperando(null); }
-  };
+  const crear = (id) => { setConvId(id); setLista((n) => n + 1); };
   const borrar = async () => {
     if (!convId || !window.confirm('¿Borrar esta conversación?')) return;
     try { await httpClient.delete(`${api}/conversaciones/${convId}`); setConvId(null); setLista((n) => n + 1); } catch (e) { setError(errorMsg(e)); }
   };
-  const deshabilitado = !estado?.configurado;
+  const sobreAnalisis = (c) => (c.informeId ? `sobre el análisis del ${fechaHora(c.informeFecha)} · ` : '');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -369,16 +378,67 @@ function Preguntar({ estado, bump }) {
         <label htmlFor="asesor-conv" className={s.hint} style={{ margin: 0 }}>Conversación</label>
         <select id="asesor-conv" className={s['select-inline']} value={convId ?? ''} onChange={(e) => setConvId(e.target.value ? Number(e.target.value) : null)} style={{ maxWidth: 420 }}>
           <option value="">Nueva conversación</option>
-          {(convs ?? []).map((c) => <option key={c.id} value={c.id}>{fechaHora(c.actualizadaEn)} · {c.titulo.slice(0, 60)}</option>)}
+          {(convs ?? []).map((c) => <option key={c.id} value={c.id}>{fechaHora(c.actualizadaEn)} · {sobreAnalisis(c)}{c.titulo.slice(0, 60)}</option>)}
         </select>
         {convId && <Btn small onClick={() => setConvId(null)}>Nueva</Btn>}
         {convId && <Btn small variant="btn-delete" onClick={borrar}>Borrar</Btn>}
       </div>
+      {error && <Aviso tono="warn">{error}</Aviso>}
+      <Charla convId={convId} alCrear={crear} estado={estado} bump={bump} ejemplos={ejemplos} />
+    </div>
+  );
+}
 
-      <div className={cx(s.card, s.cardPad)} style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 240 }}>
+/**
+ * UNA CONVERSACIÓN CON LA IA: los mensajes, la espera y la caja para preguntar.
+ * La usan «Preguntar» y la charla de cada análisis. `inicio`: lo que viaja al
+ * empezarla (el análisis del que nace); `alCrear(id)` avisa la conversación
+ * nueva; `semilla` ({texto, n}) deja algo escrito y pone el foco; `compacta`:
+ * sin alto mínimo y sin bajar la página hasta que se pregunte.
+ */
+function Charla({ convId, alCrear, inicio, estado, bump, ejemplos = [], semilla, compacta = false }) {
+  const { api } = useCfg();
+  const [lista, setLista] = useState(0);
+  const [pregunta, setPregunta] = useState('');
+  const [esperando, setEsperando] = useState(null); // la pregunta que se está respondiendo
+  const [error, setError] = useState('');
+  const enVuelo = useRef(false);
+  const fin = useRef(null);
+  const caja = useRef(null);
+  const preguntoAca = useRef(!compacta);
+  const { data: conv, loading } = useResource(`${api}:conv:${convId}:${lista}`, () => httpClient.get(`${api}/conversaciones/${convId}`), { enabled: !!convId });
+  const mensajes = convId ? (conv?.mensajes ?? []) : [];
+  useEffect(() => {
+    if (preguntoAca.current) fin.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  }, [mensajes.length, esperando]);
+  useEffect(() => {
+    if (!semilla) return;
+    setPregunta(semilla.texto);
+    caja.current?.focus();
+    caja.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [semilla]);
+
+  const preguntar = async (texto) => {
+    const q = String(texto ?? pregunta).trim();
+    if (!q || enVuelo.current) return;
+    enVuelo.current = true; preguntoAca.current = true; setEsperando(q); setError(''); setPregunta('');
+    try {
+      /* Con herramientas puede tardar un minuto: más plazo que el de siempre. */
+      const r = await httpClient.post(`${api}/preguntar`, { pregunta: q, ...(convId ? { conversacionId: convId } : inicio) }, { timeoutMs: 5 * 60_000 });
+      if (r.id !== convId) alCrear(r.id);
+      setLista((n) => n + 1); bump();
+    } catch (e) { setError(errorMsg(e)); setPregunta(q); } finally { enVuelo.current = false; setEsperando(null); }
+  };
+  const deshabilitado = !estado?.configurado;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className={cx(s.card, s.cardPad)} style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: compacta ? 0 : 240 }}>
         {!mensajes.length && !esperando && (
           <div style={{ display: 'grid', gap: 8 }}>
-            <div className={s.hint} style={{ margin: 0 }}>Preguntale lo que quieras de tus números: consulta el sistema en el momento para responder. Por ejemplo:</div>
+            <div className={s.hint} style={{ margin: 0 }}>
+              {compacta ? 'Por ejemplo:' : 'Preguntale lo que quieras de tus números: consulta el sistema en el momento para responder. Por ejemplo:'}
+            </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {ejemplos.map((x) => <Btn key={x} small onClick={() => preguntar(x)} disabled={deshabilitado || !!esperando}>{x}</Btn>)}
             </div>
@@ -397,7 +457,8 @@ function Preguntar({ estado, bump }) {
       {error && <Aviso tono="warn">{error}</Aviso>}
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <textarea
-          id="asesor-pregunta" value={pregunta} maxLength={2000} rows={2} disabled={deshabilitado || !!esperando}
+          id={inicio?.informeId ? `asesor-pregunta-${inicio.informeId}` : 'asesor-pregunta'} ref={caja}
+          value={pregunta} maxLength={2000} rows={2} disabled={deshabilitado || !!esperando}
           onChange={(e) => setPregunta(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); preguntar(); } }}
           placeholder={deshabilitado ? 'Falta la clave de la IA en el servidor.' : 'Escribí tu pregunta (Enter para enviar, Shift+Enter para otra línea)'}
