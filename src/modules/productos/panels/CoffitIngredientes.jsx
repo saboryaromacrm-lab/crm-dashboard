@@ -180,20 +180,34 @@ export function CoffitIngredientes() {
   /* Cada cambio de la lista vuelve a pedir el estado de CoffitCost (los «cambios sin mandar»). */
   const [version, setVersion] = useState(0);
   const recargar = () => { reload(); setVersion((v) => v + 1); };
-  /* Los proveedores que hay en la lista, de la última compra de cada ingrediente. */
-  const proveedores = useMemo(
-    () => [...new Set((data ?? []).map((f) => f.comprobante?.proveedor).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
-    [data],
-  );
+  /* Los ingredientes que coinciden con lo buscado: de acá salen la tabla y el filtro de proveedores. */
+  const coinciden = useMemo(() => {
+    const t = sinTildes(q.trim());
+    return t ? (data ?? []).filter((f) => sinTildes(`${f.nombre} ${f.marca} ${f.codigo}`).includes(t)) : (data ?? []);
+  }, [data, q]);
+  /*
+   * EL FILTRO DE PROVEEDORES ES DINÁMICO (25/10/2026, pedido del dueño): solo
+   * los que tienen ingredientes en lo que se está mirando (la última compra de
+   * cada uno), con cuántos. El elegido queda aunque la búsqueda lo deje en 0,
+   * para que el desplegable no pierda lo que dice.
+   */
+  const proveedores = useMemo(() => {
+    const n = new Map();
+    let sinCompra = 0;
+    for (const f of coinciden) {
+      if (!f.comprobante) sinCompra += 1;
+      else if (f.comprobante.proveedor) n.set(f.comprobante.proveedor, (n.get(f.comprobante.proveedor) ?? 0) + 1);
+    }
+    if (prov && prov !== SIN_COMPRA && !n.has(prov)) n.set(prov, 0);
+    return { lista: [...n].sort(([a], [b]) => a.localeCompare(b, 'es')), sinCompra };
+  }, [coinciden, prov]);
   /* Lo comprado más recientemente arriba (19/10/2026, pedido del dueño); los que no tienen compra, al final. */
   const filas = useMemo(() => {
-    const t = sinTildes(q.trim());
     const fecha = (f) => (f.comprobante ? Date.parse(f.comprobante.fecha) : -Infinity);
-    return (data ?? [])
-      .filter((f) => !t || sinTildes(`${f.nombre} ${f.marca} ${f.codigo}`).includes(t))
+    return coinciden
       .filter((f) => !prov || (prov === SIN_COMPRA ? !f.comprobante : f.comprobante?.proveedor === prov))
       .sort((a, b) => fecha(b) - fecha(a) || a.nombre.localeCompare(b.nombre, 'es'));
-  }, [data, q, prov]);
+  }, [coinciden, prov]);
   const conAviso = (data ?? []).filter((f) => f.aConfirmar?.length || f.costoBase == null).length;
 
   const quitar = async (f) => {
@@ -218,8 +232,8 @@ export function CoffitIngredientes() {
         <input type="search" placeholder="Buscar ingrediente…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar ingrediente" />
         <select className={s['select-inline']} value={prov} onChange={(e) => setProv(e.target.value)} aria-label="Proveedor de la última compra">
           <option value="">Todos los proveedores</option>
-          {proveedores.map((x) => <option key={x} value={x}>{x}</option>)}
-          <option value={SIN_COMPRA}>Sin compra todavía</option>
+          {proveedores.lista.map(([x, n]) => <option key={x} value={x}>{x} ({n})</option>)}
+          {(proveedores.sinCompra > 0 || prov === SIN_COMPRA) && <option value={SIN_COMPRA}>Sin compra todavía ({proveedores.sinCompra})</option>}
         </select>
         {conAviso > 0 && <span className={s.hint} style={{ margin: 0, color: 'var(--crm-color-warning)', fontWeight: 600 }}>{conAviso} con aviso</span>}
         <div style={{ marginLeft: 'auto' }}>
