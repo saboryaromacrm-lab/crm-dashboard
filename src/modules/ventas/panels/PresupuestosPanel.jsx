@@ -18,7 +18,7 @@ import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
 import { abrirWhatsApp } from '@shared/utils/whatsapp.js';
 import { direccionOrden, envioOrden, telefonoWa, totalConEnvio } from '../domain/constants.js';
-import { llevaEnvio, pedirCadete } from '../domain/cadete.js';
+import { envioAPagar, llevaEnvio, pasarCadeteAlCliente, pedirCadete } from '../domain/cadete.js';
 import { r2 } from '../domain/pos.js';
 import {
   Table, PanelHead, Btn, Pill, ModalShell, money, num, fmtFecha, usePaginado, s,
@@ -413,6 +413,14 @@ export function PresupuestosPanel() {
           🛵 Pedir cadete
         </Btn>,
       );
+      /* El envío lo paga el cliente: se le manda el link al chat del cadete (25/10/2026). */
+      if (envioAPagar(p)) {
+        acciones.push(
+          <Btn key="cadcli" small onClick={() => pasarCadeteAlCliente(p, { cliente: cli, cadete: config.tiendaCadeteWhatsapp, toast })} title="Le manda al cliente el link al chat del cadete, con los datos de su envío, para que coordine el pago">
+            📲 Cliente → cadete
+          </Btn>,
+        );
+      }
     }
     if (puedeCotizar && est === 'enviado') {
       acciones.push(<Btn key="c" variant="btn-primary" small disabled={ocupado} onClick={() => confirmar(p)}>Confirmar</Btn>);

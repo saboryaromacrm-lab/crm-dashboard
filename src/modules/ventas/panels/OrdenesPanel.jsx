@@ -20,7 +20,7 @@ import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
 import { urlWhatsApp } from '@shared/utils/whatsapp.js';
 import { direccionOrden, envioOrden, mapaOrden, telefonoWa, totalConEnvio } from '../domain/constants.js';
-import { llevaEnvio, pedirCadete } from '../domain/cadete.js';
+import { envioAPagar, llevaEnvio, pasarCadeteAlCliente, pedirCadete } from '../domain/cadete.js';
 import { PARA, RECIBIDOS, cuandoDe, diaAr, paraCuando, porEntrega, recibidoEn, textoCuando } from '../domain/cuandoEnvio.js';
 import {
   Table, PanelHead, Btn, Di, ModalShell, money, num, fmtFechaHora, usePaginado, s,
@@ -124,6 +124,11 @@ function DetalleOrdenModal({ orden, getCliente, onCerrar }) {
         ...(llevaEnvio(orden) ? [{
           texto: '🛵 Pedir cadete', clase: 'btn-ghost',
           onClick: () => pedirCadete(orden, { cliente: getCliente(orden.clienteId), cadete: config.tiendaCadeteWhatsapp, toast }),
+        }] : []),
+        /* El envío lo paga el cliente: le pasa el chat del cadete con sus datos (25/10/2026). */
+        ...(envioAPagar(orden) ? [{
+          texto: '📲 Cliente → cadete', clase: 'btn-ghost',
+          onClick: () => pasarCadeteAlCliente(orden, { cliente: getCliente(orden.clienteId), cadete: config.tiendaCadeteWhatsapp, toast }),
         }] : []),
         { texto: 'Cerrar', clase: 'btn-ghost', onClick: onCerrar },
       ]}
