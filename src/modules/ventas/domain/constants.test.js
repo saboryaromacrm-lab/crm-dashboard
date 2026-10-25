@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { direccionOrden, envioOrden, esNotaCredito, mapaOrden, norm, telefonoWa, totalConEnvio } from './constants.js';
+import { direccionOrden, envioOrden, esNotaCredito, mapaOrden, norm, origenPedido, telefonoWa, totalConEnvio } from './constants.js';
 
 test('telefonoWa: arma el número de WhatsApp o devuelve vacío', () => {
   assert.equal(telefonoWa('370 4123456'), '5493704123456');
@@ -58,4 +58,11 @@ test('envioOrden y totalConEnvio: costo, gratis, se coordina y las órdenes de a
 test('mapaOrden: el link al punto, o nada', () => {
   assert.equal(mapaOrden({ webCliente: { ubicacion: { lat: -26.18, lng: -58.17 } } }), 'https://www.google.com/maps/search/?api=1&query=-26.18,-58.17');
   assert.equal(mapaOrden({ webCliente: {} }), '');
+});
+
+test('origenPedido: el POS, o la tienda de donde vino (los web viejos, sin modo, eran mayoristas)', () => {
+  assert.equal(origenPedido({ origen: 'manual' }), 'pos');
+  assert.equal(origenPedido({ origen: 'web', modoTienda: 'minorista' }), 'minorista');
+  assert.equal(origenPedido({ origen: 'web', modoTienda: 'mayorista' }), 'mayorista');
+  assert.equal(origenPedido({ origen: 'web', modoTienda: null }), 'mayorista');
 });

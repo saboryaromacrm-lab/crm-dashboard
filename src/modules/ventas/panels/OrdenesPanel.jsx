@@ -19,7 +19,7 @@ import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
 import { urlWhatsApp } from '@shared/utils/whatsapp.js';
-import { direccionOrden, envioOrden, mapaOrden, telefonoWa, totalConEnvio } from '../domain/constants.js';
+import { direccionOrden, envioOrden, mapaOrden, origenPedido, telefonoWa, totalConEnvio } from '../domain/constants.js';
 import { envioAPagar, llevaEnvio, pasarCadeteAlCliente, pedirCadete } from '../domain/cadete.js';
 import { PARA, RECIBIDOS, cuandoDe, diaAr, paraCuando, porEntrega, recibidoEn, textoCuando } from '../domain/cuandoEnvio.js';
 import {
@@ -29,9 +29,9 @@ import {
 /* `camioneta` es el id interno; se lee «Envío sin costo» como en la tienda (4/10/2026). */
 const ENTREGAS = { retiro: 'Retiro en local', cadete: 'Cadete', camioneta: 'Envío sin costo' };
 
-/** De qué modo de la tienda vino la orden (0173): las anteriores a la tienda minorista son mayoristas. */
+/** De qué tienda vino la orden (0173): acá son todas web, así que `origenPedido` da minorista o mayorista. */
 const MODOS = { mayorista: { label: 'Mayorista', pill: 'est-transito' }, minorista: { label: 'Minorista', pill: 'est-recibida' } };
-const modoDe = (p) => (p.modoTienda === 'minorista' ? 'minorista' : 'mayorista');
+const modoDe = origenPedido;
 /** Cómo dijo que va a pagar (0190: lo pide un cupón que exige un medio). */
 const MEDIOS_TIENDA = { efectivo: 'Efectivo', transferencia: 'Transferencia' };
 function ModoPill({ orden }) {

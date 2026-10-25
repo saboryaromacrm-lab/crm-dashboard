@@ -17,7 +17,7 @@ import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
 import { abrirWhatsApp } from '@shared/utils/whatsapp.js';
-import { direccionOrden, envioOrden, telefonoWa, totalConEnvio } from '../domain/constants.js';
+import { ORIGENES_PEDIDO, direccionOrden, envioOrden, origenPedido, telefonoWa, totalConEnvio } from '../domain/constants.js';
 import { envioAPagar, llevaEnvio, pasarCadeteAlCliente, pedirCadete } from '../domain/cadete.js';
 import { r2 } from '../domain/pos.js';
 import {
@@ -36,6 +36,10 @@ const ESTADOS = {
 };
 /* `camioneta` es el id interno; se lee «Envío sin costo» como en la tienda (4/10/2026). */
 const ENTREGAS = { retiro: 'Retiro en local', cadete: 'Cadete', camioneta: 'Envío sin costo' };
+
+/** Lo que todavía hay que resolver (25/10/2026, el filtro por defecto): sin los cerrados ni los cancelados. */
+const PENDIENTES = 'pendientes';
+const resuelto = (est) => est === 'cerrado' || est === 'cancelado';
 
 /** Estado EFECTIVO: un enviado con la fecha pasada se muestra vencido. */
 const estadoDe = (p) => (
@@ -259,7 +263,9 @@ function ArmadoModal({ p, onGuardar, onCerrar }) {
 
 export function PresupuestosPanel() {
   const { clientes, usuarios, ctx, goPanel, toast, config } = useVentas();
-  const [filtroEstado, setFiltroEstado] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState(PENDIENTES);
+  /** De dónde vino (25/10/2026): '' = todos, o una clave de ORIGENES_PEDIDO. */
+  const [filtroOrigen, setFiltroOrigen] = useState('');
   const [q, setQ] = useState('');
   const [modal, setModal] = useState(null); // { tipo: 'armado', p }
   const [ocupado, setOcupado] = useState(false);
@@ -281,14 +287,16 @@ export function PresupuestosPanel() {
       // entran recién al aceptarse — mostrarlos en los dos lados era operarlos
       // dos veces.
       if (p.estado === 'pendiente') return false;
-      if (filtroEstado && estadoDe(p) !== filtroEstado) return false;
+      const est = estadoDe(p);
+      if (filtroEstado === PENDIENTES ? resuelto(est) : filtroEstado && est !== filtroEstado) return false;
+      if (filtroOrigen && origenPedido(p) !== filtroOrigen) return false;
       if (!ql) return true;
       const cli = clienteDe.get(p.clienteId)?.nombre ?? '';
       return p.codigo.toLowerCase().includes(ql) || cli.toLowerCase().includes(ql);
     });
-  }, [lista, filtroEstado, q, clienteDe]);
+  }, [lista, filtroEstado, filtroOrigen, q, clienteDe]);
 
-  const pag = usePaginado(filtrados, 'presupuestos', `${filtroEstado}|${q}`);
+  const pag = usePaginado(filtrados, 'presupuestos', `${filtroEstado}|${filtroOrigen}|${q}`);
 
   /**
    * CONFIRMAR (reserva el stock). Si el pedido lleva paquetes de un granel que
@@ -441,9 +449,12 @@ export function PresupuestosPanel() {
 
     return (
       <tr key={p.id}>
-        <td className={s.mono}>
-          {p.codigo}
-          {p.origen === 'web' && <span title="Pedido del sitio web" style={{ marginLeft: 4 }}>🌐</span>}
+        <td>
+          <span className={s.mono}>{p.codigo}</span>
+          {/* De dónde vino (25/10/2026, pedido del dueño): en la misma fila. */}
+          <div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
+            {ORIGENES_PEDIDO[origenPedido(p)].icono} {ORIGENES_PEDIDO[origenPedido(p)].label}
+          </div>
         </td>
         <td>
           <strong>{cli?.nombre ?? `Cliente #${p.clienteId}`}</strong>
@@ -498,9 +509,14 @@ export function PresupuestosPanel() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <select className={s['select-inline']} value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
+        <select className={s['select-inline']} value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} aria-label="Estado">
+          <option value={PENDIENTES}>Pendientes (sin cerrar ni cancelar)</option>
           <option value="">Todos los estados</option>
-          {Object.entries(ESTADOS).map(([id, e]) => <option key={id} value={id}>{e.label}</option>)}
+          {Object.entries(ESTADOS).filter(([id]) => id !== 'pendiente').map(([id, e]) => <option key={id} value={id}>{e.label}</option>)}
+        </select>
+        <select className={s['select-inline']} value={filtroOrigen} onChange={(e) => setFiltroOrigen(e.target.value)} aria-label="Origen">
+          <option value="">Todos los orígenes</option>
+          {Object.entries(ORIGENES_PEDIDO).map(([id, o]) => <option key={id} value={id}>{o.icono} {o.label}</option>)}
         </select>
         <Btn small onClick={reload} disabled={loading}>{loading ? 'Cargando…' : 'Actualizar'}</Btn>
       </div>
@@ -510,7 +526,7 @@ export function PresupuestosPanel() {
           { h: 'Código' }, { h: 'Cliente' }, { h: 'Fecha' }, { h: 'Vence' }, { h: 'Vendedor' },
           { h: 'Total', num: true }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' },
         ]}
-        empty={loading ? 'Cargando…' : 'Sin presupuestos. Cotizá el primero desde el POS con el botón «Presupuesto».'}
+        empty={loading ? 'Cargando…' : lista.some((p) => p.estado !== 'pendiente') ? 'Ningún presupuesto con estos filtros.' : 'Sin presupuestos. Cotizá el primero desde el POS con el botón «Presupuesto».'}
         pag={pag}
       >
         {filas}

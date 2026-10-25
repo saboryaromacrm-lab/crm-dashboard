@@ -192,6 +192,18 @@ export function envioOrden(p) {
 /** Lo que paga el cliente: la mercadería (con el descuento del barrio, si hubo) más el envío. */
 export const totalConEnvio = (p) => (Number(p?.total) || 0) + (envioOrden(p) || 0);
 
+/**
+ * DE DÓNDE VINO UN PEDIDO (25/10/2026): cotizado en el POS o de cada tienda
+ * online. Los pedidos web anteriores a la tienda minorista (0173) no tienen
+ * `modoTienda`: eran mayoristas.
+ */
+export const ORIGENES_PEDIDO = {
+  pos: { label: 'POS', icono: '🧾' },
+  minorista: { label: 'Tienda minorista', icono: '🛒' },
+  mayorista: { label: 'Tienda mayorista', icono: '🏪' },
+};
+export const origenPedido = (p) => (p.origen === 'web' ? (p.modoTienda === 'minorista' ? 'minorista' : 'mayorista') : 'pos');
+
 /** El punto que marcó el cliente en el mapa, para el cadete. Vacío si no marcó. */
 export function mapaOrden(p) {
   const u = p?.webCliente?.ubicacion;
