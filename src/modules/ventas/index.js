@@ -1,6 +1,5 @@
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import { defineModule } from '@core/modules/defineModule.js';
-import { ordenesWeb } from '@core/services/ordenesWeb.js';
 import { VentasPage } from './pages/VentasPage.jsx';
 import { VENTAS_PANELS } from './config/ventas.config.js';
 
@@ -27,9 +26,6 @@ export const ventasModule = defineModule({
     showInSidebar: true,
     group: 'catalog',
     order: 30,
-    // Pendientes del sidebar: los pedidos del sitio web sin revisar.
-    badgeCount: () => ordenesWeb.count(),
-    badgeSubscribe: (listener) => ordenesWeb.subscribe(listener),
   },
   routes: [
     { path: '', Component: VentasPage, handle: { crumb: 'Ventas' } },

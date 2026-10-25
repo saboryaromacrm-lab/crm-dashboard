@@ -3,6 +3,7 @@ import { defineModule } from '@core/modules/defineModule.js';
 import { WebPage } from './pages/WebPage.jsx';
 import { WEB_SECCIONES } from './config/web.config.js';
 import { accesosTienda } from '@core/services/accesosTienda.js';
+import { ordenesWeb } from '@core/services/ordenesWeb.js';
 
 /**
  * WEB — manifiesto del módulo.
@@ -18,16 +19,20 @@ import { accesosTienda } from '@core/services/accesosTienda.js';
 export const webModule = defineModule({
   id: 'web',
   name: 'Tienda online',
-  description: 'La tienda online, mayorista y minorista: productos publicados, destacados, imágenes, banners, quién puede comprar y su configuración.',
+  description: 'La tienda online, mayorista y minorista: pedidos y presupuestos, ofertas, banners, quién puede comprar y su configuración.',
   icon: LanguageIcon,
   enabled: true,
   basePath: '/web',
   permissions: WEB_SECCIONES.map((x) => x.permiso),
   navigation: {
     showInSidebar: true, group: 'catalog', order: 45,
-    // Pendientes del sidebar: los pedidos de ingreso a la tienda (solo para quien tiene la sección).
-    badgeCount: () => accesosTienda.count(),
-    badgeSubscribe: (listener) => accesosTienda.subscribe(listener),
+    // Pendientes del sidebar: los pedidos web sin revisar y los pedidos de ingreso a la tienda.
+    badgeCount: () => ordenesWeb.count() + accesosTienda.count(),
+    badgeSubscribe: (listener) => {
+      const sinOrdenes = ordenesWeb.subscribe(listener);
+      const sinAccesos = accesosTienda.subscribe(listener);
+      return () => { sinOrdenes(); sinAccesos(); };
+    },
   },
   routes: [
     { path: '', Component: WebPage, handle: { crumb: 'Tienda online' } },

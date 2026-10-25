@@ -6,15 +6,14 @@
  * tenga permitido es con el que abre el módulo.
  *
  * El ORDEN sigue el día del mostrador: se vende (Punto de venta), se maneja el
- * turno (Caja), entran los pedidos del sitio (Pedidos online) y se cotiza a los
- * mayoristas (Presupuestos). Después viene lo que se consulta de vez en cuando
+ * turno (Caja) y se cotiza (Presupuestos de mostrador). Los pedidos y los
+ * presupuestos de la tienda online viven en su módulo (25/10/2026). Después viene lo que se consulta de vez en cuando
  * —clientes, cobranzas— y al final lo que se configura y casi no se toca.
  */
 import CloudOffIcon from '@mui/icons-material/CloudOff';
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
-import PublicIcon from '@mui/icons-material/Public';
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import PaymentsIcon from '@mui/icons-material/Payments';
@@ -44,7 +43,7 @@ export const VENTAS_PANELS = [
   { id: 'arca', label: 'Caídas por ARCA', icon: CloudOffIcon, permiso: 'ventas.listado', badge: 'arca' },
   /* Cuánto subió o bajó lo vendido entre dos períodos (14/10/2026). Sin costos. */
   { id: 'variaciones', label: 'Variaciones', icon: CompareArrowsIcon, permiso: 'ventas.variaciones' },
-  { id: 'ordenes', label: 'Pedidos online', icon: PublicIcon, permiso: 'ventas.ordenes', badge: 'ordenes' },
+  /* Los de MOSTRADOR (25/10/2026): los de la tienda están en Tienda online › Presupuestos. */
   { id: 'presupuestos', label: 'Presupuestos', icon: RequestQuoteIcon, permiso: 'ventas.presupuestos' },
   { id: 'clientes', label: 'Clientes', icon: PeopleAltIcon, permiso: 'ventas.clientes' },
   { id: 'cobranzas', label: 'Cobranzas', icon: PaymentsIcon, permiso: 'ventas.cobranzas' },

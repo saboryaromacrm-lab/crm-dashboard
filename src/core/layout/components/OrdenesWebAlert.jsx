@@ -47,7 +47,7 @@ export function OrdenesWebAlert() {
 
   const irAOrdenes = () => {
     setAbierto(false);
-    navigate('/ventas?panel=ordenes');
+    navigate('/web?seccion=pedidos');
   };
 
   return (

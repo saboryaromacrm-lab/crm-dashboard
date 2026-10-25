@@ -195,7 +195,7 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
   const compra = [
     ['Precios', mod ? `Modalidad ${mod.nombre}, con todas sus listas` : 'Sin modalidad mayorista: la tienda mayorista no muestra productos'],
     ['Compra mínima', Number(config.montoMinimoMayorista) > 0 ? `${pesos(config.montoMinimoMayorista)} en total (o cumplir las reglas de marca y los mínimos por artículo)` : 'Sin mínimo por monto'],
-    ['Cada pedido', `Entra como presupuesto en Ventas › Pedidos online, válido ${config.presupuestoValidezDias ?? 7} días`],
+    ['Cada pedido', `Entra en Tienda online › Pedidos online y, aceptado, es un presupuesto válido ${config.presupuestoValidezDias ?? 7} días`],
   ];
 
   return (
@@ -243,7 +243,7 @@ export function ConfiguracionTiendaPanel({ avisar, sitio }) {
           </Seccion>
           <Seccion
             titulo="Cadete"
-            desc="Para los pedidos con envío: en Ventas › Pedidos online (y en Presupuestos, ya aceptados) el botón «Pedir cadete» abre WhatsApp en este chat con el pedido escrito: cliente, teléfono, dirección, ubicación y cantidad de artículos."
+            desc="Para los pedidos con envío: en Tienda online › Pedidos online (y en Presupuestos, ya aceptados) el botón «Pedir cadete» abre WhatsApp en este chat con el pedido escrito: cliente, teléfono, dirección, ubicación y cantidad de artículos."
           >
             <div className={s.field} style={{ maxWidth: 320 }}>
               <label htmlFor="cfg-cadete-wa">WhatsApp del cadete</label>

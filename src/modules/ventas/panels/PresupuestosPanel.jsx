@@ -11,6 +11,7 @@
  * "Vencido" se calcula acá mismo: enviado con la fecha pasada.
  */
 import { useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { cx } from '@shared/utils/classNames.js';
 import { configImpresion, esc, imprimirDocumento } from '@core/services/imprimir.js';
 import { useVentas } from '../context/VentasContext.jsx';
@@ -261,10 +262,19 @@ function ArmadoModal({ p, onGuardar, onCerrar }) {
 
 /* ------------------------------ Panel ------------------------------ */
 
-export function PresupuestosPanel() {
+/** Las dos tiendas, para el filtro de los presupuestos de la tienda. */
+const ORIGENES_TIENDA = Object.entries(ORIGENES_PEDIDO).filter(([id]) => id !== 'pos');
+
+/**
+ * DOS BANDEJAS, UN PANEL (25/10/2026, pedido del dueño): en Ventas los de
+ * MOSTRADOR (cotizados en el POS) y en Tienda online (`tienda`) los pedidos
+ * del sitio ya aceptados, con su tienda a la vista y para filtrar.
+ */
+export function PresupuestosPanel({ tienda = false }) {
   const { clientes, usuarios, ctx, goPanel, toast, config } = useVentas();
+  const navigate = useNavigate();
   const [filtroEstado, setFiltroEstado] = useState(PENDIENTES);
-  /** De dónde vino (25/10/2026): '' = todos, o una clave de ORIGENES_PEDIDO. */
+  /** De qué tienda vino (solo en la bandeja de la tienda): '' = las dos. */
   const [filtroOrigen, setFiltroOrigen] = useState('');
   const [q, setQ] = useState('');
   const [modal, setModal] = useState(null); // { tipo: 'armado', p }
@@ -287,6 +297,7 @@ export function PresupuestosPanel() {
       // entran recién al aceptarse — mostrarlos en los dos lados era operarlos
       // dos veces.
       if (p.estado === 'pendiente') return false;
+      if ((origenPedido(p) !== 'pos') !== tienda) return false;
       const est = estadoDe(p);
       if (filtroEstado === PENDIENTES ? resuelto(est) : filtroEstado && est !== filtroEstado) return false;
       if (filtroOrigen && origenPedido(p) !== filtroOrigen) return false;
@@ -294,7 +305,7 @@ export function PresupuestosPanel() {
       const cli = clienteDe.get(p.clienteId)?.nombre ?? '';
       return p.codigo.toLowerCase().includes(ql) || cli.toLowerCase().includes(ql);
     });
-  }, [lista, filtroEstado, filtroOrigen, q, clienteDe]);
+  }, [lista, tienda, filtroEstado, filtroOrigen, q, clienteDe]);
 
   const pag = usePaginado(filtrados, 'presupuestos', `${filtroEstado}|${filtroOrigen}|${q}`);
 
@@ -399,7 +410,8 @@ export function PresupuestosPanel() {
       items,
       ...(envio > 0 ? { extras: [{ concepto: `Envío a domicilio${p.webCliente?.barrio ? ` (B° ${p.webCliente.barrio})` : ''}`, importe: r2(envio / 1.21), iva: 21 }] } : {}),
     }), `Venta en curso creada desde ${p.codigo}: se termina en el punto de venta.`);
-    if (ok) goPanel('pos');
+    /* La venta en curso se termina en el punto de venta: desde Tienda online, se va a Ventas. */
+    if (ok) { if (tienda) navigate('/ventas?panel=pos'); else goPanel('pos'); }
   };
 
   const filas = pag.visibles.map((p) => {
@@ -451,10 +463,12 @@ export function PresupuestosPanel() {
       <tr key={p.id}>
         <td>
           <span className={s.mono}>{p.codigo}</span>
-          {/* De dónde vino (25/10/2026, pedido del dueño): en la misma fila. */}
-          <div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
-            {ORIGENES_PEDIDO[origenPedido(p)].icono} {ORIGENES_PEDIDO[origenPedido(p)].label}
-          </div>
+          {/* De qué tienda vino (25/10/2026, pedido del dueño): en la misma fila. */}
+          {tienda && (
+            <div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>
+              {ORIGENES_PEDIDO[origenPedido(p)].icono} {ORIGENES_PEDIDO[origenPedido(p)].label}
+            </div>
+          )}
         </td>
         <td>
           <strong>{cli?.nombre ?? `Cliente #${p.clienteId}`}</strong>
@@ -495,9 +509,11 @@ export function PresupuestosPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
-        title="Presupuestos"
-        desc="Pedidos mayoristas (WhatsApp hoy, tienda web mañana). Se cotizan en el POS con el botón «Presupuesto»; acá se envían, se confirman (reserva stock), se arman y se cierran como venta."
-        actions={puedeCotizar && (
+        title={tienda ? 'Presupuestos de la tienda' : 'Presupuestos'}
+        desc={tienda
+          ? 'Los pedidos de la tienda online ya aceptados: se confirman (reserva stock), se arman y se cierran como venta en el punto de venta.'
+          : 'Los de mostrador: se cotizan en el POS con el botón «Presupuesto»; acá se envían, se confirman (reserva stock), se arman y se cierran como venta.'}
+        actions={puedeCotizar && !tienda && (
           <Btn variant="btn-primary" onClick={() => goPanel('pos')}>+ Cotizar en el POS</Btn>
         )}
       />
@@ -514,10 +530,12 @@ export function PresupuestosPanel() {
           <option value="">Todos los estados</option>
           {Object.entries(ESTADOS).filter(([id]) => id !== 'pendiente').map(([id, e]) => <option key={id} value={id}>{e.label}</option>)}
         </select>
-        <select className={s['select-inline']} value={filtroOrigen} onChange={(e) => setFiltroOrigen(e.target.value)} aria-label="Origen">
-          <option value="">Todos los orígenes</option>
-          {Object.entries(ORIGENES_PEDIDO).map(([id, o]) => <option key={id} value={id}>{o.icono} {o.label}</option>)}
-        </select>
+        {tienda && (
+          <select className={s['select-inline']} value={filtroOrigen} onChange={(e) => setFiltroOrigen(e.target.value)} aria-label="Tienda">
+            <option value="">Las dos tiendas</option>
+            {ORIGENES_TIENDA.map(([id, o]) => <option key={id} value={id}>{o.icono} {o.label}</option>)}
+          </select>
+        )}
         <Btn small onClick={reload} disabled={loading}>{loading ? 'Cargando…' : 'Actualizar'}</Btn>
       </div>
 
@@ -526,7 +544,8 @@ export function PresupuestosPanel() {
           { h: 'Código' }, { h: 'Cliente' }, { h: 'Fecha' }, { h: 'Vence' }, { h: 'Vendedor' },
           { h: 'Total', num: true }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' },
         ]}
-        empty={loading ? 'Cargando…' : lista.some((p) => p.estado !== 'pendiente') ? 'Ningún presupuesto con estos filtros.' : 'Sin presupuestos. Cotizá el primero desde el POS con el botón «Presupuesto».'}
+        empty={loading ? 'Cargando…' : lista.some((p) => p.estado !== 'pendiente' && (origenPedido(p) !== 'pos') === tienda) ? 'Ningún presupuesto con estos filtros.'
+          : tienda ? 'Todavía no hay pedidos de la tienda aceptados: se aceptan en Pedidos online.' : 'Sin presupuestos. Cotizá el primero desde el POS con el botón «Presupuesto».'}
         pag={pag}
       >
         {filas}

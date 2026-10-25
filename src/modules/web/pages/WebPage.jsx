@@ -37,6 +37,10 @@ import { LocalesEditor } from '../components/LocalesEditor.jsx';
 import { NosotrosEditor } from '../components/NosotrosEditor.jsx';
 import { MetricasTiendaPanel } from '../panels/MetricasTiendaPanel.jsx';
 import { accesosTienda, sinSuscripcion } from '@core/services/accesosTienda.js';
+import { ordenesWeb } from '@core/services/ordenesWeb.js';
+import { SeccionVentas } from '@modules/ventas/components/SeccionVentas.jsx';
+import { OrdenesPanel } from '@modules/ventas/panels/OrdenesPanel.jsx';
+import { PresupuestosPanel } from '@modules/ventas/panels/PresupuestosPanel.jsx';
 import { PRESETS_IMAGEN, srcImagen } from '../services/imagenes.js';
 import { Miniatura } from '../components/Miniatura.jsx';
 import { SLIDE_NUEVO, SlideForm, SlideMiniatura, contenidoDe, problemaSlide, resumenSlide } from '../components/SlideContenido.jsx';
@@ -578,9 +582,12 @@ function CartelBienvenida({ web, setWeb, recargar, avisar }) {
  *
  * A diferencia de Ventas o Gastos no hace falta un contexto: el catálogo del
  * sitio es UNA sola llamada (`GET /web/catalogo`: el mismo catálogo que ve un
- * cliente habilitado, con precios), y las secciones que necesitan más lo piden
- * por su cuenta.
+ * cliente habilitado, con precios), que se pide recién al abrir una sección
+ * que lo usa; las demás piden lo suyo. Pedidos y Presupuestos (25/10/2026)
+ * son de Ventas y traen su contexto (`SeccionVentas`).
  */
+const CON_CATALOGO = new Set(['contenido', 'configuracion']);
+
 export function WebPage() {
   const { can } = usePermissions();
   const secciones = useMemo(() => WEB_SECCIONES.filter((x) => can(x.permiso)), [can]);
@@ -594,6 +601,12 @@ export function WebPage() {
   /* El globito de «Accesos a la tienda online»: solo si el rol ve la sección (si no, un 403 por minuto). */
   const veAccesos = secciones.some((x) => x.id === 'accesos');
   const pedidosIngreso = useSyncExternalStore(veAccesos ? accesosTienda.subscribe : sinSuscripcion, accesosTienda.count, accesosTienda.count);
+  const vePedidos = secciones.some((x) => x.id === 'pedidos');
+  const pedidosWeb = useSyncExternalStore(vePedidos ? ordenesWeb.subscribe : sinSuscripcion, ordenesWeb.count, ordenesWeb.count);
+  // Si el rol pierde la sección activa (permisos vivos al recargar), cae en la
+  // primera que sí tenga en vez de quedar en una que no existe.
+  const activa = secciones.some((x) => x.id === seccion) ? seccion : secciones[0]?.id;
+  const usaCatalogo = CON_CATALOGO.has(activa);
 
   const recargar = useCallback(async () => {
     try {
@@ -604,7 +617,7 @@ export function WebPage() {
       setCatalogo((c) => c ?? { items: [], categorias: [], marcas: [], sitio: {} });
     }
   }, []);
-  useEffect(() => { recargar(); }, [recargar]);
+  useEffect(() => { if (usaCatalogo && catalogo === null) recargar(); }, [usaCatalogo, catalogo, recargar]);
 
   const avisar = useCallback((tipo, texto) => setAviso({ tipo, texto }), []);
   useEffect(() => {
@@ -625,15 +638,11 @@ export function WebPage() {
     );
   }
 
-  // Si el rol pierde la sección activa (permisos vivos al recargar), cae en la
-  // primera que sí tenga en vez de quedar en una que no existe.
-  const activa = secciones.some((x) => x.id === seccion) ? seccion : secciones[0].id;
-
   return (
     <div>
       <PageHeader
         title="Tienda online"
-        subtitle="La tienda online, mayorista y minorista: ofertas, contenido, quién puede comprar, cómo viene andando y su configuración. Lo de cada producto (foto, destacado) está en Compras › Productos."
+        subtitle="La tienda online, mayorista y minorista: pedidos y presupuestos, ofertas, contenido, quién puede comprar, cómo viene andando y su configuración. Lo de cada producto (foto, destacado) está en Compras › Productos."
       />
 
       <div className={s.shell}>
@@ -650,6 +659,7 @@ export function WebPage() {
                 <span className={s.subnavIcon}><Icon fontSize="small" /></span>
                 <span className={s.subnavLabel}>{x.label}</span>
                 {x.badge === 'accesos' && pedidosIngreso > 0 && <span className={s.subnavBadge}>{pedidosIngreso}</span>}
+                {x.badge === 'ordenes' && pedidosWeb > 0 && <span className={s.subnavBadge}>{pedidosWeb}</span>}
               </button>
             );
           })}
@@ -661,25 +671,26 @@ export function WebPage() {
               {aviso.texto}
             </div>
           )}
-          {error && (
+          {usaCatalogo && error && (
             <div className={cx(s.callout, s.warn)}>
               No se pudo cargar el catálogo del sitio: <strong>{error}</strong>
             </div>
           )}
 
-          {catalogo === null && !error
-            ? <div className={s['empty-state']}>Cargando el catálogo del sitio…</div>
-            : (
-              <>
-                {activa === 'ofertas' && <OfertasWebPanel avisar={avisar} />}
-                {activa === 'contenido' && <ContenidoPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />}
-                {activa === 'estadisticas' && <MetricasTiendaPanel />}
-                {activa === 'accesos' && <AccesosTiendaPanel avisar={avisar} />}
-                {activa === 'configuracion' && (
-                  <ConfiguracionTiendaPanel avisar={avisar} sitio={<ConfiguracionSitioPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />} />
-                )}
-              </>
-            )}
+          {activa === 'pedidos' && <SeccionVentas><OrdenesPanel /></SeccionVentas>}
+          {activa === 'presupuestos' && <SeccionVentas><PresupuestosPanel tienda /></SeccionVentas>}
+          {activa === 'ofertas' && <OfertasWebPanel avisar={avisar} />}
+          {activa === 'estadisticas' && <MetricasTiendaPanel />}
+          {activa === 'accesos' && <AccesosTiendaPanel avisar={avisar} />}
+          {usaCatalogo && catalogo === null && !error && <div className={s['empty-state']}>Cargando el catálogo del sitio…</div>}
+          {usaCatalogo && catalogo && (
+            <>
+              {activa === 'contenido' && <ContenidoPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />}
+              {activa === 'configuracion' && (
+                <ConfiguracionTiendaPanel avisar={avisar} sitio={<ConfiguracionSitioPanel catalogo={catalogo} recargar={recargar} avisar={avisar} />} />
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -377,7 +377,7 @@ export function OrdenesPanel() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Pedidos online"
-        desc="Los pedidos de la tienda online esperando revisión. Aceptar los pasa a Presupuestos (ciclo normal); rechazar los cancela con motivo. El cliente nuevo recién se da de alta al aceptar. Los que van a domicilio se le pasan al cadete con «Pedir cadete»."
+        desc="Los pedidos de la tienda online esperando revisión. Aceptar los pasa a Presupuestos, acá en Tienda online (ciclo normal); rechazar los cancela con motivo. El cliente nuevo recién se da de alta al aceptar. Los que van a domicilio se le pasan al cadete con «Pedir cadete»."
       />
 
       {error && <div className={cx(s.callout, s.warn)}>No se pudieron cargar las órdenes: <strong>{error}</strong></div>}

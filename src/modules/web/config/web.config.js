@@ -5,6 +5,8 @@
  * deriva de acá qué claves hacen visible el módulo, y la página filtra el
  * sub-menú con las mismas.
  */
+import PublicIcon from '@mui/icons-material/Public';
+import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import ImageIcon from '@mui/icons-material/Image';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
@@ -12,6 +14,13 @@ import HowToRegIcon from '@mui/icons-material/HowToReg';
 import SettingsIcon from '@mui/icons-material/Settings';
 
 export const WEB_SECCIONES = [
+  /*
+   * EL RECORRIDO DEL PEDIDO WEB, ACÁ (25/10/2026, pedido del dueño; antes en
+   * Ventas): los que llegan y, aceptados, sus presupuestos. Las llaves son las
+   * de Ventas con que nacieron, así cada rol sigue viendo lo mismo.
+   */
+  { id: 'pedidos', label: 'Pedidos online', icon: PublicIcon, permiso: 'ventas.ordenes', badge: 'ordenes' },
+  { id: 'presupuestos', label: 'Presupuestos', icon: RequestQuoteIcon, permiso: 'ventas.presupuestos' },
   /* «Productos del sitio» ya no está (19/10/2026): la foto, el destacado y el mínimo web viven en Compras › Productos. */
   { id: 'ofertas', label: 'Ofertas del sitio', icon: LocalOfferIcon, permiso: 'web.ofertas' },
   { id: 'contenido', label: 'Contenido del sitio', icon: ImageIcon, permiso: 'web.contenido' },

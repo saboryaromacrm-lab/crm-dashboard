@@ -1,20 +1,19 @@
 import { useCallback, useState, useSyncExternalStore } from 'react';
-import { Button, Snackbar, Alert } from '@mui/material';
+import { Button } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
 import { FullScreenLoader } from '@shared/components/FullScreenLoader/FullScreenLoader.jsx';
 import { cx } from '@shared/utils/classNames.js';
-import { ordenesWeb } from '@core/services/ordenesWeb.js';
 import { arcaPendientes } from '../services/arcaPendientes.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { ModalHost } from '../components/ModalHost.jsx';
+import { AvisoVentas } from '../components/AvisoVentas.jsx';
 import { Btn, s } from '../components/ui.jsx';
 
 import { PosPanel } from '../panels/PosPanel.jsx';
 import { ListadoVentasPanel } from '../panels/ListadoVentasPanel.jsx';
 import { ArcaCaidasPanel } from '../panels/ArcaCaidasPanel.jsx';
 import { VariacionesPanel } from '../panels/VariacionesPanel.jsx';
-import { OrdenesPanel } from '../panels/OrdenesPanel.jsx';
 import { PresupuestosPanel } from '../panels/PresupuestosPanel.jsx';
 import { ClientesPanel } from '../panels/ClientesPanel.jsx';
 import { CobranzasPanel } from '../panels/CobranzasPanel.jsx';
@@ -32,7 +31,6 @@ const PANEL_COMPONENTS = {
   listado: ListadoVentasPanel,
   arca: ArcaCaidasPanel,
   variaciones: VariacionesPanel,
-  ordenes: OrdenesPanel,
   presupuestos: PresupuestosPanel,
   clientes: ClientesPanel,
   cobranzas: CobranzasPanel,
@@ -52,18 +50,16 @@ const PANEL_COMPONENTS = {
  */
 export function VentasShell({ title, subtitle }) {
   const {
-    loaded, loadError, recargar, panels, panel, goPanel, toast, toastState, closeToast,
+    loaded, loadError, recargar, panels, panel, goPanel, toast,
   } = useVentas();
   const [refrescando, setRefrescando] = useState(false);
 
-  // Contador vivo de pedidos web sin revisar (mismo poller que el sidebar).
-  const pendientesWeb = useSyncExternalStore(ordenesWeb.subscribe, ordenesWeb.count, ordenesWeb.count);
   /* Las caídas por ARCA: solo se consulta si el rol ve la sección (sin eso,
    * un rol sin el listado se comería un 403 por minuto). */
   const veArca = panels.some((x) => x.id === 'arca');
   const suscribirArca = useCallback((l) => (veArca ? arcaPendientes.subscribe(l) : () => {}), [veArca]);
   const caidasArca = useSyncExternalStore(suscribirArca, arcaPendientes.count, arcaPendientes.count);
-  const counts = { ordenes: pendientesWeb, arca: caidasArca };
+  const counts = { arca: caidasArca };
 
   // Solo se renderiza lo PERMITIDO: si el panel pedido no está en el menú del
   // rol (link viejo, atajo, URL), cae al primero visible — nunca a uno oculto.
@@ -143,29 +139,7 @@ export function VentasShell({ title, subtitle }) {
       </div>
 
       <ModalHost />
-
-      {/* Abajo a la derecha, y por ENCIMA de cualquier modal (23/9/2026):
-          el aviso vivía arriba a la derecha y en formularios largos —el
-          "Guardar" queda abajo— pasaba lejos de donde estaban mirando: se
-          guardaba igual, pero nadie lo notaba hasta cerrar el modal. Abajo
-          es donde está la vista justo después de tocar Guardar. El zIndex
-          explícito es lo que evita que un modal grande vuelva a taparlo. */}
-      <Snackbar
-        open={toastState.open}
-        autoHideDuration={4000}
-        onClose={closeToast}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        sx={{ zIndex: (theme) => theme.zIndex.modal + 50 }}
-      >
-        <Alert
-          onClose={closeToast}
-          severity={toastState.kind === 'err' ? 'error' : 'success'}
-          variant="filled"
-          sx={{ width: '100%' }}
-        >
-          {toastState.msg}
-        </Alert>
-      </Snackbar>
+      <AvisoVentas />
     </div>
   );
 }
