@@ -14,6 +14,9 @@ import HowToRegIcon from '@mui/icons-material/HowToReg';
 import SettingsIcon from '@mui/icons-material/Settings';
 
 export const WEB_SECCIONES = [
+  /* Quién puede comprar (0155): pedidos de ingreso por DNI. La llave conserva el nombre con que nació.
+   * Primera (25/10/2026, pedido del dueño): es lo que abre la sección. */
+  { id: 'accesos', label: 'Accesos a la tienda online', icon: HowToRegIcon, permiso: 'ventas.accesos_tienda', badge: 'accesos' },
   /*
    * EL RECORRIDO DEL PEDIDO WEB, ACÁ (25/10/2026, pedido del dueño; antes en
    * Ventas): los que llegan y, aceptados, sus presupuestos. Las llaves son las
@@ -26,8 +29,6 @@ export const WEB_SECCIONES = [
   { id: 'contenido', label: 'Contenido del sitio', icon: ImageIcon, permiso: 'web.contenido' },
   /* Métricas por modo (0179): la sección conserva el id y la llave con que nació. */
   { id: 'estadisticas', label: 'Métricas', icon: QueryStatsIcon, permiso: 'web.estadisticas' },
-  /* Quién puede comprar (0155): pedidos de ingreso por DNI. La llave conserva el nombre con que nació. */
-  { id: 'accesos', label: 'Accesos a la tienda online', icon: HowToRegIcon, permiso: 'ventas.accesos_tienda', badge: 'accesos' },
   /* Todo lo configurable de la tienda (16/10/2026, antes en Ventas › Configuración): general, mayorista y minorista. */
   { id: 'configuracion', label: 'Configuración', icon: SettingsIcon, permiso: 'web.configuracion' },
 ];
