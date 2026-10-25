@@ -77,12 +77,16 @@ export const PRESETS_IMAGEN = {
     hint: 'Ideal 400×120 (apaisado) con fondo transparente: es el logo del encabezado del sitio. Sin logo, se muestra el nombre en texto.',
     vacio: 'sin logo (se muestra el nombre en texto)',
   },
+  /**
+   * El favicon es también el ícono de la tienda INSTALADA en el celular
+   * (25/10/2026): Chrome lo pide en PNG de al menos 192 px, así que se guarda
+   * en PNG de 512×512 (el manifiesto de la tienda lo usa tal cual).
+   */
   favicon: {
-    ancho: 128, alto: 128, modo: 'encajar', fondo: null,
-    quitarFondo: true, calidad: 0.9,
-    objetivoKb: 12, calidadMin: 0.7,
+    ancho: 512, alto: 512, modo: 'encajar', fondo: null, formato: 'image/png',
+    quitarFondo: true, calidad: 1,
     titulo: 'Favicon',
-    hint: 'Cuadrado, ideal 128×128 o más grande: es el ícono de la pestaña del navegador. Conviene un símbolo simple, no el logo completo.',
+    hint: 'Cuadrado, ideal 512×512: es el ícono de la pestaña del navegador y el de la tienda cuando la instalan en el celular. Conviene un símbolo simple, no el logo completo.',
     vacio: 'sin favicon',
   },
   /**
@@ -301,8 +305,8 @@ export function quitarFondo(canvas, tolerancia = 30) {
  * Exporta el canvas listo para subir: aplica el fondo del preset (salvo que
  * se haya quitado el fondo — ahí la transparencia ES el resultado) y comprime
  * a WebP (o al `formato` del preset) con el MENOR PESO que entra en el
- * objetivo del preset sin bajar de su calidad mínima. Si el navegador no sabe
- * exportar ese formato (WebP en Safari), cae a PNG.
+ * objetivo del preset sin bajar de su calidad mínima (el PNG sale tal cual).
+ * Si el navegador no sabe exportar ese formato (WebP en Safari), cae a PNG.
  */
 export function exportar(canvas, preset, { fondoQuitado = false } = {}) {
   let final = canvas;
@@ -318,19 +322,21 @@ export function exportar(canvas, preset, { fondoQuitado = false } = {}) {
   }
   const pesoKb = (u) => Math.round(((u.length - u.indexOf(',') - 1) * 3) / 4 / 1024);
   const tipo = preset.formato ?? 'image/webp';
+  const nombreFormato = { 'image/jpeg': 'JPG', 'image/png': 'PNG' }[tipo] ?? 'WebP';
   let calidad = preset.calidad;
   let dataUrl = final.toDataURL(tipo, calidad);
   if (!dataUrl.startsWith(`data:${tipo}`)) {
     dataUrl = final.toDataURL('image/png');
     return { dataUrl, kb: pesoKb(dataUrl), calidad: 1, formato: 'PNG' };
   }
-  const objetivo = preset.objetivoKb ?? Infinity;
+  /* El PNG no tiene calidad que bajar: sale tal cual. */
+  const objetivo = tipo === 'image/png' ? Infinity : (preset.objetivoKb ?? Infinity);
   const piso = preset.calidadMin ?? preset.calidad;
   while (pesoKb(dataUrl) > objetivo && calidad - 0.05 >= piso - 1e-9) {
     calidad = Math.round((calidad - 0.05) * 100) / 100;
     dataUrl = final.toDataURL(tipo, calidad);
   }
-  return { dataUrl, kb: pesoKb(dataUrl), calidad, formato: tipo === 'image/jpeg' ? 'JPG' : 'WebP' };
+  return { dataUrl, kb: pesoKb(dataUrl), calidad, formato: nombreFormato };
 }
 
 /** «2,4 MB» / «830 KB» para mostrar lo que pesaba el original. */
