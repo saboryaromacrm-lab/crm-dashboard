@@ -21,19 +21,33 @@ export const textoBulto = (p) => {
   return n > 1 ? `Viene en bulto de ${n} u.` : '';
 };
 
-/*
- * UN RENGLÓN DE COMPRA COMO LA FACTURA (12/10/2026, 0161): con el bulto con
- * que se cargó y bultos enteros, «4 bultos × 14 u.»; si no, lo que entró. Lo
- * usan el detalle del comprobante y «la última vez que entró» de los pedidos.
+/**
+ * EL DISPLAY DEL BULTO (0203, 26/10/2026): «12 displays × 12 u.» a partir de
+ * las unidades por bulto y las del display. Espejo de `displaysDe` en la API:
+ * null si no tiene display o si ya no da justo (el bulto cambió) — mejor no
+ * decir nada que inventar un display de 11,5. Un solo display no es display.
  */
-/** Los bultos enteros del renglón; 0 si se cargó por unidad, sin dato o no da justo. */
-export function bultosDelRenglon(cantidad, porBulto) {
-  const pb = Number(porBulto) || 0;
-  const b = pb > 1 ? (Number(cantidad) || 0) / pb : 0;
-  return b > 0 && Math.abs(b - Math.round(b)) < 1e-6 ? Math.round(b) : 0;
+export function displaysDe(e) {
+  const porDisplay = Number(e?.porDisplay) || 0;
+  const n = porDisplay > 0 ? (Number(e?.cantidad) || 0) / porDisplay : 0;
+  if (!Number.isInteger(porDisplay) || !(n >= 2) || Math.abs(n - Math.round(n)) > 1e-9) return null;
+  return { displays: Math.round(n), porDisplay };
 }
-/** «bulto»/«bultos»; en el granel, «bolsa»/«bolsas». */
-export const nombreBulto = (n, granel) => (granel ? (n === 1 ? 'bolsa' : 'bolsas') : (n === 1 ? 'bulto' : 'bultos'));
+
+/*
+ * UN RENGLÓN DE COMPRA COMO LA FACTURA (12/10/2026, 0161): con el envase con
+ * que se cargó y una cantidad entera de envases, «4 bultos × 14 u.» (la bolsa
+ * en el granel; el display desde el 0203); si no, solo lo que entró. Lo usan
+ * el detalle del comprobante y «la última vez que entró» de los pedidos.
+ */
+/** `{ n, tam, envase }` del renglón, o null si se cargó por unidad, sin dato o no da justo. */
+export function envasesDelRenglon(cantidad, { porBulto, porDisplay, granel } = {}) {
+  const [tam, envase] = Number(porDisplay) > 1 ? [Number(porDisplay), 'display'] : [Number(porBulto) || 0, granel ? 'bolsa' : 'bulto'];
+  const n = tam > 1 ? (Number(cantidad) || 0) / tam : 0;
+  return n > 0 && Math.abs(n - Math.round(n)) < 1e-6 ? { n: Math.round(n), tam, envase } : null;
+}
+/** «bulto»/«bultos», «bolsa»/«bolsas», «display»/«displays». */
+export const nombreEnvase = (n, envase) => (n === 1 ? envase : `${envase}s`);
 
 /** Kg que trae la BOLSA de un granel: el formato de compra que fija el precio (o el más viejo). 0 = sin dato. */
 export function kgBolsa(p) {

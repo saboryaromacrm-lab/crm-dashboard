@@ -1293,6 +1293,8 @@ function _cleanComprobante(o) {
       paraCafeteria: it.paraCafeteria ? true : undefined,
       /* El bulto con que se cargó (0161): el detalle lo muestra como la factura. */
       porBulto: Number(it.porBulto) > 1 ? Number(it.porBulto) : undefined,
+      /* O el display, si el renglón se cargó por display (0203). */
+      porDisplay: Number(it.porDisplay) > 1 ? Number(it.porDisplay) : undefined,
     })),
   };
 }

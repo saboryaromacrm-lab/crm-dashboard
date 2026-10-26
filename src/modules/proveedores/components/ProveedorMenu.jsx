@@ -17,7 +17,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { cx } from '@shared/utils/classNames.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { telefonoWa } from '@modules/ventas/domain/constants.js';
-import { bultosDelRenglon, nombreBulto } from '@modules/productos/domain/bulto.js';
+import { envasesDelRenglon, nombreEnvase } from '@modules/productos/domain/bulto.js';
 import { fmtTam } from '@modules/productos/domain/format.js';
 import { abrirWhatsApp } from '@shared/utils/whatsapp.js';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
@@ -160,17 +160,17 @@ export function IngresosProveedorModal({ proveedorId, nombre }) {
 
 /**
  * Lo que entró de un producto, como la factura: «4 bultos × 14 u. (56 u.)»,
- * «2 bolsas × 25 kg (50 kg)» o «56 u.»; lo bonificado, aparte
- * («2 bultos × 12 u. + 2 u. sin cargo (26 u.)», «18 u. (3 sin cargo)»).
+ * «2 bolsas × 25 kg (50 kg)», «3 displays × 12 u. (36 u.)» o «56 u.»; lo
+ * bonificado, aparte («2 bultos × 12 u. + 2 u. sin cargo (26 u.)», «18 u. (3 sin cargo)»).
  */
 function cuantoEntro(it) {
   const granel = it.granel && !it.tamKg;
   const uni = granel ? 'kg' : 'u.';
   const total = `${num(it.cantidad, 3)} ${uni}`;
   const gratis = Number(it.sinCargo) || 0;
-  const b = bultosDelRenglon(it.cantidad - gratis, it.porBulto);
-  if (!b) return gratis ? `${total} (${num(gratis, 3)} sin cargo)` : total;
-  return `${b} ${nombreBulto(b, granel)} × ${num(it.porBulto, 3)} ${uni}${gratis ? ` + ${num(gratis, 3)} ${uni} sin cargo` : ''} (${total})`;
+  const env = envasesDelRenglon(it.cantidad - gratis, { porBulto: it.porBulto, porDisplay: it.porDisplay, granel });
+  if (!env) return gratis ? `${total} (${num(gratis, 3)} sin cargo)` : total;
+  return `${env.n} ${nombreEnvase(env.n, env.envase)} × ${num(env.tam, 3)} ${uni}${gratis ? ` + ${num(gratis, 3)} ${uni} sin cargo` : ''} (${total})`;
 }
 
 /**

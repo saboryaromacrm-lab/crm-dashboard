@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BULTO, bultoDe, bultoOfrecible, valorPresentacion, cambioPresentacion, bultosDe, unidadesDeBultos, bultosPartidos, kgBolsa,
-  bultoDelProveedor, bultoTexto, unidadPedido, indiceDisponible, estimarPedido, totalesPedido, bultosDelRenglon, nombreBulto,
+  bultoDelProveedor, bultoTexto, unidadPedido, indiceDisponible, estimarPedido, totalesPedido, displaysDe, envasesDelRenglon, nombreEnvase,
 } from './bulto.js';
 
 const BRACEMA = { id: 1, tipo: 'entero', unidadesPorBulto: 1, formatosCompra: [{ id: 7, cantidad: 6 }, { id: 9, cantidad: 20, usarParaPrecio: true }] };
@@ -134,13 +134,21 @@ test('totales del pedido: bultos y unidades; el granel en bolsas y kg aparte', (
   assert.equal(totalesPedido([{ p: e, bulto: 12, cantidad: 0 }]), '');
 });
 
-test('bultosDelRenglon: bultos enteros como la factura; por unidad, sin dato o partido → 0', () => {
-  assert.equal(bultosDelRenglon(56, 14), 4);
-  assert.equal(bultosDelRenglon(50, 25), 2);
-  assert.equal(bultosDelRenglon(5, 12), 0);
-  assert.equal(bultosDelRenglon(30, null), 0);
-  assert.equal(bultosDelRenglon(30, 1), 0);
-  assert.equal(nombreBulto(1, false), 'bulto');
-  assert.equal(nombreBulto(4, false), 'bultos');
-  assert.equal(nombreBulto(2, true), 'bolsas');
+test('envasesDelRenglon: bultos, bolsas o displays enteros como la factura; suelto o partido → null', () => {
+  assert.deepEqual(envasesDelRenglon(56, { porBulto: 14 }), { n: 4, tam: 14, envase: 'bulto' });
+  assert.deepEqual(envasesDelRenglon(50, { porBulto: 25, granel: true }), { n: 2, tam: 25, envase: 'bolsa' });
+  assert.deepEqual(envasesDelRenglon(36, { porDisplay: 12 }), { n: 3, tam: 12, envase: 'display' });
+  assert.equal(envasesDelRenglon(5, { porBulto: 12 }), null);
+  assert.equal(envasesDelRenglon(30, {}), null);
+  assert.equal(envasesDelRenglon(30, { porBulto: 1 }), null);
+  assert.equal(nombreEnvase(1, 'bulto'), 'bulto');
+  assert.equal(nombreEnvase(4, 'display'), 'displays');
+  assert.equal(nombreEnvase(2, 'bolsa'), 'bolsas');
+});
+
+test('displaysDe: el display del formato solo si da justo (0203)', () => {
+  assert.deepEqual(displaysDe({ cantidad: 144, porDisplay: 12 }), { displays: 12, porDisplay: 12 });
+  assert.equal(displaysDe({ cantidad: 144 }), null);
+  assert.equal(displaysDe({ cantidad: 140, porDisplay: 12 }), null);
+  assert.equal(displaysDe({ cantidad: 12, porDisplay: 12 }), null);
 });

@@ -25,11 +25,16 @@
  *     IVA que el negocio absorbe al vender. Es el "descuento del 17,36%" del
  *     sistema viejo hecho cuenta — por alícuota, sin tipear nada. Se precarga
  *     del proveedor (su ficha declara qué emite) y acá se ajusta por producto.
+ *   · El **display** (0203) es optativo y solo de los enteros: «el bulto trae
+ *     12 displays de 12». Las unidades por bulto pasan a ser la cuenta (144) y
+ *     no se tipean; el costo sigue siendo del bulto, así que el precio no
+ *     cambia por declararlo — se ve además el costo por display.
  */
 import { useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num } from '../../domain/format.js';
+import { displaysDe } from '../../domain/bulto.js';
 import { Btn, s } from '../ui.jsx';
 
 /** Fila de la cadena derivada. `fuerte` marca los dos números que importan. */
@@ -58,6 +63,50 @@ function costoFinalUnitarioDe(c, fila, iva) {
   return (c.desembolso + fleteBolsillo + c.costoComision) / (c.cantidad || 1);
 }
 
+/** «12 displays × 12 u.» del formato en pantalla, o null (sin tildar, incompleto o que no da justo). */
+const displayDeFila = (fila) => (fila.conDisplay ? displaysDe(fila) : null);
+
+/**
+ * VIENE EN DISPLAYS (0203): cuántos displays trae el bulto y cuántas unidades
+ * cada display. Las unidades por bulto son la cuenta, y se escriben solas.
+ */
+function CamposDisplay({ fila, set, disabled }) {
+  const conCuenta = (patch) => {
+    const n = { ...fila, ...patch };
+    const total = (Number(n.displays) || 0) * (Number(n.porDisplay) || 0);
+    set(total > 0 ? { ...patch, cantidad: String(total) } : patch);
+  };
+  return (
+    <div className={s.field} style={{ gridColumn: '1 / -1' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: disabled ? 'default' : 'pointer', fontWeight: 400 }}>
+        <input
+          type="checkbox" checked={!!fila.conDisplay} disabled={disabled} style={{ width: 'auto' }}
+          onChange={(e) => set({ conDisplay: e.target.checked })}
+        />
+        Viene en displays <span className={s.muted}>(el bulto trae displays y cada display, sus unidades)</span>
+      </label>
+      {fila.conDisplay && (
+        <div className={s['form-grid']} style={{ marginTop: 6 }}>
+          <div className={s.field}>
+            <label>Displays por bulto</label>
+            <input
+              type="number" min="2" step="1" value={fila.displays} disabled={disabled} placeholder="ej. 12"
+              onChange={(e) => conCuenta({ displays: e.target.value })}
+            />
+          </div>
+          <div className={s.field}>
+            <label>Unidades por display</label>
+            <input
+              type="number" min="1" step="1" value={fila.porDisplay} disabled={disabled} placeholder="ej. 12"
+              onChange={(e) => conCuenta({ porDisplay: e.target.value })}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** El campo de la comisión (0157): el mismo en los dos modos del costo. */
 function CampoComision({ fila, set, disabled }) {
   return (
@@ -84,6 +133,7 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
   /* Hay IVA que se absorbe al vender: el de la mercadería sin factura y/o el de la comisión (0157). */
   const absorbe = sinFactura || c.costoComision > 0;
   const finalUnitario = costoFinalUnitarioDe(c, fila, prod.iva);
+  const disp = displayDeFila(fila);
   const set = (patch) => onChange(i, patch);
   /*
    * EN «PRECIO FINAL», CAMBIAR EL % SIN FACTURA CONSERVA EL NETO (9/10/2026,
@@ -177,13 +227,15 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
                 {prod.tipo === 'granel' ? 'Kg por bulto' : 'Unidades por bulto'} <span className={s.req}>*</span>
               </label>
               <input
-                type="number" min="0" step="any" value={fila.cantidad} disabled={!esAdmin}
+                type="number" min="0" step="any" value={fila.cantidad} disabled={!esAdmin || fila.conDisplay}
                 onChange={(e) => set({ cantidad: e.target.value })}
               />
               <div className={s.hint} style={{ margin: '6px 0 0' }}>
                 {prod.tipo === 'granel'
                   ? 'Kilos que trae la bolsa o el bulto (admite decimales: 22,68). Es la referencia — si una entrega viene distinta, se corrige en la factura.'
-                  : 'Unidades que trae. Es lo que hace comparables dos proveedores con bultos distintos.'}
+                  : fila.conDisplay
+                    ? (disp ? `= ${disp.displays} displays × ${disp.porDisplay} u.` : 'Completá los displays: la cuenta da las unidades del bulto.')
+                    : 'Unidades que trae. Es lo que hace comparables dos proveedores con bultos distintos.'}
               </div>
             </div>
             <div className={s.field}>
@@ -196,6 +248,7 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
                 <option value="final">Costo final con IVA — cargado directo</option>
               </select>
             </div>
+            {prod.tipo !== 'granel' && <CamposDisplay fila={fila} set={set} disabled={!esAdmin} />}
           </div>
 
           {porLista ? (
@@ -278,6 +331,7 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
           {porLista ? (
             <>
               <Paso label="Costo de lista" valor={money(c.costoLista)} />
+              {disp && <Paso label={`Costo de lista por display (${disp.porDisplay} u.)`} valor={money(c.costoLista / disp.displays)} tenue />}
               <Paso label="Costo de lista unitario" valor={money(c.costoListaUnitario)} tenue />
               <Paso
                 label={`Descuento efectivo (${num(c.descuentoEfectivo, 2)}%)`}
@@ -348,6 +402,11 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
           <div className={s.cadenaCierre}>
             <div className={s['mini-label']}>Costo final unitario</div>
             <strong className={s.mono}>{money(finalUnitario)} {unidad}</strong>
+            {disp && (
+              <div className={s.mono} style={{ marginTop: 2 }}>
+                {money(finalUnitario * disp.porDisplay)} por display ({disp.porDisplay} u.)
+              </div>
+            )}
             <div className={s.hint} style={{ margin: '4px 0 0' }}>
               {absorbe
                 ? <>Lo que pagás por {unidad === '/kg' ? 'kilo' : 'unidad'} ({['proveedor', porLista && Number(fila.flete) > 0 && 'flete', c.costoComision > 0 && 'comisión'].filter(Boolean).join(' + ')}). El precio se calcula
@@ -383,6 +442,10 @@ export function FormatoCompraTab({ prod: p }) {
       proveedorId: e.proveedorId,
       codigoProveedor: e.codigoProveedor ?? '',
       cantidad: String(e.cantidad ?? 1),
+      // El display (0203): tildado si el formato lo tiene; si ya no da justo, a completar.
+      conDisplay: Number(e.porDisplay) > 0,
+      displays: String(displaysDe(e)?.displays ?? ''),
+      porDisplay: e.porDisplay ? String(e.porDisplay) : '',
       costo: String(e.costo ?? ''),
       descuento: String(e.descuento ?? ''),
       descuento2: String(e.descuento2 ?? ''),
@@ -424,7 +487,7 @@ export function FormatoCompraTab({ prod: p }) {
     setAbiertos((a) => new Set(a).add(k));
     setRows((r) => [...r, {
       _k: k,
-      proveedorId: pv.id, codigoProveedor: '', cantidad: '1',
+      proveedorId: pv.id, codigoProveedor: '', cantidad: '1', conDisplay: false, displays: '', porDisplay: '',
       costo: '', descuento: '', descuento2: '', descuento3: '', descuento4: '', flete: '', comision: '',
       modoCosto: 'lista', costoFinal: '', porcSinFactura: porc ? String(porc) : '',
       usarParaPrecio: r.length === 0,
@@ -436,10 +499,16 @@ export function FormatoCompraTab({ prod: p }) {
       toast('La cantidad por bulto tiene que ser mayor a cero.', 'err');
       return;
     }
-    // `_k` es solo de la pantalla: no viaja.
+    if (rows.some((r) => r.conDisplay && !displayDeFila(r))) {
+      toast('Completá los displays: cuántos trae el bulto (al menos 2) y cuántas unidades trae cada uno, en números enteros.', 'err');
+      return;
+    }
+    // `_k`, el tilde y los displays son de la pantalla: viaja el display (u. por display) o nada.
     const res = await store.guardarFormatosCompra(p.id, rows.map((r) => {
-      const limpio = { ...r };
+      const limpio = { ...r, porDisplay: r.conDisplay && p.tipo !== 'granel' ? Number(r.porDisplay) : null };
       delete limpio._k;
+      delete limpio.conDisplay;
+      delete limpio.displays;
       return limpio;
     }));
     toast(res.ok ? 'Formato de compra guardado.' : res.error, res.ok ? 'ok' : 'err');
