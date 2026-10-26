@@ -9,6 +9,7 @@ import { ModalHost } from '../components/ModalHost.jsx';
 import { Btn, s } from '../components/ui.jsx';
 
 import { PedidosPanel } from '../panels/PedidosPanel.jsx';
+import { ReposicionesPanel } from '../panels/ReposicionesPanel.jsx';
 import { CtasCtesPanel } from '../panels/CtasCtesPanel.jsx';
 import { EcheqsPanel } from '../panels/EcheqsPanel.jsx';
 import { EdocPanel } from '../panels/EdocPanel.jsx';
@@ -20,6 +21,7 @@ import { CambiosPanel } from '../panels/CambiosPanel.jsx';
 /** Los `id` coinciden con `PROVEEDORES_PANELS` (config). */
 const PANEL_COMPONENTS = {
   pedidos: PedidosPanel,
+  reposiciones: ReposicionesPanel,
   ctasctes: CtasCtesPanel,
   echeqs: EcheqsPanel,
   edoc: EdocPanel,

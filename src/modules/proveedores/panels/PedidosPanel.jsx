@@ -5,7 +5,7 @@ import { useResource } from '../hooks/useResource.js';
 import { errorMsg, provApi } from '../services/proveedores.api.js';
 import { BotonesAlta } from '../components/modals/PedidosModals.jsx';
 import { ProveedorMenu } from '../components/ProveedorMenu.jsx';
-import { Btn, PanelHead, Pill, Stat, Table, fmtFecha, fmtFechaHora, s } from '../components/ui.jsx';
+import { Btn, PanelHead, Pill, Stat, Table, fmtFecha, fmtFechaHora, money, s } from '../components/ui.jsx';
 
 /**
  * PEDIDOS — el kanban de la app externa, tal cual: la pizarra entre el admin
@@ -44,12 +44,14 @@ function diasCalendario(fecha) {
 const hace = (dias) => (dias === 0 ? 'hoy' : dias === 1 ? 'ayer' : `hace ${dias} días`);
 
 export function PedidosPanel() {
-  const { openModal, toast, recargarContadores, getProveedor } = useProveedores();
+  const { openModal, toast, recargarContadores, getProveedor, goPanel } = useProveedores();
   const [vista, setVista] = useState('pizarra');
   /* 0164: la pizarra solo con los proveedores de la localidad. */
   const [soloLocales, setSoloLocales] = useState(false);
   const [filtro, setFiltro] = useState(SIN_FILTROS);
   const { data: tarjetas, reload } = useResource('prov-kanban', provApi.kanban);
+  /* Lo que cada proveedor te debe en cambios de mercadería (0202): para reclamárselo al pedirle. */
+  const { data: cambios } = useResource('prov-cambios-pendientes', provApi.reposicionesPorProveedor);
   const visibles = (tarjetas ?? []).filter((t) => (!soloLocales || getProveedor(t.proveedorId)?.esLocal)
     && pasa(filtro.enviado, !!t.pedidoEnviado) && pasa(filtro.visto, !!t.revisadoAt));
   /* Enviado y visto son de Solicitado: en las otras columnas no aplican, así que con alguno puesto se ve solo esa. */
@@ -90,6 +92,17 @@ export function PedidosPanel() {
         {t.productosProveedor > 0 && (
           <div className={s.hint} style={{ margin: '2px 0' }}>trae {t.productosProveedor} producto(s)</div>
         )}
+        {(() => {
+          const c = (cambios ?? []).find((x) => x.proveedorId === t.proveedorId);
+          return c && (
+            <button
+              type="button" onClick={() => goPanel('reposiciones', { proveedorId: t.proveedorId })}
+              style={{ display: 'block', margin: '4px 0', padding: '3px 8px', border: '1px solid #fde68a', borderRadius: 999, background: '#fffbeb', color: '#92400e', font: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            >
+              🔄 Te debe {money(c.debe)} en cambios
+            </button>
+          );
+        })()}
         {/* Una orden de pedido de Almacén trae la lista entera: en la tarjeta, las
             primeras líneas (la nota completa al pasar el mouse y en «Notas»). */}
         {t.notas && (

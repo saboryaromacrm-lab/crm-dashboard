@@ -27,6 +27,8 @@ export const TIPOS_MOV = {
   ingreso_cafeteria: { label: 'Ingreso de Coffit',   tag: 'tag-ingreso', dir: +1 },
   // 0146: lo que se llevan los socios. Sale con −1; su anulación vuelve con +1.
   retiro:            { label: 'Retiro sin costo',    tag: 'tag-ajuste',  dir: 0 },
+  // 0202: lo que se le manda al proveedor para que lo reponga (−1) y lo que repone (+1).
+  cambio_proveedor:  { label: 'Cambio con proveedor', tag: 'tag-transf', dir: 0 },
 };
 
 /**

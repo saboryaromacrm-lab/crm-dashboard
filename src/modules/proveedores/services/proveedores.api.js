@@ -79,6 +79,14 @@ export const provApi = {
   editarEcheq: (id, data) => httpClient.patch(`/echeqs/${id}`, data),
   estadoEcheq: (id, estado) => httpClient.post(`/echeqs/${id}/estado`, { estado }),
   borrarEcheq: (id) => httpClient.delete(`/echeqs/${id}`),
+  // Cambios de mercadería (0202): lo que se le manda al proveedor y lo que repone.
+  reposiciones: (filtros) => httpClient.get(`/reposiciones${qs(filtros)}`),
+  reposicion: (id) => httpClient.get(`/reposiciones/${id}`),
+  reposicionesPorProveedor: () => httpClient.get('/reposiciones/por-proveedor'),
+  productosReposicion: (filtros) => httpClient.get(`/reposiciones/productos${qs(filtros)}`),
+  mandarReposicion: (data) => httpClient.post('/reposiciones', data),
+  recibirReposicion: (id, data) => httpClient.post(`/reposiciones/${id}/recibir`, data),
+  anularReposicion: (id) => httpClient.post(`/reposiciones/${id}/anular`, {}),
 
   /* Estado de cuenta */
   edoc: () => httpClient.get('/proveedores-edoc'),

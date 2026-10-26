@@ -13,9 +13,12 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
 
 export const PROVEEDORES_PANELS = [
   { id: 'pedidos', label: 'Pedidos', icon: ViewKanbanIcon, permiso: 'proveedores.pedidos', badge: 'pedidos' },
+  /* Cambios de mercadería (0202): lo que se le manda para que lo reponga. Lo ve quien maneja los pedidos. */
+  { id: 'reposiciones', label: 'Cambios de mercadería', icon: AutorenewIcon, permiso: 'proveedores.pedidos' },
   { id: 'ctasctes', label: 'Cuentas corrientes', icon: EventRepeatIcon, permiso: 'proveedores.ctasctes', badge: 'ctasctes' },
   { id: 'echeqs', label: 'Echeqs', icon: AccountBalanceIcon, permiso: 'proveedores.echeqs', badge: 'echeqs' },
   { id: 'edoc', label: 'Estados de cuenta', icon: BalanceIcon, permiso: 'proveedores.edoc' },

@@ -9,6 +9,7 @@ import { FacturasMesModal } from './modals/FacturasMesModal.jsx';
 import { PagoProveedorModal, AnularPagoModal } from './modals/PagosModals.jsx';
 import { AnularPagoPropioModal, CuentaDisponibleModal, PagoPropioModal, ResumenCuentaModal } from './modals/CuentasDisponiblesModals.jsx';
 import { StockProveedorModal, IngresosProveedorModal } from './ProveedorMenu.jsx';
+import { DetalleReposicionModal, MandarReposicionModal, RecibirReposicionModal } from './modals/ReposicionesModals.jsx';
 
 /** Un solo host: el contexto dice qué modal está abierto y con qué props.
  *  El estado de cuenta ya NO es un modal: es la pantalla EdocProveedorPage. */
@@ -35,6 +36,10 @@ const MODALS = {
   // El menú del nombre en las tarjetas de Pedidos (5/10/2026).
   stockProveedor: StockProveedorModal,
   ingresosProveedor: IngresosProveedorModal,
+  // Cambios de mercadería con el proveedor (0202).
+  mandarReposicion: MandarReposicionModal,
+  recibirReposicion: RecibirReposicionModal,
+  reposicion: DetalleReposicionModal,
 };
 
 export function ModalHost() {
