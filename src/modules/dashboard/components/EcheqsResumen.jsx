@@ -33,11 +33,11 @@ export function EcheqsResumen() {
         <Stat label="Debitan en 7 días" value={cuenta(e.semana)} />
         <Stat label="En circulación" value={cuenta(e.activos)} />
       </div>
-      <Table cols={[{ h: 'Debita' }, { h: 'Proveedor' }, { h: 'Banco' }, { h: 'Importe', num: true }]} empty="No hay echeqs en circulación.">
+      <Table cols={[{ h: 'Debita' }, { h: 'A nombre de' }, { h: 'Banco' }, { h: 'Importe', num: true }]} empty="No hay echeqs en circulación.">
         {(e.proximos ?? []).map((x) => (
           <tr key={x.id}>
             <td style={{ whiteSpace: 'nowrap' }}>{fmtFecha(x.fechaVenc)} <VencePill dias={x.diasRest} /></td>
-            <td>{x.proveedorNombre || '—'}</td>
+            <td>{x.aNombreDe || '—'}</td>
             <td>{x.banco || '—'}</td>
             <td className={s.num}>{money(x.importe)}</td>
           </tr>

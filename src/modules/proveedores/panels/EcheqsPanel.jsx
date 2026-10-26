@@ -67,13 +67,13 @@ export function EcheqsPanel() {
           {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
         </select>
         <input
-          type="search" placeholder="N°, banco, proveedor…" value={buscar}
+          type="search" placeholder="N°, banco, a nombre de…" value={buscar}
           onChange={(e) => setBuscar(e.target.value)} style={{ marginLeft: 'auto' }}
         />
       </div>
 
       <Table cols={[
-        { h: 'Número' }, { h: 'Banco' }, { h: 'Proveedor' }, { h: 'Debita' },
+        { h: 'Número' }, { h: 'Banco' }, { h: 'A nombre de' }, { h: 'Debita' },
         { h: 'Importe', num: true }, { h: 'Estado' }, { h: 'Acciones' },
       ]}>
         {(data?.filas ?? []).map((e) => {
@@ -85,7 +85,10 @@ export function EcheqsPanel() {
                 {e.numero?.startsWith('PEND-') && <div className={s.hint} style={{ margin: 0 }}>completar N° real</div>}
               </td>
               <td>{e.banco || '—'}</td>
-              <td>{e.proveedorNombre}</td>
+              <td>
+                {e.aNombreDe}
+                {!e.proveedorId && <div className={s.hint} style={{ margin: 0 }}>no es proveedor</div>}
+              </td>
               <td>{fmtFecha(e.fechaVenc)} {activo && <VencePill dias={e.diasRest} />}</td>
               <td className={s.num}>{money(e.importe)}</td>
               <td><EstadoEcheqPill estado={e.estado} dias={e.diasRest} /></td>
@@ -96,7 +99,7 @@ export function EcheqsPanel() {
                       {/* El banco no lo debita antes de su fecha (27/9/2026): antes de
                           eso no se ofrece "Cobrar" — la API también lo rechaza. */}
                       {e.diasRest <= 0
-                        ? <Btn small variant="btn-primary" onClick={() => cambiarEstado(e, 'cobrado', 'Echeq cobrado: pago registrado.')}>Cobrar</Btn>
+                        ? <Btn small variant="btn-primary" onClick={() => cambiarEstado(e, 'cobrado', e.proveedorId ? 'Echeq cobrado: pago registrado.' : 'Echeq cobrado.')}>Cobrar</Btn>
                         : <span className={s.hint} style={{ margin: 0 }}>se cobra desde el {fmtFecha(e.fechaVenc)}</span>}
                       {e.estado === 'emitido' && (
                         <Btn small onClick={() => cambiarEstado(e, 'entregado', 'Marcado como entregado.')}>Entregado</Btn>
