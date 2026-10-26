@@ -17,11 +17,13 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { cx } from '@shared/utils/classNames.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { telefonoWa } from '@modules/ventas/domain/constants.js';
+import { bultosDelRenglon, nombreBulto } from '@modules/productos/domain/bulto.js';
+import { fmtTam } from '@modules/productos/domain/format.js';
 import { abrirWhatsApp } from '@shared/utils/whatsapp.js';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { provApi } from '../services/proveedores.api.js';
-import { ModalShell, Table, money, fmtFecha, s } from './ui.jsx';
+import { ModalShell, Table, money, num, fmtFecha, s } from './ui.jsx';
 
 const TIPO = { factura: 'Factura', remito: 'Remito', liquidacion: 'Liquidación' };
 const cant = (n, tipo) => `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 3 })}${tipo === 'granel' ? ' kg' : ''}`;
@@ -153,5 +155,57 @@ export function IngresosProveedorModal({ proveedorId, nombre }) {
         ])}
       </Table>
     </ModalShell>
+  );
+}
+
+/**
+ * Lo que entró de un producto, como la factura: «4 bultos × 14 u. (56 u.)»,
+ * «2 bolsas × 25 kg (50 kg)» o «56 u.»; lo bonificado, aparte
+ * («2 bultos × 12 u. + 2 u. sin cargo (26 u.)», «18 u. (3 sin cargo)»).
+ */
+function cuantoEntro(it) {
+  const granel = it.granel && !it.tamKg;
+  const uni = granel ? 'kg' : 'u.';
+  const total = `${num(it.cantidad, 3)} ${uni}`;
+  const gratis = Number(it.sinCargo) || 0;
+  const b = bultosDelRenglon(it.cantidad - gratis, it.porBulto);
+  if (!b) return gratis ? `${total} (${num(gratis, 3)} sin cargo)` : total;
+  return `${b} ${nombreBulto(b, granel)} × ${num(it.porBulto, 3)} ${uni}${gratis ? ` + ${num(gratis, 3)} ${uni} sin cargo` : ''} (${total})`;
+}
+
+/**
+ * LA ÚLTIMA VEZ QUE ENTRÓ SU MERCADERÍA (26/10/2026, pedido del dueño): junto a
+ * las notas del pedido, cuánto entró de cada producto en su último comprobante
+ * con ingreso, para comparar con el pedido nuevo. Plegado (varios proveedores a
+ * la vez) se pide recién al abrirlo.
+ */
+export function UltimoIngreso({ proveedorId, nombre, plegado = false }) {
+  const [abierto, setAbierto] = useState(!plegado);
+  const { data, loading, error } = useResource(
+    `prov-ultimo-ingreso:${proveedorId}`, () => provApi.ultimoIngreso(proveedorId), { enabled: abierto },
+  );
+  const c = data?.ingreso;
+  return (
+    <details
+      open={abierto} onToggle={(e) => setAbierto(e.currentTarget.open)}
+      style={{ border: '1px solid var(--crm-color-border)', borderRadius: 8, padding: '6px 10px', fontSize: 13 }}
+    >
+      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+        La última vez que entró mercadería{nombre ? ` de ${nombre}` : ''}
+        {c && <span className={s.muted} style={{ fontWeight: 400 }}> · {fmtFecha(c.fecha)} · {nroDe(c)}{c.sucursal ? ` · ${c.sucursal}` : ''}</span>}
+      </summary>
+      <div style={{ maxHeight: 200, overflowY: 'auto', marginTop: 4 }}>
+        {loading && <div className={s.hint} style={{ margin: 0 }}>Buscando…</div>}
+        {error && <div className={s.hint} style={{ margin: 0 }}>{error}</div>}
+        {!loading && !error && data && !c && <div className={s.hint} style={{ margin: 0 }}>Todavía no entró mercadería de este proveedor.</div>}
+        {c && !c.items.length && <div className={s.hint} style={{ margin: 0 }}>Ese comprobante no tiene renglones cargados.</div>}
+        {c?.items.map((it, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '2px 0', borderBottom: '1px dashed var(--crm-color-border)' }}>
+            <span>{it.nombre}{it.tamKg ? ` · ${fmtTam(it.tamKg)}` : ''}</span>
+            <strong style={{ whiteSpace: 'nowrap' }}>{cuantoEntro(it)}</strong>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }

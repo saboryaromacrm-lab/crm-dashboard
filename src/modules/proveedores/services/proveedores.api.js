@@ -54,6 +54,7 @@ export const provApi = {
   /* El menú del nombre en la tarjeta (5/10/2026). */
   stockProveedor: (id) => httpClient.get(`/pedidos-proveedor/proveedor/${id}/stock`),
   ingresosProveedor: (id) => httpClient.get(`/pedidos-proveedor/proveedor/${id}/ingresos`),
+  ultimoIngreso: (id) => httpClient.get(`/pedidos-proveedor/proveedor/${id}/ultimo-ingreso`),
   statsPedidos: () => httpClient.get('/pedidos-proveedor/stats'),
   ingresos: (filtros) => httpClient.get(`/pedidos-proveedor/recibidos${qs(filtros)}`),
   solicitarPedidos: (data) => httpClient.post('/pedidos-proveedor', data),

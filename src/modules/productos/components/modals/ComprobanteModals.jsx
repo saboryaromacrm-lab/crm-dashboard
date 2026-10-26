@@ -3,6 +3,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFecha, isoDate } from '../../domain/format.js';
 import { TIPOS_COMPROBANTE, ESTADOS_COMPROBANTE, LETRAS_COMPROBANTE, CONDICIONES_PAGO } from '../../domain/constants.js';
+import { bultosDelRenglon, nombreBulto } from '../../domain/bulto.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
@@ -3425,10 +3426,8 @@ export function ComprobanteDetalleModal({ id }) {
      */
     const granel = p?.tipo === 'granel';
     const porBulto = Number(it.porBulto) || 0;
-    const bultos = porBulto > 1 ? it.cantidad / porBulto : 0;
-    const enBultos = bultos > 0 && Math.abs(bultos - Math.round(bultos)) < 1e-6;
+    const bultos = bultosDelRenglon(it.cantidad, porBulto);
     const uni = granel ? 'kg' : 'u.';
-    const nombreBulto = (n) => (granel ? (n === 1 ? 'bolsa' : 'bolsas') : (n === 1 ? 'bulto' : 'bultos'));
     return (
       <tr key={i}>
         <td>
@@ -3437,14 +3436,14 @@ export function ComprobanteDetalleModal({ id }) {
           {it.paraCafeteria && <span className={s.hint} style={{ margin: 0 }}> · para Coffit</span>}
         </td>
         <td>{p ? store.presLabel(p, it.presentacionId) : '—'}</td>
-        {enBultos ? (
+        {bultos ? (
           <>
             <td className={s.num}>
-              <strong>{Math.round(bultos)} {nombreBulto(Math.round(bultos))}</strong> × {num(porBulto, 3)} {uni}
+              <strong>{bultos} {nombreBulto(bultos, granel)}</strong> × {num(porBulto, 3)} {uni}
               <div className={s.hint} style={{ margin: 0 }}>{num(it.cantidad, 3)} {uni}</div>
             </td>
             <td className={s.num}>
-              <strong>{money(it.costoUnitario * porBulto)}</strong> /{nombreBulto(1)}
+              <strong>{money(it.costoUnitario * porBulto)}</strong> /{nombreBulto(1, granel)}
               <div className={s.hint} style={{ margin: 0 }}>{money(it.costoUnitario)} /{uni}</div>
             </td>
           </>

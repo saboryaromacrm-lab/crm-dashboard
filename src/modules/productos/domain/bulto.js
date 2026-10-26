@@ -21,6 +21,20 @@ export const textoBulto = (p) => {
   return n > 1 ? `Viene en bulto de ${n} u.` : '';
 };
 
+/*
+ * UN RENGLÓN DE COMPRA COMO LA FACTURA (12/10/2026, 0161): con el bulto con
+ * que se cargó y bultos enteros, «4 bultos × 14 u.»; si no, lo que entró. Lo
+ * usan el detalle del comprobante y «la última vez que entró» de los pedidos.
+ */
+/** Los bultos enteros del renglón; 0 si se cargó por unidad, sin dato o no da justo. */
+export function bultosDelRenglon(cantidad, porBulto) {
+  const pb = Number(porBulto) || 0;
+  const b = pb > 1 ? (Number(cantidad) || 0) / pb : 0;
+  return b > 0 && Math.abs(b - Math.round(b)) < 1e-6 ? Math.round(b) : 0;
+}
+/** «bulto»/«bultos»; en el granel, «bolsa»/«bolsas». */
+export const nombreBulto = (n, granel) => (granel ? (n === 1 ? 'bolsa' : 'bolsas') : (n === 1 ? 'bulto' : 'bultos'));
+
 /** Kg que trae la BOLSA de un granel: el formato de compra que fija el precio (o el más viejo). 0 = sin dato. */
 export function kgBolsa(p) {
   if (!p || p.tipo !== 'granel') return 0;

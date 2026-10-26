@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useProveedores } from '../../context/ProveedoresContext.jsx';
 import { provApi } from '../../services/proveedores.api.js';
 import { Btn, ModalShell, s } from '../ui.jsx';
+import { UltimoIngreso } from '../ProveedorMenu.jsx';
 
 /**
  * SOLICITAR PEDIDOS — el alta del kanban, de a varios: se tildan los
@@ -140,6 +141,12 @@ export function SolicitarPedidosModal({ onChange, directo = false }) {
           Texto libre a propósito: es la nota interna entre vos y el encargado, no un remito.
         </div>
       </div>
+      {/* Con varios proveedores, cada uno plegado: se pide recién al abrirlo. */}
+      {elegidos.length > 0 && (
+        <div style={{ display: 'grid', gap: 6 }}>
+          {elegidos.map((p) => <UltimoIngreso key={p.id} proveedorId={p.id} nombre={p.nombre} plegado={elegidos.length > 1} />)}
+        </div>
+      )}
     </ModalShell>
   );
 }
@@ -170,6 +177,7 @@ export function PedidoNotasModal({ pedido, onChange }) {
           style={{ width: '100%' }} autoFocus
         />
       </div>
+      {pedido?.proveedorId && <UltimoIngreso proveedorId={pedido.proveedorId} />}
     </ModalShell>
   );
 }

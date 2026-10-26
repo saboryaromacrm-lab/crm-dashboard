@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BULTO, bultoDe, bultoOfrecible, valorPresentacion, cambioPresentacion, bultosDe, unidadesDeBultos, bultosPartidos, kgBolsa,
-  bultoDelProveedor, bultoTexto, unidadPedido, indiceDisponible, estimarPedido, totalesPedido,
+  bultoDelProveedor, bultoTexto, unidadPedido, indiceDisponible, estimarPedido, totalesPedido, bultosDelRenglon, nombreBulto,
 } from './bulto.js';
 
 const BRACEMA = { id: 1, tipo: 'entero', unidadesPorBulto: 1, formatosCompra: [{ id: 7, cantidad: 6 }, { id: 9, cantidad: 20, usarParaPrecio: true }] };
@@ -132,4 +132,15 @@ test('totales del pedido: bultos y unidades; el granel en bolsas y kg aparte', (
   assert.equal(totalesPedido([{ p: e, bulto: 18, cantidad: 1 }]), 'Total: 1 bulto · 18 unidades');
   assert.equal(totalesPedido([{ p: g, bulto: 25, cantidad: 2 }, { p: g, bulto: 0, cantidad: 2.5 }]), 'Total: 2 bolsas · 52,5 kg');
   assert.equal(totalesPedido([{ p: e, bulto: 12, cantidad: 0 }]), '');
+});
+
+test('bultosDelRenglon: bultos enteros como la factura; por unidad, sin dato o partido → 0', () => {
+  assert.equal(bultosDelRenglon(56, 14), 4);
+  assert.equal(bultosDelRenglon(50, 25), 2);
+  assert.equal(bultosDelRenglon(5, 12), 0);
+  assert.equal(bultosDelRenglon(30, null), 0);
+  assert.equal(bultosDelRenglon(30, 1), 0);
+  assert.equal(nombreBulto(1, false), 'bulto');
+  assert.equal(nombreBulto(4, false), 'bultos');
+  assert.equal(nombreBulto(2, true), 'bolsas');
 });
