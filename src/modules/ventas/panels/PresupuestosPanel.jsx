@@ -388,8 +388,9 @@ export function PresupuestosPanel({ tienda = false }) {
          * aunque el cliente cambie la cantidad—. Pasarlo además como descuento la
          * cobraba dos veces y lo frenaba el tope de descuento a mano del cajero.
          */
-        /* La excepción es el % del BARRIO (0185), que va en los renglones sin oferta: lo calculó el servidor y entra sin tope. */
-        descuento: p.origen === 'web' && it.ofertaId ? 0 : (it.descuento || 0), iva: it.iva, lista: it.lista || undefined,
+        /* Las excepciones las calculó el servidor y entran sin tope: el % del BARRIO (0185) en los renglones sin
+         * oferta y, en uno con oferta, solo la parte del CUPÓN si el cupón también corría ahí (0199). */
+        descuento: p.origen === 'web' && it.ofertaId ? Math.round(1e6 * (it.cuponPct || 0)) / 1e4 : (it.descuento || 0), iva: it.iva, lista: it.lista || undefined,
         /*
          * Viaja el `listaId` con el que se COTIZÓ, no el nombre. El servidor
          * reconoce el precio congelado contra el renglón del presupuesto (que

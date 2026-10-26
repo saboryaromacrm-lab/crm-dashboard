@@ -37,7 +37,7 @@ const csvIds = (s) => String(s || '').split(',').map(Number).filter(Boolean);
 const NUEVO = {
   codigo: '', descripcion: '', activo: true, tipo: 'porcentaje', valor: 10, tope: 0, montoMinimo: 0, desde: '', hasta: '',
   dias: '', horaDesde: '', horaHasta: '', mediosPago: '', entrega: '', marcas: '', categorias: '',
-  usosMax: 0, usosPorCliente: 1, soloPrimeraCompra: false, automatico: false,
+  usosMax: 0, usosPorCliente: 1, soloPrimeraCompra: false, automatico: false, enOfertas: false, enRescate: false,
 };
 /** El atajo «+ Descuento por medio de pago»: 5 % en efectivo en toda la tienda, para cualquier cliente, siempre. */
 const DESCUENTO_MEDIO = {
@@ -64,6 +64,7 @@ function condiciones(c, nombres) {
   const cs = csvIds(c.categorias).map((id) => nombres.categorias.get(id)).filter(Boolean);
   if (ms.length) partes.push(`marcas: ${ms.join(', ')}`);
   if (cs.length) partes.push(`categorías: ${cs.join(', ')}`);
+  if (c.enOfertas || c.enRescate) partes.push(`también en ${[c.enOfertas && 'NutriOfertas', c.enRescate && 'NutriRescate'].filter(Boolean).join(' y ')}`);
   if (c.soloPrimeraCompra) partes.push('solo primera compra');
   partes.push(c.usosPorCliente ? `${c.usosPorCliente} por cliente` : 'sin tope por cliente');
   if (c.usosMax) partes.push(`máximo ${c.usosMax} usos`);
@@ -132,6 +133,7 @@ function CuponModal({ cupon, plantilla, catalogo, onGuardar, onBorrar, onCerrar 
     horaDesde: d.horaDesde, horaHasta: d.horaHasta, mediosPago: d.mediosPago, entrega: d.tipo === 'envio_gratis' ? 'envio' : d.entrega,
     marcas: d.marcas, categorias: d.categorias, usosMax: Number(d.usosMax) || 0,
     usosPorCliente: Number(d.usosPorCliente) || 0, soloPrimeraCompra: d.soloPrimeraCompra, automatico: d.automatico,
+    enOfertas: d.tipo !== 'envio_gratis' && d.enOfertas, enRescate: d.tipo !== 'envio_gratis' && d.enRescate,
   }));
   const borrar = () => (borrando ? enviar(onBorrar) : setBorrando(true));
   const usado = (cupon?.usos?.total ?? 0) + (cupon?.usos?.rechazados ?? 0) > 0;
@@ -207,9 +209,26 @@ function CuponModal({ cupon, plantilla, catalogo, onGuardar, onBorrar, onCerrar 
         </div>
       </div>
       {d.tipo !== 'envio_gratis' && (
-        <div className={s.hint} style={{ margin: 0 }}>
-          Se descuenta de los productos que no están en oferta (una oferta ya tiene su descuento y no se suman), después del descuento
-          del barrio. Un monto fijo se reparte entre esos productos. Nunca más del 95 % de lo que entra.
+        <div className={s.field}>
+          <label>¿Entra en los productos con oferta?</label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={d.enOfertas} onChange={(e) => set('enOfertas')(e.target.checked)} />
+            También en NutriOfertas (las ofertas comunes): se descuenta sobre el precio de la oferta
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={d.enRescate} onChange={(e) => set('enRescate')(e.target.checked)} />
+            También en NutriRescate (lo por vencer)
+          </label>
+          {d.enRescate && (
+            <div className={cx(s.callout, s.warn)} style={{ margin: '4px 0 0' }}>
+              Ojo: lo de NutriRescate suele estar al costo o cerca (según la regla de vencimientos). Con este descuento encima, esos
+              productos se pueden vender a pérdida.
+            </div>
+          )}
+          <div className={s.hint} style={{ margin: '4px 0 0' }}>
+            Sin tildar, no toca lo que está en oferta: ya tiene su descuento. Va después del descuento del barrio; un monto fijo se
+            reparte entre los productos que entran. Nunca más del 95 % de lo que entra.
+          </div>
         </div>
       )}
 
