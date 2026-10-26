@@ -5,13 +5,18 @@ import { errorMsg, provApi } from '../services/proveedores.api.js';
 import { Btn, PanelHead, Pill, Stat, Table, fmtFecha, money, s } from '../components/ui.jsx';
 
 const FILTROS = [['pendientes', 'Pendientes'], ['completos', 'Completos'], ['todos', 'Todos']];
+const ESTADO = {
+  pendiente: { pill: 'est-pendiente', label: 'Pendiente' },
+  completo: { pill: 'est-recibida', label: 'Completo' },
+  anulado: { pill: 'est-cancelada', label: 'Anulado' },
+};
 const dias = (fecha) => Math.max(0, Math.floor((Date.now() - new Date(fecha).getTime()) / 86400000));
 
 /**
  * CAMBIOS DE MERCADERÍA (0202, 26/10/2026, pedido del dueño): lo que se le
  * manda al proveedor para que lo reponga y lo que va reponiendo. A costo: el
  * cambio se completa cuando lo repuesto alcanza lo mandado; lo que falta queda
- * pendiente hasta que reponga.
+ * pendiente hasta que reponga. «Todos» muestra también los anulados.
  */
 export function ReposicionesPanel() {
   const { proveedores, openModal, toast, panelParams } = useProveedores();
@@ -28,7 +33,6 @@ export function ReposicionesPanel() {
   const debe = pendientes.reduce((a, f) => a + f.debe, 0);
 
   const anular = async (f) => {
-    // eslint-disable-next-line no-alert
     if (!window.confirm(`¿Anular el cambio #${f.id} con ${f.proveedorNombre}? Lo mandado vuelve al stock.`)) return;
     try { await provApi.anularReposicion(f.id); toast('Cambio anulado: lo mandado volvió al stock.', 'ok'); reload(); } catch (e) { toast(errorMsg(e), 'err'); }
   };
@@ -64,7 +68,7 @@ export function ReposicionesPanel() {
           <tr key={f.id}>
             <td style={{ whiteSpace: 'nowrap' }}>
               {fmtFecha(f.creadoEn)}
-              {f.estado === 'pendiente' && <div className={s.hint} style={{ margin: 0 }}>hace {dias(f.creadoEn)} día(s)</div>}
+              <div className={s.hint} style={{ margin: 0 }}>{f.sucursalNombre}{f.estado === 'pendiente' && ` · hace ${dias(f.creadoEn)} día(s)`}</div>
             </td>
             <td>
               {f.proveedorNombre}
@@ -73,16 +77,14 @@ export function ReposicionesPanel() {
             <td className={s.num}>{money(f.mandado)}</td>
             <td className={s.num}>{money(f.repuesto)}</td>
             <td className={s.num}><strong>{f.estado === 'pendiente' ? money(f.debe) : '—'}</strong></td>
-            <td>
-              <Pill pill={f.estado === 'completo' ? 'est-recibida' : 'est-pendiente'} label={f.estado === 'completo' ? 'Completo' : 'Pendiente'} />
-            </td>
+            <td><Pill pill={ESTADO[f.estado].pill} label={ESTADO[f.estado].label} /></td>
             <td>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                 {f.estado === 'pendiente' && (
                   <Btn small variant="btn-primary" onClick={() => openModal('recibirReposicion', { reposicion: f, onChange: reload })}>Recibir</Btn>
                 )}
                 <Btn small onClick={() => openModal('reposicion', { id: f.id })}>Ver</Btn>
-                {f.estado === 'pendiente' && f.repuesto === 0 && <Btn small onClick={() => anular(f)}>Anular</Btn>}
+                {f.estado === 'pendiente' && f.entregas === 0 && <Btn small onClick={() => anular(f)}>Anular</Btn>}
               </div>
             </td>
           </tr>
