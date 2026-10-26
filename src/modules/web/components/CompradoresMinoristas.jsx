@@ -55,7 +55,7 @@ export function CompradoresMinoristas({ avisar }) {
 
       <Table
         cols={[
-          { h: 'Nombre' }, { h: 'WhatsApp' }, { h: 'Dirección' }, { h: 'Pedidos', num: true },
+          { h: 'Nombre' }, { h: 'WhatsApp' }, { h: 'Direcciones guardadas' }, { h: 'Pedidos', num: true },
           { h: 'Último ingreso' }, { h: '', cls: 'actions-col' },
         ]}
         empty={loading ? 'Cargando…' : buscado ? 'Nadie con esa búsqueda.' : 'Todavía no se registró ningún cliente minorista.'}
@@ -67,7 +67,11 @@ export function CompradoresMinoristas({ avisar }) {
               {c.bloqueado && <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-danger)' }}>Bloqueado</div>}
             </td>
             <td className={s.mono}>{telLegible(c.telefono)}</td>
-            <td>{[c.direccion, c.localidad].filter(Boolean).join(' · ') || <span className={s.muted}>—</span>}</td>
+            <td>
+              {c.direcciones.length ? c.direcciones.map((d) => (
+                <div key={d.nombre}><strong>{d.nombre}:</strong> {[d.direccion, d.localidad].filter(Boolean).join(' · ')}</div>
+              )) : <span className={s.muted}>—</span>}
+            </td>
             <td className={s.num}>{c.pedidos}</td>
             <td>{c.ultimoIngreso ? fmtFechaHora(c.ultimoIngreso) : <span className={s.muted}>Todavía no entró</span>}</td>
             <td className={s['actions-col']}>
