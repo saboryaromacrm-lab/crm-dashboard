@@ -10,6 +10,10 @@
  * cerraron en la caja, lo que descontó, la ganancia que dejaron (con y sin el
  * cupón, y después del envío regalado) y el ticket promedio contra el de los
  * pedidos sin cupón. Cada cambio guarda solo (no usa el «Guardar cambios» de arriba).
+ *
+ * AUTOMÁTICOS (0199, 25/10/2026, pedido del dueño: «5 % pagando en efectivo en
+ * toda la tienda»): un cupón sin código que el checkout aplica solo. Con medio
+ * de pago, el checkout lo muestra en ese medio para animar a pagar así.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
@@ -33,7 +37,11 @@ const csvIds = (s) => String(s || '').split(',').map(Number).filter(Boolean);
 const NUEVO = {
   codigo: '', descripcion: '', activo: true, tipo: 'porcentaje', valor: 10, tope: 0, montoMinimo: 0, desde: '', hasta: '',
   dias: '', horaDesde: '', horaHasta: '', mediosPago: '', entrega: '', marcas: '', categorias: '',
-  usosMax: 0, usosPorCliente: 1, soloPrimeraCompra: false,
+  usosMax: 0, usosPorCliente: 1, soloPrimeraCompra: false, automatico: false,
+};
+/** El atajo «+ Descuento por medio de pago»: 5 % en efectivo en toda la tienda, para cualquier cliente, siempre. */
+const DESCUENTO_MEDIO = {
+  ...NUEVO, automatico: true, codigo: 'EFECTIVO5', descripcion: '5 % pagando en efectivo', valor: 5, mediosPago: 'efectivo', usosPorCliente: 0,
 };
 
 /** Qué da el cupón, en una línea. */
@@ -84,10 +92,10 @@ function ElegirVarios({ id, label, opciones, elegidos, onCambiar }) {
   );
 }
 
-function CuponModal({ cupon, catalogo, onGuardar, onBorrar, onCerrar }) {
+function CuponModal({ cupon, plantilla, catalogo, onGuardar, onBorrar, onCerrar }) {
   const [d, setD] = useState(() => (cupon
     ? { ...NUEVO, ...cupon, desde: fechaInput(cupon.desde), hasta: fechaInput(cupon.hasta) }
-    : NUEVO));
+    : plantilla ?? NUEVO));
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [borrando, setBorrando] = useState(false);
@@ -123,14 +131,14 @@ function CuponModal({ cupon, catalogo, onGuardar, onBorrar, onCerrar }) {
     montoMinimo: Number(d.montoMinimo) || 0, desde: d.desde || '', hasta: d.hasta || '', dias: d.dias,
     horaDesde: d.horaDesde, horaHasta: d.horaHasta, mediosPago: d.mediosPago, entrega: d.tipo === 'envio_gratis' ? 'envio' : d.entrega,
     marcas: d.marcas, categorias: d.categorias, usosMax: Number(d.usosMax) || 0,
-    usosPorCliente: Number(d.usosPorCliente) || 0, soloPrimeraCompra: d.soloPrimeraCompra,
+    usosPorCliente: Number(d.usosPorCliente) || 0, soloPrimeraCompra: d.soloPrimeraCompra, automatico: d.automatico,
   }));
   const borrar = () => (borrando ? enviar(onBorrar) : setBorrando(true));
   const usado = (cupon?.usos?.total ?? 0) + (cupon?.usos?.rechazados ?? 0) > 0;
 
   return (
     <ModalShell
-      title={cupon ? `Cupón ${cupon.codigo}` : 'Nuevo cupón'}
+      title={cupon ? `${cupon.automatico ? 'Descuento automático' : 'Cupón'} ${cupon.codigo}` : d.automatico ? 'Nuevo descuento automático' : 'Nuevo cupón'}
       wide
       onClose={onCerrar}
       footer={[
@@ -139,16 +147,35 @@ function CuponModal({ cupon, catalogo, onGuardar, onBorrar, onCerrar }) {
         { texto: enviando ? 'Guardando…' : 'Guardar cupón', clase: 'btn-primary', onClick: guardar, disabled: enviando },
       ]}
     >
+      <div className={s.field}>
+        <label>Cómo se aplica</label>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          {[[false, 'Con código: el cliente lo escribe'], [true, 'Automático: sin código, se aplica solo']].map(([v, l]) => (
+            <label key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+              <input type="radio" name="cup-modo" checked={d.automatico === v} onChange={() => set('automatico')(v)} /> {l}
+            </label>
+          ))}
+        </div>
+        {d.automatico && (
+          <div className={s.hint} style={{ margin: '4px 0 0' }}>
+            El checkout lo aplica cuando se cumplen las condiciones de abajo. Con medio de pago, lo muestra en ese medio («Efectivo −5 %, ahorrás $…»)
+            para animar a pagar así, y la caja exige ese medio al cobrar. No se suma a un cupón con código: si el cliente escribe uno, va el cupón.
+          </div>
+        )}
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
         <div className={s.field}>
-          <label htmlFor="cup-codigo">Código</label>
-          <input id="cup-codigo" value={d.codigo} maxLength={30} placeholder="BIENVENIDA10" autoComplete="off" spellCheck={false}
+          <label htmlFor="cup-codigo">{d.automatico ? 'Nombre corto' : 'Código'}</label>
+          <input id="cup-codigo" value={d.codigo} maxLength={30} placeholder={d.automatico ? 'EFECTIVO5' : 'BIENVENIDA10'} autoComplete="off" spellCheck={false}
             onChange={(e) => set('codigo')(e.target.value.toUpperCase().replace(/\s/g, ''))} />
-          <div className={s.hint} style={{ margin: '4px 0 0' }}>Letras, números, guiones. El cliente lo escribe tal cual.</div>
+          <div className={s.hint} style={{ margin: '4px 0 0' }}>
+            {d.automatico ? 'Nadie lo escribe: lo nombra en el pedido, en la venta y en Métricas.' : 'Letras, números, guiones. El cliente lo escribe tal cual.'}
+          </div>
         </div>
         <div className={s.field}>
           <label htmlFor="cup-desc">Descripción (la ve el cliente)</label>
-          <input id="cup-desc" value={d.descripcion} maxLength={200} placeholder="10 % en tu primera compra" onChange={(e) => set('descripcion')(e.target.value)} />
+          <input id="cup-desc" value={d.descripcion} maxLength={200} placeholder={d.automatico ? '5 % pagando en efectivo' : '10 % en tu primera compra'} onChange={(e) => set('descripcion')(e.target.value)} />
         </div>
       </div>
 
@@ -276,7 +303,7 @@ function CuponModal({ cupon, catalogo, onGuardar, onBorrar, onCerrar }) {
 export function CuponesTienda({ avisar }) {
   const [datos, setDatos] = useState(null);
   const [catalogo, setCatalogo] = useState({ marcas: [], categorias: [] });
-  const [abierto, setAbierto] = useState(null); // { cupon } (cupon null = nuevo)
+  const [abierto, setAbierto] = useState(null); // { cupon, plantilla? } (cupon null = nuevo)
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [verInactivos, setVerInactivos] = useState(false);
@@ -317,13 +344,17 @@ export function CuponesTienda({ avisar }) {
     <div className={cx(s.card, s.cardPad)} style={{ display: 'grid', gap: 'var(--crm-space-3)' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 320px' }}>
-          <div className={s['section-title']} style={{ margin: 0 }}>Cupones de descuento</div>
+          <div className={s['section-title']} style={{ margin: 0 }}>Cupones y descuentos automáticos</div>
           <div className={s.hint} style={{ margin: '4px 0 0' }}>
-            Un código que el cliente escribe en el checkout de la tienda minorista. El descuento queda en el pedido y, al cerrarlo
-            en la caja, en la venta: lo de abajo se mide con las ventas reales, todo neto (sin IVA).
+            Un código que el cliente escribe en el checkout de la tienda minorista, o un descuento automático que se aplica solo
+            (por ejemplo, pagando en efectivo). El descuento queda en el pedido y, al cerrarlo en la caja, en la venta: lo de abajo
+            se mide con las ventas reales, todo neto (sin IVA), y Métricas y Resultados lo descuentan.
           </div>
         </div>
-        <Btn variant="btn-primary" onClick={() => setAbierto({ cupon: null })}>+ Nuevo cupón</Btn>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Btn onClick={() => setAbierto({ cupon: null, plantilla: DESCUENTO_MEDIO })}>+ Descuento por medio de pago</Btn>
+          <Btn variant="btn-primary" onClick={() => setAbierto({ cupon: null })}>+ Nuevo cupón</Btn>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -367,6 +398,7 @@ export function CuponesTienda({ avisar }) {
               <td style={{ minWidth: 220 }}>
                 <strong style={{ fontFamily: 'monospace', letterSpacing: '0.04em' }}>{c.codigo}</strong>{' '}
                 <Pill pill={c.activo ? 'est-recibida' : 'est-cancelada'} label={c.activo ? 'Activo' : 'Inactivo'} />
+                {c.automatico && <>{' '}<Pill pill="est-transito" label="Automático" /></>}
                 {c.descripcion && <div style={{ fontSize: 13 }}>{c.descripcion}</div>}
                 <div className={s.hint} style={{ margin: 0 }}>{condiciones(c, nombres)}</div>
               </td>
@@ -417,11 +449,12 @@ export function CuponesTienda({ avisar }) {
       {abierto && (
         <CuponModal
           cupon={abierto.cupon}
+          plantilla={abierto.plantilla}
           catalogo={catalogo}
           onCerrar={() => setAbierto(null)}
           onGuardar={(dto) => tras(
             abierto.cupon ? httpClient.put(`/cupones/${abierto.cupon.id}`, dto) : httpClient.post('/cupones', dto),
-            abierto.cupon ? 'Cupón guardado.' : `Cupón ${dto.codigo} creado: ya se puede usar en la tienda.`,
+            abierto.cupon ? 'Guardado.' : dto.automatico ? `Descuento ${dto.codigo} creado: ya se aplica en el checkout.` : `Cupón ${dto.codigo} creado: ya se puede usar en la tienda.`,
           )}
           onBorrar={() => tras(httpClient.delete(`/cupones/${abierto.cupon.id}`), (r) => (r?.desactivado ? 'Cupón desactivado.' : 'Cupón borrado.'))}
         />
