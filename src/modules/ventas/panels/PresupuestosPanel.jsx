@@ -4,13 +4,14 @@
  * Se COTIZA en el POS ("Presupuesto" en el ticket): acá vive el ciclo de vida.
  *
  *   borrador → Enviar (congela validez) → Confirmar (¡reserva stock!)
- *   → armar con la hoja impresa → Cerrar en POS (el cajero ajusta y cobra)
+ *   → armar con la hoja impresa y cargar lo armado (fracciona lo que se armó
+ *   con el granel) → Cerrar en POS (el cajero ajusta y cobra)
  *
  * Dos papeles: el del CLIENTE (formal, con precios y validez — o "Copiar
  * WhatsApp") y el de ARMADO (sin precios, columna en blanco para el lápiz).
  * "Vencido" se calcula acá mismo: enviado con la fecha pasada.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cx } from '@shared/utils/classNames.js';
 import { configImpresion, esc, imprimirDocumento } from '@core/services/imprimir.js';
@@ -50,6 +51,10 @@ const estadoDe = (p) => (
 
 const finalUnit = (it) => it.precioLista * (1 - (it.descuento || 0) / 100) * (1 + (it.iva ?? 21) / 100);
 const armadaDe = (it) => (it.cantidadArmada ?? it.cantidad);
+/** Los paquetes del renglón que se fraccionan al guardar `armada`: los que pasan de los ya armados, hasta lo apartado (la cuenta de la API). */
+const seFraccionan = (it, armada) => Math.min(it.porArmar, Math.max(0, Math.ceil(armada - (it.cantidad - it.porArmar) - 1e-9)));
+/** Paquetes que esperan su fraccionado: sin cargar lo armado, el pedido no se cierra. */
+const faltaCargarArmado = (p) => p.items.some((it) => it.porArmar > 0 && it.cantidadArmada == null);
 
 /* ------------------------- Impresiones y WhatsApp ------------------------- */
 /* El formato (A4/Carta/rollo) y el membrete de la empresa salen de
@@ -139,24 +144,21 @@ function textoWhatsApp(p, cliente, empresaNombre) {
 /* ------------------------------ Modales ------------------------------ */
 
 /**
- * CONFIRMAR UN PEDIDO QUE NECESITA FRACCIONAR (3/10/2026). Dice qué paquetes
- * se van a armar con el granel y cuántos kilos salen, y pide quién fracciona
- * si hay operadores cargados (queda en el historial de fraccionamiento, igual
- * que un fraccionado a mano). Toca stock: dos pasos y candado contra el doble clic.
+ * CONFIRMAR UN PEDIDO CON PAQUETES SIN ARMAR (28/10/2026, pedido del dueño).
+ * Confirmar no fracciona: aparta el granel de los paquetes que faltan, y se
+ * fraccionan al cargar lo armado, por lo que se armó de verdad. Acá se avisa
+ * cuánto granel se aparta. Toca stock: dos pasos y candado contra el doble clic.
  */
-function ConfirmarFraccionandoModal({ p, orden, onConfirmar, onCerrar }) {
-  const operadores = orden.operadores ?? [];
-  const [operadorId, setOperadorId] = useState(operadores.length === 1 ? String(operadores[0].id) : '');
+function ConfirmarConGranelModal({ p, orden, onConfirmar, onCerrar }) {
   const [guardando, setGuardando] = useState(false);
   const enVuelo = useRef(false);
-  const faltaOperador = operadores.length > 0 && !operadorId;
   const kg = orden.fraccionar.reduce((a, f) => a + f.kg, 0);
   const cortos = orden.items.filter((it) => !it.alcanza);
 
   const confirmar = async () => {
-    if (enVuelo.current || faltaOperador) return;
+    if (enVuelo.current) return;
     enVuelo.current = true; setGuardando(true);
-    try { await onConfirmar(operadorId ? Number(operadorId) : null); } finally { enVuelo.current = false; setGuardando(false); }
+    try { await onConfirmar(); } finally { enVuelo.current = false; setGuardando(false); }
   };
 
   return (
@@ -165,14 +167,14 @@ function ConfirmarFraccionandoModal({ p, orden, onConfirmar, onCerrar }) {
       onClose={onCerrar}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: onCerrar },
-        { texto: guardando ? 'Confirmando…' : 'Sí, fraccionar y confirmar', clase: 'btn-primary', onClick: confirmar, disabled: guardando || faltaOperador },
+        { texto: guardando ? 'Confirmando…' : 'Confirmar y reservar', clase: 'btn-primary', onClick: confirmar, disabled: guardando },
       ]}
     >
       <div className={s.hint} style={{ marginTop: 0 }}>
-        Faltan paquetes armados. Al confirmar, el ERP los <strong>fracciona con el granel</strong> de la sucursal
-        y después reserva el pedido. Queda registrado en el historial de fraccionamiento.
+        Faltan paquetes armados. Al confirmar se <strong>reserva el granel</strong> para armarlos; se fraccionan recién
+        al <strong>cargar lo armado</strong>, por lo que se arme de verdad. Lo que no se arme vuelve al granel al cerrar el pedido.
       </div>
-      <Table cols={[{ h: 'Se arma' }, { h: 'Paquetes', num: true }, { h: 'Granel que usa', num: true }]}>
+      <Table cols={[{ h: 'Se arma' }, { h: 'Paquetes', num: true }, { h: 'Granel que se reserva', num: true }]}>
         {orden.fraccionar.map((f) => (
           <tr key={`${f.nombre}-${f.tam}`}>
             <td>{f.nombre} · <strong>{f.tam}</strong></td>
@@ -181,19 +183,10 @@ function ConfirmarFraccionandoModal({ p, orden, onConfirmar, onCerrar }) {
           </tr>
         ))}
       </Table>
-      <div className={s.hint}>En total salen <strong>{num(kg, 3)} kg</strong> de granel. Hay que llenar esos paquetes antes de preparar el pedido.</div>
-      {operadores.length > 0 && (
-        <div className={s.field}>
-          <label htmlFor="confirmar-operador">¿Quién fracciona? <span className={s.req}>*</span></label>
-          <select id="confirmar-operador" value={operadorId} onChange={(e) => setOperadorId(e.target.value)}>
-            <option value="">Elegí quién fracciona…</option>
-            {operadores.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
-          </select>
-        </div>
-      )}
+      <div className={s.hint}>En total se reservan <strong>{num(kg, 3)} kg</strong> de granel.</div>
       {cortos.length > 0 && (
         <div className={cx(s.callout, s.warn)}>
-          Aun fraccionando, {cortos.length} renglón(es) no alcanzan: {cortos.map((it) => it.nombre + (it.detalle ? ` (${it.detalle})` : '')).join(', ')}.
+          Aun con el granel, {cortos.length} renglón(es) no alcanzan: {cortos.map((it) => it.nombre + (it.detalle ? ` (${it.detalle})` : '')).join(', ')}.
           Si el control de stock está prendido para esos productos, la confirmación va a frenar.
         </div>
       )}
@@ -201,19 +194,44 @@ function ConfirmarFraccionandoModal({ p, orden, onConfirmar, onCerrar }) {
   );
 }
 
+/**
+ * CARGAR LO ARMADO. Con la reserva, los paquetes que se armaron con el granel
+ * apartado se FRACCIONAN al guardar (28/10/2026): se ve cuántos por renglón y
+ * se pide quién fraccionó, si hay operadores cargados.
+ */
 function ArmadoModal({ p, onGuardar, onCerrar }) {
   const [edits, setEdits] = useState({});
+  const [operadores, setOperadores] = useState([]);
+  const [operadorId, setOperadorId] = useState('');
   const [guardando, setGuardando] = useState(false);
   const set = (id, patch) => setEdits((e) => ({ ...e, [id]: { ...(e[id] || {}), ...patch } }));
+  const armada = (it) => (edits[it.id]?.armada != null ? Math.max(parseFloat(edits[it.id].armada) || 0, 0) : armadaDe(it));
+  const conGranel = p.items.some((it) => it.porArmar > 0);
+  const totalFracciona = p.items.reduce((a, it) => a + seFraccionan(it, armada(it)), 0);
+  const faltaOperador = totalFracciona > 0 && operadores.length > 0 && !operadorId;
+
+  /* Quién puede fraccionar: viene con la orden, solo si el pedido tiene granel reservado. */
+  useEffect(() => {
+    if (!conGranel) return undefined;
+    let vivo = true;
+    ventasApi.orden(p.id).then((o) => {
+      if (!vivo) return;
+      const ops = o?.operadores ?? [];
+      setOperadores(ops);
+      if (ops.length === 1) setOperadorId(String(ops[0].id));
+    }).catch(() => {});
+    return () => { vivo = false; };
+  }, [p.id, conGranel]);
 
   const guardar = async () => {
+    if (faltaOperador) return;
     setGuardando(true);
     const items = p.items.map((it) => ({
       itemId: it.id,
-      cantidadArmada: edits[it.id]?.armada != null ? Math.max(parseFloat(edits[it.id].armada) || 0, 0) : undefined,
+      cantidadArmada: edits[it.id]?.armada != null ? armada(it) : undefined,
       motivo: edits[it.id]?.motivo,
     })).filter((x) => x.cantidadArmada !== undefined || x.motivo !== undefined);
-    const ok = await onGuardar(items);
+    const ok = await onGuardar(items, operadorId ? Number(operadorId) : null);
     setGuardando(false);
     if (ok) onCerrar();
   };
@@ -225,14 +243,18 @@ function ArmadoModal({ p, onGuardar, onCerrar }) {
       onClose={onCerrar}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: onCerrar },
-        { texto: guardando ? 'Guardando…' : 'Guardar armado', clase: 'btn-primary', onClick: guardar },
+        { texto: guardando ? 'Guardando…' : 'Guardar armado', clase: 'btn-primary', onClick: guardar, disabled: guardando || faltaOperador },
       ]}
     >
       <div className={cx(s.callout, s.info)}>
         Pasá acá lo que el vendedor anotó en la hoja: qué se armó de verdad y por qué faltó lo que
         faltó. La venta va a salir por <strong>lo armado</strong>.
+        {conGranel && ' Los paquetes que se armaron con el granel reservado se fraccionan al guardar; lo que no se armó vuelve al granel al cerrar el pedido.'}
       </div>
-      <Table cols={[{ h: 'Producto' }, { h: 'Pedido', num: true }, { h: 'Armado', num: true }, { h: 'Motivo' }]}>
+      <Table cols={[
+        { h: 'Producto' }, { h: 'Pedido', num: true }, { h: 'Armado', num: true },
+        ...(conGranel ? [{ h: 'Se fracciona', num: true }] : []), { h: 'Motivo' },
+      ]}>
         {p.items.map((it) => (
           <tr key={it.id}>
             <td>{it.nombre}{it.detalle && <div className={s.hint} style={{ margin: 0 }}>{it.detalle}</div>}</td>
@@ -245,6 +267,9 @@ function ArmadoModal({ p, onGuardar, onCerrar }) {
                 onChange={(e) => set(it.id, { armada: e.target.value })}
               />
             </td>
+            {conGranel && (
+              <td className={cx(s.num, s.mono)}>{it.porArmar > 0 ? num(seFraccionan(it, armada(it)), 0) : '—'}</td>
+            )}
             <td>
               <input
                 value={edits[it.id]?.motivo ?? (it.motivo || '')}
@@ -256,6 +281,15 @@ function ArmadoModal({ p, onGuardar, onCerrar }) {
           </tr>
         ))}
       </Table>
+      {totalFracciona > 0 && operadores.length > 0 && (
+        <div className={s.field}>
+          <label htmlFor="armado-operador">¿Quién fraccionó? <span className={s.req}>*</span></label>
+          <select id="armado-operador" value={operadorId} onChange={(e) => setOperadorId(e.target.value)}>
+            <option value="">Elegí quién fraccionó…</option>
+            {operadores.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+          </select>
+        </div>
+      )}
     </ModalShell>
   );
 }
@@ -311,9 +345,9 @@ export function PresupuestosPanel({ tienda = false }) {
 
   /**
    * CONFIRMAR (reserva el stock). Si el pedido lleva paquetes de un granel que
-   * no están todos armados, al confirmar el ERP los FRACCIONA con el granel
-   * (3/10/2026, decisión del dueño): antes se muestra qué se va a armar y quién
-   * lo fracciona, y se confirma en un segundo paso. Sin nada para armar —o sin
+   * no están todos armados, se reserva su granel y se fraccionan al cargar lo
+   * armado (28/10/2026, pedido del dueño): antes se muestra cuánto granel se
+   * aparta, y se confirma en un segundo paso. Sin nada para armar —o sin
    * reserva de stock en la configuración— confirma directo, como siempre.
    */
   const confirmar = async (p) => {
@@ -323,7 +357,7 @@ export function PresupuestosPanel({ tienda = false }) {
       let orden = null;
       try { orden = await ventasApi.orden(p.id); } catch (e) { toast(errorMsg(e), 'err'); setOcupado(false); return; }
       setOcupado(false);
-      if (orden?.fraccionar?.length) { setModal({ tipo: 'fraccionar', p, orden }); return; }
+      if (orden?.fraccionar?.length) { setModal({ tipo: 'granel', p, orden }); return; }
     }
     await accion(() => ventasApi.confirmarPresupuesto(p.id, ctx.usuarioId), 'Confirmado: stock reservado para armar el pedido.');
   };
@@ -376,6 +410,7 @@ export function PresupuestosPanel({ tienda = false }) {
    * se cierra solo (y se libera la reserva).
    */
   const cerrarEnPos = async (p) => {
+    if (faltaCargarArmado(p)) { toast('Primero cargá lo armado: hay paquetes que se fraccionan con el granel reservado.', 'err'); return; }
     const items = p.items
       .filter((it) => armadaDe(it) > 1e-9)
       .map((it) => ({
@@ -559,22 +594,17 @@ export function PresupuestosPanel({ tienda = false }) {
         al despachar y la plata que trae el chofer se registra como cobranza.
       </div>
 
-      {modal?.tipo === 'fraccionar' && (
-        <ConfirmarFraccionandoModal
+      {modal?.tipo === 'granel' && (
+        <ConfirmarConGranelModal
           p={modal.p}
           orden={modal.orden}
           onCerrar={() => setModal(null)}
-          onConfirmar={async (operadorId) => {
-            let armados = [];
-            const ok = await accion(async () => {
-              const r = await ventasApi.confirmarPresupuesto(modal.p.id, ctx.usuarioId, operadorId);
-              armados = r?.armados ?? [];
-            });
-            if (ok) {
-              toast(`Confirmado: se fraccionó ${armados.join(' · ') || 'lo que faltaba'} y quedó reservado.`, 'ok');
-              setModal(null);
-            }
-            return ok;
+          onConfirmar={async () => {
+            const ok = await accion(
+              () => ventasApi.confirmarPresupuesto(modal.p.id, ctx.usuarioId),
+              'Confirmado y reservado: los paquetes que faltan se fraccionan al cargar lo armado.',
+            );
+            if (ok) setModal(null);
           }}
         />
       )}
@@ -582,7 +612,15 @@ export function PresupuestosPanel({ tienda = false }) {
         <ArmadoModal
           p={modal.p}
           onCerrar={() => setModal(null)}
-          onGuardar={(items) => accion(() => ventasApi.armarPresupuesto(modal.p.id, items), 'Armado guardado.')}
+          onGuardar={async (items, operadorId) => {
+            let fraccionados = [];
+            const ok = await accion(async () => {
+              const r = await ventasApi.armarPresupuesto(modal.p.id, items, ctx.usuarioId, operadorId);
+              fraccionados = r?.fraccionados ?? [];
+            });
+            if (ok) toast(fraccionados.length ? `Armado guardado. Se fraccionó: ${fraccionados.join(' · ')}.` : 'Armado guardado.', 'ok');
+            return ok;
+          }}
         />
       )}
     </div>

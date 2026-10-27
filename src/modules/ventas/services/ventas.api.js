@@ -227,8 +227,11 @@ export const ventasApi = {
   enviarPresupuesto: (id) => httpClient.post(`/presupuestos/${id}/enviar`, {}),
   reabrirPresupuesto: (id) => httpClient.post(`/presupuestos/${id}/reabrir`, {}),
   /** `operadorId`: quién fracciona los paquetes que falten armar (3/10/2026). */
-  confirmarPresupuesto: (id, usuarioId, operadorId) => httpClient.post(`/presupuestos/${id}/confirmar`, { usuarioId, operadorId: operadorId || undefined }),
-  armarPresupuesto: (id, items) => httpClient.post(`/presupuestos/${id}/armar`, { items }),
+  confirmarPresupuesto: (id, usuarioId) => httpClient.post(`/presupuestos/${id}/confirmar`, { usuarioId }),
+  /** Lo armado; los paquetes armados con el granel reservado se fraccionan acá, con quién lo hizo. */
+  armarPresupuesto: (id, items, usuarioId, operadorId) => httpClient.post(`/presupuestos/${id}/armar`, {
+    items, usuarioId, operadorId: operadorId || undefined,
+  }),
   delegarPresupuesto: (id, vendedorId) => httpClient.post(`/presupuestos/${id}/delegar`, { vendedorId }),
   cancelarPresupuesto: (id, usuarioId, motivo) => httpClient.post(`/presupuestos/${id}/cancelar`, { usuarioId, motivo }),
 

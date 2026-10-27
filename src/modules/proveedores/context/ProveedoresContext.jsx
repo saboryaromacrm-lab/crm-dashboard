@@ -42,7 +42,7 @@ export function ProveedoresProvider({ children, panels = [], defaultPanel }) {
       ]);
       setContadores({
         ctasctes: (k?.vencidos?.n ?? 0) + (k?.prox3?.n ?? 0),
-        echeqs: (e?.vencidos?.n ?? 0) + (e?.prox3?.n ?? 0),
+        echeqs: (e?.vencidos?.n ?? 0) + (e?.prox3?.n ?? 0) + (e?.pendientes?.n ?? 0),
         pedidos: p?.pendientes ?? 0,
         cuentas: c?.total ?? 0,
       });

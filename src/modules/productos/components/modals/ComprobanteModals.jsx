@@ -819,6 +819,25 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     if (origenPago && (!turno || String(turno.id) !== origenPago)) setOrigenPago('');
   }, [turno, origenPago]);
 
+  /* LOS ECHEQS YA HECHOS (0205, pedido del dueño): el echeq se hace antes y la
+   * factura llega días después. Los de este proveedor con plata que todavía no
+   * cubre ninguna factura se ofrecen acá: lo tildado cubre esa parte del saldo
+   * —sin echeq automático por ella— y las cuotas, el resto.
+   * Cuánto se usa de cada uno: { [echeqId]: '250000' }. */
+  const [echeqsDisp, setEcheqsDisp] = useState([]);
+  const [echeqsUsados, setEcheqsUsados] = useState({});
+  useEffect(() => {
+    let vivo = true;
+    setEcheqsUsados({});
+    const pid = parseInt(provId, 10);
+    if (!pid || (tipo !== 'factura' && tipo !== 'liquidacion')) { setEcheqsDisp([]); return undefined; }
+    store.echeqsDisponibles(pid)
+      .then((r) => { if (vivo) setEcheqsDisp(r?.filas ?? []); })
+      // Sin permiso de Echeqs no se ofrecen: la factura se carga igual.
+      .catch(() => { if (vivo) setEcheqsDisp([]); });
+    return () => { vivo = false; };
+  }, [store, provId, tipo]);
+
   /**
    * El universo del buscador: los productos RELACIONADOS con el proveedor de
    * la factura (tienen formato de compra con él), sin importar quién esté
@@ -1294,6 +1313,15 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   );
   const ahora = Number(pagarAhora) || 0;
   const saldoFinal = r2(total - totalTomado - ahora);
+  const totalEcheqs = r2(Object.values(echeqsUsados).reduce((a, v) => a + (Number(v) || 0), 0));
+  /** Lo que queda para las cuotas: el saldo menos lo que cubren los echeqs ya hechos. */
+  const saldoCuotas = r2(saldoFinal - totalEcheqs);
+  const marcarEcheq = (e, si) => setEcheqsUsados((m) => {
+    const n = { ...m };
+    if (si) n[e.id] = String(r2(Math.min(e.sinFactura, Math.max(0, saldoCuotas))));
+    else delete n[e.id];
+    return n;
+  });
   /**
    * La condición de pago se DERIVA del saldo en vez de ser un selector aparte:
    * antes se podía marcar "contado" sin registrar un solo peso y la factura
@@ -1309,11 +1337,11 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
 
   useEffect(() => {
     if (cuotasTocadas) return;
-    if (!esDiferido || saldoFinal <= 0.009) { setCuotasComp([]); return; }
+    if (!esDiferido || saldoCuotas <= 0.009) { setCuotasComp([]); return; }
     const base = fecha ? new Date(`${fecha}T00:00:00`) : new Date();
     base.setDate(base.getDate() + (Number(provElegido?.diasPago) || 0));
-    setCuotasComp([{ importe: String(saldoFinal), fechaVenc: isoDate(base) }]);
-  }, [cuotasTocadas, esDiferido, saldoFinal, fecha, provElegido]);
+    setCuotasComp([{ importe: String(saldoCuotas), fechaVenc: isoDate(base) }]);
+  }, [cuotasTocadas, esDiferido, saldoCuotas, fecha, provElegido]);
 
   /**
    * Solo se ofrecen los pagos de LA SUCURSAL DE RECEPCIÓN de esta factura: la
@@ -1640,18 +1668,25 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       toast(`Estás pagando ${money(Math.abs(saldoFinal))} más de lo que dice el comprobante.`, 'err');
       return;
     }
-    /* Las cuotas del compromiso tienen que cubrir EXACTO el saldo que queda
-     * en cuenta corriente — misma validación que la API, avisada acá. */
-    const compFilas = (esDiferido && genComp && saldoFinal > 0.009)
+    if (totalEcheqs - saldoFinal > 0.009) {
+      toast(`Los echeqs suman ${money(totalEcheqs)} y el saldo en cuenta corriente es ${money(saldoFinal)}.`, 'err');
+      return;
+    }
+    /* Las cuotas del compromiso tienen que cubrir EXACTO lo que queda en cuenta
+     * corriente fuera de los echeqs — misma validación que la API, avisada acá. */
+    const compFilas = (esDiferido && genComp && saldoCuotas > 0.009)
       ? cuotasComp.filter((k) => Number(k.importe) > 0 && k.fechaVenc)
       : [];
     if (compFilas.length) {
       const sumaK = r2(compFilas.reduce((a, k) => a + Number(k.importe), 0));
-      if (Math.abs(sumaK - saldoFinal) > 0.009) {
-        toast(`Las cuotas del compromiso suman ${money(sumaK)} y el saldo en cuenta corriente es ${money(saldoFinal)}.`, 'err');
+      if (Math.abs(sumaK - saldoCuotas) > 0.009) {
+        toast(`Las cuotas del compromiso suman ${money(sumaK)} y lo que queda en cuenta corriente${totalEcheqs ? ' fuera de los echeqs' : ''} es ${money(saldoCuotas)}.`, 'err');
         return;
       }
     }
+    const echeqs = Object.entries(echeqsUsados)
+      .map(([id, v]) => ({ echeqId: Number(id), importe: r2(v) }))
+      .filter((x) => x.importe > 0.009);
     const tomarPagos = generaDeuda
       ? Object.entries(tomados)
         .map(([pagoId, v]) => ({ pagoId: Number(pagoId), importe: r2(v) }))
@@ -1691,6 +1726,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         compromisos: compFilas.length
           ? compFilas.map((k) => ({ importe: r2(k.importe), fechaVenc: k.fechaVenc }))
           : undefined,
+        echeqs: echeqs.length ? echeqs : undefined,
         items: items.filter((it) => it.itemId).map((it) => {
           const r = calcRow(it);
           return { itemId: it.itemId, costoUnitario: r.costoUnitario, descuento: it.descuento, iva: it.iva };
@@ -1745,10 +1781,12 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         : undefined,
       // El compromiso (0068): la promesa del diferido, en cuotas que cubren
       // el saldo. Si el proveedor cobra con echeq, la API crea también el
-      // echeq "a completar" en la cartera.
+      // echeq pendiente de confirmar en la cartera (0204).
       compromisos: compFilas.length
         ? compFilas.map((k) => ({ importe: r2(k.importe), fechaVenc: k.fechaVenc }))
         : undefined,
+      // Los echeqs ya hechos que cubren parte del saldo (0205).
+      echeqs: echeqs.length ? echeqs : undefined,
     });
     if (!res.ok) { toast(res.error || 'No se pudo registrar el comprobante.', 'err'); return; }
 
@@ -1756,6 +1794,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     if (costosAActualizar.length) partes.push(`${costosAActualizar.length} costo(s)`);
     if (aActivar.length) partes.push(`${aActivar.length} activo(s)`);
     if (tomarPagos.length) partes.push(`${tomarPagos.length} pago(s) de sucursal aplicado(s)`);
+    if (echeqs.length) partes.push(`${echeqs.length} echeq(s) imputado(s)`);
     if (ahora > 0) partes.push(`${money(ahora)} pagados`);
     toast(partes.length ? `Comprobante registrado · ${partes.join(' · ')}.` : 'Comprobante registrado.', 'ok');
     if (res.mezcla) openModal('mezclaCompra', { mezcla: res.mezcla }); else closeModal();
@@ -2970,10 +3009,37 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         </div>
       )}
 
+      {/* LOS ECHEQS YA HECHOS (0205): cubren su parte del saldo. */}
+      {generaDeuda && saldoFinal > 0.009 && echeqsDisp.length > 0 && (
+        <>
+          <div className={s['section-title']}>Echeqs ya hechos a este proveedor</div>
+          <div className={s.hint} style={{ margin: '0 0 6px' }}>
+            Tildá el que paga esta factura: cubre esa parte del saldo y, cuando el banco lo debite, se aplica
+            directo acá. Un mismo echeq puede cubrir varias facturas.
+          </div>
+          {echeqsDisp.map((e) => (
+            <div key={e.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input type="checkbox" checked={e.id in echeqsUsados} onChange={(ev) => marcarEcheq(e, ev.target.checked)} />
+                N° {e.numero}{e.banco ? ` · ${e.banco}` : ''} · se cobra el {fmtFecha(e.fechaVenc)}
+              </label>
+              <span className={s.hint} style={{ margin: 0 }}>sin factura {money(e.sinFactura)}</span>
+              {e.id in echeqsUsados && (
+                <input
+                  type="number" min="0" step="0.01" value={echeqsUsados[e.id]}
+                  onChange={(ev) => setEcheqsUsados((m) => ({ ...m, [e.id]: ev.target.value }))}
+                  style={{ width: 140, textAlign: 'right' }}
+                />
+              )}
+            </div>
+          ))}
+        </>
+      )}
+
       {/* COMPROMISO DE PAGO (0068): la promesa con fecha del proveedor
           diferido — prellenada con los días de su ficha, editable y en
           cuotas. Nunca nace en silencio: el tilde decide. */}
-      {esDiferido && saldoFinal > 0.009 && (
+      {esDiferido && saldoCuotas > 0.009 && (
         <>
           <div className={s['section-title']}>
             Compromiso de pago · {provElegido?.medioHabitual === 'echeq'
@@ -2983,13 +3049,13 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           <div className={s.field}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" checked={genComp} onChange={(e) => setGenComp(e.target.checked)} />
-              Generar el compromiso por el saldo en cuenta corriente
+              Generar el compromiso por {totalEcheqs > 0.009 ? 'lo que no cubren los echeqs' : 'el saldo en cuenta corriente'}
             </label>
             <div className={s.hint} style={{ margin: '6px 0 0' }}>
               Aparece en Proveedores › Cuentas corrientes y se cierra solo cuando el pago
               salda la factura.
               {provElegido?.medioHabitual === 'echeq'
-                ? ' Como cobra con echeq, nace también el echeq "a completar" en la cartera.'
+                ? ' Como cobra con echeq, nace también el echeq en la cartera, pendiente de confirmar: no cuenta como hecho hasta que lo confirmes con sus datos reales.'
                 : ''}
             </div>
           </div>
@@ -3031,7 +3097,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                   + Cuota
                 </Btn>
                 <span className={s.hint} style={{ margin: 0 }}>
-                  Suman {money(r2(cuotasComp.reduce((a, k) => a + (Number(k.importe) || 0), 0)))} de {money(saldoFinal)}
+                  Suman {money(r2(cuotasComp.reduce((a, k) => a + (Number(k.importe) || 0), 0)))} de {money(saldoCuotas)}
                 </span>
               </div>
             </>

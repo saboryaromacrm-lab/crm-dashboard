@@ -248,7 +248,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
     <ModalShell
       title={`Pagarle a ${proveedor.nombre}`}
       subtitle={proveedor.modoCuenta === 'libre'
-        ? 'Cuenta libre: se le puede entregar plata a cuenta sin atarla a una factura'
+        ? 'Cuenta libre: lo que no se ate a una factura va solo a lo más viejo que se le debe'
         : 'Cuenta por facturas: se pagan completas — tildá cuáles'}
       wide
       onClose={closeModal}

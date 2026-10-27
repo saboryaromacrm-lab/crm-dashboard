@@ -1159,8 +1159,8 @@ export const MANUAL = [
             filas: [
               ['Cotizar', 'En el POS (WhatsApp), con el botón **Presupuesto** del ticket: cotiza el MISMO motor de listas y ofertas de la caja. Desde el **sitio web**, el pedido nace directo en "Enviado" — no hay nadie cotizando en el medio'],
               ['Enviar', 'Congela la palabra y arranca la **validez** (configurable, 7 días). El botón **WhatsApp abre el chat del cliente con el presupuesto ya escrito** (mensaje con la marca, items ordenados, total y validez — solo queda tocar enviar); el teléfono sale del pedido web o de la ficha del cliente, y sin número completo cae a copiar el texto. Un enviado con la fecha pasada se muestra **Vencido** solo'],
-              ['Confirmar', 'El cliente dijo sí → se **reserva el stock** (disponible → comprometido): mientras el vendedor arma, la caja no puede vender esa mercadería. Un vencido no se confirma: se reabre y se re-cotiza'],
-              ['Armar', 'La **hoja de armado** sale sin precios, con columna en blanco para el lápiz. Al volver se carga pedida / armada / motivo — la venta sale por **lo armado**'],
+              ['Confirmar', 'El cliente dijo sí → se **reserva el stock** (disponible → comprometido): mientras el vendedor arma, la caja no puede vender esa mercadería. De los **paquetes de granel que no están armados** se reserva el **granel** que hace falta: no se fracciona nada todavía. Un vencido no se confirma: se reabre y se re-cotiza'],
+              ['Armar', 'La **hoja de armado** sale sin precios, con columna en blanco para el lápiz. Al volver se carga pedida / armada / motivo — la venta sale por **lo armado**. Al guardar se **fraccionan** los paquetes que se armaron con el granel reservado (se pide quién fraccionó y queda en el historial de fraccionamiento); lo que no se armó vuelve al granel al cerrar o cancelar el pedido. Sin cargar lo armado, un pedido con paquetes por fraccionar no se cierra en el POS'],
               ['Cerrar', '"Cerrar en POS" crea la venta en curso con lo armado y los precios congelados; el cajero **agrega o saca** lo que el cliente pida y cobra normal. Al cobrar, el presupuesto se cierra solo y la reserva se libera'],
             ],
           },
@@ -2362,19 +2362,23 @@ export const MANUAL = [
       },
       {
         id: 'prov-echeqs',
-        actualizado: '2026-08-17',
+        actualizado: '2026-10-27',
         titulo: 'Echeqs: la cartera propia',
         bloques: [
           {
             t: 'p',
-            texto: 'Solo echeqs **propios** (emitidos por la empresa). Con la factura del proveedor que cobra así nace el echeq **placeholder** (número "a completar") junto con su compromiso; el número y el banco reales se completan cuando se emite de verdad. Estados: **emitido → entregado → cobrado** (anulado aparte; "vencido" no es un estado — se deriva de la fecha).',
+            texto: 'Solo echeqs **propios** (emitidos por la empresa). Con la factura del proveedor que cobra así nace el echeq **pendiente de confirmar** junto con su compromiso: no cuenta como hecho ni como plata a debitar. **Confirmar** pide el número, el banco, el importe y la fecha de cobro del echeq que se hizo de verdad (la fecha mueve también el vencimiento de la deuda; si se hizo por menos, el resto queda en Cuentas corrientes). **No lo hice** lo da de baja y la deuda vuelve a Cuentas corrientes; lo mismo pasa al anular un echeq de factura. Estados: **pendiente → emitido → entregado → cobrado** (anulado aparte; "vencido" no es un estado — se deriva de la fecha).',
+          },
+          {
+            t: 'p',
+            texto: '**Un echeq cubre una o varias facturas.** El que se hace a mano antes de que llegue la factura se imputa después: al **cargar la factura** aparecen los echeqs ya hechos a ese proveedor para tildarlos (cubren esa parte del saldo y las cuotas, el resto), o desde el botón **Facturas** del echeq, repartiendo su importe entre las facturas impagas. En cada factura el echeq toma el lugar de su cuenta corriente o de su echeq automático sin confirmar. Lo que no cubre ninguna factura figura como **sin factura** y, al cobrarse, va a cuenta del proveedor. Si se anula una factura, el echeq hecho sigue en la cartera (es un papel en el banco) y queda libre para otra.',
           },
           {
             t: 'nota',
             tono: 'warn',
-            texto: '**Cobrar el echeq ES el momento contable**: cuando el banco lo debita, "Cobrar" crea el pago real (medio echeq, con la fecha del débito), lo imputa a la factura y cierra el compromiso — todo junto. Por eso un compromiso de echeq no se paga desde Cuentas corrientes: se cobra desde acá. Un echeq cobrado no retrocede; si el pago estuvo mal, se anula desde Pagos y la cascada reabre todo.',
+            texto: '**Cobrar el echeq ES el momento contable**: cuando el banco lo debita, "Cobrar" crea UN pago real por el importe entero del echeq (medio echeq, con la fecha del débito), lo imputa a lo que falta de cada factura que cubre y cierra sus compromisos — todo junto; lo que sobra queda a cuenta. Por eso un compromiso de echeq no se paga desde Cuentas corrientes: se cobra desde acá. Un echeq cobrado no retrocede; si el pago estuvo mal, se anula desde Pagos y la cascada reabre todo.',
           },
-          { t: 'ruta', texto: 'Proveedores › Echeqs (el globito: vencidos sin cobrar + debitan en 3 días)' },
+          { t: 'ruta', texto: 'Proveedores › Echeqs (el globito: pendientes de confirmar + vencidos sin cobrar + debitan en 3 días)' },
         ],
       },
       {

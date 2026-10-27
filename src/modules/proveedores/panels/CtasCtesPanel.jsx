@@ -3,7 +3,7 @@ import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { errorMsg, provApi } from '../services/proveedores.api.js';
 import {
-  Btn, PanelHead, Pill, Stat, Table, VencePill, fmtFecha, money, s,
+  Btn, ImporteCompromiso, PanelHead, Pill, Stat, Table, VencePill, fmtFecha, money, s,
 } from '../components/ui.jsx';
 
 const FILTROS = [
@@ -74,12 +74,14 @@ export function CtasCtesPanel() {
               {k.obs && <div className={s.hint} style={{ margin: 0 }}>{k.obs}</div>}
             </td>
             <td>{k.diasPlazo ? `Cta cte ${k.diasPlazo}` : 'Cta cte'}</td>
-            <td className={s.num}>{money(k.importe)}</td>
+            <td className={s.num}><ImporteCompromiso k={k} /></td>
             <td>{k.pagado ? <Pill pill="est-recibida" label="pagado" /> : <Pill pill="est-pendiente" label="pendiente" />}</td>
             <td>
               {!k.pagado && (
                 <div style={{ display: 'flex', gap: 4 }}>
-                  <Btn small variant="btn-primary" onClick={() => openModal('pagarCompromiso', { compromiso: k, onChange: refrescar })}>Pagar</Btn>
+                  {k.falta > 0.009
+                    ? <Btn small variant="btn-primary" onClick={() => openModal('pagarCompromiso', { compromiso: k, onChange: refrescar })}>Pagar</Btn>
+                    : <span className={s.hint} style={{ margin: 0 }}>cubierta</span>}
                   <Btn small onClick={() => openModal('compromiso', { compromiso: k, onChange: refrescar })}>Editar</Btn>
                   <Btn small onClick={() => borrar(k)}>×</Btn>
                 </div>

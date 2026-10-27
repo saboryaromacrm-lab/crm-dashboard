@@ -32,6 +32,8 @@ export function EcheqsResumen() {
         <Stat label="Debitan en 3 días" value={cuenta(e.prox3)} accent={e.prox3.n ? 'accent-amber' : undefined} />
         <Stat label="Debitan en 7 días" value={cuenta(e.semana)} />
         <Stat label="En circulación" value={cuenta(e.activos)} />
+        {/* El automático que todavía no se confirmó (0204): no se debita, pero hay que mirarlo. */}
+        {!!e.pendientes?.n && <Stat label="Pendientes de confirmar" value={cuenta(e.pendientes)} accent="accent-amber" />}
       </div>
       <Table cols={[{ h: 'Debita' }, { h: 'A nombre de' }, { h: 'Banco' }, { h: 'Importe', num: true }]} empty="No hay echeqs en circulación.">
         {(e.proximos ?? []).map((x) => (

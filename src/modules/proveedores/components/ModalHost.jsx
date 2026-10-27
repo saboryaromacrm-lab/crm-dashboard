@@ -3,7 +3,7 @@ import { FichaProveedorModal } from './modals/FichaModals.jsx';
 import { ImportarProveedoresModal } from './modals/ImportarProveedoresModal.jsx';
 import { SolicitarPedidosModal, PedidoNotasModal } from './modals/PedidosModals.jsx';
 import { CompromisoModal, PagarCompromisoModal } from './modals/CompromisosModals.jsx';
-import { EcheqModal } from './modals/EcheqsModals.jsx';
+import { ConfirmarEcheqModal, EcheqModal, FacturasEcheqModal } from './modals/EcheqsModals.jsx';
 import { AjusteModal, BorrarAjusteModal } from './modals/EdocModals.jsx';
 import { FacturasMesModal } from './modals/FacturasMesModal.jsx';
 import { PagoProveedorModal, AnularPagoModal } from './modals/PagosModals.jsx';
@@ -22,6 +22,8 @@ const MODALS = {
   compromiso: CompromisoModal,
   pagarCompromiso: PagarCompromisoModal,
   echeq: EcheqModal,
+  confirmarEcheq: ConfirmarEcheqModal,
+  facturasEcheq: FacturasEcheqModal,
   ajuste: AjusteModal,
   borrarAjuste: BorrarAjusteModal,
   // El proveedor que junta los remitos y factura a fin de mes (0158).

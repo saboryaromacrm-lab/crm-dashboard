@@ -4,7 +4,7 @@ import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { provApi, CONDICIONES_COMPRA, MEDIOS_HABITUALES, MEDIOS_PAGO_REAL } from '../services/proveedores.api.js';
 import {
-  Btn, Di, PanelHead, Pill, Saldo, Stat, Table, VencePill,
+  Btn, Di, EcheqCubre, EstadoEcheqPill, ImporteCompromiso, PanelHead, Pill, Saldo, Stat, Table, VencePill,
   fmtFecha, money, s, usePaginado,
 } from '../components/ui.jsx';
 
@@ -187,7 +187,12 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
   }
 
   const p = d.proveedor;
-  const comprometido = r2((d.compromisos ?? []).reduce((a, k) => a + k.importe, 0));
+  const echeqs = d.echeqs ?? [];
+  const enCartera = (e) => e.estado === 'emitido' || e.estado === 'entregado';
+  /* Lo comprometido es lo que falta de cada compromiso más lo que los echeqs hechos no cubren
+   * de ninguna factura (0205): eso también se va a debitar. */
+  const comprometido = r2((d.compromisos ?? []).reduce((a, k) => a + k.falta, 0)
+    + echeqs.filter(enCartera).reduce((a, e) => a + e.sinFactura, 0));
   const docs = d.docsPendientes ?? [];
   const abrirPago = (preseleccion = []) => openModal('pagoProveedor', {
     proveedor: p, docs, preseleccion, onChange: refrescar,
@@ -269,68 +274,10 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
 
       {p.modoCuenta === 'libre' && d.deudaDesde && (
         <div className={cx(s.callout, s.info)}>
-          Cuenta libre: los pagos no van a facturas puntuales. La antigüedad se calcula por FIFO
-          —lo pagado cancela primero lo más viejo— y la deuda actual arrastra desde
+          Cuenta libre: lo pagado se aplica solo a lo más viejo que se le debe (FIFO), así que
+          cada factura muestra lo que de verdad le falta. La deuda actual arrastra desde
           el <strong>{fmtFecha(d.deudaDesde)}</strong>.
         </div>
-      )}
-
-      <div className={s['section-title']}>Lo que le queda impago</div>
-      <Table
-        cols={[
-          { h: 'Documento' }, { h: 'Fecha' }, { h: 'Vence' },
-          { h: 'Total', num: true }, { h: 'Pagado', num: true }, { h: 'Saldo', num: true }, { h: '' },
-        ]}
-        empty="No le queda nada impago."
-      >
-        {docs.map((doc) => (
-          <tr key={`${doc.tipo}-${doc.docId}`}>
-            <td>
-              {doc.etiqueta}
-              {doc.detalle && <div className={s.hint} style={{ margin: 0 }}>{doc.detalle}</div>}
-              {!!doc.ajuste && (
-                <div className={s.hint} style={{ margin: 0 }}>
-                  {doc.ajuste > 0 ? 'Una ND le sumó ' : 'Una NC le restó '}
-                  {money(Math.abs(doc.ajuste))}
-                </div>
-              )}
-            </td>
-            <td>{fmtFecha(doc.fecha)}</td>
-            <td>{doc.vencimiento ? fmtFecha(doc.vencimiento) : <span className={s.muted}>—</span>}</td>
-            <td className={s.num}>{money(doc.total)}</td>
-            <td className={s.num}>{doc.pagado > EPS ? money(doc.pagado) : '—'}</td>
-            <td className={s.num}><strong>{money(doc.saldo)}</strong></td>
-            <td>
-              <Btn small variant="btn-primary" onClick={() => abrirPago([`${doc.tipo}-${doc.docId}`])}>
-                Pagar
-              </Btn>
-            </td>
-          </tr>
-        ))}
-      </Table>
-
-      {(d.compromisos?.length ?? 0) > 0 && (
-        <>
-          <div className={s['section-title']}>Compromisos pendientes</div>
-          <Table cols={[{ h: 'Vence' }, { h: 'Detalle' }, { h: 'Importe', num: true }]}>
-            {d.compromisos.map((k) => (
-              <tr key={k.id}>
-                <td>{fmtFecha(k.fechaVenc)} <VencePill dias={k.diasRest} /></td>
-                <td>
-                  {k.esEcheq ? 'Echeq' : 'Cta cte'}
-                  {k.comprobanteEtiqueta ? ` · ${k.comprobanteEtiqueta}` : ''}
-                  {k.cuota ? ` · cuota ${k.cuota}/${k.cuotas}` : ''}
-                  {k.obs && <div className={s.hint} style={{ margin: 0 }}>{k.obs}</div>}
-                </td>
-                <td className={s.num}>{money(k.importe)}</td>
-              </tr>
-            ))}
-          </Table>
-          <div className={s.hint}>
-            El compromiso se paga desde <strong>Cuentas corrientes</strong>, que es donde vive su
-            vencimiento; el pago que se registre acá igual los cierra si deja la factura saldada.
-          </div>
-        </>
       )}
 
       <div className={s['section-title']}>Movimientos ({d.movs.length})</div>
@@ -435,6 +382,87 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
           <strong>{money(totFiltro.haber)}</strong> al haber en {filtrados.length} movimiento(s).
           La columna <strong>Saldo</strong> es el acumulado real de la cuenta, no del filtro.
         </div>
+      )}
+
+      <div className={s['section-title']}>Lo que le queda impago</div>
+      <Table
+        cols={[
+          { h: 'Documento' }, { h: 'Fecha' }, { h: 'Vence' },
+          { h: 'Total', num: true }, { h: 'Pagado', num: true }, { h: 'Saldo', num: true }, { h: '' },
+        ]}
+        empty="No le queda nada impago."
+      >
+        {docs.map((doc) => (
+          <tr key={`${doc.tipo}-${doc.docId}`}>
+            <td>
+              {doc.etiqueta}
+              {doc.detalle && <div className={s.hint} style={{ margin: 0 }}>{doc.detalle}</div>}
+              {!!doc.ajuste && (
+                <div className={s.hint} style={{ margin: 0 }}>
+                  {doc.ajuste > 0 ? 'Una ND le sumó ' : 'Una NC le restó '}
+                  {money(Math.abs(doc.ajuste))}
+                </div>
+              )}
+            </td>
+            <td>{fmtFecha(doc.fecha)}</td>
+            <td>{doc.vencimiento ? fmtFecha(doc.vencimiento) : <span className={s.muted}>—</span>}</td>
+            <td className={s.num}>{money(doc.total)}</td>
+            <td className={s.num}>{doc.pagado > EPS ? money(doc.pagado) : '—'}</td>
+            <td className={s.num}><strong>{money(doc.saldo)}</strong></td>
+            <td>
+              <Btn small variant="btn-primary" onClick={() => abrirPago([`${doc.tipo}-${doc.docId}`])}>
+                Pagar
+              </Btn>
+            </td>
+          </tr>
+        ))}
+      </Table>
+
+      {echeqs.length > 0 && (
+        <>
+          <div className={s['section-title']}>Echeqs que todavía no se debitaron</div>
+          <Table cols={[{ h: 'Echeq' }, { h: 'Debita' }, { h: 'Importe', num: true }, { h: 'Cubre' }, { h: '' }]}>
+            {echeqs.map((e) => (
+              <tr key={e.id}>
+                <td>
+                  {e.estado === 'pendiente' ? <EstadoEcheqPill estado={e.estado} /> : `N° ${e.numero}${e.banco ? ` · ${e.banco}` : ''}`}
+                </td>
+                <td>{fmtFecha(e.fechaVenc)} {enCartera(e) && <VencePill dias={e.diasRest} />}</td>
+                <td className={s.num}>{money(e.importe)}</td>
+                <td><EcheqCubre e={e} /></td>
+                <td>
+                  {enCartera(e) && (
+                    <Btn small onClick={() => openModal('facturasEcheq', { echeq: e, onChange: refrescar })}>Facturas</Btn>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </Table>
+        </>
+      )}
+
+      {(d.compromisos?.length ?? 0) > 0 && (
+        <>
+          <div className={s['section-title']}>Compromisos pendientes</div>
+          <Table cols={[{ h: 'Vence' }, { h: 'Detalle' }, { h: 'Importe', num: true }]}>
+            {d.compromisos.map((k) => (
+              <tr key={k.id}>
+                <td>{fmtFecha(k.fechaVenc)} <VencePill dias={k.diasRest} /></td>
+                <td>
+                  {k.echeqId ? (k.echeqEstado === 'pendiente' ? 'Echeq pendiente de confirmar' : `Echeq N° ${k.echeqNumero}`) : 'Cta cte'}
+                  {k.comprobanteEtiqueta ? ` · ${k.comprobanteEtiqueta}` : ''}
+                  {k.cuota ? ` · cuota ${k.cuota}/${k.cuotas}` : ''}
+                  {k.obs && <div className={s.hint} style={{ margin: 0 }}>{k.obs}</div>}
+                </td>
+                <td className={s.num}><ImporteCompromiso k={k} /></td>
+              </tr>
+            ))}
+          </Table>
+          <div className={s.hint}>
+            El compromiso se paga desde <strong>Cuentas corrientes</strong>, que es donde vive su
+            vencimiento; el pago que se registre acá igual los cierra si deja la factura saldada.
+          </div>
+        </>
       )}
 
       {(d.cuentas?.length ?? 0) > 0 && (

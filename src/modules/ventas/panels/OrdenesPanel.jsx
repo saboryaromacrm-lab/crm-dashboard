@@ -159,8 +159,8 @@ function DetalleOrdenModal({ orden, getCliente, onCerrar }) {
                 <strong style={{ color: it.alcanza ? 'var(--crm-color-success)' : 'var(--crm-color-danger)' }}>
                   {num(it.disponible)}
                 </strong>
-                {/* Paquetes de granel que no están armados: se fraccionan al confirmar (3/10/2026). */}
-                {it.seArman > 0 && <div className={s.hint} style={{ margin: 0 }}>+{num(it.seArman, 0)} se fraccionan al confirmar</div>}
+                {/* Paquetes de granel que no están armados: se arman con el granel (28/10/2026). */}
+                {it.seArman > 0 && <div className={s.hint} style={{ margin: 0 }}>+{num(it.seArman, 0)} se arman con el granel</div>}
               </td>
               <td className={s.num}>{money(final)}</td>
               <td className={s.num}><strong>{money(final * it.cantidad)}</strong></td>
@@ -171,7 +171,7 @@ function DetalleOrdenModal({ orden, getCliente, onCerrar }) {
 
       {orden.fraccionar?.length > 0 && (
         <div className={cx(s.callout, s.info)}>
-          Al <strong>confirmar</strong> el pedido (Presupuestos) se fraccionan con el granel:{' '}
+          Se arman con el granel —al <strong>confirmar</strong> el pedido (Presupuestos) se reserva y se fracciona al cargar lo armado—:{' '}
           {orden.fraccionar.map((f) => `${f.paquetes} × ${f.tam} de ${f.nombre}`).join(' · ')}.
         </div>
       )}

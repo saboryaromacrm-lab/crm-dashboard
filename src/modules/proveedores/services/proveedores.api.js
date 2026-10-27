@@ -79,6 +79,12 @@ export const provApi = {
   crearEcheq: (data) => httpClient.post('/echeqs', data),
   editarEcheq: (id, data) => httpClient.patch(`/echeqs/${id}`, data),
   estadoEcheq: (id, estado) => httpClient.post(`/echeqs/${id}/estado`, { estado }),
+  confirmarEcheq: (id, data) => httpClient.post(`/echeqs/${id}/confirmar`, data),
+  noSeHizoEcheq: (id) => httpClient.post(`/echeqs/${id}/no-se-hizo`),
+  /** Las facturas que cubre un echeq (0205): la lista entera, [{ comprobanteId, importe }]. */
+  facturasEcheq: (id, facturas) => httpClient.patch(`/echeqs/${id}/facturas`, { facturas }),
+  /** Las facturas de mercadería que todavía le debemos (las mismas que ofrece la bandeja de pago). */
+  facturasImpagas: (proveedorId) => httpClient.get(`/pagos-proveedor/pendientes/${proveedorId}?destino=mercaderia`),
   borrarEcheq: (id) => httpClient.delete(`/echeqs/${id}`),
   // Cambios de mercadería (0202): lo que se le manda al proveedor y lo que repone.
   reposiciones: (filtros) => httpClient.get(`/reposiciones${qs(filtros)}`),

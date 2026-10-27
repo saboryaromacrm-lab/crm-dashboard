@@ -1189,6 +1189,11 @@ function _fechaLocal(v) {
   return /^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T12:00:00` : v;
 }
 
+/** Los echeqs ya hechos que cubren parte del saldo de la factura (0205): [{ echeqId, importe }]. */
+const _echeqsImputados = (o) => (o.echeqs || [])
+  .map((x) => ({ echeqId: Number(x.echeqId), importe: Number(x.importe) || 0 }))
+  .filter((x) => x.echeqId && x.importe > 0);
+
 function _cleanComprobante(o) {
   return {
     tipo: o.tipo, letra: o.letra, puntoVenta: o.puntoVenta,
@@ -1253,12 +1258,13 @@ function _cleanComprobante(o) {
       .filter((x) => x.pagoId && x.importe > 0),
     /*
      * COMPROMISOS (0068): las cuotas con que el proveedor diferido promete
-     * pagar el saldo. Esta lista YA se tragó seis campos por olvidarse de
-     * agregarlos acá — que no sea el séptimo.
+     * pagar el saldo. Esta lista YA se tragó siete campos por olvidarse de
+     * agregarlos acá (el séptimo, los echeqs) — que no sea el octavo.
      */
     compromisos: (o.compromisos || [])
       .map((k) => ({ importe: Number(k.importe) || 0, fechaVenc: k.fechaVenc, obs: k.obs || undefined }))
       .filter((k) => k.importe > 0 && k.fechaVenc),
+    echeqs: _echeqsImputados(o),
     pagoContado: o.pagoContado && Number(o.pagoContado.importe) > 0
       ? {
         importe: Number(o.pagoContado.importe),
@@ -1341,6 +1347,7 @@ const facturarRemito = (remitoId, o) => _mutate(() => httpClient.post(`/comproba
   compromisos: (o.compromisos || [])
     .map((k) => ({ importe: Number(k.importe) || 0, fechaVenc: k.fechaVenc, obs: k.obs || undefined }))
     .filter((k) => k.importe > 0 && k.fechaVenc),
+  echeqs: _echeqsImputados(o),
   pagoContado: o.pagoContado && Number(o.pagoContado.importe) > 0
     ? {
       importe: Number(o.pagoContado.importe),
@@ -1382,6 +1389,8 @@ const pagosDisponibles = (proveedorId) => httpClient.get(`/pagos-proveedor/dispo
 /** Turno abierto de una sucursal, o null. Lo usa el pago al contado del comprobante. */
 const cajaAbierta = (sucursalId) => httpClient.get(`/caja/actual/${sucursalId}`);
 const pagosDocsPendientes = (proveedorId) => httpClient.get(`/pagos-proveedor/pendientes/${proveedorId}?destino=mercaderia`);
+/** Los echeqs ya hechos al proveedor con plata que todavía no cubre ninguna factura (0205). */
+const echeqsDisponibles = (proveedorId) => httpClient.get(`/echeqs?filtro=disponibles&proveedorId=${proveedorId}`);
 const imputarPago = (id, imputaciones, usuarioId) => _mutate(() => httpClient.post(`/pagos-proveedor/${id}/imputar`, { imputaciones, usuarioId }));
 const quitarImputacionPago = (imputacionId) => _mutate(() => httpClient.delete('/pagos-proveedor/imputaciones/' + imputacionId));
 const anularPago = (id, motivo) => _mutate(() => httpClient.post(`/pagos-proveedor/${id}/anular`, { motivo }));
@@ -1622,7 +1631,7 @@ export const inventoryStore = {
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
   papelFactura, iaFacturas, iaConfigFacturas, leerFacturasConIa, propuestaIa, elegirConIa, espacioFacturas, liberarFacturas,
-  pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, cajaAbierta,
+  pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, echeqsDisponibles, cajaAbierta,
   enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria, costosEntradaCafeteria, depositoCafeteria,
   comprasCafeteria, gastosCafeteria,
   cuentaCoffit, movimientoCoffit, anularMovimientoCoffit, cerrarCuentaCoffit, reabrirCierreCoffit, cierreCoffit,
