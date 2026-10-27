@@ -41,9 +41,13 @@ const CAMBIO = 'cambio';
  * que sale de la cuenta son $80.000 — la factura igual queda saldada, porque
  * el flete se imputa contra ella en el mismo acto (y primero, para que el pago
  * caiga por el saldo exacto que queda).
+ *
+ * CON UN ECHEQ (28/10/2026, pedido del dueño): no sale plata hoy —el banco la
+ * debita en la fecha de cobro—, así que no es un pago. Se abre el echeq con lo
+ * tildado y nace cubriendo esas facturas; el pago se registra al cobrarlo.
  */
 export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], onChange }) {
-  const { ctx, act, closeModal, toast } = useProveedores();
+  const { ctx, act, closeModal, openModal, toast } = useProveedores();
   const [tildados, setTildados] = useState(
     () => Object.fromEntries((preseleccion ?? []).map((k) => [k, true])),
   );
@@ -58,6 +62,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
   const [cambioPor, setCambioPor] = useState('');
   const [desdeCaja, setDesdeCaja] = useState(true);
   const esCambio = modo === 'simple' && medio === CAMBIO;
+  const conEcheq = modo === 'echeq';
 
   const { data: caja } = useResource(
     `caja-prov:${ctx.sucursalId}`,
@@ -122,12 +127,12 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
   const mezcla = elegidos.some((d) => d.tipo === 'gasto') && elegidos.some((d) => d.tipo !== 'gasto');
   const destino = elegidos.length && elegidos[0].tipo === 'gasto' ? 'gastos' : 'mercaderia';
 
-  const usaEfectivo = modo === 'simple'
+  const usaEfectivo = !conEcheq && (modo === 'simple'
     ? medio === 'efectivo' || esCambio
-    : formas.some((x) => x.medio === 'efectivo' && Number(x.importe) > 0);
+    : formas.some((x) => x.medio === 'efectivo' && Number(x.importe) > 0));
   /* Si la plata sale por banco, a mano el CBU/alias del proveedor para copiarlo (10/10/2026). */
   const porBanco = (m) => m === 'transferencia' || m === 'deposito' || m === CAMBIO;
-  const usaBanco = modo === 'simple' ? porBanco(medio) : formas.some((x) => porBanco(x.medio));
+  const usaBanco = !conEcheq && (modo === 'simple' ? porBanco(medio) : formas.some((x) => porBanco(x.medio)));
   const { data: cuentasBanco, error: errorCuentas } = useResource(`cuentas-banco:${proveedor.id}`, () => provApi.cuentas(proveedor.id), { enabled: usaBanco });
   const copiarCuenta = (c) => navigator.clipboard.writeText(c.cbuAlias)
     .then(() => toast(`Copiado: ${c.cbuAlias}`, 'ok'), () => toast('No se pudo copiar al portapapeles.', 'err'));
@@ -162,6 +167,20 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
     return true;
   };
   const pagar = () => conf.clic(validar, (confirmarDuplicado) => pagarDirecto(confirmarDuplicado));
+
+  /* El echeq cubre facturas de mercadería; los fletes se descuentan con un pago. */
+  const hacerEcheq = () => {
+    if (elegidos.some((d) => d.tipo === 'gasto')) { toast('Un echeq cubre facturas de mercadería: los gastos se pagan con otro medio.', 'err'); return; }
+    if (fletesElegidos.length) { toast('Los fletes se descuentan con un pago: destildalos para pagar con echeq.', 'err'); return; }
+    if (!(importe > 0)) { toast(elegidos.length ? 'Los documentos tildados no suman nada.' : 'Poné el importe del echeq.', 'err'); return; }
+    openModal('echeq', {
+      pagoDe: {
+        proveedorId: proveedor.id, importe,
+        facturas: elegidos.map((d) => ({ comprobanteId: d.docId, etiqueta: d.etiqueta, saldo: d.saldo })),
+      },
+      onChange,
+    });
+  };
 
   const pagarDirecto = async (confirmarDuplicado, soloValidar = false) => {
     if (mezcla) {
@@ -254,7 +273,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        {
+        conEcheq ? { texto: 'Hacer el echeq…', clase: 'btn-primary', onClick: hacerEcheq } : {
           texto: textoBoton(
             conf,
             soloFletes ? `Descontar ${money(sumaFletes)} de flete…` : importe > 0 ? `Pagar ${money(importe)}…` : 'Pagar…',
@@ -450,7 +469,14 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
           <select value={modo} onChange={(e) => setModo(e.target.value)}>
             <option value="simple">Un solo medio</option>
             <option value="mixto">Mixto (se partió en varios medios)</option>
+            <option value="echeq">Con un echeq (se debita después)</option>
           </select>
+          {conEcheq && (
+            <div className={s.hint} style={{ margin: '6px 0 0' }}>
+              Hoy no sale plata: se hace el echeq por {money(importe)}
+              {elegidos.length ? ', cubriendo lo tildado,' : ' (a cuenta),'} y el pago se registra cuando el banco lo debita.
+            </div>
+          )}
         </div>
         {modo === 'simple' && (
           <>
@@ -545,7 +571,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
         </div>
       )}
 
-      <div className={s['form-grid']}>
+      {!conEcheq && <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Concepto</label>
           <input
@@ -560,7 +586,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
             placeholder="N° de transferencia, quién recibió… (opcional)"
           />
         </div>
-      </div>
+      </div>}
     </ModalShell>
   );
 }

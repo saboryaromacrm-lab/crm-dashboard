@@ -2371,7 +2371,7 @@ export const MANUAL = [
           },
           {
             t: 'p',
-            texto: '**Un echeq cubre una o varias facturas.** El que se hace a mano antes de que llegue la factura se imputa después: al **cargar la factura** aparecen los echeqs ya hechos a ese proveedor para tildarlos (cubren esa parte del saldo y las cuotas, el resto), o desde el botón **Facturas** del echeq, repartiendo su importe entre las facturas impagas. En cada factura el echeq toma el lugar de su cuenta corriente o de su echeq automático sin confirmar. Lo que no cubre ninguna factura figura como **sin factura** y, al cobrarse, va a cuenta del proveedor. Si se anula una factura, el echeq hecho sigue en la cartera (es un papel en el banco) y queda libre para otra.',
+            texto: '**Un echeq cubre una o varias facturas.** El que se hace a mano antes de que llegue la factura se imputa después: al **cargar la factura** aparecen los echeqs ya hechos a ese proveedor para tildarlos (cubren esa parte del saldo y las cuotas, el resto), o desde el botón **Facturas** del echeq, repartiendo su importe entre las facturas impagas. También se paga con echeq desde **Registrar un pago** del estado de cuenta: en «¿Cómo salió la plata?», **Con un echeq (se debita después)** abre el echeq con lo tildado y nace cubriéndolo; ese día no se registra ningún pago, se registra al cobrarlo. En cada factura el echeq toma el lugar de su cuenta corriente o de su echeq automático sin confirmar. Lo que no cubre ninguna factura figura como **sin factura** y, al cobrarse, va a cuenta del proveedor. Si se anula una factura, el echeq hecho sigue en la cartera (es un papel en el banco) y queda libre para otra.',
           },
           {
             t: 'nota',

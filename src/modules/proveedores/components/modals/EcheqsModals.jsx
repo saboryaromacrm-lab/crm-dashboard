@@ -20,6 +20,16 @@ function conPlazo(f, patch) {
   return n.plazo !== '' && Number(n.plazo) >= 0 ? { ...n, fechaVenc: sumarDias(n.fechaEmision, Number(n.plazo)) } : n;
 }
 
+/** Lo que el echeq cubre de cada factura tildada en «Pagarle», en orden, hasta su importe. */
+const repartir = (facturas, importe) => {
+  let queda = r2(importe);
+  return facturas.map((x) => {
+    const cubre = r2(Math.min(x.saldo, Math.max(0, queda)));
+    queda = r2(queda - cubre);
+    return { ...x, cubre };
+  }).filter((x) => x.cubre > 0.009);
+};
+
 /** Un dato del proveedor con su botón de copiar (o «sin cargar»). */
 function DatoCopiable({ etiqueta, valor }) {
   const { toast } = useProveedores();
@@ -45,23 +55,32 @@ function DatoCopiable({ etiqueta, valor }) {
  *
  * Al elegir el proveedor (27/10/2026) se ven su CUIT y su correo para copiar,
  * y su plazo de pago precarga la calculadora de días.
+ *
+ * DESDE «PAGARLE» (`pagoDe`, 28/10/2026, pedido del dueño): viene con el
+ * proveedor, el importe y las facturas tildadas, y nace cubriéndolas. No es un
+ * pago todavía: la plata sale cuando el banco lo debita y se lo cobra.
  */
-export function EcheqModal({ echeq, onChange }) {
+export function EcheqModal({ echeq, pagoDe, onChange }) {
   const { proveedores, act, closeModal, toast } = useProveedores();
   const editando = !!echeq;
+  const provPago = pagoDe ? proveedores.find((p) => p.id === pagoDe.proveedorId) : null;
   /* Lo que ya cubre de sus facturas (0205): el importe no puede bajar de eso. */
   const cubre = editando ? r2(echeq.importe - echeq.sinFactura) : 0;
   const [aProveedor, setAProveedor] = useState(!echeq || !!echeq.proveedorId);
   const [f, setF] = useState(() => conPlazo({
-    proveedorId: echeq?.proveedorId ?? '',
+    proveedorId: echeq?.proveedorId ?? pagoDe?.proveedorId ?? '',
     destinatario: echeq && !echeq.proveedorId ? echeq.aNombreDe : '',
     numero: echeq?.numero?.startsWith('PEND-') ? '' : (echeq?.numero ?? ''),
     banco: echeq?.banco === 'A definir' ? '' : (echeq?.banco ?? ''),
-    importe: echeq ? String(echeq.importe) : '',
+    importe: echeq ? String(echeq.importe) : pagoDe ? String(pagoDe.importe) : '',
     fechaEmision: echeq?.fechaEmision ? String(echeq.fechaEmision).slice(0, 10) : hoyISO(),
     obs: echeq?.obs ?? '',
     plazo: '',
-  }, { fechaVenc: echeq?.fechaVenc ? String(echeq.fechaVenc).slice(0, 10) : '' }));
+  }, provPago?.diasPago > 0
+    ? { plazo: String(provPago.diasPago) }
+    : { fechaVenc: echeq?.fechaVenc ? String(echeq.fechaVenc).slice(0, 10) : '' }));
+  const reparto = pagoDe ? repartir(pagoDe.facturas, Number(f.importe) || 0) : [];
+  const sinFactura = r2((Number(f.importe) || 0) - reparto.reduce((a, x) => a + x.cubre, 0));
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const setFecha = (k) => (e) => setF((x) => conPlazo(x, { [k]: e.target.value }));
   const prov = !editando && aProveedor ? proveedores.find((p) => p.id === Number(f.proveedorId)) : null;
@@ -83,26 +102,29 @@ export function EcheqModal({ echeq, onChange }) {
     if (f.importe !== '') body.importe = r2(f.importe);
     if (!aProveedor) body.destinatario = f.destinatario.trim();
     else if (!editando) body.proveedorId = Number(f.proveedorId);
+    if (pagoDe) body.facturas = reparto.map((x) => ({ comprobanteId: x.comprobanteId, importe: x.cubre }));
     const res = await act(
       editando ? provApi.editarEcheq(echeq.id, body) : provApi.crearEcheq(body),
-      editando ? 'Echeq actualizado.' : 'Echeq registrado.',
+      editando ? 'Echeq actualizado.' : pagoDe ? 'Echeq registrado: cubre lo tildado y el pago se registra al cobrarlo.' : 'Echeq registrado.',
     );
     if (res) onChange?.();
   };
 
   return (
     <ModalShell
-      title={editando ? `Echeq ${echeq.numero}` : 'Nuevo echeq'}
-      subtitle={aProveedor
-        ? 'Echeq propio — con «Facturas» se imputa a una o varias; lo que no cubra va a cuenta al cobrarse'
-        : 'Echeq a quien no es proveedor — al cobrarse solo queda como cobrado'}
+      title={editando ? `Echeq ${echeq.numero}` : pagoDe ? `Pagarle con un echeq a ${provPago?.nombre ?? ''}` : 'Nuevo echeq'}
+      subtitle={pagoDe
+        ? 'Queda en la cartera cubriendo lo tildado; el pago se registra cuando el banco lo debita'
+        : aProveedor
+          ? 'Echeq propio — con «Facturas» se imputa a una o varias; lo que no cubra va a cuenta al cobrarse'
+          : 'Echeq a quien no es proveedor — al cobrarse solo queda como cobrado'}
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
         { texto: 'Guardar', clase: 'btn-primary', onClick: guardar },
       ]}
     >
-      {!editando && (
+      {!editando && !pagoDe && (
         <div className={s.field}>
           <label>¿A quién va?</label>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
@@ -117,7 +139,7 @@ export function EcheqModal({ echeq, onChange }) {
       {!editando && aProveedor && (
         <div className={s.field}>
           <label>Proveedor</label>
-          <select value={f.proveedorId} onChange={elegirProveedor} autoFocus>
+          <select value={f.proveedorId} onChange={elegirProveedor} disabled={!!pagoDe} autoFocus={!pagoDe}>
             <option value="">Elegí el proveedor</option>
             {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
@@ -151,6 +173,12 @@ export function EcheqModal({ echeq, onChange }) {
           {cubre > 0.009 && (
             <div className={s.hint} style={{ margin: '6px 0 0' }}>
               Cubre {money(cubre)} de sus facturas: no puede ser de menos.
+            </div>
+          )}
+          {pagoDe && (
+            <div className={s.hint} style={{ margin: '6px 0 0' }}>
+              {reparto.map((x) => <div key={x.comprobanteId}>Cubre {x.etiqueta} · {money(x.cubre)}</div>)}
+              {sinFactura > 0.009 && <div>Sin factura: {money(sinFactura)} (al cobrarse va a cuenta)</div>}
             </div>
           )}
         </div>
