@@ -292,6 +292,7 @@
 .est-revision { background: color-mix(in srgb, var(--crm-color-warning) 20%, transparent); color: var(--crm-color-warning); }
 .est-resuelta { background: color-mix(in srgb, var(--crm-color-success) 18%, transparent); color: var(--crm-color-success); }
 .est-cancelada { background: color-mix(in srgb, var(--crm-color-text-secondary) 18%, transparent); color: var(--crm-color-text-secondary); }
+.est-vencida { background: color-mix(in srgb, var(--crm-color-danger) 15%, transparent); color: var(--crm-color-danger); }
 
 .stock-low { color: var(--crm-color-danger); font-weight: 700; }
 

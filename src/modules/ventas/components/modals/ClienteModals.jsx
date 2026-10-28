@@ -9,7 +9,7 @@ import {
   CONDICIONES_IVA, CONDICIONES_PAGO, TIPOS_DOC, docLegible, nroComprobante,
 } from '../../domain/constants.js';
 import {
-  Table, Btn, Di, ModalShell, VentaTag, VentaEstadoPill, SaldoMonto,
+  Table, Btn, Di, ModalShell, VentaTag, VentaEstadoPill, SaldoMonto, VenceComprobante,
   money, fmtFecha, s,
 } from '../ui.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
@@ -357,6 +357,9 @@ function TabCuenta({ clienteId, cliente }) {
             : <SaldoMonto valor={-data.disponible}>{money(data.disponible)}</SaldoMonto>}
         </Di>
         <Di label="Comprobantes impagos">{data.comprobantes.length}</Di>
+        <Di label="Vencido">
+          {data.vencido > 0 ? <SaldoMonto valor={data.vencido}>{money(data.vencido)}</SaldoMonto> : 'Al día'}
+        </Di>
       </div>
 
       {excedido && (
@@ -377,7 +380,7 @@ function TabCuenta({ clienteId, cliente }) {
           <tr key={c.id}>
             <td><VentaTag tipo={c.tipo} /> <span className={s.mono}>{nroComprobante(c)}</span></td>
             <td>{fmtFecha(c.fecha)}</td>
-            <td>{c.vencimientoPago ? fmtFecha(c.vencimientoPago) : <span className={s.muted}>—</span>}</td>
+            <td><VenceComprobante c={c} /></td>
             <td className={s.num}>{money(c.total)}</td>
             <td className={s.num}>{money(c.cobrado)}</td>
             <td className={s.num}><SaldoMonto valor={c.saldo}>{money(c.saldo)}</SaldoMonto></td>

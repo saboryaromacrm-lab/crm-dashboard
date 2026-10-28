@@ -19,6 +19,7 @@ export {
 } from '@modules/productos/components/ui.jsx';
 export { ModalShell } from '@modules/productos/components/Modal.jsx';
 export { money, num, fmtFecha, fmtFechaHora, isoDate } from '@modules/productos/domain/format.js';
+import { fmtFecha } from '@modules/productos/domain/format.js';
 
 export function VentaEstadoPill({ estado }) {
   const m = ESTADOS_VENTA[estado] || {};
@@ -47,6 +48,21 @@ export function SaldoMonto({ valor, children }) {
   const v = Number(valor) || 0;
   const color = v > 0.009 ? 'var(--crm-color-danger)' : v < -0.009 ? 'var(--crm-color-success)' : 'inherit';
   return <strong style={{ color }}>{children}</strong>;
+}
+
+/**
+ * Cuándo vence un comprobante de cuenta corriente (sin plazo, el día de la
+ * venta) y, si ya pasó, hace cuánto (`diasAtraso` lo calcula el servidor).
+ */
+export function VenceComprobante({ c }) {
+  return (
+    <>
+      {fmtFecha(c.vencimientoPago ?? c.fecha)}
+      {c.diasAtraso > 0 && (
+        <> <Pill pill="est-vencida" label={`Vencida hace ${c.diasAtraso} ${c.diasAtraso === 1 ? 'día' : 'días'}`} /></>
+      )}
+    </>
+  );
 }
 
 /** Celda etiqueta/valor de los modales de detalle (va dentro de `.detalle-grid`). */

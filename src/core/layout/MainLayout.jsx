@@ -10,6 +10,7 @@ import { AvisoStock } from './components/AvisoStock.jsx';
 import { CajasAbiertasBanner } from './components/CajasAbiertasBanner.jsx';
 import { FeriadosBanner } from './components/FeriadosBanner.jsx';
 import { AccesosTiendaBanner } from './components/AccesosTiendaBanner.jsx';
+import { CuentasVencidasBanner } from './components/CuentasVencidasBanner.jsx';
 import { DireccionViejaBanner } from './components/DireccionViejaBanner.jsx';
 import { ConsultasRapidas } from '@modules/consultas/ConsultasRapidas.jsx';
 import { AvisoPedidosCaja } from '@modules/productos/components/AvisoPedidosCaja.jsx';
@@ -60,6 +61,8 @@ export function MainLayout() {
         <CajasAbiertasBanner />
         {/* Pedidos de ingreso a la tienda mayorista esperando (0155). */}
         <AccesosTiendaBanner />
+        {/* Clientes que pasaron el plazo de su cuenta corriente y deben (28/10/2026): administración. */}
+        <CuentasVencidasBanner />
         {/* El próximo feriado, de hoy a 10 días (0182): administración. */}
         <FeriadosBanner />
 

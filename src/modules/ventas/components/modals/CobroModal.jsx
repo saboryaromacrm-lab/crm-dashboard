@@ -888,6 +888,14 @@ export function CobroModal({
               <Di label="Límite">{cliente?.limiteCredito > 0 ? money(cliente.limiteCredito) : 'Sin tope'}</Di>
             </div>
           )}
+          {/* Solo avisa (28/10/2026, pedido del dueño): se le puede seguir vendiendo. */}
+          {cuenta?.vencido > 0 && (
+            <div className={cx(s.callout, s.warn)}>
+              {cliente?.nombre} tiene <strong>{money(cuenta.vencido)} vencido</strong> en su cuenta corriente
+              (el comprobante más viejo venció hace {cuenta.diasAtraso} {cuenta.diasAtraso === 1 ? 'día' : 'días'}).
+              Se puede confirmar igual; conviene recordarle que pague.
+            </div>
+          )}
           {excedeCredito && (
             <div className={cx(s.callout, s.warn)}>
               Esta venta <strong>supera el límite de crédito</strong> de {cliente?.nombre}.

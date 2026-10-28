@@ -7,7 +7,7 @@ import { MEDIOS_PAGO, nroComprobante } from '../../domain/constants.js';
 import { sugerirImporteCuenta, validarTransferenciaProveedor } from '../../domain/cuentasProveedor.js';
 import { CuentaProveedorPicker } from '../CuentaProveedorPicker.jsx';
 import {
-  Table, Btn, Di, ModalShell, VentaTag, CobranzaEstadoPill, SaldoMonto,
+  Table, Btn, Di, ModalShell, VentaTag, CobranzaEstadoPill, SaldoMonto, VenceComprobante,
   money, fmtFecha, isoDate, s,
 } from '../ui.jsx';
 
@@ -299,7 +299,7 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
                     )}
                   </td>
                   <td>{fmtFecha(c.fecha)}</td>
-                  <td>{c.vencimientoPago ? fmtFecha(c.vencimientoPago) : <span className={s.muted}>—</span>}</td>
+                  <td><VenceComprobante c={c} /></td>
                   <td className={s.num}>{money(c.saldo)}</td>
                   <td className={s.num}>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
