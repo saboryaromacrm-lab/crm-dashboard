@@ -6,6 +6,7 @@
  * sub-menú con las mismas.
  */
 import PublicIcon from '@mui/icons-material/Public';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import ImageIcon from '@mui/icons-material/Image';
@@ -23,6 +24,8 @@ export const WEB_SECCIONES = [
    * de Ventas con que nacieron, así cada rol sigue viendo lo mismo.
    */
   { id: 'pedidos', label: 'Pedidos online', icon: PublicIcon, permiso: 'ventas.ordenes', badge: 'ordenes' },
+  /* Lo que la tienda ya vendió (28/10/2026, pedido del dueño): el listado de Ventas, solo con lo del sitio. */
+  { id: 'ventas', label: 'Ventas online', icon: ReceiptLongIcon, permiso: 'ventas.listado' },
   { id: 'presupuestos', label: 'Presupuestos', icon: RequestQuoteIcon, permiso: 'ventas.presupuestos' },
   /* «Productos del sitio» ya no está (19/10/2026): la foto, el destacado y el mínimo web viven en Compras › Productos. */
   { id: 'ofertas', label: 'Ofertas del sitio', icon: LocalOfferIcon, permiso: 'web.ofertas' },

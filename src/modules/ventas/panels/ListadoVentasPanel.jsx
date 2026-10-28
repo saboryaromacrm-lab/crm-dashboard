@@ -21,8 +21,8 @@
  * El paginado lo corta el servidor (`usePaginadoServidor`): la tabla de ventas
  * crece para siempre y bajarla entera para paginar en memoria es tráfico tirado.
  *
- * CON `tienda` (28/10/2026, pedido del dueño) es «Ventas concretadas» de
- * Tienda online › Pedidos online: solo lo que vino del sitio, por tienda.
+ * CON `tienda` (28/10/2026, pedido del dueño) es Tienda online › Ventas
+ * online: solo lo que vino del sitio, por tienda y con su reparto.
  */
 import { useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
@@ -248,6 +248,9 @@ function ResumenMercadoPago({ mp }) {
   );
 }
 
+/** Un color fijo por tienda, como los medios de pago. */
+const COLOR_TIENDA = { minorista: '#db2777', mayorista: '#2563eb' };
+
 /** Las ventas de la tienda online: las dos tiendas o una. */
 const TIENDAS = [['tienda', 'Todas'], ['minorista', ORIGENES_PEDIDO.minorista.label], ['mayorista', ORIGENES_PEDIDO.mayorista.label]];
 
@@ -440,7 +443,7 @@ export function ListadoVentasPanel({ tienda = false }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
-        title={tienda ? 'Ventas concretadas' : 'Ventas'}
+        title={tienda ? 'Ventas online' : 'Ventas'}
         desc={tienda
           ? 'Los pedidos de la tienda online que ya se cobraron como venta. Clic en una fila para ver el ticket o reimprimirlo. Los totales son del filtro completo y no cuentan las anuladas.'
           : esJefe
@@ -470,6 +473,20 @@ export function ListadoVentasPanel({ tienda = false }) {
           el 1/10/2026 a pedido del dueño; la rentabilidad ocupa su lugar. */}
       {esJefe && t && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {/* POR TIENDA (28/10/2026): cuánto vendió cada una, con su ticket promedio. */}
+          {tienda && t.porTienda?.length > 0 && (
+            <div className={s.card} style={{ padding: '10px 14px', flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span className={s['mini-label']}>POR TIENDA</span>
+              <Reparto partes={t.porTienda.map((x) => ({ clave: x.tienda, valor: x.importe, color: COLOR_TIENDA[x.tienda] }))} />
+              {t.porTienda.map((x) => (
+                <FilaReparto
+                  key={x.tienda} color={COLOR_TIENDA[x.tienda]}
+                  nombre={`${ORIGENES_PEDIDO[x.tienda].icono} ${ORIGENES_PEDIDO[x.tienda].label}`} importe={x.importe} pct={x.pct}
+                  detalle={`${num(x.tickets, 0)} ${x.tickets === 1 ? 'venta' : 'ventas'} · promedio ${money(x.promedio)}`}
+                />
+              ))}
+            </div>
+          )}
           <div className={s.card} style={{ padding: '10px 14px', flex: '2 1 320px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span className={s['mini-label']}>CÓMO SE PAGÓ</span>
             {t.porMedio.length ? (
