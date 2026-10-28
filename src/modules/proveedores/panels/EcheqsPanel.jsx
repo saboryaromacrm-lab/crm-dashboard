@@ -11,6 +11,77 @@ const FILTROS = [
   ['cobrados', 'Cobrados'], ['anulados', 'Anulados'], ['todos', 'Todos'],
 ];
 
+const COLOR_HECHOS = 'var(--crm-color-primary)';
+const COLOR_PENDIENTES = 'var(--crm-color-warning)';
+const mesDe = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+const nombreMes = (mes) => {
+  const t = new Date(`${mes}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+const cuantos = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
+/**
+ * COMPROMETIDO POR MES (28/10/2026, pedido del dueño): lo que va a debitar cada
+ * mes, con una barra que separa los hechos de los pendientes de confirmar. El
+ * mes actual y el siguiente siempre a la vista; los que vienen, en un desplegable.
+ */
+function ComprometidoPorMes({ porMes = [] }) {
+  const [abierto, setAbierto] = useState(false);
+  const hoy = new Date();
+  const actual = mesDe(hoy);
+  const siguiente = mesDe(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1));
+  const vacio = (mes) => ({ mes, hechos: { n: 0, monto: 0 }, pendientes: { n: 0, monto: 0 }, atrasados: 0 });
+  const fijos = [actual, siguiente].map((m) => porMes.find((x) => x.mes === m) ?? vacio(m));
+  const despues = porMes.filter((x) => x.mes > siguiente);
+  const tope = Math.max(1, ...porMes.map((x) => x.hechos.monto + x.pendientes.monto));
+
+  const fila = (x) => {
+    const total = x.hechos.monto + x.pendientes.monto;
+    return (
+      <div key={x.mes} style={{ display: 'grid', gap: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+          <strong>{nombreMes(x.mes)}{x.mes === actual && ' (este mes)'}</strong>
+          <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{money(total)}</strong>
+        </div>
+        <div style={{ display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden', background: 'var(--crm-color-border)' }}>
+          <div style={{ width: `${(x.hechos.monto / tope) * 100}%`, background: COLOR_HECHOS }} />
+          <div style={{ width: `${(x.pendientes.monto / tope) * 100}%`, background: COLOR_PENDIENTES }} />
+        </div>
+        <div className={s.hint} style={{ margin: 0 }}>
+          {total
+            ? [
+              x.hechos.n > 0 && `${cuantos(x.hechos.n, 'hecho', 'hechos')} · ${money(x.hechos.monto)}`,
+              x.pendientes.n > 0 && `${cuantos(x.pendientes.n, 'pendiente de confirmar', 'pendientes de confirmar')} · ${money(x.pendientes.monto)}`,
+            ].filter(Boolean).join(' — ')
+            : 'Nada para debitar.'}
+          {x.atrasados > 0 && ` — incluye ${cuantos(x.atrasados, 'echeq', 'echeqs')} de meses anteriores sin cobrar`}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className={s.card} style={{ padding: '12px 16px', marginBottom: 12, display: 'grid', gap: 12, maxWidth: 720 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span className={s['mini-label']} style={{ margin: 0 }}>Comprometido por mes</span>
+        <span className={s.hint} style={{ margin: 0, display: 'flex', gap: 12 }}>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: COLOR_HECHOS, marginRight: 4 }} />Hechos</span>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: COLOR_PENDIENTES, marginRight: 4 }} />Pendientes de confirmar</span>
+        </span>
+      </div>
+      {fijos.map(fila)}
+      {despues.length > 0 && (
+        <>
+          <Btn small onClick={() => setAbierto((a) => !a)} style={{ justifySelf: 'start' }}>
+            {abierto ? 'Ocultar los meses siguientes' : `Ver ${cuantos(despues.length, 'mes más', 'meses más')} · ${money(despues.reduce((a, x) => a + x.hechos.monto + x.pendientes.monto, 0))}`}
+          </Btn>
+          {abierto && despues.map(fila)}
+        </>
+      )}
+    </div>
+  );
+}
+
 /**
  * ECHEQS — la cartera propia. Nacen con la factura del proveedor que cobra
  * así o a mano. El de la factura espera PENDIENTE DE CONFIRMAR (0204): se
@@ -68,6 +139,7 @@ export function EcheqsPanel() {
         <Stat label="Vencidos sin cobrar" value={`${stats?.vencidos?.n ?? 0} · ${money(stats?.vencidos?.monto ?? 0)}`} accent={stats?.vencidos?.n ? 'accent-red' : undefined} />
         <Stat label="Debitan en 3 días" value={`${stats?.prox3?.n ?? 0} · ${money(stats?.prox3?.monto ?? 0)}`} accent={stats?.prox3?.n ? 'accent-amber' : undefined} />
       </div>
+      {stats && <ComprometidoPorMes porMes={stats.porMes} />}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         {FILTROS.map(([k, v]) => (
