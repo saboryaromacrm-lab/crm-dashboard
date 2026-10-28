@@ -20,6 +20,9 @@
  *
  * El paginado lo corta el servidor (`usePaginadoServidor`): la tabla de ventas
  * crece para siempre y bajarla entera para paginar en memoria es tráfico tirado.
+ *
+ * CON `tienda` (28/10/2026, pedido del dueño) es «Ventas concretadas» de
+ * Tienda online › Pedidos online: solo lo que vino del sitio, por tienda.
  */
 import { useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
@@ -29,7 +32,7 @@ import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
 import { imprimirVenta } from '@core/services/imprimir.js';
 import {
-  MEDIOS_PAGO, ESTADOS_VENTA, TIPOS_VENTA, nroComprobante, esNotaCredito,
+  MEDIOS_PAGO, ESTADOS_VENTA, ORIGENES_PEDIDO, TIPOS_VENTA, nroComprobante, esNotaCredito,
 } from '../domain/constants.js';
 import {
   Table, PanelHead, Stat, Btn, Pill, VentaEstadoPill, VentaTag,
@@ -245,14 +248,20 @@ function ResumenMercadoPago({ mp }) {
   );
 }
 
-export function ListadoVentasPanel() {
+/** Las ventas de la tienda online: las dos tiendas o una. */
+const TIENDAS = [['tienda', 'Todas'], ['minorista', ORIGENES_PEDIDO.minorista.label], ['mayorista', ORIGENES_PEDIDO.mayorista.label]];
+
+export function ListadoVentasPanel({ tienda = false }) {
   const { sucursales, usuarios, clientes, ctx, openModal, esJefe, toast } = useVentas();
 
   /* La sucursal del puesto manda para todos menos administración. */
   const sucursalFija = esJefe ? null : (ctx.sucursalId ?? null);
+  /* Las de la tienda son menos: arrancan mostrando el mes. */
+  const rangoInicial = tienda ? 'mes' : 'hoy';
+  const origenInicial = tienda ? 'tienda' : '';
 
-  const [rango, setRango] = useState('hoy');
-  const [desde, setDesde] = useState(hoyIso);
+  const [rango, setRango] = useState(rangoInicial);
+  const [desde, setDesde] = useState(() => RANGOS.find((r) => r.id === rangoInicial).calc().desde);
   const [hasta, setHasta] = useState(hoyIso);
   const [sucursalId, setSucursalId] = useState('');
   const [usuarioId, setUsuarioId] = useState('');
@@ -260,7 +269,10 @@ export function ListadoVentasPanel() {
   const [cajaSesionId, setCajaSesionId] = useState('');
   const [estado, setEstado] = useState('');
   const [medioPago, setMedioPago] = useState('');
-  const [origen, setOrigen] = useState('');
+  const [origen, setOrigen] = useState(origenInicial);
+  /* Sin permiso de jefe, solo mostrador: el pedido mayorista y la orden web los
+   * trabaja administración en sus propias pantallas. La de la tienda va por su origen. */
+  const origenPedido = tienda ? origen : sucursalFija ? 'pos' : (origen || undefined);
   const [conOferta, setConOferta] = useState(false);
   /*
    * LA PESTAÑA "SIN FACTURAR" (0073): los tickets provisorios que salieron con
@@ -282,7 +294,7 @@ export function ListadoVentasPanel() {
   /* La firma de los filtros: identifica el pedido y reinicia el paginado. */
   const firma = [
     desde, hasta, sucursalFija ?? sucursalId, usuarioId, clienteId, cajaSesionId,
-    estado, medioPago, sucursalFija ? 'pos' : origen, conOferta ? '1' : '',
+    estado, medioPago, origenPedido, conOferta ? '1' : '',
     soloSinFacturar ? 'sf' : '', buscaAplicada,
   ].join('|');
 
@@ -300,9 +312,7 @@ export function ListadoVentasPanel() {
     cajaSesionId: cajaSesionId || undefined,
     estado: estado || undefined,
     medioPago: medioPago || undefined,
-    /* Sin permiso de jefe, solo mostrador: el pedido mayorista y la orden web
-     * los trabaja administración en sus propias pantallas. */
-    origen: sucursalFija ? 'pos' : (origen || undefined),
+    origen: origenPedido,
     conOferta: conOferta ? 'true' : undefined,
     sinFacturar: soloSinFacturar ? 'true' : undefined,
     q: buscaAplicada || undefined,
@@ -322,6 +332,8 @@ export function ListadoVentasPanel() {
   const { data: badgeSF, reload: recargarBadge } = useResource(
     'ventas-sin-facturar-badge',
     () => ventasApi.listadoVentas({ sinFacturar: 'true', limit: 1 }),
+    // En «Ventas concretadas» no va: cuenta todas las ventas, no las de la tienda.
+    { enabled: !tienda },
   );
   const pendientesGlobal = badgeSF?.total ?? 0;
 
@@ -338,14 +350,14 @@ export function ListadoVentasPanel() {
   const t = data?.totales;
 
   const hayFiltro = !!(usuarioId || clienteId || cajaSesionId || estado || medioPago
-    || origen || conOferta || soloSinFacturar || buscaAplicada
-    || (!sucursalFija && sucursalId) || rango !== 'hoy');
+    || origen !== origenInicial || conOferta || soloSinFacturar || buscaAplicada
+    || (!sucursalFija && sucursalId) || rango !== rangoInicial);
 
   const limpiar = () => {
     setUsuarioId(''); setClienteId(''); setCajaSesionId(''); setEstado('');
-    setMedioPago(''); setOrigen(''); setConOferta(false); setSoloSinFacturar(false);
+    setMedioPago(''); setOrigen(origenInicial); setConOferta(false); setSoloSinFacturar(false);
     setBusca(''); setBuscaAplicada(''); setSucursalId('');
-    aplicarRango('hoy');
+    aplicarRango(rangoInicial);
   };
 
   /* Los turnos que aparecen en el resultado: alcanza para el corte "por turno"
@@ -377,7 +389,7 @@ export function ListadoVentasPanel() {
       (v.medios || []).map((m) => `${NOMBRE_MEDIO[m.medio] || m.medio} ${csvNum(m.importe)}`).join(' + '),
       csvNum(v.descuentoTotal), csvNum(v.ofertaDescuento), csvNum(v.subtotalNeto), csvNum(v.ivaTotal),
       csvNum(v.total), ESTADOS_VENTA[v.estado]?.label ?? v.estado,
-      v.origen === 'pos' ? 'Mostrador' : 'Pedido',
+      v.tienda ? ORIGENES_PEDIDO[v.tienda].label : v.origen === 'pos' ? 'Mostrador' : 'Pedido',
     ]),
   );
 
@@ -428,10 +440,12 @@ export function ListadoVentasPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
-        title="Ventas"
-        desc={esJefe
-          ? 'Todo lo que se vendió, con sus filtros. Clic en una fila para ver el ticket, reimprimirlo o anularlo. Los totales son del filtro completo y no cuentan las anuladas.'
-          : 'Las ventas del mostrador de tu sucursal. Clic en una fila para ver el ticket y reimprimirlo.'}
+        title={tienda ? 'Ventas concretadas' : 'Ventas'}
+        desc={tienda
+          ? 'Los pedidos de la tienda online que ya se cobraron como venta. Clic en una fila para ver el ticket o reimprimirlo. Los totales son del filtro completo y no cuentan las anuladas.'
+          : esJefe
+            ? 'Todo lo que se vendió, con sus filtros. Clic en una fila para ver el ticket, reimprimirlo o anularlo. Los totales son del filtro completo y no cuentan las anuladas.'
+            : 'Las ventas del mostrador de tu sucursal. Clic en una fila para ver el ticket y reimprimirlo.'}
         actions={<Btn small onClick={reload} disabled={loading}>{loading ? 'Cargando…' : 'Actualizar'}</Btn>}
       />
 
@@ -574,7 +588,7 @@ export function ListadoVentasPanel() {
             globito es GLOBAL: avisa aunque se esté mirando otro día. Aparece
             solo cuando hay pendientes o la pestaña está activa — el mostrador
             normal no necesita saber que esto existe. */}
-        {(pendientesGlobal > 0 || soloSinFacturar) && (
+        {!tienda && (pendientesGlobal > 0 || soloSinFacturar) && (
           <button
             type="button" className={s.badge}
             style={{
@@ -590,6 +604,26 @@ export function ListadoVentasPanel() {
           </button>
         )}
       </div>
+
+      {tienda && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {TIENDAS.map(([id, label]) => (
+            <button
+              key={id} type="button" className={s.badge}
+              style={{
+                cursor: 'pointer', padding: '5px 12px', fontSize: 12,
+                borderWidth: 1, borderStyle: 'solid', borderColor: 'var(--crm-color-border)',
+                ...(origen === id
+                  ? { background: 'var(--crm-color-primary)', color: 'var(--crm-color-primary-contrast)', borderColor: 'var(--crm-color-primary)' }
+                  : {}),
+              }}
+              onClick={() => setOrigen(id)}
+            >
+              {ORIGENES_PEDIDO[id]?.icono ?? '🌐'} {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className={s.toolbar}>
         <input
@@ -641,11 +675,14 @@ export function ListadoVentasPanel() {
               <option value="">Todos los clientes</option>
               {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
-            <select className={s['select-inline']} value={origen} onChange={(e) => setOrigen(e.target.value)}>
-              <option value="">Mostrador y pedidos</option>
-              <option value="pos">Solo mostrador (POS)</option>
-              <option value="presupuesto">Solo nacidas de un pedido</option>
-            </select>
+            {!tienda && (
+              <select className={s['select-inline']} value={origen} onChange={(e) => setOrigen(e.target.value)}>
+                <option value="">Mostrador y pedidos</option>
+                <option value="pos">Solo mostrador (POS)</option>
+                <option value="presupuesto">Solo nacidas de un pedido</option>
+                <option value="tienda">Solo de la tienda online</option>
+              </select>
+            )}
           </>
         )}
         <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
@@ -685,7 +722,10 @@ export function ListadoVentasPanel() {
                 </div>
               )}
               {v.origen === 'presupuesto' && (
-                <div className={s.hint}>de un pedido</div>
+                <div className={s.hint}>
+                  {v.tienda ? `${ORIGENES_PEDIDO[v.tienda].icono} ${ORIGENES_PEDIDO[v.tienda].label}` : 'de un pedido'}
+                  {v.pedidoCodigo && ` · ${v.pedidoCodigo}`}
+                </div>
               )}
             </td>
             <td>

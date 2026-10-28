@@ -23,6 +23,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { Tabs, Tab } from '@mui/material';
 import { httpClient } from '@core/services/httpClient.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
@@ -40,6 +41,7 @@ import { accesosTienda, sinSuscripcion } from '@core/services/accesosTienda.js';
 import { ordenesWeb } from '@core/services/ordenesWeb.js';
 import { SeccionVentas } from '@modules/ventas/components/SeccionVentas.jsx';
 import { OrdenesPanel } from '@modules/ventas/panels/OrdenesPanel.jsx';
+import { ListadoVentasPanel } from '@modules/ventas/panels/ListadoVentasPanel.jsx';
 import { PresupuestosPanel } from '@modules/ventas/panels/PresupuestosPanel.jsx';
 import { PRESETS_IMAGEN, srcImagen } from '../services/imagenes.js';
 import { Miniatura } from '../components/Miniatura.jsx';
@@ -588,6 +590,24 @@ function CartelBienvenida({ web, setWeb, recargar, avisar }) {
  */
 const CON_CATALOGO = new Set(['contenido', 'configuracion']);
 
+/**
+ * PEDIDOS ONLINE (28/10/2026, pedido del dueño): los que esperan revisión y,
+ * en su pestaña, las ventas que ya se concretaron —el listado de Ventas, solo
+ * con lo que vino de la tienda y por tienda—.
+ */
+function PedidosOnline() {
+  const [pestana, setPestana] = useState('revisar');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
+      <Tabs value={pestana} onChange={(e, v) => setPestana(v)} sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}>
+        <Tab value="revisar" label="Por revisar" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />
+        <Tab value="ventas" label="Ventas concretadas" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />
+      </Tabs>
+      {pestana === 'revisar' ? <OrdenesPanel /> : <ListadoVentasPanel tienda />}
+    </div>
+  );
+}
+
 export function WebPage() {
   const { can } = usePermissions();
   const secciones = useMemo(() => WEB_SECCIONES.filter((x) => can(x.permiso)), [can]);
@@ -677,7 +697,7 @@ export function WebPage() {
             </div>
           )}
 
-          {activa === 'pedidos' && <SeccionVentas><OrdenesPanel /></SeccionVentas>}
+          {activa === 'pedidos' && <SeccionVentas><PedidosOnline /></SeccionVentas>}
           {activa === 'presupuestos' && <SeccionVentas><PresupuestosPanel tienda /></SeccionVentas>}
           {activa === 'ofertas' && <OfertasWebPanel avisar={avisar} />}
           {activa === 'estadisticas' && <MetricasTiendaPanel />}
