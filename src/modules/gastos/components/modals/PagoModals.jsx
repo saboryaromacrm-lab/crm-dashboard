@@ -9,6 +9,7 @@ import {
 } from '../ui.jsx';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '../segundaConfirmacion.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
+import { CuentaPropiaSelect } from '@shared/components/CuentaPropiaSelect.jsx';
 
 /* ==================================================================== *
  * Registrar un pago (desde el módulo, no desde la caja)
@@ -26,6 +27,7 @@ export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
   const [proveedorId, setProveedorId] = useState(proveedorFijo ? String(proveedorFijo) : '');
   const [importe, setImporte] = useState('');
   const [medio, setMedio] = useState('transferencia');
+  const [cuentaId, setCuentaId] = useState('');
   const [fecha, setFecha] = useState(hoyISO());
   const [concepto, setConcepto] = useState('');
   const [referencia, setReferencia] = useState('');
@@ -40,7 +42,7 @@ export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
   const hayTurno = !!caja?.id && caja.estado === 'abierta';
   const saleDeCaja = medio === 'efectivo' && hayTurno && desdeCaja;
   /* Sale plata: segunda confirmación + candado del doble clic (27/9/2026). */
-  const conf = useSegundaConfirmacion([proveedorId, importe, medio, fecha, concepto, referencia, sucursalId, saleDeCaja].join('|'));
+  const conf = useSegundaConfirmacion([proveedorId, importe, medio, cuentaId, fecha, concepto, referencia, sucursalId, saleDeCaja].join('|'));
 
   const registrar = () => conf.clic(() => {
     if (!proveedorId) { toast('Elegí a qué proveedor se le pagó.', 'err'); return false; }
@@ -52,6 +54,7 @@ export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
         proveedorId: Number(proveedorId),
         importe: r2(importe),
         medio,
+        cuentaPropiaId: Number(cuentaId) || undefined,
         fecha,
         concepto: concepto.trim(),
         referencia: referencia.trim(),
@@ -110,6 +113,12 @@ export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
             {Object.entries(MEDIOS_PAGO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
+        {medio === 'transferencia' && (
+          <div className={s.field}>
+            <label>¿De qué cuenta salió?</label>
+            <CuentaPropiaSelect value={cuentaId} onChange={setCuentaId} />
+          </div>
+        )}
         <div className={s.field}>
           <label>Fecha</label>
           <input type="date" max={hoyISO()} value={fecha} onChange={(e) => setFecha(e.target.value)} />
@@ -223,7 +232,7 @@ export function DetallePagoModal({ pagoId, onChange }) {
               : <Pill pill="est-recibida" label="Aplicado" />}
         </Di>
         <Di label="Fecha y hora">{fmtFechaHora(p.fecha)}</Di>
-        <Di label="Medio">{MEDIOS_PAGO[p.medio] || p.medio}</Di>
+        <Di label="Medio">{MEDIOS_PAGO[p.medio] || p.medio}{p.cuentaPropiaNombre ? ` · desde ${p.cuentaPropiaNombre}` : ''}</Di>
         <Di label="Importe"><strong>{money(p.importe)}</strong></Di>
         <Di label="Aplicado">{money(p.aplicado)}</Di>
         <Di label="Sin aplicar"><Saldo valor={p.saldo}>{money(p.saldo)}</Saldo></Di>

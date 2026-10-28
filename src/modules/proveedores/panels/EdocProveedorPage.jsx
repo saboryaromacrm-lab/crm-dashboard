@@ -323,7 +323,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
                 {m.detalle && <div className={s.hint} style={{ margin: 0 }}>{m.detalle}</div>}
                 {(m.formas?.length ?? 0) > 1 && (
                   <div className={s.hint} style={{ margin: 0 }}>
-                    {m.formas.map((f) => `${MEDIOS_PAGO_REAL[f.medio] ?? f.medio} ${money(f.importe)}`).join(' + ')}
+                    {m.formas.map((f) => `${MEDIOS_PAGO_REAL[f.medio] ?? f.medio}${f.cuentaPropiaNombre ? ` desde ${f.cuentaPropiaNombre}` : ''} ${money(f.importe)}`).join(' + ')}
                   </div>
                 )}
                 {/* Las transferencias de una cuenta disponible van juntas (23/10/2026): una por una, en su sección. */}
@@ -340,6 +340,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
                     {[
                       m.usuarioNombre ? `lo registró ${m.usuarioNombre}` : null,
                       m.sucursalNombre || null,
+                      m.cuentaPropiaNombre ? `desde ${m.cuentaPropiaNombre}` : null,
                       m.cambioPor ? `efectivo por transferencia (${m.cambioPor})` : null,
                       m.cajaSesionId ? `turno #${m.cajaSesionId}` : 'no salió de caja',
                       m.referencia ? `ref. ${m.referencia}` : null,

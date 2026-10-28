@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money, fmtFechaHora } from '../domain/format.js';
 import { Table, Stat, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
+import { FiltroCuentaPropia, desdeCuentas } from '@shared/components/CuentaPropiaSelect.jsx';
 
 /**
  * PAGOS EN SUCURSAL — la plata que salió de las cajas hacia proveedores de
@@ -29,6 +30,7 @@ export function PagosSucursalTab({ proveedorId = '' }) {
   // que seguir viéndose — con su "Aplicado a" — y no esfumarse de la lista.
   const [soloSinAplicar, setSoloSinAplicar] = useState(false);
   const [sucursalId, setSucursalId] = useState('');
+  const [cuentaPropiaId, setCuentaPropiaId] = useState('');
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -37,13 +39,14 @@ export function PagosSucursalTab({ proveedorId = '' }) {
         sinAplicar: soloSinAplicar ? 'true' : undefined,
         proveedorId: proveedorId || undefined,
         sucursalId: sucursalId || undefined,
+        cuentaPropiaId: cuentaPropiaId || undefined,
       }));
     } catch {
       toast('No se pudieron cargar los pagos.', 'err');
     } finally {
       setCargando(false);
     }
-  }, [store, soloSinAplicar, proveedorId, sucursalId, toast]);
+  }, [store, soloSinAplicar, proveedorId, sucursalId, cuentaPropiaId, toast]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -56,7 +59,7 @@ export function PagosSucursalTab({ proveedorId = '' }) {
     };
   }, [pagos]);
 
-  const clave = `${soloSinAplicar}|${proveedorId}|${sucursalId}`;
+  const clave = `${soloSinAplicar}|${proveedorId}|${sucursalId}|${cuentaPropiaId}`;
   const pag = usePaginado(pagos, 'pagos-sucursal', clave);
 
   return (
@@ -80,6 +83,7 @@ export function PagosSucursalTab({ proveedorId = '' }) {
           <option value="">Todas las sucursales</option>
           {store.state.sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
         </select>
+        <FiltroCuentaPropia className={s['select-inline']} value={cuentaPropiaId} onChange={setCuentaPropiaId} />
         <Btn small onClick={cargar} disabled={cargando}>{cargando ? 'Cargando…' : 'Actualizar'}</Btn>
       </div>
 
@@ -117,7 +121,7 @@ export function PagosSucursalTab({ proveedorId = '' }) {
                 {x.sucursalNombre || <span className={s.muted}>—</span>}
                 {x.cajaSesionId
                   ? <div className={s.hint} style={{ margin: 0 }}>Turno #{x.cajaSesionId} · {x.usuarioNombre}</div>
-                  : <div className={s.hint} style={{ margin: 0 }}>Administración · sin caja</div>}
+                  : <div className={s.hint} style={{ margin: 0 }}>{['Administración · sin caja', desdeCuentas(x)].filter(Boolean).join(' · ')}</div>}
               </td>
               <td className={s.num}>{money(x.importe)}</td>
               {/* La contracara de la traza de la factura: qué comprobante lo explica. */}

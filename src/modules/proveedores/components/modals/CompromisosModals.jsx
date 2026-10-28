@@ -4,6 +4,7 @@ import { useResource } from '../../hooks/useResource.js';
 import { provApi, MEDIOS_PAGO_REAL } from '../../services/proveedores.api.js';
 import { Btn, Di, ImporteCompromiso, ModalShell, money, fmtFecha, s } from '../ui.jsx';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '@modules/gastos/components/segundaConfirmacion.jsx';
+import { CuentaPropiaSelect } from '@shared/components/CuentaPropiaSelect.jsx';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -83,7 +84,9 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
   const { ctx, act, closeModal, toast } = useProveedores();
   const [modo, setModo] = useState('simple');
   const [medio, setMedio] = useState('transferencia');
-  const [formas, setFormas] = useState([{ medio: 'transferencia', importe: '', fecha: '' }]);
+  /* De qué cuenta propia sale la transferencia (0207); en partes, cada una dice la suya. */
+  const [cuentaId, setCuentaId] = useState('');
+  const [formas, setFormas] = useState([{ medio: 'transferencia', importe: '', fecha: '', cuentaId: '' }]);
   const [fecha, setFecha] = useState(hoyISO());
   const [referencia, setReferencia] = useState('');
   const [desdeCaja, setDesdeCaja] = useState(true);
@@ -97,13 +100,14 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
   const usaEfectivo = modo === 'simple'
     ? medio === 'efectivo'
     : formas.some((x) => x.medio === 'efectivo' && Number(x.importe) > 0);
-  const setForma = (i, k) => (e) => setFormas((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)));
+  const cambiarForma = (i, k, v) => setFormas((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+  const setForma = (i, k) => (e) => cambiarForma(i, k, e.target.value);
   const sumaFormas = r2(formas.reduce((a, x) => a + (Number(x.importe) || 0), 0));
   // Lo que de verdad falta (27/10/2026): si la factura ya se pagó en parte, no la promesa entera.
   const aPagar = compromiso.falta;
 
   /* Sale plata: segunda confirmación + candado del doble clic (27/9/2026). */
-  const conf = useSegundaConfirmacion(JSON.stringify([modo, medio, formas, fecha, referencia, desdeCaja]));
+  const conf = useSegundaConfirmacion(JSON.stringify([modo, medio, cuentaId, formas, fecha, referencia, desdeCaja]));
   const validar = () => {
     if (modo === 'simple') return true;
     if (!formas.some((x) => Number(x.importe) > 0)) { toast('Cargá al menos una parte del pago.', 'err'); return false; }
@@ -117,9 +121,11 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
     const body = { fecha, referencia: referencia.trim() || undefined };
     if (modo === 'simple') {
       body.medio = medio;
+      body.cuentaPropiaId = Number(cuentaId) || undefined;
     } else {
-      body.formas = formas.filter((x) => Number(x.importe) > 0)
-        .map((x) => ({ medio: x.medio, importe: r2(x.importe), fecha: x.fecha || undefined }));
+      body.formas = formas.filter((x) => Number(x.importe) > 0).map((x) => ({
+        medio: x.medio, importe: r2(x.importe), fecha: x.fecha || undefined, cuentaPropiaId: Number(x.cuentaId) || undefined,
+      }));
     }
     if (usaEfectivo && hayTurno && desdeCaja) body.cajaSesionId = caja.id;
     const res = await act(provApi.pagarCompromiso(compromiso.id, body), 'Compromiso pagado.');
@@ -164,6 +170,12 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
               {Object.entries(MEDIOS_PAGO_REAL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </div>
+          {medio === 'transferencia' && (
+            <div className={s.field}>
+              <label>¿De qué cuenta salió?</label>
+              <CuentaPropiaSelect value={cuentaId} onChange={setCuentaId} />
+            </div>
+          )}
           <div className={s.field}>
             <label>Fecha del pago</label>
             <input type="date" max={hoyISO()} value={fecha} onChange={(e) => setFecha(e.target.value)} />
@@ -176,6 +188,9 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
               <select value={x.medio} onChange={setForma(i, 'medio')} style={{ width: 160 }}>
                 {Object.entries(MEDIOS_PAGO_REAL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
+              {x.medio === 'transferencia' && (
+                <CuentaPropiaSelect value={x.cuentaId} onChange={(v) => cambiarForma(i, 'cuentaId', v)} style={{ width: 170 }} />
+              )}
               <input
                 type="number" min="0" step="0.01" placeholder="Importe"
                 value={x.importe} onChange={setForma(i, 'importe')} style={{ width: 130, textAlign: 'right' }}
@@ -188,7 +203,7 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
             </div>
           ))}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Btn small onClick={() => setFormas((xs) => [...xs, { medio: 'transferencia', importe: '', fecha: '' }])}>
+            <Btn small onClick={() => setFormas((xs) => [...xs, { medio: 'transferencia', importe: '', fecha: '', cuentaId: '' }])}>
               + Agregar parte
             </Btn>
             <span className={s.hint}>Suman {money(sumaFormas)} de {money(aPagar)}</span>

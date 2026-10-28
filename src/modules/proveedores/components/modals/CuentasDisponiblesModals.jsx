@@ -7,6 +7,7 @@ import { errorMsg, provApi } from '../../services/proveedores.api.js';
 import { copiarImagenResumen } from '../../services/resumenImagen.js';
 import { fmt, saldoCuenta, textoResumenCuenta } from '@modules/ventas/domain/cuentasProveedor.js';
 import { Di, ModalShell, Pill, Table, fmtFecha, fmtFechaHora, money, s } from '../ui.jsx';
+import { CuentaPropiaSelect } from '@shared/components/CuentaPropiaSelect.jsx';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -347,6 +348,7 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
   const { act, closeModal, toast } = useProveedores();
   const [importe, setImporte] = useState(String(r2(c.falta)));
   const [fecha, setFecha] = useState(hoyISO());
+  const [cuentaId, setCuentaId] = useState('');
   const [referencia, setReferencia] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [confirmando, setConfirmando] = useState(false);
@@ -362,7 +364,10 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
     enCurso.current = true;
     try {
       const ok = await act(
-        provApi.pagoPropioCuenta(c.id, { importe: n, fecha, referencia: referencia.trim() || undefined, observaciones: observaciones.trim() || undefined }),
+        provApi.pagoPropioCuenta(c.id, {
+          importe: n, fecha, cuentaPropiaId: Number(cuentaId) || undefined,
+          referencia: referencia.trim() || undefined, observaciones: observaciones.trim() || undefined,
+        }),
         `Pago propio de ${money(n)} a ${c.proveedorNombre} (${c.titular}) registrado.`,
       );
       if (ok) onChange?.();
@@ -398,8 +403,12 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
           <input type="date" value={fecha} max={hoyISO()} onChange={cambiar(setFecha)} />
         </div>
         <div className={s.field}>
-          <label>Nº de operación o desde qué cuenta</label>
-          <input value={referencia} maxLength={120} onChange={cambiar(setReferencia)} placeholder="Opcional · ej: Galicia, op. 123456" />
+          <label>¿De qué cuenta salió?</label>
+          <CuentaPropiaSelect value={cuentaId} onChange={(v) => { setCuentaId(v); setConfirmando(false); }} />
+        </div>
+        <div className={s.field}>
+          <label>Nº de operación</label>
+          <input value={referencia} maxLength={120} onChange={cambiar(setReferencia)} placeholder="Opcional · ej: op. 123456" />
         </div>
         <div className={s.field}>
           <label>Observaciones</label>

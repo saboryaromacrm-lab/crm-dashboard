@@ -32,6 +32,7 @@ import { iso } from '../metricas/formato.js';
 import { Fecha } from './Fecha.jsx';
 import { CajasAControlar, TildeControlar } from './CajasAControlar.jsx';
 import { PlanillaDia } from './PlanillaDia.jsx';
+import { MisCuentas } from './MisCuentas.jsx';
 import { useTildeControlar, useUmbralControlar } from './tildeControlar.js';
 import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, DONDE, DONDE_A_CAMPOS, donde, esConceptoCambio, esDeposito, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaHoraSinDia, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
 
@@ -1559,6 +1560,7 @@ export function CashFlowPanel() {
           {pestana === 'configuracion' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <ArranqueConfig caja={d.caja} avisar={avisar} onHecho={bump} />
+              <MisCuentas avisar={avisar} />
               <div className={s['section-title']} style={{ margin: 0 }}>Conceptos</div>
               <Conceptos conceptos={conceptos ?? []} bump={bump} avisar={avisar} />
             </div>

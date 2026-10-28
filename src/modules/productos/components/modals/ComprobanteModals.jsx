@@ -7,6 +7,7 @@ import { displaysDe, envasesDelRenglon, nombreEnvase } from '../../domain/bulto.
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
+import { CuentaPropiaSelect } from '@shared/components/CuentaPropiaSelect.jsx';
 
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
@@ -798,6 +799,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   /** El resto que se paga en el acto: '' = nada, queda en cuenta corriente. */
   const [pagarAhora, setPagarAhora] = useState('');
   const [medioPago, setMedioPago] = useState('efectivo');
+  const [cuentaPago, setCuentaPago] = useState('');
   /** '' = plata de administración (sin caja); si no, el id del turno abierto. */
   const [origenPago, setOrigenPago] = useState('');
   const [refPago, setRefPago] = useState('');
@@ -1719,6 +1721,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           ? {
             importe: r2(ahora),
             medio: medioPago,
+            cuentaPropiaId: Number(cuentaPago) || undefined,
             cajaSesionId: origenPago ? Number(origenPago) : undefined,
             referencia: refPago.trim() || undefined,
           }
@@ -1775,6 +1778,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         ? {
           importe: r2(ahora),
           medio: medioPago,
+          cuentaPropiaId: Number(cuentaPago) || undefined,
           cajaSesionId: origenPago ? Number(origenPago) : undefined,
           referencia: refPago.trim() || undefined,
         }
@@ -2952,6 +2956,12 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                     {Object.entries(MEDIOS_PAGO_COMPRA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
+                {medioPago === 'transferencia' && (
+                  <div className={s.field}>
+                    <label>¿De qué cuenta salió?</label>
+                    <CuentaPropiaSelect value={cuentaPago} onChange={setCuentaPago} />
+                  </div>
+                )}
                 <div className={s.field}>
                   <label>¿De dónde sale?</label>
                   <select value={origenPago} onChange={(e) => setOrigenPago(e.target.value)}>

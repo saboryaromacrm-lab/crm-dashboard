@@ -5,6 +5,7 @@ import { useResource } from '../../hooks/useResource.js';
 import { provApi, MEDIOS_PAGO_REAL } from '../../services/proveedores.api.js';
 import { Btn, ModalShell, money, fmtFecha, s } from '../ui.jsx';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '@modules/gastos/components/segundaConfirmacion.jsx';
+import { CuentaPropiaSelect, useCuentasPropias } from '@shared/components/CuentaPropiaSelect.jsx';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -55,7 +56,9 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
   const [importeLibre, setImporteLibre] = useState('');
   const [modo, setModo] = useState('simple');
   const [medio, setMedio] = useState('transferencia');
-  const [formas, setFormas] = useState([{ medio: 'transferencia', importe: '', fecha: '' }]);
+  /* De qué cuenta propia sale la transferencia (0207); en un pago mixto, cada parte dice la suya. */
+  const [cuentaId, setCuentaId] = useState('');
+  const [formas, setFormas] = useState([{ medio: 'transferencia', importe: '', fecha: '', cuentaId: '' }]);
   const [fecha, setFecha] = useState(hoyISO());
   const [concepto, setConcepto] = useState('');
   const [referencia, setReferencia] = useState('');
@@ -137,7 +140,10 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
   const copiarCuenta = (c) => navigator.clipboard.writeText(c.cbuAlias)
     .then(() => toast(`Copiado: ${c.cbuAlias}`, 'ok'), () => toast('No se pudo copiar al portapapeles.', 'err'));
   const sumaFormas = r2(formas.reduce((a, x) => a + (Number(x.importe) || 0), 0));
-  const setForma = (i, k) => (e) => setFormas((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)));
+  const cambiarForma = (i, k, v) => setFormas((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+  const setForma = (i, k) => (e) => cambiarForma(i, k, e.target.value);
+  const { cuentas: misCuentas } = useCuentasPropias();
+  const nombreCuenta = misCuentas?.find((c) => String(c.id) === cuentaId)?.nombre;
   const alternar = (d) => setTildados((m) => {
     const k = claveDoc(d);
     return { ...m, [k]: !m[k] };
@@ -147,7 +153,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
   /* Sale plata: segunda confirmación + candado del doble clic (27/9/2026). */
   const conf = useSegundaConfirmacion(JSON.stringify([
     Object.keys(tildados).filter((k) => tildados[k]), Object.keys(fletesTildados).filter((k) => fletesTildados[k]),
-    importeLibre, modo, medio, formas, fecha, concepto, referencia, desdeCaja, cambioPor,
+    importeLibre, modo, medio, cuentaId, formas, fecha, concepto, referencia, desdeCaja, cambioPor,
   ]));
   const validar = () => {
     if (mezcla || fleteExcedido) return pagarDirecto(false, true);
@@ -241,6 +247,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
       body.cambioPor = cambioPor.trim();
     } else if (modo === 'simple') {
       body.medio = medio;
+      body.cuentaPropiaId = Number(cuentaId) || undefined;
     } else {
       const filas = formas.filter((x) => Number(x.importe) > 0);
       if (!filas.length) { toast('Cargá al menos una parte del pago.', 'err'); return; }
@@ -248,7 +255,9 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
         toast(`Las partes suman ${money(sumaFormas)} y el pago es de ${money(importe)}: tienen que coincidir.`, 'err');
         return;
       }
-      body.formas = filas.map((x) => ({ medio: x.medio, importe: r2(x.importe), fecha: x.fecha || undefined }));
+      body.formas = filas.map((x) => ({
+        medio: x.medio, importe: r2(x.importe), fecha: x.fecha || undefined, cuentaPropiaId: Number(x.cuentaId) || undefined,
+      }));
     }
     if (usaEfectivo && hayTurno && desdeCaja) body.cajaSesionId = caja.id;
     if (confirmarDuplicado) body.confirmarDuplicado = true;
@@ -291,7 +300,8 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
           : <>
             Sale un pago de <strong>{money(importe)}</strong> a <strong>{proveedor.nombre}</strong>
             {esCambio ? <> por transferencia que hace <strong>{cambioPor.trim() || '—'}</strong> a cambio de tu efectivo</>
-              : modo === 'simple' ? <> por {medio}</> : <> en {formas.filter((x) => Number(x.importe) > 0).length} partes</>}
+              : modo === 'simple' ? <> por {medio}{medio === 'transferencia' && nombreCuenta ? <> desde <strong>{nombreCuenta}</strong></> : null}</>
+                : <> en {formas.filter((x) => Number(x.importe) > 0).length} partes</>}
             {usaEfectivo && hayTurno && desdeCaja ? <> (el efectivo <strong>sale del cajón</strong>, turno #{caja.id})</> : null}
             {elegidos.length
               ? <>, aplicado a {elegidos.length} documento(s){sumaFletes > EPS ? <> y descontando {money(sumaFletes)} de flete</> : null}.</>
@@ -487,6 +497,12 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
                 <option value={CAMBIO}>Efectivo por transferencia</option>
               </select>
             </div>
+            {medio === 'transferencia' && (
+              <div className={s.field}>
+                <label>¿De qué cuenta salió?</label>
+                <CuentaPropiaSelect value={cuentaId} onChange={setCuentaId} />
+              </div>
+            )}
             {esCambio && (
               <div className={s.field}>
                 <label>¿Quién hizo la transferencia? <span className={s.req}>*</span></label>
@@ -509,6 +525,9 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
               <select value={x.medio} onChange={setForma(i, 'medio')} style={{ width: 160 }}>
                 {Object.entries(MEDIOS_PAGO_REAL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
+              {x.medio === 'transferencia' && (
+                <CuentaPropiaSelect value={x.cuentaId} onChange={(v) => cambiarForma(i, 'cuentaId', v)} style={{ width: 170 }} />
+              )}
               <input
                 type="number" min="0" step="0.01" placeholder="Importe"
                 value={x.importe} onChange={setForma(i, 'importe')} style={{ width: 130, textAlign: 'right' }}
@@ -521,7 +540,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
             </div>
           ))}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Btn small onClick={() => setFormas((xs) => [...xs, { medio: 'transferencia', importe: '', fecha: '' }])}>
+            <Btn small onClick={() => setFormas((xs) => [...xs, { medio: 'transferencia', importe: '', fecha: '', cuentaId: '' }])}>
               + Agregar parte
             </Btn>
             <span className={s.hint} style={{ margin: 0 }}>

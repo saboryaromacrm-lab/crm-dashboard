@@ -9,6 +9,7 @@ import {
 } from '../components/ui.jsx';
 import { imprimirDocumento, cuerpoOrdenDePago } from '@core/services/imprimir.js';
 import { leerSesion } from '@core/auth/sesion.js';
+import { FiltroCuentaPropia, desdeCuentas } from '@shared/components/CuentaPropiaSelect.jsx';
 
 /**
  * LA BANDEJA — pestaña "Pagos en sucursal" dentro de Gastos, espejo de la de
@@ -27,6 +28,7 @@ import { leerSesion } from '@core/auth/sesion.js';
 export function PagosSucursalTab({ proveedorId, onCambio }) {
   const { sucursales, openModal, contadores, toast } = useGastos();
   const [sucursalId, setSucursalId] = useState('');
+  const [cuentaPropiaId, setCuentaPropiaId] = useState('');
   // Arranca mostrando TODO el período, no solo lo pendiente: un pago recién
   // tomado tiene que seguir viéndose — con su "Aplicado a" — y no esfumarse.
   const [soloSinAplicar, setSoloSinAplicar] = useState(false);
@@ -36,6 +38,7 @@ export function PagosSucursalTab({ proveedorId, onCambio }) {
   const filtros = {
     proveedorId: proveedorId || undefined,
     sucursalId: sucursalId || undefined,
+    cuentaPropiaId: cuentaPropiaId || undefined,
     // Cuando se miran solo los pendientes, el rango de fechas estorba: un pago
     // sin aplicar de hace tres meses es justamente el que hay que ver.
     desde: soloSinAplicar ? undefined : (desde || undefined),
@@ -102,7 +105,10 @@ export function PagosSucursalTab({ proveedorId, onCambio }) {
           <div>{p.proveedorNombre}</div>
           {p.concepto && <div className={s.hint} style={{ margin: 0 }}>{p.concepto}</div>}
         </td>
-        <td>{MEDIOS_PAGO[p.medio] || p.medio}</td>
+        <td>
+          {MEDIOS_PAGO[p.medio] || p.medio}
+          {desdeCuentas(p) && <div className={s.hint} style={{ margin: 0 }}>{desdeCuentas(p)}</div>}
+        </td>
         <td>
           {p.sucursalNombre || <span className={s.muted}>—</span>}
           {p.cajaSesionId && <div className={s.hint} style={{ margin: 0 }}>Turno #{p.cajaSesionId} · {p.usuarioNombre}</div>}
@@ -160,6 +166,7 @@ export function PagosSucursalTab({ proveedorId, onCambio }) {
           <option value="">Todas las sucursales</option>
           {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
         </select>
+        <FiltroCuentaPropia className={s['select-inline']} value={cuentaPropiaId} onChange={setCuentaPropiaId} />
         {!soloSinAplicar && (
           <>
             <label className={s.hint} style={{ margin: 0 }}>

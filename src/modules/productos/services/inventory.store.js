@@ -1269,6 +1269,7 @@ function _cleanComprobante(o) {
       ? {
         importe: Number(o.pagoContado.importe),
         medio: o.pagoContado.medio || 'efectivo',
+        cuentaPropiaId: Number(o.pagoContado.cuentaPropiaId) || undefined,
         cajaSesionId: o.pagoContado.cajaSesionId != null ? Number(o.pagoContado.cajaSesionId) : undefined,
         referencia: o.pagoContado.referencia || undefined,
       }
@@ -1352,6 +1353,7 @@ const facturarRemito = (remitoId, o) => _mutate(() => httpClient.post(`/comproba
     ? {
       importe: Number(o.pagoContado.importe),
       medio: o.pagoContado.medio || 'efectivo',
+      cuentaPropiaId: Number(o.pagoContado.cuentaPropiaId) || undefined,
       cajaSesionId: o.pagoContado.cajaSesionId != null ? Number(o.pagoContado.cajaSesionId) : undefined,
       referencia: o.pagoContado.referencia || undefined,
     }

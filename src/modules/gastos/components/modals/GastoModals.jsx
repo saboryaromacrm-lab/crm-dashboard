@@ -11,6 +11,7 @@ import {
   Table, Btn, Di, ModalShell, GastoEstadoPill, Saldo, money, fmtFecha, fmtFechaHora, s,
 } from '../ui.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
+import { CuentaPropiaSelect } from '@shared/components/CuentaPropiaSelect.jsx';
 
 /* ==================================================================== *
  * Alta y edición del gasto
@@ -257,6 +258,7 @@ export function GastoFormModal({ gastoId, onChange }) {
   // junto con el gasto en vez de obligar a un segundo paso.
   const [pagaAhora, setPagaAhora] = useState(false);
   const [medioPago, setMedioPago] = useState('efectivo');
+  const [cuentaPago, setCuentaPago] = useState('');
   const [desdeCaja, setDesdeCaja] = useState(true);
   const { data: caja } = useResource(
     `caja-gasto:${ctx.sucursalId}`,
@@ -452,6 +454,7 @@ export function GastoFormModal({ gastoId, onChange }) {
           pagoInmediato: {
             importe: resto,
             medio: medioPago,
+            cuentaPropiaId: Number(cuentaPago) || undefined,
             fecha: f.fecha || undefined,
             cajaSesionId: saleDeCaja ? caja.id : undefined,
             // Sin `usuarioId`: el pago del gasto lo firma el mismo que carga el
@@ -927,6 +930,12 @@ export function GastoFormModal({ gastoId, onChange }) {
                   {Object.entries(MEDIOS_PAGO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
+              {medioPago === 'transferencia' && (
+                <div className={s.field}>
+                  <label>¿De qué cuenta salió?</label>
+                  <CuentaPropiaSelect value={cuentaPago} onChange={setCuentaPago} />
+                </div>
+              )}
               <div className={s.field}>
                 <label>Importe del pago</label>
                 <input value={money(resto)} readOnly tabIndex={-1} />
@@ -1134,6 +1143,7 @@ export function PagarGastoModal({ gastoId, onChange }) {
 
   const [importe, setImporte] = useState('');
   const [medio, setMedio] = useState('efectivo');
+  const [cuentaId, setCuentaId] = useState('');
   const [fecha, setFecha] = useState(hoyISO());
   const [referencia, setReferencia] = useState('');
   const [desdeCaja, setDesdeCaja] = useState(true);
@@ -1150,7 +1160,7 @@ export function PagarGastoModal({ gastoId, onChange }) {
   const hayTurno = !!caja?.id && caja.estado === 'abierta';
   const saleDeCaja = medio === 'efectivo' && hayTurno && desdeCaja;
   /* Sale plata: segunda confirmación + candado del doble clic (27/9/2026). */
-  const conf = useSegundaConfirmacion([importe, medio, fecha, referencia, saleDeCaja].join('|'));
+  const conf = useSegundaConfirmacion([importe, medio, cuentaId, fecha, referencia, saleDeCaja].join('|'));
 
   const pagar = () => conf.clic(
     () => {
@@ -1163,6 +1173,7 @@ export function PagarGastoModal({ gastoId, onChange }) {
         gastosApi.pagarGasto(gastoId, {
           importe: r2(importe),
           medio,
+          cuentaPropiaId: Number(cuentaId) || undefined,
           fecha,
           referencia: referencia.trim(),
           cajaSesionId: saleDeCaja ? caja.id : undefined,
@@ -1220,6 +1231,12 @@ export function PagarGastoModal({ gastoId, onChange }) {
             {Object.entries(MEDIOS_PAGO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
+        {medio === 'transferencia' && (
+          <div className={s.field}>
+            <label>¿De qué cuenta salió?</label>
+            <CuentaPropiaSelect value={cuentaId} onChange={setCuentaId} />
+          </div>
+        )}
         <div className={s.field}>
           <label>Fecha</label>
           <input type="date" max={hoyISO()} value={fecha} onChange={(e) => setFecha(e.target.value)} />
