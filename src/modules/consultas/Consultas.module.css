@@ -194,7 +194,35 @@
   background-image: linear-gradient(180deg, color-mix(in srgb, var(--crm-color-primary) 6%, transparent), color-mix(in srgb, var(--crm-color-primary) 14%, transparent));
   font-weight: 700;
 }
-.tabla tbody tr td.colActiva.cero { opacity: 1; color: color-mix(in srgb, var(--crm-color-text) 35%, transparent); font-weight: 400; }
+.tabla tbody tr td.colActiva.cero,
+.tabla tbody tr td.colActiva .cero { opacity: 1; color: color-mix(in srgb, var(--crm-color-text) 35%, transparent); font-weight: 400; }
+
+/*
+ * SIN STOCK DESDE CUÁNDO (29/10/2026): debajo de cada 0, en letra chica, hace
+ * cuánto y (en un express) si lo pidieron. El 0 sigue apagado; esto no, porque
+ * es lo que se vino a mirar. «Sin pedir» en rojo: es lo que hay que reclamar.
+ * «Contar» en ámbar: el número no es confiable.
+ */
+.sinDetalle {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  margin-top: 2px;
+  font-family: var(--crm-font-sans, inherit);
+  font-size: 10.5px;
+  line-height: 1.2;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: help;
+}
+.hace { color: var(--crm-color-text-muted); }
+.contar { color: var(--crm-color-warning); font-weight: 700; }
+.pedido { font-weight: 700; }
+.pedidoOk { color: var(--crm-color-success); }
+.sinPedir { color: var(--crm-color-danger); }
+/* La columna del local elegido en «Faltan en»: un borde, para no pisar el resalte del orden. */
+.tabla tbody tr td.colFalta { box-shadow: inset 2px 0 color-mix(in srgb, var(--crm-color-danger) 45%, transparent), inset -2px 0 color-mix(in srgb, var(--crm-color-danger) 45%, transparent); }
 
 /* ---------------- Precios y variación ---------------- */
 
