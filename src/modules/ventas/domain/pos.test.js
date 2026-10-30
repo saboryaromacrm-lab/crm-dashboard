@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  agruparDescuentos, buscarEnCatalogo, descuentosDisponibles, descuentosParaApi, bultoAbajo, bultoArriba, bultoDeFila, calcularRenglon, cambioDeDescuento, descuentosConMedio, desgloseBulto,
+  agruparDescuentos, buscarEnCatalogo, descuentosDisponibles, descuentosParaApi, bultoAbajo, bultoArriba, bultoDeFila, calcularRenglon, cambioDeDescuento, descuentosConMedio, mediosDeDescuento, mediosPermitidos, desgloseBulto,
   empujonMayorista, esPaquete, porBulto, textoBulto, totalesTicket,
   unidadesDeLista, ticketDesdeBorrador, ticketReducer, ticketInicial,
 } from './pos.js';
@@ -332,10 +332,30 @@ test('descuentosConMedio: solo los que ganaron en un renglón y piden un medio',
     { id: 3, nombre: 'Tapado', medioPago: 'transferencia', listaId: 20 },
   ] };
   const renglones = [{ descuentoId: 1 }, { descuentoId: 2 }, { descuentoId: null }];
-  assert.deepEqual(descuentosConMedio({ renglones, ctx }), [{ id: 1, nombre: 'Dcto empleado efect', medio: 'efectivo' }]);
+  assert.deepEqual(descuentosConMedio({ renglones, ctx }), [{ id: 1, nombre: 'Dcto empleado efect', medios: ['efectivo'] }]);
   // Puesto pero tapado (ningún renglón lo lleva): no condiciona el cobro.
   assert.deepEqual(descuentosConMedio({ renglones: [{ descuentoId: null }], ctx }), []);
   assert.deepEqual(descuentosConMedio({ renglones: [], ctx: {} }), []);
+});
+
+test('0208: un descuento con varios medios y los medios que quedan para cobrar', () => {
+  const ctx = { descuentos: [
+    { id: 1, nombre: 'SiClub', mediosPago: 'efectivo,transferencia', medioPago: null, listaId: 10 },
+    { id: 2, nombre: 'Solo efectivo', mediosPago: 'efectivo', medioPago: 'efectivo', listaId: 20 },
+    { id: 3, nombre: 'Solo débito', mediosPago: 'tarjeta_debito', listaId: 30 },
+  ] };
+  assert.deepEqual(mediosDeDescuento(ctx.descuentos[0]), ['efectivo', 'transferencia']);
+  assert.deepEqual(mediosDeDescuento({ mediosPago: '', medioPago: 'qr' }), ['qr'], 'fila de antes: el medio viejo');
+  assert.deepEqual(mediosDeDescuento({ mediosPago: '' }), []);
+
+  const uno = descuentosConMedio({ renglones: [{ descuentoId: 1 }], ctx });
+  assert.deepEqual(uno, [{ id: 1, nombre: 'SiClub', medios: ['efectivo', 'transferencia'] }]);
+  assert.deepEqual(mediosPermitidos(uno), ['efectivo', 'transferencia']);
+  // dos descuentos: vale lo que está en los dos
+  assert.deepEqual(mediosPermitidos(descuentosConMedio({ renglones: [{ descuentoId: 1 }, { descuentoId: 2 }], ctx })), ['efectivo']);
+  // ninguno en común: choque
+  assert.deepEqual(mediosPermitidos(descuentosConMedio({ renglones: [{ descuentoId: 1 }, { descuentoId: 3 }], ctx })), []);
+  assert.equal(mediosPermitidos([]), null);
 });
 
 test('cambioDeDescuento: del general al de efectivo y de vuelta, solo si el otro gana', () => {

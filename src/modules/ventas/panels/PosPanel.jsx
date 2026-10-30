@@ -8,7 +8,7 @@ import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import {
   buscarEnCatalogo, calcularRenglon, descuentosDisponibles, descuentosParaApi,
   extrasParaApi, itemsParaApi, parseEtiquetaBalanza,
-  agruparDescuentos, cambioDeDescuento, descuentosConMedio, problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
+  agruparDescuentos, cambioDeDescuento, descuentosConMedio, mediosDeDescuento, problemasDelTicket, r2, ticketDesdeBorrador, ticketInicial, ticketReducer,
   bultoAbajo, bultoArriba, bultoDeFila, cantidadInicial, desgloseBulto, empujonMayorista, esPaquete, textoBulto,
   totalesTicket, ultimoArticulo, unidadesDeLista,
 } from '../domain/pos.js';
@@ -350,7 +350,7 @@ function DescuentosConNombre({ opciones, puestos, onAlternar, habilitado }) {
     <button key={d.id} type="button" className={cx(p.descItem, cls, d.puesto && p.descItemPuesto)} disabled={!d.aplicable} onClick={() => elegir(d)}>
       <span>{d.puesto ? '✓ ' : ''}<strong>{titulo}</strong> −{d.porcentaje}%</span>
       <span className={p.descMotivo}>
-        {d.motivo || `Sobre ${d.lista}${d.medioPago ? ` · solo con ${MEDIOS_PAGO[d.medioPago] || d.medioPago}` : ''}`}
+        {d.motivo || `Sobre ${d.lista}${mediosDeDescuento(d).length ? ` · solo con ${mediosDeDescuento(d).map((m) => MEDIOS_PAGO[m] || m).join(' o ')}` : ''}`}
       </span>
     </button>
   );

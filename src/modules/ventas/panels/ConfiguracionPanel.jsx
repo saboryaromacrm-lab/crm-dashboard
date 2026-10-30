@@ -8,6 +8,8 @@ import { CONDICIONES_IVA, MEDIOS_PAGO, OPCIONES_REDONDEO_PRECIO } from '../domai
 import { PanelHead, Btn, s } from '../components/ui.jsx';
 import { PanelArca } from '../components/PanelArca.jsx';
 import { DiasSemana } from '../components/DiasSemana.jsx';
+import { MediosElegir } from '../components/MediosElegir.jsx';
+import { mediosDeDescuento } from '../domain/pos.js';
 import { MercadoPagoPanel } from '../components/MercadoPagoPanel.jsx';
 import { ListasPanel } from './ListasPanel.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
@@ -97,13 +99,13 @@ const fechaInput = (iso) => {
 const estaVencido = (iso) => !!iso && new Date(iso).getTime() < Date.now();
 
 const FILA_VACIA = {
-  nombre: '', porcentaje: '', porcentajeEfectivo: '', vence: '', dias: '', medioPago: '', listaId: '', sucursalId: '', requiereAdmin: false,
+  nombre: '', porcentaje: '', porcentajeEfectivo: '', vence: '', dias: '', mediosPago: [], listaId: '', sucursalId: '', requiereAdmin: false,
 };
 
-/** El borrador de una fila existente; `d.pareja` es su % en efectivo (0149). */
+/** El borrador de una fila existente; `d.pareja` es su % en efectivo (0149); `mediosPago` uno o varios (0208). */
 const filaDe = (d) => ({
   nombre: d.nombre, porcentaje: d.porcentaje, porcentajeEfectivo: d.pareja?.porcentaje ?? '', vence: fechaInput(d.vence), dias: d.dias ?? '',
-  medioPago: d.medioPago ?? '', listaId: d.listaId ?? '', sucursalId: d.sucursalId ?? '',
+  mediosPago: mediosDeDescuento(d), listaId: d.listaId ?? '', sucursalId: d.sucursalId ?? '',
   requiereAdmin: !!d.requiereAdmin,
 });
 
@@ -117,14 +119,15 @@ function FilaDescuento({ d, listas, sucursales, sucursalesTodas = [], onGuardar,
   useEffect(() => { if (!nuevo) setF(filaDe(d)); }, [d, nuevo]);
 
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+  const pideMedio = f.mediosPago.length > 0;
   const guardar = () => onGuardar({
     nombre: f.nombre.trim(),
     porcentaje: Number(f.porcentaje) || 0,
     // Vacío = sin % en efectivo (si lo tenía, se saca). Con un medio exigido no corresponde.
-    porcentajeEfectivo: f.medioPago || f.porcentajeEfectivo === '' ? null : Number(f.porcentajeEfectivo),
+    porcentajeEfectivo: pideMedio || f.porcentajeEfectivo === '' ? null : Number(f.porcentajeEfectivo),
     vence: f.vence || '',
     dias: f.dias,
-    medioPago: f.medioPago || '',
+    mediosPago: f.mediosPago,
     listaId: Number(f.listaId) || 0,
     sucursalId: f.sucursalId === '' ? null : Number(f.sucursalId),
     requiereAdmin: !!f.requiereAdmin,
@@ -149,21 +152,19 @@ function FilaDescuento({ d, listas, sucursales, sucursalesTodas = [], onGuardar,
         <div className={s.field} style={{ flex: '0 1 110px', margin: 0 }}>
           <label>% en efectivo</label>
           <input
-            type="number" min="0" max="100" step="0.5" value={f.medioPago ? '' : f.porcentajeEfectivo}
-            onChange={set('porcentajeEfectivo')} placeholder={f.medioPago ? 'no aplica' : 'opcional'}
-            disabled={!!f.medioPago} title={f.medioPago ? 'Este descuento ya pide un medio de pago.' : 'Mayor que el general; vacío = no tiene'}
+            type="number" min="0" max="100" step="0.5" value={pideMedio ? '' : f.porcentajeEfectivo}
+            onChange={set('porcentajeEfectivo')} placeholder={pideMedio ? 'no aplica' : 'opcional'}
+            disabled={pideMedio} title={pideMedio ? 'Este descuento ya pide un medio de pago.' : 'Mayor que el general; vacío = no tiene'}
           />
         </div>
         <div className={s.field} style={{ flex: '1 1 150px', margin: 0 }}>
           <label>Vence</label>
           <input type="date" value={f.vence} onChange={set('vence')} />
         </div>
+        {/* 0208: uno o varios medios («Efectivo o Transferencia»); ninguno = cualquier forma. */}
         <div className={s.field} style={{ flex: '1 1 160px', margin: 0 }}>
           <label>Solo con</label>
-          <select value={f.medioPago} onChange={set('medioPago')}>
-            <option value="">Cualquier forma</option>
-            {Object.entries(MEDIOS_PAGO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
+          <MediosElegir value={f.mediosPago} onChange={(mediosPago) => setF((x) => ({ ...x, mediosPago }))} />
         </div>
         {/* La LISTA es obligatoria: es sobre qué renglones cae el descuento. */}
         <div className={s.field} style={{ flex: '1 1 180px', margin: 0 }}>

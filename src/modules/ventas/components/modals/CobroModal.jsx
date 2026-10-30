@@ -4,7 +4,7 @@ import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { ventasApi } from '../../services/ventas.api.js';
 import { MEDIOS_PAGO, nroComprobante } from '../../domain/constants.js';
-import { r2 } from '../../domain/pos.js';
+import { mediosPermitidos, r2 } from '../../domain/pos.js';
 import { sugerirImporteCuenta, validarTransferenciaProveedor } from '../../domain/cuentasProveedor.js';
 import { CuentaProveedorPicker } from '../CuentaProveedorPicker.jsx';
 import { FacturaACuit } from '../FacturaACuit.jsx';
@@ -73,21 +73,28 @@ export function CobroModal({
    * Choque: dos descuentos con medios distintos, o un medio que no sirve para
    * la parte mayorista — no hay forma de cobrar sin sacar el descuento.
    */
-  const exigidos = [...new Set(descuentosMedio.map((d) => d.medio))];
-  const medioDescuento = exigidos.length === 1 ? exigidos[0] : null;
+  /* 0208: cada descuento puede aceptar varios medios; valen los que aceptan TODOS
+   * (null = ninguno exige, [] = choque). */
+  const permitidosDesc = mediosPermitidos(descuentosMedio);
+  const mediosDescuento = permitidosDesc?.length ? permitidosDesc : null;
+  const legibles = (lista) => lista.map((m) => MEDIOS_PAGO[m] || m).join(' o ');
   const nombresDescuento = descuentosMedio.map((d) => `«${d.nombre}»`).join(' y ');
   /* El otro % del mismo descuento (0149): pasar al de efectivo, o volver al general. */
   const aEfectivo = cambioDescuento?.haciaEfectivo && onCambiarDescuento ? cambioDescuento : null;
   const aGeneral = cambioDescuento && !cambioDescuento.haciaEfectivo && onCambiarDescuento ? cambioDescuento : null;
-  const choqueDescuento = exigidos.length > 1
-    ? `${nombresDescuento} piden medios distintos (${exigidos.map((m) => MEDIOS_PAGO[m] || m).join(' y ')}): no se pueden cumplir los dos.`
-    : medioDescuento && soloMayorista && !soloMayorista.includes(medioDescuento)
-      ? `${nombresDescuento} pide ${MEDIOS_PAGO[medioDescuento] || medioDescuento}, y la parte mayorista va solo con ${soloMayorista.map((m) => MEDIOS_PAGO[m] || m).join(' o ')}.`
+  const choqueDescuento = permitidosDesc && !permitidosDesc.length
+    ? `${nombresDescuento} piden medios distintos (${descuentosMedio.map((d) => legibles(d.medios)).join(' / ')}): no se pueden cumplir los dos.`
+    : mediosDescuento && soloMayorista && !mediosDescuento.some((m) => soloMayorista.includes(m))
+      ? `${nombresDescuento} pide ${legibles(mediosDescuento)}, y la parte mayorista va solo con ${legibles(soloMayorista)}.`
       : '';
+  /* Con qué arranca el cobro: efectivo si el descuento lo acepta (o no pide nada), si no el primero que pide. */
+  const medioInicial = mediosDescuento
+    ? (mediosDescuento.includes('efectivo') ? 'efectivo' : mediosDescuento[0])
+    : (soloMayorista && !soloMayorista.includes('efectivo') ? soloMayorista[0] : 'efectivo');
 
   const [condicionPago, setCondicionPago] = useState('contado');
   const [pagos, setPagos] = useState(() => [{
-    medio: medioDescuento ?? (soloMayorista && !soloMayorista.includes('efectivo') ? soloMayorista[0] : 'efectivo'),
+    medio: medioInicial,
     importe: String(totales.total), cuentaDisponibleId: null,
   }]);
   const [entregado, setEntregado] = useState('');
@@ -175,12 +182,12 @@ export function CobroModal({
       const permitidos = base.filter((m) => soloMayorista.includes(m));
       base = permitidos.length ? permitidos : soloMayorista.filter((m) => MEDIOS_PAGO[m]);
     }
-    // El descuento que exige un medio deja solo ese (aunque no esté entre los habilitados: lo pide el dueño).
-    if (medioDescuento) base = [medioDescuento];
+    // El descuento que exige medios deja solo esos (aunque no estén entre los habilitados: lo pide el dueño).
+    if (mediosDescuento) base = mediosDescuento.filter((m) => MEDIOS_PAGO[m]);
     // El QR de Mercado Pago se guarda como «QR / billetera».
-    const qrSirve = medioDescuento ? medioDescuento === 'qr' : (!todoMayorista || soloMayorista.includes('qr'));
+    const qrSirve = mediosDescuento ? mediosDescuento.includes('qr') : (!todoMayorista || soloMayorista.includes('qr'));
     return cajaMp && qrSirve ? [...base, QR_MP] : base;
-  }, [config.mediosPago, cajaMp, soloMayorista, todoMayorista, medioDescuento]);
+  }, [config.mediosPago, cajaMp, soloMayorista, todoMayorista, mediosDescuento?.join(',')]);
 
   /*
    * EL RECARGO POR CUOTAS (0100). El total que se cobra deja de ser el de la
@@ -823,7 +830,7 @@ export function CobroModal({
         <div className={cx(s.callout, choqueDescuento ? s.warn : s.info)} style={{ margin: '0 0 var(--crm-space-3)', display: 'grid', gap: 4 }}>
           <div>
             {choqueDescuento || (
-              <>Descuento {nombresDescuento}: se cobra <strong>todo con {etiquetaMedio(medioDescuento)}</strong> y al contado.</>
+              <>Descuento {nombresDescuento}: se cobra <strong>todo con {mediosDescuento.map(etiquetaMedio).join(' o ')}</strong> y al contado.</>
             )}
           </div>
           {aGeneral && !choqueDescuento ? (
@@ -939,7 +946,7 @@ export function CobroModal({
           )}
 
           <div className={s['section-title']}>Medios de pago</div>
-          {sinQrMp && (!medioDescuento || medioDescuento === 'qr') && <div className={s.hint} style={{ margin: '-4px 0 6px' }}>Sin QR de Mercado Pago: {sinQrMp}</div>}
+          {sinQrMp && (!mediosDescuento || mediosDescuento.includes('qr')) &&<div className={s.hint} style={{ margin: '-4px 0 6px' }}>Sin QR de Mercado Pago: {sinQrMp}</div>}
           {pagos.map((x, i) => (
             <div key={i}>
             <div className={p.pagoFila}>
@@ -1000,7 +1007,7 @@ export function CobroModal({
             </div>
           ))}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {(medios.length > 1 || !medioDescuento) && <Btn small onClick={agregarPago}>+ Otro medio</Btn>}
+            {(medios.length > 1 || !mediosDescuento) && <Btn small onClick={agregarPago}>+ Otro medio</Btn>}
             {pagos.length > 1 && <Btn small onClick={dividir}>Partes iguales</Btn>}
           </div>
 

@@ -897,18 +897,41 @@ export function agruparDescuentos(opciones) {
 }
 
 /**
+ * CON QUÉ SE PUEDE PAGAR UN DESCUENTO (0208, 30/10/2026): la lista nueva
+ * («efectivo,transferencia») o, si está vacía, el único medio de antes.
+ * Vacío = cualquier forma de pago.
+ */
+export function mediosDeDescuento(d) {
+  const lista = String(d?.mediosPago ?? '').split(',').map((m) => m.trim()).filter(Boolean);
+  return lista.length ? lista : (d?.medioPago ? [d.medioPago] : []);
+}
+
+/**
  * LOS DESCUENTOS CON NOMBRE QUE OBLIGAN A UN MEDIO DE PAGO (8/10/2026).
  *
  * Solo los que GANARON en algún renglón, el mismo criterio del servidor
  * (`validarMediosPagoDescuentos`): uno tapado por el descuento del cliente no
  * bajó un peso y no condiciona con qué se paga. El cobro los usa para ofrecer
- * solo ese medio desde el principio, en vez de rebotar recién al confirmar.
+ * solo esos medios desde el principio, en vez de rebotar recién al confirmar.
+ * Desde 0208 cada uno trae `medios` (uno o varios).
  */
 export function descuentosConMedio(estado) {
   const ganaron = new Set(estado.renglones.map((r) => r.descuentoId).filter(Boolean));
   return (estado.ctx.descuentos ?? [])
-    .filter((d) => d.medioPago && ganaron.has(d.id))
-    .map((d) => ({ id: d.id, nombre: d.nombre, medio: d.medioPago }));
+    .map((d) => ({ d, medios: mediosDeDescuento(d) }))
+    .filter(({ d, medios }) => medios.length && ganaron.has(d.id))
+    .map(({ d, medios }) => ({ id: d.id, nombre: d.nombre, medios }));
+}
+
+/**
+ * LOS MEDIOS CON QUE SE PUEDE COBRAR UN TICKET CON ESOS DESCUENTOS (0208).
+ * Cada descuento exige que TODO se pague con sus medios, así que valen los que
+ * están en todos (la intersección). `null` = ningún descuento exige medio;
+ * `[]` = choque, no hay medio que cumpla con todos.
+ */
+export function mediosPermitidos(conMedio) {
+  if (!conMedio?.length) return null;
+  return conMedio.reduce((acc, d) => acc.filter((m) => d.medios.includes(m)), [...conMedio[0].medios]);
 }
 
 /**
