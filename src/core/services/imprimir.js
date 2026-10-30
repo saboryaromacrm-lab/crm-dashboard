@@ -1510,6 +1510,48 @@ function bloqueFormaPago(venta, moneda) {
     <table><tbody>${filas.join('')}</tbody></table>`;
 }
 
+/** El redondeo a centavos del servidor (`money` de la API de ventas). */
+const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+/**
+ * El importe con IVA de un cargo: `neto + round(neto × alícuota)`. Lo usan los
+ * extras de la factura y del ticket: los dos papeles tienen que decir lo mismo.
+ */
+const conIvaRenglon = (neto, alic) => neto + Math.round(neto * alic) / 100;
+
+/**
+ * EL RENGLÓN DE UNA VENTA EN EL PAPEL, con la MISMA cuenta que hizo el
+ * servidor al cobrar (`calcularTotales`): neto = cantidad × precio × (1 − %) −
+ * oferta, guardado redondeado en `subtotal`; el IVA sale del neto SIN redondear
+ * y se redondea aparte. Así la suma de los renglones da exacto el total cobrado
+ * — con el IVA sacado del neto ya redondeado, un ticket de 23 renglones a precio
+ * redondo terminaba 6 centavos arriba (auditoría del 30/10/2026).
+ *
+ * Si el neto recalculado no coincide con el `subtotal` guardado (un renglón de
+ * nota de crédito con la oferta prorrateada, un dato viejo), manda el guardado.
+ */
+function importeRenglon(it) {
+  const alic = Number(it.iva ?? 21);
+  const crudo = (Number(it.cantidad) || 0) * (Number(it.precioUnitario) || 0)
+    * (1 - (Number(it.descuento) || 0) / 100) - (Number(it.ofertaDescuento) || 0);
+  const neto = it.subtotal != null ? Number(it.subtotal) || 0 : centavos(Math.max(0, crudo));
+  const base = Math.abs(centavos(crudo) - neto) <= 0.011 ? crudo : neto;
+  return { neto, alic, final: centavos(neto + centavos((base * alic) / 100)) };
+}
+
+/**
+ * Cómo se llama la oferta en el papel. Las de «Por vencer» se guardan como
+ * «Por vencer · <producto>»: en el ticket el producto ya está en la línea de
+ * arriba, y repetirlo en un rollo de 58 mm son tres renglones más.
+ */
+function nombreOferta(it) {
+  const n = String(it.oferta || '').trim();
+  if (!n) return 'Oferta';
+  const cola = it.nombre ? ` · ${it.nombre}` : '';
+  const corto = cola && n.endsWith(cola) ? n.slice(0, -cola.length) : n;
+  return `Oferta ${corto}`;
+}
+
 /**
  * LA FACTURA COMO CUERPO DE DOCUMENTO.
  *
@@ -1542,16 +1584,12 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
   /* Los renglones. `subtotal` es el neto del renglón (ya con descuentos y
    * ofertas); el final se deriva con la alícuota del propio renglón, que puede
    * no ser la misma en todo el comprobante. */
-  /* El importe con IVA se arma como `neto + round(neto × alícuota)`, que es
-   * exactamente como el sistema construyó `ivaTotal` al cobrar. Calcularlo
-   * como `neto × 1,21` puede diferir un centavo, y entonces los renglones del
-   * papel no suman el total — en una factura, eso lo nota el cliente. */
-  const conIva = (neto, alic) => neto + Math.round(neto * alic) / 100;
+  /* El importe con IVA, como lo armó el sistema al cobrar (ver `conIvaRenglon`). */
+  const conIva = conIvaRenglon;
 
   const filas = (venta.items ?? []).map((it) => {
-    const neto = Number(it.subtotal) || 0;
-    const alic = it.iva ?? 21;
-    const importe = discrimina ? neto : conIva(neto, alic);
+    const { neto, alic, final } = importeRenglon(it);
+    const importe = discrimina ? neto : final;
     const unit = Number(it.cantidad) ? importe / Number(it.cantidad) : importe;
     return `<tr>
       <td>${esc(it.nombre ?? `#${it.productoId}`)}</td>
@@ -1581,8 +1619,14 @@ export async function cuerpoFactura(venta, { moneda, fecha, empresa }) {
   let pieIva = '';
   if (discrimina) {
     const porAlic = new Map();
-    for (const x of [...(venta.items ?? []), ...(venta.extras ?? [])]) {
-      const neto = Number(x.subtotal ?? x.importe) || 0;
+    /* El IVA de cada renglón, el mismo que sumó el servidor (`importeRenglon`):
+     * así neto gravado + IVA da exacto el TOTAL impreso abajo. */
+    for (const it of venta.items ?? []) {
+      const { neto, alic, final } = importeRenglon(it);
+      porAlic.set(alic, (porAlic.get(alic) ?? 0) + (final - neto));
+    }
+    for (const x of venta.extras ?? []) {
+      const neto = Number(x.importe) || 0;
       const alic = Number(x.iva ?? 21);
       porAlic.set(alic, (porAlic.get(alic) ?? 0) + neto * alic / 100);
     }
@@ -1766,11 +1810,39 @@ export function cuerpoTicket(venta, {
    * dice de qué ticket viene, el motivo, y cómo se llama el total. */
   titulo = 'Ticket', referencia = '', motivo = '', etiquetaTotal = 'TOTAL',
 }) {
+  /*
+   * EL RENGLÓN COBRA LO QUE SE COBRÓ (30/10/2026). El importe salía de
+   * `cantidad × precio × (1 − descuento %)` y la OFERTA —que la venta guarda
+   * aparte, como un importe neto que se resta (`ofertaDescuento`)— no entraba:
+   * el papel decía el precio de lista y el TOTAL de abajo, el cobrado, no era la
+   * suma de sus renglones. Ahora el importe es el `subtotal` guardado (el neto
+   * ya con descuento y oferta, el mismo que usa la factura) con su IVA, y abajo
+   * del precio unitario va qué se descontó, para que el cliente vea por qué.
+   */
   const filas = (venta.items ?? []).map((it) => {
-    const neto = it.cantidad * it.precioUnitario * (1 - (it.descuento || 0) / 100);
-    const final = neto * (1 + (it.iva ?? 21) / 100);
+    const { alic, final } = importeRenglon(it);
+    const cant = Number(it.cantidad) || 0;
+    const pu = Number(it.precioUnitario) || 0;
+    const desc = Number(it.descuento) || 0;
+    const oferta = Number(it.ofertaDescuento) || 0;
+    const kg = it.unidad === 'kg';
+    /* Las rebajas con IVA, y la ÚLTIMA se lleva el centavo del redondeo: así
+     * «cantidad × precio − rebajas» da exacto el importe del renglón, que es lo
+     * que el cliente va a sacar con la calculadora. */
+    const unitario = centavos(pu * (1 + alic / 100));
+    const lleno = centavos(cant * unitario);
+    const rebajas = [];
+    if (desc > 0) {
+      const nombre = it.descuentoNombre || (Number(it.cuponDescuento) > 0 ? 'Cupón' : 'Descuento');
+      const monto = oferta > 0 ? centavos(lleno * (desc / 100)) : centavos(lleno - final);
+      rebajas.push({ texto: `${esc(nombre)} ${Number(desc.toFixed(2))}%`, monto });
+    }
+    if (oferta > 0) {
+      rebajas.push({ texto: esc(nombreOferta(it)), monto: centavos(lleno - (rebajas[0]?.monto ?? 0) - final) });
+    }
     return `<tr>
-      <td>${esc(it.nombre ?? `#${it.productoId}`)}<br /><span class="det">${Number(it.cantidad)}${it.unidad === 'kg' ? ' kg' : ''} x ${moneda(it.precioUnitario * (1 + (it.iva ?? 21) / 100))}${it.unidad === 'kg' ? '/kg' : ''}</span></td>
+      <td>${esc(it.nombre ?? `#${it.productoId}`)}<br /><span class="det">${cant}${kg ? ' kg' : ''} x ${moneda(unitario)}${kg ? '/kg' : ''}</span>${
+  rebajas.map((x) => `<br /><span class="det">${x.texto}: −${moneda(x.monto)}</span>`).join('')}</td>
       <td class="n">${moneda(final)}</td>
     </tr>`;
   }).join('');
@@ -1792,7 +1864,7 @@ export function cuerpoTicket(venta, {
    * que usa la factura para un extra viejo sin alícuota cargada.
    */
   const extras = (venta.extras ?? []).map((e) => {
-    const final = (Number(e.importe) || 0) * (1 + (e.iva ?? 21) / 100);
+    const final = conIvaRenglon(Number(e.importe) || 0, Number(e.iva ?? 21));
     return `<tr>
       <td>${esc(e.concepto || 'Cargo extra')}</td>
       <td class="n">${moneda(final)}</td>

@@ -153,8 +153,11 @@ export function DetalleVentaModal({ ventaId, onCambio }) {
 
           <Table
             cols={[
-              { h: 'Artículo' }, { h: 'Cant.', num: true }, { h: 'Precio', num: true },
-              { h: 'Desc.', num: true }, { h: 'Oferta' }, { h: 'Subtotal', num: true },
+              /* Los importes de los renglones van SIN IVA (el IVA se suma abajo); el
+                 ticket los imprime con IVA. Sin decirlo, el precio de acá y el del
+                 papel parecían no coincidir (30/10/2026). */
+              { h: 'Artículo' }, { h: 'Cant.', num: true }, { h: 'Precio s/IVA', num: true },
+              { h: 'Desc.', num: true }, { h: 'Oferta s/IVA' }, { h: 'Subtotal s/IVA', num: true },
             ]}
             empty="El ticket no tiene renglones."
           >
