@@ -22,6 +22,9 @@ export function EdocPanel() {
   /* Todos de entrada (13/10/2026, pedido del dueño): el tilde deja solo los que tienen saldo. */
   const [soloDeuda, setSoloDeuda] = useState(false);
   const [verId, setVerId] = useState(panelParams?.proveedorId ?? null);
+  /* Orden por columna de plata (30/10/2026, pedido del dueño): el primer clic
+   * va de mayor a menor, el segundo de menor a mayor, el tercero vuelve al A→Z. */
+  const [orden, setOrden] = useState({ campo: null, dir: null });
   const { data, reload } = useResource('edoc-global', provApi.edoc);
 
   /* Otra sección puede mandar acá con un proveedor puesto (`goPanel('edoc',
@@ -36,8 +39,33 @@ export function EdocPanel() {
     let out = soloDeuda ? conSaldo : (data ?? []);
     const t = buscar.trim().toLowerCase();
     if (t) out = out.filter((f) => f.nombre.toLowerCase().includes(t));
+    if (orden.campo) {
+      const signo = orden.dir === 'asc' ? 1 : -1;
+      out = [...out].sort((a, b) => signo * ((Number(a[orden.campo]) || 0) - (Number(b[orden.campo]) || 0)));
+    }
     return out;
-  }, [data, conSaldo, buscar, soloDeuda]);
+  }, [data, conSaldo, buscar, soloDeuda, orden]);
+
+  const ordenarPor = (campo) => setOrden((o) => {
+    if (o.campo !== campo) return { campo, dir: 'desc' };
+    if (o.dir === 'desc') return { campo, dir: 'asc' };
+    return { campo: null, dir: null };
+  });
+  const colOrden = (campo, titulo) => {
+    const dir = orden.campo === campo ? orden.dir : null;
+    return {
+      num: true,
+      h: (
+        <button
+          type="button" id={`edoc-ordenar-${campo}`} title={`Ordenar por ${titulo.toLowerCase()}`}
+          onClick={() => ordenarPor(campo)}
+          style={{ all: 'unset', cursor: 'pointer', textDecoration: 'underline dotted' }}
+        >
+          {titulo}{dir === 'desc' ? ' ▼' : dir === 'asc' ? ' ▲' : ' ⇅'}
+        </button>
+      ),
+    };
+  };
 
   const totales = useMemo(() => ({
     saldo: filas.reduce((a, f) => a + f.saldo, 0),
@@ -82,8 +110,8 @@ export function EdocPanel() {
 
       <Table
         cols={[
-          { h: 'Proveedor' }, { h: 'Saldo', num: true }, { h: 'Comprometido', num: true },
-          { h: 'Proyectado', num: true }, { h: 'Estado' }, { h: 'Último pago' }, { h: 'Conciliado' }, { h: '' },
+          { h: 'Proveedor' }, colOrden('saldo', 'Saldo'), colOrden('compromisosPendientes', 'Comprometido'),
+          colOrden('saldoProyectado', 'Proyectado'), { h: 'Estado' }, { h: 'Último pago' }, { h: 'Conciliado' }, { h: '' },
         ]}
         empty={soloDeuda
           ? 'Ningún proveedor de mercadería con saldo. Destildá "Solo con saldo" para ver también los que están al día.'
