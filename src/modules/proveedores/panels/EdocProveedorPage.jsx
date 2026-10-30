@@ -21,6 +21,23 @@ const diaLocal = (v) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
+/** Cuánto pasó desde un día, en días calendario locales: "hoy", "ayer",
+ *  "hace 5 días", "hace 2 meses". Para la tarjeta de conciliado (30/10/2026). */
+const haceCuanto = (v) => {
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '';
+  const hoy = new Date();
+  const dias = Math.round(
+    (new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000,
+  );
+  if (dias <= 0) return 'hoy';
+  if (dias === 1) return 'ayer';
+  if (dias < 60) return `hace ${dias} días`;
+  if (dias < 365) return `hace ${Math.floor(dias / 30)} meses`;
+  const anios = Math.floor(dias / 365);
+  return anios === 1 ? 'hace más de un año' : `hace más de ${anios} años`;
+};
+
 const KIND = {
   comprobante: { label: 'Factura', pill: 'est-pendiente' },
   nc: { label: 'NC', pill: 'est-recibida' },
@@ -234,7 +251,13 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
           accent={d.pagosSinAplicar > EPS ? 'accent-amber' : undefined}
         />
         <Stat label="Arrastra deuda desde" value={d.deudaDesde ? fmtFecha(d.deudaDesde) : '—'} />
-        <Stat label="Conciliado hasta" value={p.conciliadoHasta ? fmtFecha(p.conciliadoHasta) : 'Sin conciliar'} />
+        <Stat
+          label="Conciliado hasta"
+          value={p.conciliadoHasta
+            ? <>{fmtFecha(p.conciliadoHasta)} <span style={{ fontSize: 14, fontWeight: 500 }}>· {haceCuanto(p.conciliadoHasta)}</span></>
+            : 'Sin conciliar'}
+          accent={p.conciliadoHasta ? 'accent-green' : undefined}
+        />
       </div>
 
       <div className={s['section-title']}>De qué está hecho el saldo</div>
