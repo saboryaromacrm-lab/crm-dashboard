@@ -47,7 +47,7 @@ const CAMBIO = 'cambio';
  * debita en la fecha de cobro—, así que no es un pago. Se abre el echeq con lo
  * tildado y nace cubriendo esas facturas; el pago se registra al cobrarlo.
  */
-export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], onChange }) {
+export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], saldo = null, onChange }) {
   const { ctx, act, closeModal, openModal, toast } = useProveedores();
   const [tildados, setTildados] = useState(
     () => Object.fromEntries((preseleccion ?? []).map((k) => [k, true])),
@@ -467,11 +467,30 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], on
               </div>
             </>
           ) : (
-            <input
-              type="number" min="0" step="0.01" autoFocus
-              value={importeLibre} onChange={(e) => setImporteLibre(e.target.value)}
-              placeholder="Lo que se le entrega"
-            />
+            <>
+              <input
+                type="number" min="0" step="0.01" autoFocus
+                value={importeLibre} onChange={(e) => setImporteLibre(e.target.value)}
+                placeholder="Lo que se le entrega"
+              />
+              {/* El saldo a mano para no salir a mirarlo (30/10/2026, pedido del dueño). */}
+              {saldo != null && (
+                <div className={s.hint} style={{ margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  {saldo > EPS ? (
+                    <>
+                      <span>Saldo de la cuenta: <strong>{money(saldo)}</strong></span>
+                      {Math.abs(r2(importeLibre) - r2(saldo)) > EPS && (
+                        <Btn small onClick={() => setImporteLibre(String(r2(saldo)))}>Pagar el saldo</Btn>
+                      )}
+                    </>
+                  ) : saldo < -EPS ? (
+                    <span>No se le debe nada: le pagamos <strong>{money(-saldo)}</strong> de más (a favor nuestro).</span>
+                  ) : (
+                    <span>No se le debe nada: el saldo está en cero.</span>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
         <div className={s.field}>

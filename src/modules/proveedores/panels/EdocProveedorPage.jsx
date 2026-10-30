@@ -195,7 +195,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
     + echeqs.filter(enCartera).reduce((a, e) => a + e.sinFactura, 0));
   const docs = d.docsPendientes ?? [];
   const abrirPago = (preseleccion = []) => openModal('pagoProveedor', {
-    proveedor: p, docs, preseleccion, onChange: refrescar,
+    proveedor: p, docs, preseleccion, saldo: d.saldo, onChange: refrescar,
   });
 
   return (
