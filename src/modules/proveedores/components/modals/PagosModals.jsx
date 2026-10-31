@@ -87,6 +87,13 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
   );
 
   const elegidos = useMemo(() => docs.filter((d) => tildados[claveDoc(d)]), [docs, tildados]);
+  /* La lista se MUESTRA de la más reciente a la más vieja (31/10/2026, pedido
+   * del dueño). Solo la vista: `elegidos` sigue en el orden de `docs`, del más
+   * viejo al más nuevo, que es el que usa el reparto de los fletes. */
+  const docsVista = useMemo(
+    () => [...docs].sort((a, b) => new Date(b.fecha) - new Date(a.fecha)),
+    [docs],
+  );
   const sumaElegidos = r2(elegidos.reduce((a, d) => a + d.saldo, 0));
   const fletesElegidos = useMemo(() => fletes.filter((f) => fletesTildados[f.id]), [fletes, fletesTildados]);
   const sumaFletes = r2(fletesElegidos.reduce((a, f) => a + f.saldo, 0));
@@ -321,7 +328,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
               border: '1px solid var(--crm-color-border)', borderRadius: 8, marginBottom: 8,
             }}
           >
-            {docs.map((d) => {
+            {docsVista.map((d) => {
               const marcado = !!tildados[claveDoc(d)];
               return (
                 <button
