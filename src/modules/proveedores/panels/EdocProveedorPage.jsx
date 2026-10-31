@@ -211,6 +211,20 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
   const comprometido = r2((d.compromisos ?? []).reduce((a, k) => a + k.falta, 0)
     + echeqs.filter(enCartera).reduce((a, e) => a + e.sinFactura, 0));
   const docs = d.docsPendientes ?? [];
+  /* LO VENCIDO (31/10/2026, pedido del dueño): de lo impago, lo que ya pasó
+   * su vencimiento. Vence el día que dice la factura y, si no dice, la fecha
+   * más los días de pago del proveedor — la misma regla que el estado
+   * «vencido» de Estados de cuenta. Sin vencimiento ni días de pago, no vence. */
+  const venceDoc = (doc) => {
+    if (doc.vencimiento) return diaLocal(doc.vencimiento);
+    if (!(p.diasPago > 0) || !doc.fecha) return '';
+    const f = new Date(`${diaLocal(doc.fecha)}T00:00:00`);
+    f.setDate(f.getDate() + p.diasPago);
+    return diaLocal(f);
+  };
+  const hoyDia = diaLocal(new Date());
+  const vencidos = docs.filter((doc) => { const v = venceDoc(doc); return v && v < hoyDia && doc.saldo > EPS; });
+  const montoVencido = r2(vencidos.reduce((a, doc) => a + doc.saldo, 0));
   const abrirPago = (preseleccion = []) => openModal('pagoProveedor', {
     proveedor: p, docs, preseleccion, saldo: d.saldo, onChange: refrescar,
   });
@@ -249,6 +263,14 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
           label="Pagos sin aplicar"
           value={d.pagosSinAplicar > EPS ? money(d.pagosSinAplicar) : '—'}
           accent={d.pagosSinAplicar > EPS ? 'accent-amber' : undefined}
+        />
+        <Stat
+          label={p.diasPago > 0 ? `Vencido (más de ${p.diasPago} días)` : 'Vencido'}
+          value={montoVencido > EPS ? money(montoVencido) : '—'}
+          accent={montoVencido > EPS ? 'accent-red' : undefined}
+          nota={vencidos.length
+            ? `${vencidos.length} ${vencidos.length === 1 ? 'documento' : 'documentos'} · desde el ${fmtFecha(`${vencidos.map(venceDoc).sort()[0]}T00:00:00`)}`
+            : (p.diasPago > 0 || docs.some((doc) => doc.vencimiento) ? 'nada vencido' : 'sin días de pago en la ficha')}
         />
         <Stat label="Arrastra deuda desde" value={d.deudaDesde ? fmtFecha(d.deudaDesde) : '—'} />
         <Stat
@@ -429,7 +451,13 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
               )}
             </td>
             <td>{fmtFecha(doc.fecha)}</td>
-            <td>{doc.vencimiento ? fmtFecha(doc.vencimiento) : <span className={s.muted}>—</span>}</td>
+            <td>
+              {venceDoc(doc)
+                ? <span style={venceDoc(doc) < hoyDia ? { color: 'var(--crm-color-danger)', fontWeight: 600 } : undefined}>
+                    {fmtFecha(`${venceDoc(doc)}T00:00:00`)}
+                  </span>
+                : <span className={s.muted}>—</span>}
+            </td>
             <td className={s.num}>{money(doc.total)}</td>
             <td className={s.num}>{doc.pagado > EPS ? money(doc.pagado) : '—'}</td>
             <td className={s.num}><strong>{money(doc.saldo)}</strong></td>
