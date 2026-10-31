@@ -232,7 +232,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
           <>
             <Btn variant="btn-primary" onClick={() => abrirPago()}>Registrar un pago</Btn>
             {p.facturaMensual && <Btn onClick={() => openModal('facturasMes', { proveedorId, onDone: refrescar })}>Facturas del mes</Btn>}
-            <Btn onClick={() => openModal('ajuste', { proveedorId, onDone: refrescar })}>+ Ajuste</Btn>
+            <Btn onClick={() => openModal('ajuste', { proveedorId, saldo: d.saldo, comprometido, onDone: refrescar })}>+ Ajuste</Btn>
             <Btn onClick={() => openModal('ficha', { proveedorId })}>Ver ficha</Btn>
             {p.conciliadoHasta
               ? <Btn onClick={desconciliar}>Quitar conciliación</Btn>

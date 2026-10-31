@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useProveedores } from '../../context/ProveedoresContext.jsx';
 import { provApi } from '../../services/proveedores.api.js';
-import { ModalShell, money, s } from '../ui.jsx';
+import { Btn, ModalShell, money, s } from '../ui.jsx';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '@modules/gastos/components/segundaConfirmacion.jsx';
 
 const hoyISO = () => {
@@ -19,12 +19,29 @@ const hoyISO = () => {
  * Ajuste manual DEBE/HABER, con motivo obligatorio: sin explicación no se audita.
  * Mueve deuda SIN mover plata, así que se confirma dos veces (27/9/2026).
  */
-export function AjusteModal({ proveedorId, onDone }) {
+export function AjusteModal({ proveedorId, saldo, comprometido, onDone }) {
   const { act, closeModal, toast } = useProveedores();
   const [f, setF] = useState({ tipo: 'debe', monto: '', motivo: '', fecha: '' });
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const conf = useSegundaConfirmacion(JSON.stringify(f));
   const monto = Math.round(Number(f.monto) * 100) / 100;
+  /* Un botón deja el saldo en $0 (30/10/2026, pedido del dueño): completa tipo
+   * y monto con el saldo de hoy, para no tipear $4.100.691,16 a mano. El
+   * motivo sigue siendo obligatorio; se propone uno que se puede cambiar. */
+  const saldoHoy = Math.round((Number(saldo) || 0) * 100) / 100;
+  const dejarEnCero = () => setF((x) => ({
+    ...x,
+    tipo: saldoHoy > 0 ? 'haber' : 'debe',
+    monto: String(Math.abs(saldoHoy)),
+    motivo: x.motivo.trim() ? x.motivo : 'Saldo llevado a $0',
+  }));
+  /* El ajuste mueve el saldo pero NO paga facturas ni cancela compromisos: si
+   * después del ajuste lo prometido supera la deuda, avisar antes de que
+   * alguien pague dos veces desde Cuentas corrientes. */
+  const saldoDespues = Math.round((saldoHoy + (f.tipo === 'haber' ? -monto : monto)) * 100) / 100;
+  const sobraComprometido = monto > 0 && Number(comprometido) > Math.max(saldoDespues, 0) + 0.009
+    ? Math.round((Number(comprometido) - Math.max(saldoDespues, 0)) * 100) / 100
+    : 0;
 
   const guardar = () => conf.clic(() => {
     if (!(Number(f.monto) > 0)) { toast('El monto tiene que ser mayor a 0.', 'err'); return false; }
@@ -58,6 +75,14 @@ export function AjusteModal({ proveedorId, onDone }) {
           : <>La deuda con este proveedor <strong>sube {money(monto)}</strong>.</>}
         {' '}Queda en Auditoría con tu nombre y el motivo.
       </AvisoSegundaConfirmacion>
+      {saldo != null && Math.abs(saldoHoy) > 0.009 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+          <Btn small id="ajuste-dejar-cero" onClick={dejarEnCero}>Dejar el saldo en $0</Btn>
+          <span className={s.hint} style={{ margin: 0 }}>
+            Hoy el saldo es {money(saldoHoy)}: completa {saldoHoy > 0 ? 'un HABER' : 'un DEBE'} por {money(Math.abs(saldoHoy))}.
+          </span>
+        </div>
+      )}
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Tipo</label>
@@ -79,6 +104,13 @@ export function AjusteModal({ proveedorId, onDone }) {
         <label>Motivo <span className={s.req}>*</span></label>
         <input value={f.motivo} onChange={set('motivo')} placeholder="Diferencia de flete del reparto del 12/8…" />
       </div>
+      {sobraComprometido > 0 && (
+        <div id="ajuste-aviso-compromisos" className={s.hint} style={{ color: 'var(--crm-color-warning)', marginTop: 8 }}>
+          <strong>Ojo:</strong> el ajuste no paga facturas ni cancela compromisos. Después de esto quedarían
+          {' '}{money(sobraComprometido)} comprometidos de más en Cuentas corrientes: anulalos ahí para que nadie
+          los pague dos veces.
+        </div>
+      )}
     </ModalShell>
   );
 }
