@@ -17,6 +17,7 @@ import InsightsIcon from '@mui/icons-material/Insights';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import PercentIcon from '@mui/icons-material/Percent';
 
 export const GERENCIA_SECCIONES = [
   { id: 'usuarios', label: 'Usuarios y roles', icon: GroupIcon, permiso: 'gerencia.usuarios' },
@@ -31,6 +32,12 @@ export const GERENCIA_SECCIONES = [
      * stock que rota. Lee tablas resumen, así no frena las cajas. */
     id: 'metricas', label: 'Métricas', icon: InsightsIcon, permiso: 'gerencia.metricas',
     desc: 'Ventas, rentabilidad, proveedores, listas y stock, casi en vivo.',
+  },
+  {
+    /* 1/11/2026 (0209): los números del negocio SOLO en %, sin montos, para la
+     * encargada (rol Administrador), con explicación y objetivo en cada uno. */
+    id: 'indicadores', label: 'Indicadores', icon: PercentIcon, permiso: 'gerencia.indicadores',
+    desc: 'Cómo va el negocio en porcentajes, sin montos: ventas, margen, stock y cajas, cada uno con su objetivo y su explicación.',
   },
   {
     /* 9/10/2026 (0152): el estado de resultados completo, todo en neto (el IVA
