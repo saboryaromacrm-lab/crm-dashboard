@@ -22,9 +22,9 @@ import { money, num } from '@modules/productos/domain/format.js';
 import { Table, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
 import { ColumnasMulti, Reparto } from './graficos.jsx';
 import {
-  COLOR_ENTERO, COLOR_GRANEL, etiquetaPeriodo, fechaLarga, nombrePaso, pctTxt, tituloPeriodo,
+  COLOR_ENTERO, COLOR_GRANEL, etiquetaPeriodo, fechaLarga, nombrePaso, parte, pctTxt, tituloPeriodo,
 } from './formato.js';
-import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles, Variacion } from './piezas.jsx';
+import { Aviso, Bloque, Cargando, ConParte, Grilla, Tile, Tiles, Variacion } from './piezas.jsx';
 
 const SERIES = [{ nombre: 'Granel', color: COLOR_GRANEL }, { nombre: 'Enteros', color: COLOR_ENTERO }];
 const kg = (v) => `${num(v, v >= 100 ? 0 : 2)} kg`;
@@ -90,12 +90,11 @@ export function PestanaGranel({ qs, paso, version, onVerTodos }) {
           <CaraACara d={d} />
         </Bloque>
         <Bloque titulo="Qué lleva cada ticket" sub="Un ticket «de los dos» cuenta como que lleva granel y como que lleva enteros">
-          <Table cols={[{ h: 'Ticket con…' }, { h: 'Tickets', num: true }, { h: '% tickets', num: true }, { h: 'Promedio', num: true }, { h: 'Antes', num: true }]} empty="Sin tickets.">
+          <Table cols={[{ h: 'Ticket con…' }, { h: 'Tickets · %', num: true }, { h: 'Promedio', num: true }, { h: '% antes', num: true }]} empty="Sin tickets.">
             {d.mezcla.map((x) => (
               <tr key={x.mezcla}>
                 <td>{x.mezcla === 'entero' ? 'Solo enteros' : x.mezcla === 'granel' ? 'Solo granel' : 'De los dos'}</td>
-                <td className={s.num}>{num(x.tickets, 0)}</td>
-                <td className={s.num}><strong>{pctTxt(x.participacion)}</strong></td>
+                <td className={s.num}><ConParte p={x.participacion} title="Parte de los tickets">{num(x.tickets, 0)}</ConParte></td>
                 <td className={cx(s.num, s.mono)}>{money(x.ticketPromedio)}</td>
                 <td className={s.num}>{pctTxt(x.participacionAnterior)}</td>
               </tr>
@@ -110,12 +109,11 @@ export function PestanaGranel({ qs, paso, version, onVerTodos }) {
 
       {(g.fraccionado.ventaNeta !== 0 || g.suelto.ventaNeta !== 0) && (
         <Bloque titulo="Granel: en paquetes o suelto" sub="Cómo se vende el granel">
-          <Table cols={[{ h: 'Se vendió…' }, { h: 'Venta neta', num: true }, { h: '% del granel', num: true }, { h: 'Cantidad', num: true }, { h: '$ por kg', num: true }, { h: 'Margen %', num: true }]} empty="—">
+          <Table cols={[{ h: 'Se vendió…' }, { h: 'Venta neta · %', num: true }, { h: 'Cantidad', num: true }, { h: '$ por kg', num: true }, { h: 'Margen %', num: true }]} empty="—">
             {[['En paquetes (fraccionado)', g.fraccionado], ['Suelto, al peso', g.suelto]].map(([n, x]) => (
               <tr key={n}>
                 <td>{n}{x.productos ? <div className={s.hint} style={{ margin: 0 }}>{num(x.productos, 0)} producto(s)</div> : null}</td>
-                <td className={cx(s.num, s.mono)}>{money(x.ventaNeta)}</td>
-                <td className={s.num}><strong>{pctTxt(x.participacion)}</strong></td>
+                <td className={cx(s.num, s.mono)}><ConParte p={x.participacion} title="Parte de lo vendido de granel">{money(x.ventaNeta)}</ConParte></td>
                 <td className={cx(s.num, s.mono)}>{kg(x.cantidadBase)}</td>
                 <td className={cx(s.num, s.mono)}>{x.cantidadBase > 0 ? money(x.ventaNeta / x.cantidadBase) : '—'}</td>
                 <td className={s.num}><MargenPct v={x.margenPct} /></td>
@@ -168,11 +166,11 @@ function SerieGranel({ d, paso }) {
         formato={money}
       />
       <Table
-        grupos={[{ h: '', span: 2 }, { h: 'Granel', span: 3 }, { h: 'Enteros', span: 3 }]}
+        grupos={[{ h: '', span: 2 }, { h: 'Granel', span: 2 }, { h: 'Enteros', span: 2 }]}
         cols={[
-          { h: 'Período' }, { h: 'Total', num: true },
-          { h: 'Venta', num: true }, { h: '%', num: true }, { h: 'Margen', num: true },
-          { h: 'Venta', num: true }, { h: '%', num: true }, { h: 'Margen', num: true },
+          { h: 'Período' }, { h: 'Total · %', num: true },
+          { h: 'Venta · %', num: true }, { h: 'Margen', num: true },
+          { h: 'Venta · %', num: true }, { h: 'Margen', num: true },
         ]}
         empty="Sin ventas."
         pag={pag}
@@ -180,12 +178,10 @@ function SerieGranel({ d, paso }) {
         {pag.visibles.map((x) => (
           <tr key={x.periodo}>
             <td>{tituloPeriodo(x.periodo, paso)}</td>
-            <td className={cx(s.num, s.mono)}><strong>{money(x.total)}</strong></td>
-            <td className={cx(s.num, s.mono)}>{money(x.granel)}</td>
-            <td className={s.num}><strong>{pctTxt(x.pctGranel)}</strong></td>
+            <td className={cx(s.num, s.mono)}><ConParte p={parte(x.total, d.total.ventaNeta)} title="Parte de todo el período"><strong>{money(x.total)}</strong></ConParte></td>
+            <td className={cx(s.num, s.mono)}><ConParte p={x.pctGranel} title="Parte de lo vendido ese período">{money(x.granel)}</ConParte></td>
             <td className={s.num}><MargenPct v={x.margenPctGranel} /></td>
-            <td className={cx(s.num, s.mono)}>{money(x.entero)}</td>
-            <td className={s.num}><strong>{pctTxt(x.pctEntero)}</strong></td>
+            <td className={cx(s.num, s.mono)}><ConParte p={x.pctEntero} title="Parte de lo vendido ese período">{money(x.entero)}</ConParte></td>
             <td className={s.num}><MargenPct v={x.margenPctEntero} /></td>
           </tr>
         ))}
@@ -223,22 +219,22 @@ function CaraACara({ d }) {
 
 /* ------------------------------ por sucursal ------------------------------ */
 function PorSucursal({ d }) {
+  const total = d.porSucursal.reduce((a, x) => a + (Number(x.total) || 0), 0);
   return (
     <Bloque titulo="Por sucursal" sub="Qué parte de lo que vende cada sucursal es granel">
       <Table
-        cols={[{ h: 'Sucursal' }, { h: 'Total', num: true }, { h: 'Reparto' }, { h: 'Granel', num: true }, { h: 'Granel %', num: true }, { h: 'Enteros', num: true }, { h: 'Margen % granel', num: true }, { h: 'Margen % enteros', num: true }]}
+        cols={[{ h: 'Sucursal' }, { h: 'Total · %', num: true }, { h: 'Reparto' }, { h: 'Granel · %', num: true }, { h: 'Enteros · %', num: true }, { h: 'Margen % granel', num: true }, { h: 'Margen % enteros', num: true }]}
         empty="Sin ventas."
       >
         {d.porSucursal.map((x) => (
           <tr key={x.sucursalId}>
             <td>{x.nombre}</td>
-            <td className={cx(s.num, s.mono)}><strong>{money(x.total)}</strong></td>
+            <td className={cx(s.num, s.mono)}><ConParte p={parte(x.total, total)} title="Parte de lo que venden todas las sucursales"><strong>{money(x.total)}</strong></ConParte></td>
             <td style={{ minWidth: 90 }}>
               <Reparto partes={[{ nombre: 'Granel', valor: x.granel, color: COLOR_GRANEL }, { nombre: 'Enteros', valor: x.entero, color: COLOR_ENTERO }]} />
             </td>
-            <td className={cx(s.num, s.mono)}>{money(x.granel)}</td>
-            <td className={s.num}><strong>{pctTxt(x.pctGranel)}</strong></td>
-            <td className={cx(s.num, s.mono)}>{money(x.entero)}</td>
+            <td className={cx(s.num, s.mono)}><ConParte p={x.pctGranel} title="Parte de lo que vende la sucursal">{money(x.granel)}</ConParte></td>
+            <td className={cx(s.num, s.mono)}><ConParte p={parte(x.entero, x.total)} title="Parte de lo que vende la sucursal">{money(x.entero)}</ConParte></td>
             <td className={s.num}><MargenPct v={x.margenPctGranel} /></td>
             <td className={s.num}><MargenPct v={x.margenPctEntero} /></td>
           </tr>
@@ -257,13 +253,12 @@ function TopLado({ titulo, filas, esGranel, onVerTodos }) {
       sub="Los 10 que más vendieron en el período"
       acciones={<Btn small onClick={onVerTodos}>Ver todos en Rentabilidad</Btn>}
     >
-      <Table cols={[{ h: 'Producto' }, { h: 'Cantidad', num: true }, { h: 'Venta neta', num: true }, { h: '% del lado', num: true }, { h: 'Margen %', num: true }]} empty="Sin ventas.">
+      <Table cols={[{ h: 'Producto' }, { h: 'Cantidad', num: true }, { h: 'Venta neta · %', num: true }, { h: 'Margen %', num: true }]} empty="Sin ventas.">
         {filas.map((x) => (
           <tr key={x.productoId}>
             <td>{x.nombre}</td>
             <td className={cx(s.num, s.mono)}>{esGranel ? kg(x.cantidadBase) : unid(x.unidades)}</td>
-            <td className={cx(s.num, s.mono)}>{money(x.ventaNeta)}</td>
-            <td className={s.num}>{pctTxt(x.participacion)}</td>
+            <td className={cx(s.num, s.mono)}><ConParte p={x.participacion} title="Parte de lo vendido de su lado">{money(x.ventaNeta)}</ConParte></td>
             <td className={s.num}><MargenPct v={x.margenPct} /></td>
           </tr>
         ))}

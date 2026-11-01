@@ -2,6 +2,7 @@
 import { cx } from '@shared/utils/classNames.js';
 import { num } from '@modules/productos/domain/format.js';
 import { s } from '@modules/productos/components/ui.jsx';
+import { pctTxt } from './formato.js';
 
 /** Flecha + signo + texto de una variación en %: nunca el color solo. */
 export function Variacion({ valor, contra = 'vs período anterior', sufijo = '%' }) {
@@ -12,6 +13,22 @@ export function Variacion({ valor, contra = 'vs período anterior', sufijo = '%'
     <span style={{ fontSize: 12, color: sube ? 'var(--crm-color-success)' : baja ? 'var(--crm-color-danger)' : 'var(--crm-color-text-secondary)', whiteSpace: 'nowrap' }}>
       {sube ? '▲' : baja ? '▼' : '='} {valor > 0 ? '+' : ''}{num(valor, 1)}{sufijo}
       {contra && <span style={{ color: 'var(--crm-color-text-secondary)' }}> {contra}</span>}
+    </span>
+  );
+}
+
+/**
+ * Un importe con la parte que es del total pegada, chica y en gris (1/11/2026,
+ * pedido del dueño): en el celular la columna de % quedaba fuera de la pantalla.
+ * Va justo debajo del importe y no a la derecha, así la columna no se ensancha
+ * y en el celular se ve sin correr la tabla.
+ */
+export function ConParte({ children, p, title = 'Parte del total' }) {
+  if (p == null || !Number.isFinite(p)) return children;
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.25, whiteSpace: 'nowrap' }}>
+      <span>{children}</span>
+      <span title={title} style={{ fontSize: 12, fontWeight: 500, color: 'var(--crm-color-text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{pctTxt(p)}</span>
     </span>
   );
 }

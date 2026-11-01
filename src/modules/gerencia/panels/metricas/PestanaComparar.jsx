@@ -18,9 +18,9 @@ import { money, num } from '@modules/productos/domain/format.js';
 import { Table, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
 import { ColumnasMulti } from './graficos.jsx';
 import {
-  COLOR_A, COLOR_B, CONTRA, DIAS_SEMANA, MEDIOS, diasDe, etiquetaPeriodo, fechaLarga, nombrePaso, pctTxt, puntosTxt, rangoContra, tituloPeriodo,
+  COLOR_A, COLOR_B, CONTRA, DIAS_SEMANA, MEDIOS, diasDe, etiquetaPeriodo, fechaLarga, nombrePaso, parte, pctTxt, puntosTxt, rangoContra, tituloPeriodo,
 } from './formato.js';
-import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles } from './piezas.jsx';
+import { Aviso, Bloque, Cargando, ConParte, Grilla, Tile, Tiles } from './piezas.jsx';
 
 const Chip = ({ color, letra }) => (
   <span aria-hidden="true" style={{ display: 'inline-grid', placeItems: 'center', width: 18, height: 18, borderRadius: 4, background: color, color: '#fff', fontSize: 11, fontWeight: 700, marginRight: 6, flex: 'none' }}>{letra}</span>
@@ -87,6 +87,9 @@ function Resultado({ d, paso }) {
   const { a, b, diferencias: df } = d;
   if (!a.tickets && !b.tickets && !a.ventaNeta && !b.ventaNeta) return <Aviso>No hay ventas en ninguno de los dos períodos.</Aviso>;
   const contra = 'vs B';
+  /* Cobros con IVA: su % se mide contra la suma de los medios de cada período. */
+  const medioA = d.porMedio.reduce((s2, x) => s2 + (Number(x.a) || 0), 0);
+  const medioB = d.porMedio.reduce((s2, x) => s2 + (Number(x.b) || 0), 0);
   return (
     <>
       <Tiles>
@@ -126,14 +129,14 @@ function Resultado({ d, paso }) {
       <Grilla>
         <Bloque titulo="Por sucursal">
           <Table
-            cols={[{ h: 'Sucursal' }, { h: 'A', num: true }, { h: 'B', num: true }, { h: 'Diferencia', num: true }]}
+            cols={[{ h: 'Sucursal' }, { h: 'A · %', num: true }, { h: 'B · %', num: true }, { h: 'Diferencia', num: true }]}
             empty="Sin ventas."
           >
             {d.porSucursal.map((x) => (
               <tr key={x.sucursalId}>
                 <td>{x.nombre}<div className={s.hint} style={{ margin: 0 }}>{num(x.ticketsA, 0)} y {num(x.ticketsB, 0)} tickets</div></td>
-                <td className={cx(s.num, s.mono)}>{money(x.a)}</td>
-                <td className={cx(s.num, s.mono)}>{money(x.b)}</td>
+                <td className={cx(s.num, s.mono)}><ConParte p={parte(x.a, a.ventaNeta)}>{money(x.a)}</ConParte></td>
+                <td className={cx(s.num, s.mono)}><ConParte p={parte(x.b, b.ventaNeta)}>{money(x.b)}</ConParte></td>
                 <td className={s.num}><Dif valor={x.diferencia} pct={x.variacion} /></td>
               </tr>
             ))}
@@ -158,17 +161,17 @@ function Resultado({ d, paso }) {
       <PorCategoria d={d} />
 
       <Grilla>
-        <Movimientos titulo="Los que más subieron" sub="Productos que más venta sumaron en A" filas={d.productos.suben} />
-        <Movimientos titulo="Los que más bajaron" sub="Productos que más venta perdieron en A" filas={d.productos.bajan} />
+        <Movimientos titulo="Los que más subieron" sub="Productos que más venta sumaron en A" filas={d.productos.suben} totalA={a.ventaNeta} totalB={b.ventaNeta} />
+        <Movimientos titulo="Los que más bajaron" sub="Productos que más venta perdieron en A" filas={d.productos.bajan} totalA={a.ventaNeta} totalB={b.ventaNeta} />
       </Grilla>
 
       <Bloque titulo="Cómo se cobra" sub="Por medio de pago, con IVA">
-        <Table cols={[{ h: 'Medio' }, { h: 'A', num: true }, { h: 'B', num: true }, { h: 'Diferencia', num: true }]} empty="Sin cobros.">
+        <Table cols={[{ h: 'Medio' }, { h: 'A · %', num: true }, { h: 'B · %', num: true }, { h: 'Diferencia', num: true }]} empty="Sin cobros.">
           {d.porMedio.map((x) => (
             <tr key={x.medio}>
               <td>{MEDIOS[x.medio] ?? x.medio}</td>
-              <td className={cx(s.num, s.mono)}>{money(x.a)}</td>
-              <td className={cx(s.num, s.mono)}>{money(x.b)}</td>
+              <td className={cx(s.num, s.mono)}><ConParte p={parte(x.a, medioA)}>{money(x.a)}</ConParte></td>
+              <td className={cx(s.num, s.mono)}><ConParte p={parte(x.b, medioB)}>{money(x.b)}</ConParte></td>
               <td className={s.num}><Dif valor={x.diferencia} pct={x.variacion} /></td>
             </tr>
           ))}
@@ -197,15 +200,15 @@ function PorCategoria({ d }) {
       </div>
       <Table
         grupos={[{ h: '', span: 1 }, { h: 'Venta neta', span: 3 }, { h: 'Margen %', span: 2 }]}
-        cols={[{ h: 'Categoría' }, { h: 'A', num: true }, { h: 'B', num: true }, { h: 'Diferencia', num: true }, { h: 'A', num: true }, { h: 'B', num: true }]}
+        cols={[{ h: 'Categoría' }, { h: 'A · %', num: true }, { h: 'B · %', num: true }, { h: 'Diferencia', num: true }, { h: 'A', num: true }, { h: 'B', num: true }]}
         empty="Sin ventas."
         pag={pag}
       >
         {pag.visibles.map((x) => (
           <tr key={x.clave}>
             <td>{x.nombre}</td>
-            <td className={cx(s.num, s.mono)}>{money(x.a)}</td>
-            <td className={cx(s.num, s.mono)}>{money(x.b)}</td>
+            <td className={cx(s.num, s.mono)}><ConParte p={parte(x.a, d.a.ventaNeta)}>{money(x.a)}</ConParte></td>
+            <td className={cx(s.num, s.mono)}><ConParte p={parte(x.b, d.b.ventaNeta)}>{money(x.b)}</ConParte></td>
             <td className={s.num}><Dif valor={x.diferencia} pct={x.variacion} /></td>
             <td className={s.num}>{pctTxt(x.margenPctA)}</td>
             <td className={s.num}>{pctTxt(x.margenPctB)}</td>
@@ -216,10 +219,10 @@ function PorCategoria({ d }) {
   );
 }
 
-function Movimientos({ titulo, sub, filas }) {
+function Movimientos({ titulo, sub, filas, totalA, totalB }) {
   return (
     <Bloque titulo={titulo} sub={sub}>
-      <Table cols={[{ h: 'Producto' }, { h: 'A', num: true }, { h: 'B', num: true }, { h: 'Diferencia', num: true }]} empty="Ninguno.">
+      <Table cols={[{ h: 'Producto' }, { h: 'A · %', num: true }, { h: 'B · %', num: true }, { h: 'Diferencia', num: true }]} empty="Ninguno.">
         {filas.map((x) => (
           <tr key={x.productoId}>
             <td>
@@ -228,8 +231,8 @@ function Movimientos({ titulo, sub, filas }) {
                 {x.granel ? `${num(x.cantidadA, 2)} kg y ${num(x.cantidadB, 2)} kg` : `${num(x.cantidadA, 0)} u. y ${num(x.cantidadB, 0)} u.`}
               </div>
             </td>
-            <td className={cx(s.num, s.mono)}>{money(x.a)}</td>
-            <td className={cx(s.num, s.mono)}>{money(x.b)}</td>
+            <td className={cx(s.num, s.mono)}><ConParte p={parte(x.a, totalA)}>{money(x.a)}</ConParte></td>
+            <td className={cx(s.num, s.mono)}><ConParte p={parte(x.b, totalB)}>{money(x.b)}</ConParte></td>
             <td className={s.num}><Dif valor={x.diferencia} pct={x.variacion} /></td>
           </tr>
         ))}

@@ -28,7 +28,7 @@ import { money, num } from '@modules/productos/domain/format.js';
 import { Table, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
 import { Barras, Columnas } from './graficos.jsx';
 import { compacto, etiquetaPeriodo, fechaLarga, nombrePaso, pctTxt, tituloPeriodo } from './formato.js';
-import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles, Variacion } from './piezas.jsx';
+import { Aviso, Bloque, Cargando, ConParte, Grilla, Tile, Tiles, Variacion } from './piezas.jsx';
 
 const TIPOS = [['', 'Todo'], ['granel', 'Solo granel'], ['entero', 'Solo enteros']];
 const ORDENES = {
@@ -57,19 +57,6 @@ function Enlace({ children, onClick, title }) {
       type="button" onClick={onClick} title={title}
       style={{ background: 'none', border: 0, padding: 0, font: 'inherit', fontWeight: 600, color: 'var(--crm-color-text)', cursor: 'pointer', textAlign: 'left', textDecoration: 'underline', textDecorationColor: 'var(--crm-color-border)', textUnderlineOffset: 3 }}
     >{children}</button>
-  );
-}
-
-/** La barrita de «qué parte es»: el % escrito al lado, así no depende del color. */
-function Parte({ p }) {
-  if (p == null) return <span className={s.muted}>—</span>;
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', minWidth: 90 }}>
-      <span aria-hidden="true" style={{ width: 44, height: 6, borderRadius: 3, background: 'var(--crm-color-surface-2, rgba(0,0,0,.06))', overflow: 'hidden' }}>
-        <span style={{ display: 'block', height: '100%', width: `${Math.max(2, Math.min(100, p))}%`, background: 'var(--crm-color-primary)' }} />
-      </span>
-      <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{pctTxt(p)}</strong>
-    </span>
   );
 }
 
@@ -255,8 +242,8 @@ function NivelArbol({ d, paso, ir, porMarca }) {
         </div>
         <Table
           cols={[
-            { h: uno }, { h: der('Venta neta'), num: true }, { h: der('Contra antes'), num: true },
-            { h: der(enRaiz ? '% del total' : `% de ${lugar}`), num: true }, ...(enRaiz ? [] : [{ h: der('% del total'), num: true }]),
+            { h: uno }, { h: der('Venta neta · %'), num: true }, { h: der('Contra antes'), num: true },
+            ...(enRaiz ? [] : [{ h: der('% del total'), num: true }]),
             { h: der('Cantidad'), num: true }, { h: der('Margen'), num: true }, { h: der('Margen %'), num: true },
             ...(esProd ? [] : [{ h: der('Productos'), num: true }]),
             ...(conModalidades ? [{ h: 'Por modalidad' }] : []),
@@ -279,12 +266,11 @@ function NivelArbol({ d, paso, ir, porMarca }) {
                   )}
                   {parcial && <div className={s.hint} style={{ margin: 0 }} title="Hay renglones vendidos sin costo cargado: no entran al margen">{num(x.renglones - x.conCosto, 0)} renglón(es) sin costo</div>}
                 </td>
-                <td className={cx(s.num, s.mono)} style={NOWRAP}><strong>{money(x.ventaNeta)}</strong></td>
+                <td className={cx(s.num, s.mono)} style={NOWRAP}><ConParte p={x.participacion} title={enRaiz ? 'Parte del total vendido' : `Parte de lo vendido en ${lugar}`}><strong>{money(x.ventaNeta)}</strong></ConParte></td>
                 <td className={s.num} style={NOWRAP} title={`Antes: ${money(x.ventaAnterior)}`}>
                   {x.variacion != null ? <Variacion valor={x.variacion} contra="" />
                     : x.ventaNeta > 0 && !x.ventaAnterior ? <span className={s.hint} style={{ margin: 0 }}>nuevo</span> : <span className={s.muted}>—</span>}
                 </td>
-                <td className={s.num}><Parte p={x.participacion} /></td>
                 {!enRaiz && <td className={s.num}>{pctTxt(x.participacionTotal)}</td>}
                 <td className={cx(s.num, s.mono)} style={NOWRAP}>{cantidadTxt(x)}</td>
                 <td className={cx(s.num, s.mono)} style={{ ...NOWRAP, color: x.margen < 0 ? 'var(--crm-color-danger)' : undefined }}>{money(x.margen)}</td>
@@ -415,13 +401,12 @@ function DetalleProducto({ d, paso, porMarca }) {
 function Desglose({ titulo, filas, granel }) {
   return (
     <Bloque titulo={titulo}>
-      <Table cols={[{ h: '' }, { h: der('Cantidad'), num: true }, { h: der('Venta neta'), num: true }, { h: der('%'), num: true }, { h: der('Margen %'), num: true }]} empty="Sin ventas.">
+      <Table cols={[{ h: '' }, { h: der('Cantidad'), num: true }, { h: der('Venta neta · %'), num: true }, { h: der('Margen %'), num: true }]} empty="Sin ventas.">
         {filas.map((x) => (
           <tr key={x.clave}>
             <td>{x.nombre}</td>
             <td className={cx(s.num, s.mono)} style={NOWRAP}>{granel ? `${num(x.cantidadBase, 2)} kg` : `${num(x.unidades, 0)} u.`}{granel && x.clave ? <div className={s.hint} style={{ margin: 0 }}>{num(x.unidades, 0)} paq.</div> : null}</td>
-            <td className={cx(s.num, s.mono)} style={NOWRAP}>{money(x.ventaNeta)}</td>
-            <td className={s.num}><strong>{pctTxt(x.participacion)}</strong></td>
+            <td className={cx(s.num, s.mono)} style={NOWRAP}><ConParte p={x.participacion}>{money(x.ventaNeta)}</ConParte></td>
             <td className={s.num}><MargenPct v={x.margenPct} /></td>
           </tr>
         ))}

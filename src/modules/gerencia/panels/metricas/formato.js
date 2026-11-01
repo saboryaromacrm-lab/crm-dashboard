@@ -21,6 +21,8 @@ export const COLOR_A = 'var(--crm-color-primary)';
 export const COLOR_B = '#2563eb';
 
 export const pctTxt =(v) => (v == null ? '—' : `${num(v, 1)}%`);
+/** Qué parte del total es `v`, en % (null si no hay total contra qué medir). */
+export const parte = (v, total) => (Math.abs(Number(total) || 0) > 0.005 ? ((Number(v) || 0) / total) * 100 : null);
 /** Puntos porcentuales con signo: 42 % contra 38 % son «+4 pts». */
 export const puntosTxt = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${num(v, 1)} pts`);
 
@@ -106,4 +108,4 @@ export function haceCuanto(isoFecha) {
   return h < 24 ? `hace ${h} h` : `hace ${Math.round(h / 24)} días`;
 }
 
-export const MEDIOS = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta_debito: 'Débito', tarjeta_credito: 'Crédito', qr: 'QR', cheque: 'Cheque', otro: 'Otro' };
+export const MEDIOS = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta_debito: 'Débito', tarjeta_credito: 'Crédito', qr: 'QR', cheque: 'Cheque', transferencia_proveedor: 'Transferencia a proveedor', otro: 'Otro' };

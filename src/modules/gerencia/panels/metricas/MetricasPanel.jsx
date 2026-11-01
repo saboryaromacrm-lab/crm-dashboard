@@ -18,9 +18,9 @@ import { money, num } from '@modules/productos/domain/format.js';
 import { Table, PanelHead, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
 import { Barras, Columnas } from './graficos.jsx';
 import {
-  DIAS_SEMANA, MEDIOS, PRESETS, compacto, etiquetaPeriodo, fechaLarga, haceCuanto, nombrePaso, pasoPara, pctTxt, rangoDe, tituloPeriodo,
+  DIAS_SEMANA, MEDIOS, PRESETS, compacto, etiquetaPeriodo, fechaLarga, haceCuanto, nombrePaso, parte, pasoPara, pctTxt, rangoDe, tituloPeriodo,
 } from './formato.js';
-import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles } from './piezas.jsx';
+import { Aviso, Bloque, Cargando, ConParte, Grilla, Tile, Tiles } from './piezas.jsx';
 import { PestanaGranel } from './PestanaGranel.jsx';
 import { PestanaComparar } from './PestanaComparar.jsx';
 import { PestanaProductos } from './PestanaProductos.jsx';
@@ -162,6 +162,10 @@ function PestanaVentas({ qs, paso, version }) {
   if (!d) return <Cargando />;
   const t = d.totales;
   const sinVentas = t.tickets === 0 && t.ventaNeta === 0;
+  /* Los % de cada lista se miden contra la suma de esa misma lista: así suman 100. */
+  const totalMedios = d.porMedio.reduce((a, x) => a + (Number(x.importe) || 0), 0);
+  const totalCajeros = d.porCajero.reduce((a, x) => a + (Number(x.ventaNeta) || 0), 0);
+  const totalTicketsHora = d.porHora.reduce((a, x) => a + (Number(x.tickets) || 0), 0);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, opacity: loading ? 0.6 : 1 }}>
       <Tiles>
@@ -180,7 +184,7 @@ function PestanaVentas({ qs, paso, version }) {
           <Bloque titulo="Venta neta en el tiempo" sub={`Por ${paso === 'dia' ? 'día' : paso}`}>
             <Columnas
               titulo="Venta neta en el tiempo"
-              datos={d.serie.map((x) => ({ etiqueta: etiquetaPeriodo(x.periodo, paso), titulo: tituloPeriodo(x.periodo, paso), valor: x.ventaNeta, detalle: `${num(x.tickets, 0)} tickets · promedio ${money(x.ticketPromedio)}` }))}
+              datos={d.serie.map((x) => ({ etiqueta: etiquetaPeriodo(x.periodo, paso), titulo: tituloPeriodo(x.periodo, paso), valor: x.ventaNeta, detalle: `${pctTxt(parte(x.ventaNeta, t.ventaNeta))} del período · ${num(x.tickets, 0)} tickets · promedio ${money(x.ticketPromedio)}` }))}
               formato={money}
             />
           </Bloque>
@@ -189,7 +193,7 @@ function PestanaVentas({ qs, paso, version }) {
               <Barras datos={d.porSucursal.map((x) => ({ clave: x.sucursalId, etiqueta: x.nombre, valor: x.ventaNeta, detalle: `${num(x.tickets, 0)} tickets · promedio ${money(x.ticketPromedio)}`, p: x.participacion }))} formato={compacto} sufijo={(x) => `· ${pctTxt(x.p)}`} />
             </Bloque>
             <Bloque titulo="Cómo se cobra" sub="Por medio de pago">
-              <Barras datos={d.porMedio.map((x) => ({ clave: x.medio, etiqueta: MEDIOS[x.medio] ?? x.medio, valor: x.importe, detalle: `${num(x.cantidad, 0)} cobros` }))} formato={compacto} />
+              <Barras datos={d.porMedio.map((x) => ({ clave: x.medio, etiqueta: MEDIOS[x.medio] ?? x.medio, valor: x.importe, p: parte(x.importe, totalMedios), detalle: `${num(x.cantidad, 0)} cobros` }))} formato={compacto} sufijo={(x) => `· ${pctTxt(x.p)}`} />
             </Bloque>
           </Grilla>
           <Grilla>
@@ -198,7 +202,7 @@ function PestanaVentas({ qs, paso, version }) {
                 titulo="Tickets por hora"
                 datos={Array.from({ length: 24 }, (_, h) => h).filter((h) => h >= 6 || d.porHora.some((x) => x.hora === h)).map((h) => {
                   const x = d.porHora.find((y) => y.hora === h);
-                  return { etiqueta: `${h}`, titulo: `${h}:00 a ${h}:59`, valor: x?.tickets ?? 0, detalle: x ? `Venta ${money(x.ventaNeta)}` : 'Sin ventas' };
+                  return { etiqueta: `${h}`, titulo: `${h}:00 a ${h}:59`, valor: x?.tickets ?? 0, detalle: x ? `${pctTxt(parte(x.tickets, totalTicketsHora))} de los tickets · venta ${money(x.ventaNeta)}` : 'Sin ventas' };
                 })}
                 formato={(v) => `${num(v, 0)} tickets`}
                 alto={200}
@@ -219,16 +223,16 @@ function PestanaVentas({ qs, paso, version }) {
           </Grilla>
           <Grilla>
             <Bloque titulo="Mejores clientes" sub="Los 10 que más compraron en el período">
-              <Table cols={[{ h: 'Cliente' }, { h: 'Tickets', num: true }, { h: 'Venta neta', num: true }, { h: '%', num: true }]} empty="Sin datos.">
+              <Table cols={[{ h: 'Cliente' }, { h: 'Tickets', num: true }, { h: 'Venta neta · %', num: true }]} empty="Sin datos.">
                 {d.topClientes.map((x) => (
-                  <tr key={x.clienteId}><td>{x.nombre}</td><td className={s.num}>{num(x.tickets, 0)}</td><td className={cx(s.num, s.mono)}>{money(x.ventaNeta)}</td><td className={s.num}>{pctTxt(x.participacion)}</td></tr>
+                  <tr key={x.clienteId}><td>{x.nombre}</td><td className={s.num}>{num(x.tickets, 0)}</td><td className={cx(s.num, s.mono)}><ConParte p={x.participacion}>{money(x.ventaNeta)}</ConParte></td></tr>
                 ))}
               </Table>
             </Bloque>
             <Bloque titulo="Quién cobró" sub="Por usuario">
-              <Table cols={[{ h: 'Usuario' }, { h: 'Tickets', num: true }, { h: 'Venta neta', num: true }, { h: 'Promedio', num: true }]} empty="Sin datos.">
+              <Table cols={[{ h: 'Usuario' }, { h: 'Tickets', num: true }, { h: 'Venta neta · %', num: true }, { h: 'Promedio', num: true }]} empty="Sin datos.">
                 {d.porCajero.map((x) => (
-                  <tr key={x.usuarioId}><td>{x.nombre}</td><td className={s.num}>{num(x.tickets, 0)}</td><td className={cx(s.num, s.mono)}>{money(x.ventaNeta)}</td><td className={cx(s.num, s.mono)}>{money(x.ticketPromedio)}</td></tr>
+                  <tr key={x.usuarioId}><td>{x.nombre}</td><td className={s.num}>{num(x.tickets, 0)}</td><td className={cx(s.num, s.mono)}><ConParte p={parte(x.ventaNeta, totalCajeros)}>{money(x.ventaNeta)}</ConParte></td><td className={cx(s.num, s.mono)}>{money(x.ticketPromedio)}</td></tr>
                 ))}
               </Table>
             </Bloque>
@@ -252,9 +256,9 @@ function RetirosSinCosto({ qs, version }) {
   return (
     <Bloque titulo="Retiros sin costo" sub="Lo que se llevaron los socios, a costo real. No son ventas: no suman arriba ni restan de la ganancia."
       acciones={<strong style={{ fontSize: 20, fontVariantNumeric: 'tabular-nums' }}>{money(d.costo)}</strong>}>
-      <Table cols={[{ h: 'Quién' }, { h: 'Retiros', num: true }, { h: 'A costo', num: true }]} empty="No hubo retiros en este período.">
+      <Table cols={[{ h: 'Quién' }, { h: 'Retiros', num: true }, { h: 'A costo · %', num: true }]} empty="No hubo retiros en este período.">
         {d.porPersona.map((x) => (
-          <tr key={x.clienteId}><td>{x.cliente}</td><td className={s.num}>{num(x.retiros, 0)}</td><td className={cx(s.num, s.mono)}>{money(x.costo)}</td></tr>
+          <tr key={x.clienteId}><td>{x.cliente}</td><td className={s.num}>{num(x.retiros, 0)}</td><td className={cx(s.num, s.mono)}><ConParte p={parte(x.costo, d.costo)}>{money(x.costo)}</ConParte></td></tr>
         ))}
       </Table>
     </Bloque>
@@ -297,8 +301,8 @@ function TablaMargenes({ d, lente, conCompras, clave }) {
       <Table
         cols={[
           { h: NOMBRE_LENTE[lente] }, ...(lente === 'producto' ? [{ h: 'Unidades', num: true }] : []),
-          { h: 'Venta neta', num: true }, { h: 'Costo', num: true }, { h: 'Margen', num: true }, { h: 'Margen %', num: true },
-          { h: 'Particip.', num: true }, ...(conCompras ? [{ h: 'Compras', num: true }] : []),
+          { h: 'Venta neta · %', num: true }, { h: 'Costo', num: true }, { h: 'Margen', num: true }, { h: 'Margen %', num: true },
+          ...(conCompras ? [{ h: 'Compras', num: true }] : []),
         ]}
         empty="Sin ventas en el período."
         pag={pag}
@@ -312,11 +316,10 @@ function TablaMargenes({ d, lente, conCompras, clave }) {
                 {parcial && <div className={s.hint} style={{ margin: 0 }} title="Hay renglones vendidos sin costo cargado: no entran al margen">{num(x.renglones - x.conCosto, 0)} renglón(es) sin costo</div>}
               </td>
               {lente === 'producto' && <td className={cx(s.num, s.mono)}>{num(x.unidades ?? 0, 2)}</td>}
-              <td className={cx(s.num, s.mono)}>{money(x.ventaNeta)}</td>
+              <td className={cx(s.num, s.mono)}><ConParte p={x.participacion} title="Parte de la venta total del período">{money(x.ventaNeta)}</ConParte></td>
               <td className={cx(s.num, s.mono)}>{money(x.costo)}</td>
               <td className={cx(s.num, s.mono)} style={{ color: x.margen < 0 ? 'var(--crm-color-danger)' : undefined }}>{money(x.margen)}</td>
               <td className={s.num}><strong style={{ color: x.margenPct != null && x.margenPct < 0 ? 'var(--crm-color-danger)' : undefined }}>{pctTxt(x.margenPct)}</strong></td>
-              <td className={s.num}>{pctTxt(x.participacion)}</td>
               {conCompras && <td className={cx(s.num, s.mono)}>{x.comprasNeto == null ? '—' : money(x.comprasNeto)}</td>}
             </tr>
           );
@@ -470,7 +473,7 @@ function PestanaStock({ sucursalId, version }) {
       </div>
       {d.porSucursal.length > 1 && (
         <Bloque titulo="Plata en mercadería por sucursal">
-          <Barras datos={d.porSucursal.map((x) => ({ clave: x.sucursalId, etiqueta: x.nombre, valor: x.valor, detalle: `${num(x.productos, 0)} artículos` }))} formato={compacto} />
+          <Barras datos={d.porSucursal.map((x) => ({ clave: x.sucursalId, etiqueta: x.nombre, valor: x.valor, p: parte(x.valor, d.porSucursal.reduce((a, y) => a + (Number(y.valor) || 0), 0)), detalle: `${num(x.productos, 0)} artículos` }))} formato={compacto} sufijo={(x) => `· ${pctTxt(x.p)}`} />
         </Bloque>
       )}
       <Bloque titulo="Artículo por artículo" sub="Ordenados por la plata que tienen parada en stock">
@@ -485,7 +488,7 @@ function PestanaStock({ sucursalId, version }) {
           <Btn small onClick={exportar} disabled={!filas.length}>Exportar CSV</Btn>
         </div>
         <Table
-          cols={[{ h: 'Producto' }, { h: 'Stock', num: true }, { h: 'Valor', num: true }, { h: `Vendido ${ventana} d`, num: true }, { h: 'Días de stock', num: true }, { h: 'Última venta' }, { h: 'Estado' }]}
+          cols={[{ h: 'Producto' }, { h: 'Stock', num: true }, { h: 'Valor · %', num: true }, { h: `Vendido ${ventana} d`, num: true }, { h: 'Días de stock', num: true }, { h: 'Última venta' }, { h: 'Estado' }]}
           empty="Nada con estos filtros."
           pag={pag}
         >
@@ -496,7 +499,10 @@ function PestanaStock({ sucursalId, version }) {
                 <div className={s.hint} style={{ margin: 0 }}>{[x.categoria, x.marca].filter(Boolean).join(' · ') || '—'}{x.deCoffit ? ' · de Coffit' : ''}</div>
               </td>
               <td className={cx(s.num, s.mono)}>{num(x.stock, x.unidad === 'kg' ? 2 : 0)} {x.unidad}</td>
-              <td className={cx(s.num, s.mono)}>{money(x.valor)}</td>
+              <td className={cx(s.num, s.mono)}>
+                {/* Lo de Coffit no suma a «Plata en mercadería»: su % contra ese total confundiría. */}
+                <ConParte p={x.deCoffit ? null : parte(x.valor, r.valorPropio)} title="Parte de la plata en mercadería">{money(x.valor)}</ConParte>
+              </td>
               <td className={cx(s.num, s.mono)}>{num(x.vendido, x.unidad === 'kg' ? 2 : 0)}</td>
               <td className={cx(s.num, s.mono)}>{x.diasDeStock == null ? '—' : num(x.diasDeStock, 0)}</td>
               <td>{x.ultimaVenta ? fechaLarga(x.ultimaVenta) : <span className={s.muted}>más de 2 años o nunca</span>}</td>
