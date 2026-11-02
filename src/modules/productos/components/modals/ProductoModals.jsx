@@ -706,10 +706,6 @@ function ResumenTab({ prod: p }) {
       <td className={s.num}>{store.fmtCant(p, st.presentacionId, st.cantidad)}</td>
     </tr>
   ));
-  const movs = store.movimientosDe(p.id).slice(0, 6).map((m) => (
-    <tr key={m.id}><td>{fmtFechaHora(m.fecha)}</td><td><MovTag tipo={m.tipo} prodTipo={p.tipo} /></td><td>{m.descripcion}</td></tr>
-  ));
-
   /* La verdad TOTAL del granel: el suelto MÁS lo ya fraccionado, en kg. "¿Cuánto
    * ajo hay?" no se responde mirando solo el suelto — se compra de más. */
   let fraccionadoKg = 0;
@@ -753,10 +749,127 @@ function ResumenTab({ prod: p }) {
       <Table cols={[{ h: 'Sucursal' }, { h: 'Present.' }, { h: 'Estado' }, { h: 'Cant.', num: true }]} empty="Sin stock.">
         {rows}
       </Table>
-      <h3 className={s['card-title']} style={{ marginTop: 12 }}>Últimos movimientos</h3>
-      <Table cols={[{ h: 'Fecha' }, { h: 'Tipo' }, { h: 'Detalle' }]} empty="Sin movimientos.">
-        {movs}
-      </Table>
+      <HistorialProducto prod={p} />
+    </>
+  );
+}
+
+/** Estados en los que la mercadería sigue siendo de la casa: lo que suma el «Queda». */
+const ESTADOS_QUE_CUENTAN = new Set(['disponible', 'comprometido', 'en_transito']);
+const TOPE_HISTORIAL = 1000; // el máximo que entrega GET /movimientos
+
+/**
+ * EL HISTORIAL DEL PRODUCTO, DESDE EL ALTA (2/11/2026, pedido del dueño).
+ * ============================================================================
+ * Antes mostraba los 6 últimos de lo que hubiera cargado la sección
+ * `movimientos`, que son los 300 más recientes de TODO el sistema (unas horas
+ * de ventas): un producto que no se movió hoy decía «Sin movimientos» aunque
+ * tuviera historia. Ahora se le piden al servidor los de ESTE producto.
+ *
+ * «Queda» (solo enteros y solo quien ve todas las sucursales): el stock total
+ * después de cada movimiento, reconstruido hacia atrás desde el stock de hoy
+ * con `signo × cantidad` — lo mismo que suma el servidor. Un cambio de estado
+ * (reservar, poner en tránsito) tiene signo 0: no cambia lo que hay. Lo que
+ * sobra al llegar al primer movimiento es el stock con que se cargó el
+ * producto sin movimiento (la importación inicial). En granel no se calcula:
+ * los kg sueltos y los paquetes no se suman en una sola cifra.
+ */
+function HistorialProducto({ prod: p }) {
+  const { store, isAdmin, can } = useProductos();
+  const puede = can('almacen.operaciones') || can('compras.historial');
+  const [movs, setMovs] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!puede) return undefined;
+    let vivo = true;
+    setMovs(null);
+    setError('');
+    store.movimientosFiltrados({ productoIds: [p.id] })
+      .then((r) => { if (vivo) setMovs(r); })
+      .catch((e) => { if (vivo) setError(e?.message || 'No se pudo traer el historial.'); });
+    return () => { vivo = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.id, puede]);
+
+  const conSaldo = p.tipo !== 'granel' && isAdmin;
+  const hoy = store.state.stock
+    .filter((st) => st.productoId === p.id && ESTADOS_QUE_CUENTAN.has(st.estado))
+    .reduce((a, st) => a + st.cantidad, 0);
+  const filas = useMemo(() => {
+    if (!movs) return [];
+    let queda = hoy;
+    return movs.map((m) => {
+      const delta = (Number(m.signo) || 0) * (Number(m.cantidad) || 0);
+      const fila = { ...m, delta, queda };
+      queda -= delta;
+      return fila;
+    });
+  }, [movs, hoy]);
+  const completo = movs && movs.length < TOPE_HISTORIAL;
+  const inicial = filas.length ? filas[filas.length - 1].queda - filas[filas.length - 1].delta : hoy;
+
+  const titulo = (
+    <h3 className={s['card-title']} style={{ marginTop: 12 }}>
+      Historial de movimientos{isAdmin ? '' : ' (tu sucursal)'}
+    </h3>
+  );
+  if (!puede) {
+    return (
+      <>
+        {titulo}
+        <p className={s.hint}>Ver el historial del producto requiere el permiso del historial de Almacén.</p>
+      </>
+    );
+  }
+  if (error) return <>{titulo}<p className={s.hint}>{error}</p></>;
+  if (!movs) return <>{titulo}<p className={s.hint}>Buscando los movimientos…</p></>;
+
+  const cols = [{ h: 'Fecha' }, { h: 'Sucursal' }, { h: 'Tipo' }, { h: 'Cantidad', num: true }];
+  if (conSaldo) cols.push({ h: 'Queda', num: true });
+  cols.push({ h: 'Detalle' });
+  const signoTxt = (d) => (d > 0 ? '+' : d < 0 ? '−' : '');
+
+  return (
+    <>
+      {titulo}
+      <p className={s.hint} style={{ marginTop: 0 }}>
+        {movs.length
+          ? `${movs.length} ${movs.length === 1 ? 'movimiento' : 'movimientos'}${completo ? ', desde el alta' : ` (los ${TOPE_HISTORIAL} más recientes)`}, del más nuevo al más viejo.`
+          : 'Este producto no tiene movimientos registrados.'}
+        {conSaldo && ' «Queda» es el stock total de todas las sucursales después de cada movimiento.'}
+      </p>
+      <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+        <Table cols={cols} empty="Sin movimientos.">
+          {filas.map((m) => (
+            <tr key={m.id}>
+              <td style={{ whiteSpace: 'nowrap' }}>{fmtFechaHora(m.fecha)}</td>
+              <td>{m.sucursalNombre || '—'}{m.sucursalDestinoNombre ? ` → ${m.sucursalDestinoNombre}` : ''}</td>
+              <td><MovTag tipo={m.tipo} prodTipo={p.tipo} /></td>
+              <td className={s.num} style={{ whiteSpace: 'nowrap', color: m.delta ? undefined : 'var(--text-muted, #888)' }}>
+                {signoTxt(m.delta)}{store.fmtCant(p, m.presentacionId, m.cantidad)}
+                {m.presentacionId && m.presLabel ? ` de ${m.presLabel}` : ''}
+              </td>
+              {conSaldo && <td className={s.num} style={{ whiteSpace: 'nowrap' }}>{m.delta ? store.fmtCant(p, null, m.queda) : ''}</td>}
+              <td>{m.descripcion}</td>
+            </tr>
+          ))}
+          {completo && (
+            <tr>
+              <td style={{ whiteSpace: 'nowrap' }}>{p.creadoEn ? fmtFechaHora(p.creadoEn) : '—'}</td>
+              <td>—</td>
+              <td><strong>Alta del producto</strong></td>
+              <td className={s.num} />
+              {conSaldo && <td className={s.num} style={{ whiteSpace: 'nowrap' }}><strong>{store.fmtCant(p, null, inicial)}</strong></td>}
+              <td>
+                {conSaldo && Math.abs(inicial) > 1e-9
+                  ? 'Stock con que se cargó, sin movimiento (importación inicial).'
+                  : 'Se dio de alta en el sistema.'}
+              </td>
+            </tr>
+          )}
+        </Table>
+      </div>
     </>
   );
 }
