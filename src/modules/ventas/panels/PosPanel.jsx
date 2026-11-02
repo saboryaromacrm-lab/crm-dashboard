@@ -23,6 +23,7 @@ import {
   Table, PanelHead, Btn, ModalShell, Paginador, usePaginado, money, num, fmtFechaHora, s,
 } from '../components/ui.jsx';
 import { MisPedidosFraccion } from '../components/MisPedidosFraccion.jsx';
+import { AvisoCierreCaja, CajaVencidaAviso, PlazoCajaDato } from '../components/PlazoCaja.jsx';
 import { useMisPedidosFraccion } from '../hooks/useMisPedidosFraccion.js';
 import { imprimirVenta } from '@core/services/imprimir.js';
 import { EVENTO_PRECIOS, cambiosPrecio } from '@core/services/cambiosPrecio.js';
@@ -1193,9 +1194,11 @@ export function PosPanel() {
   const overrideBloqueado = !!config.overrideListaRequiereAdmin && !puedePisarPrecio;
 
   const cajaAbierta = caja?.estado === 'abierta';
+  /* Una caja de varios días que pasó su último día (0212): no cobra hasta cerrarla. */
+  const cajaVencida = !!caja?.plazo?.bloquea;
   const requiereCaja = !!config.cajaObligatoria;
   const puedeCobrar = !!activaId && ticket.renglones.length > 0 && problemas.length === 0
-    && (!requiereCaja || cajaAbierta);
+    && (!requiereCaja || cajaAbierta) && !cajaVencida;
 
   const enfocarBuscador = useCallback(() => {
     // Se difiere un tick: el modal de MUI devuelve el foco al cerrarse.
@@ -1488,7 +1491,9 @@ export function PosPanel() {
 
   const cobrar = useCallback(() => {
     if (!puedeCobrar) {
-      toast(problemas[0] || (!activaId ? 'Abrí una venta primero.' : 'No hay un turno de caja abierto.'), 'err');
+      toast(problemas[0] || (!activaId ? 'Abrí una venta primero.'
+        : cajaVencida ? 'La caja ya se tenía que cerrar: cerrala desde Caja para seguir cobrando.'
+          : 'No hay un turno de caja abierto.'), 'err');
       return;
     }
     // Se fuerza el guardado antes de cobrar: el backend confirma lo GUARDADO.
@@ -1555,7 +1560,7 @@ export function PosPanel() {
         },
       });
     });
-  }, [puedeCobrar, problemas, activaId, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast, restriccion, conMedio, cambioDesc, getCliente, can]);
+  }, [puedeCobrar, problemas, activaId, cajaVencida, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast, restriccion, conMedio, cambioDesc, getCliente, can]);
   useEffect(() => {
     if (!reabrirCobro.current) return;
     reabrirCobro.current = false;
@@ -1688,10 +1693,10 @@ export function PosPanel() {
             <Btn small onClick={() => openModal('relevo', { cajaSesionId: caja?.id })}>
               {operador ? `Cobrando: ${operador.nombre}` : 'Relevo'}
             </Btn>
-            <span className={cx(p.cajaChip, !cajaAbierta && p.cajaChipCerrada)}>
-              {cargandoCaja ? 'Caja…' : cajaAbierta ? `Caja #${caja.id}` : 'Caja cerrada'}
+            <span className={cx(p.cajaChip, (!cajaAbierta || cajaVencida) && p.cajaChipCerrada)}>
+              {cargandoCaja ? 'Caja…' : cajaVencida ? `Caja #${caja.id} vencida` : cajaAbierta ? `Caja #${caja.id}` : 'Caja cerrada'}
             </span>
-            {!cargandoCaja && !cajaAbierta && (
+            {!cargandoCaja && (!cajaAbierta || cajaVencida) && (
               <Btn variant="btn-primary" small onClick={() => goPanel('caja')}>
                 Ir a Caja
               </Btn>
@@ -1699,6 +1704,9 @@ export function PosPanel() {
             <span className={p.regSucursal}>{sucursal?.nombre}</span>
           </div>
         </div>
+
+        <CajaVencidaAviso caja={caja} onCerrar={() => goPanel('caja')} />
+        <AvisoCierreCaja caja={caja} />
 
         {/* Lo pedido a fraccionado (0170) y cómo va: a la vista del cajero. */}
         <MisPedidosFraccion pedidos={misPedidos.pedidos} onEntendido={misPedidos.entendido} onCancelar={misPedidos.cancelar} />
@@ -2093,6 +2101,7 @@ export function PosPanel() {
           <>
             <div className={p.cajaDato}><span>Turno</span><strong>#{caja.id} abierto</strong></div>
             <div className={p.cajaDato}><span>Desde</span><strong>{fmtFechaHora(caja.apertura)}</strong></div>
+            <PlazoCajaDato caja={caja} />
             <span className={p.spacer} />
             {/* El relevo (0088), también desde la lista de ventas en curso. */}
             <Btn small onClick={() => openModal('relevo', { cajaSesionId: caja?.id })}>
@@ -2113,6 +2122,9 @@ export function PosPanel() {
           </>
         )}
       </div>
+
+      <CajaVencidaAviso caja={caja} onCerrar={() => goPanel('caja')} />
+      <AvisoCierreCaja caja={caja} />
 
       {/* Lo pedido a fraccionado (0170), también desde la lista. */}
       <MisPedidosFraccion pedidos={misPedidos.pedidos} onEntendido={misPedidos.entendido} onCancelar={misPedidos.cancelar} />

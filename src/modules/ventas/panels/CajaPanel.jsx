@@ -8,6 +8,8 @@ import { Table, PanelHead, Stat, Btn, Pill, usePaginado, money, fmtFechaHora, s 
 import p from '../styles/Pos.module.css';
 import { CajaMovimientos } from './CajaMovimientos.jsx';
 import { ATAJOS, diaAtras } from '../domain/diasCaja.js';
+import { CajaVencidaAviso, PlazoCajaDato } from '../components/PlazoCaja.jsx';
+import { diasDelTurno, textoCadaDias } from '@shared/utils/plazoCaja.js';
 
 /** Diferencia de arqueo con su color: cero es verde, cualquier otra cosa rojo. */
 function Diferencia({ valor, cerrado }) {
@@ -94,6 +96,7 @@ export function CajaPanel() {
             <div className={p.cajaDato}><span>Sucursal</span><strong>{miSucursal?.nombre || '—'}</strong></div>
             <div className={p.cajaDato}><span>Desde</span><strong>{fmtFechaHora(actual.apertura)}</strong></div>
             <div className={p.cajaDato}><span>Fondo inicial</span><strong>{money(actual.montoInicial)}</strong></div>
+            <PlazoCajaDato caja={actual} />
             <span className={p.spacer} />
             {/* El pago a proveedor vive DENTRO de Ingreso/egreso: al elegir
                 egreso se pregunta a quién sale la plata. */}
@@ -113,6 +116,7 @@ export function CajaPanel() {
             <span className={s.hint} style={{ margin: 0 }}>
               {miSucursal?.nombre || 'Tu sucursal'} no tiene un turno abierto. La caja siempre
               arranca declarando su fondo inicial.
+              {miSucursal?.cierreCadaDias > 1 && <> Se cierra {textoCadaDias(miSucursal.cierreCadaDias).toLowerCase()}.</>}
             </span>
             <span className={p.spacer} />
             <Btn variant="btn-primary" small onClick={() => openModal('abrirCaja', { onChange: alCambiar })}>
@@ -121,6 +125,11 @@ export function CajaPanel() {
           </>
         )}
       </div>
+      <CajaVencidaAviso
+        caja={actual}
+        textoBoton="Cerrar caja"
+        onCerrar={() => openModal('cerrarCaja', { cajaSesionId: actual.id, onChange: alCambiar })}
+      />
 
  <Tabs value={vista} onChange={(e, v) => setVista(v)} sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}>
         <Tab value="turnos" label="Turnos" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />
@@ -188,7 +197,13 @@ export function CajaPanel() {
               <td>{nombreDe(sucursales, t.sucursalId)}</td>
               <td>{nombreDe(usuarios, t.usuarioId)}</td>
               <td>{fmtFechaHora(t.apertura)}</td>
-              <td>{t.cierre ? fmtFechaHora(t.cierre) : <span className={s.muted}>—</span>}</td>
+              <td>
+                {t.cierre ? fmtFechaHora(t.cierre) : <span className={s.muted}>—</span>}
+                {/* La caja de varios días (0212): qué días abarcó. */}
+                {t.plazoDias > 1 && diasDelTurno(t.apertura, t.cierre) && (
+                  <div className={s.hint} style={{ margin: 0 }}>Caja {diasDelTurno(t.apertura, t.cierre)}</div>
+                )}
+              </td>
               <td className={s.num}>{money(t.montoInicial)}</td>
               {esJefe && <td className={s.num}>{cerrado ? money(t.sistemaEfectivo) : <span className={s.muted}>—</span>}</td>}
               <td className={s.num}>{cerrado ? money(t.declaradoEfectivo) : <span className={s.muted}>—</span>}</td>

@@ -32,6 +32,7 @@ import { iso } from '../metricas/formato.js';
 import { Fecha } from './Fecha.jsx';
 import { CajasAControlar, TildeControlar } from './CajasAControlar.jsx';
 import { PlanillaDia } from './PlanillaDia.jsx';
+import { diasDelTurno, textoCajaVencida } from '@shared/utils/plazoCaja.js';
 import { MisCuentas } from './MisCuentas.jsx';
 import { useTildeControlar, useUmbralControlar } from './tildeControlar.js';
 import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, DONDE, DONDE_A_CAMPOS, donde, esConceptoCambio, esDeposito, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaHoraSinDia, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
@@ -540,9 +541,11 @@ function Sobres({ version, bump, avisar }) {
         >
           {filas.map((x) => {
             const dias = diasDesde(x.cierre);
+            /* El sobre de una caja de varios días (0212) dice qué días cubre. */
+            const cubre = diasDelTurno(x.apertura, x.cierre);
             return (
               <tr key={x.cajaSesionId}>
-                <td><Fecha v={x.cierre} /></td>
+                <td><Fecha v={x.cierre} />{cubre && <div className={s.hint} style={{ margin: 0 }}>Sobre {cubre}</div>}</td>
                 <td>{x.sucursal}</td>
                 <td>{x.cajero || '—'}</td>
                 <td className={s.num}><strong>{money(x.enviado)}</strong></td>
@@ -1535,8 +1538,8 @@ export function CashFlowPanel() {
       {msg && <Aviso tono={msg.tono === 'ok' ? 'info' : 'warn'}>{msg.texto}</Aviso>}
       {abiertas.length > 0 && (
         <Aviso tono="warn">
-          <strong>Caja abierta hace más de 24 horas:</strong>{' '}
-          {abiertas.map((c) => `${c.sucursal} (${c.usuario || 'sin usuario'}, desde el ${fechaHora(c.apertura)}, ${c.horas} h)`).join(' · ')}.
+          <strong>Caja sin cerrar a tiempo:</strong>{' '}
+          {abiertas.map(textoCajaVencida).join(' · ')}.
           {' '}Hasta que cierren, el sobre no llega. (Este aviso también se ve arriba, en cualquier pantalla.)
         </Aviso>
       )}

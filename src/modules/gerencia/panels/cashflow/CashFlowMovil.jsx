@@ -48,6 +48,7 @@ import { ModalShell } from '@modules/productos/components/Modal.jsx';
 import { ModalModo } from '@modules/productos/components/modalModo.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { cx } from '@shared/utils/classNames.js';
+import { textoCajaVencida } from '@shared/utils/plazoCaja.js';
 import { ColumnasMulti } from '../metricas/graficos.jsx';
 import { iso } from '../metricas/formato.js';
 import { Fecha } from './Fecha.jsx';
@@ -226,8 +227,8 @@ function Inicio({ d, abrir, irA, actualizado, version, bump, avisar }) {
 
       {d.cajasAbiertas?.length > 0 && (
         <Aviso>
-          <strong>Caja abierta hace más de 24 horas:</strong>{' '}
-          {d.cajasAbiertas.map((x) => `${x.sucursal} (${x.usuario || 'sin usuario'}, ${x.horas} h)`).join(' · ')}. Hasta que cierren, ese sobre no llega.
+          <strong>Caja sin cerrar a tiempo:</strong>{' '}
+          {d.cajasAbiertas.map(textoCajaVencida).join(' · ')}. Hasta que cierren, ese sobre no llega.
         </Aviso>
       )}
 

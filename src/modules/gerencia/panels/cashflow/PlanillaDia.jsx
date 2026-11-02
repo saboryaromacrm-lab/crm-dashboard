@@ -5,7 +5,9 @@
  * cada local, sus turnos de ese día y en qué quedó cada uno — abierta, sin
  * rendir (el sobre todavía no se controló), rendida, cerrada sin sobre — y los
  * locales que no abrieron caja. Una caja abierta de un día anterior aparece
- * también hoy, marcada en rojo: es el cierre olvidado.
+ * también hoy; si ya pasó su último día para cerrar (0212: todos los días o
+ * cada N días, según el local), en rojo: es el cierre olvidado. La de varios
+ * días aparece en todos los días que abarcó.
  *
  * La regla de cada estado vive en el servidor (crm-api/src/cashflow/planilla.ts),
  * la misma que Sobres y «En tránsito». Va en la PC (pestaña) y en el celular
@@ -17,6 +19,7 @@ import { money } from '@modules/productos/domain/format.js';
 import { s } from '@modules/productos/components/ui.jsx';
 import { Aviso, Cargando } from '../metricas/piezas.jsx';
 import { fechaIso, fechaIsoSinDia, horaCorta, hoy } from './formato.js';
+import { diaEnPalabras, diasDelTurno } from '@shared/utils/plazoCaja.js';
 
 /** Cómo se ve cada estado: texto y color (tokens del tema, andan en claro y en oscuro). */
 const ESTADOS = {
@@ -65,21 +68,27 @@ function Cuenta({ n, texto, detalle, alerta }) {
 /** Un turno: cuándo y quién a la izquierda; en qué quedó y la plata a la derecha. */
 function Turno({ t, onControlar }) {
   const e = ESTADOS[t.estado] ?? { texto: t.estado, color: 'var(--crm-color-text-secondary)' };
-  const olvidada = t.estado === 'abierta' && t.deOtroDia;
+  const olvidada = t.vencida;
+  /* La de varios días (0212) dentro de su plazo: abierta a propósito, con su último día. */
+  const enPlazo = t.estado === 'abierta' && !t.vencida && t.plazoDias > 1;
+  const cubre = t.estado !== 'abierta' && t.plazoDias > 1 ? diasDelTurno(t.apertura, t.cierre) : '';
   const dif = t.estado === 'rendida' ? t.diferenciaSobre : t.diferenciaCajero;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 12px', padding: '8px 0', borderTop: '1px solid var(--crm-color-border)' }}>
       <div style={{ flex: '1 1 200px', minWidth: 0 }}>
         <strong style={{ textTransform: 'capitalize' }}>{t.turno}</strong>
         <span className={s.muted}>
-          {' · '}{olvidada ? `desde el ${fechaIso(t.deOtroDia)} ${horaCorta(t.apertura)}` : horaCorta(t.apertura)}
+          {' · '}{t.deOtroDia ? `desde el ${fechaIso(t.deOtroDia)} ${horaCorta(t.apertura)}` : horaCorta(t.apertura)}
           {t.cierre ? ` → ${horaCorta(t.cierre)}` : ''}
+          {cubre ? ` · caja ${cubre}` : ''}
           {t.cajero ? ` · ${t.cajero}` : ''}
         </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginLeft: 'auto', justifyContent: 'flex-end' }}>
         {t.aControlar && <Pastilla color={ROJO}>A controlar</Pastilla>}
-        <Pastilla color={olvidada ? ROJO : e.color}>{olvidada ? 'Abierta: no cerró' : e.texto}</Pastilla>
+        <Pastilla color={olvidada ? ROJO : e.color}>
+          {olvidada ? 'Abierta: no cerró' : enPlazo ? `Abierta · cierra el ${diaEnPalabras(t.cerrarHasta)}` : e.texto}
+        </Pastilla>
         {t.envio > 0 && (
           <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
             {money(t.envio)}
@@ -129,7 +138,7 @@ export function PlanillaDia({ dia, setDia, version, onControlar }) {
             <Cuenta
               n={r.abiertas}
               texto={r.abiertas === 1 ? 'Abierta' : 'Abiertas'}
-              detalle={r.olvidadas ? `${r.olvidadas} de otro día: no cerraron` : esHoy ? 'Todavía no cerraron' : 'No cerraron'}
+              detalle={r.olvidadas ? `${r.olvidadas} sin cerrar a tiempo` : esHoy ? 'Todavía no cerraron' : 'No cerraron'}
               alerta={esHoy && !r.olvidadas ? 'var(--crm-color-info)' : ROJO}
             />
             <Cuenta n={r.rendidas} texto={r.rendidas === 1 ? 'Rendida' : 'Rendidas'} detalle="Sobre controlado" />
@@ -150,7 +159,7 @@ export function PlanillaDia({ dia, setDia, version, onControlar }) {
 
           <div className={s.hint} style={{ margin: 0 }}>
             <strong>Sin rendir</strong>: cerró y mandó el sobre, pero todavía no lo controlaste. <strong>Rendida</strong>: sobre controlado.
-            {' '}<strong>Cerró sin sobre</strong>: no mandó efectivo (todo quedó en la caja). Una caja abierta de otro día aparece en rojo hasta que la cierren.
+            {' '}<strong>Cerró sin sobre</strong>: no mandó efectivo (todo quedó en la caja). Una caja que pasó su último día para cerrar aparece en rojo hasta que la cierren; la de un local que cierra cada varios días figura «Abierta · cierra el …» mientras esté en plazo.
             {p.cashflowDesde && ` Los sobres se rinden en el Cash Flow desde el ${fechaIso(p.cashflowDesde)}.`}
           </div>
         </>

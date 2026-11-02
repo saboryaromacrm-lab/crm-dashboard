@@ -26,6 +26,7 @@ import { CashFlowPanel } from '../panels/cashflow/CashFlowPanel.jsx';
 import { AuditoriaPanel } from '../panels/AuditoriaPanel.jsx';
 import { ResultadosPanel } from '../panels/resultados/ResultadosPanel.jsx';
 import { AsesorPanel } from '../panels/asesor/AsesorPanel.jsx';
+import { textoCadaDias } from '@shared/utils/plazoCaja.js';
 
 /**
  * FACTURA ELECTRÓNICA DE UNA SUCURSAL (0124, 30/9/2026). Se enciende de a
@@ -95,6 +96,9 @@ function FacturaElectronica({ su, pendiente, onCambiar }) {
  * exige. Cambia lo que se le cobra al cliente, así que se confirma en la fila.
  * La Distribuidora no se apaga: surte la tienda online, que es mayorista.
  */
+/** Cada cuántos días puede cerrarse la caja de un local (0212): el mismo rango que valida la API. */
+const CIERRE_CADA_DIAS = [1, 2, 3, 4, 5, 6, 7];
+
 function VendeMayorista({ su, onCambiar }) {
   const [preguntando, setPreguntando] = useState(false);
   const [ocupado, setOcupado] = useState(false);
@@ -748,7 +752,7 @@ export function GerenciaPage() {
           <Table
             cols={[
               { h: 'Sucursal' }, { h: 'Tipo' }, { h: 'Punto de venta' },
-              { h: 'Domicilio del comprobante' }, { h: 'Factura electrónica' }, { h: 'Mayorista' }, { h: 'Fondo de caja', num: true }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' },
+              { h: 'Domicilio del comprobante' }, { h: 'Factura electrónica' }, { h: 'Mayorista' }, { h: 'Fondo de caja', num: true }, { h: 'Cierre de caja' }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' },
             ]}
             empty="Sin sucursales."
           >
@@ -829,6 +833,23 @@ export function GerenciaPage() {
                     />
                   </td>
                   <td>
+                    {/* CADA CUÁNTOS DÍAS SE CIERRA (0212): se guarda al elegir y rige desde la próxima apertura. */}
+                    <select
+                      value={su.cierreCadaDias ?? 1}
+                      disabled={apagada}
+                      aria-label={`Cierre de caja de ${su.nombre}`}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        mutar(
+                          () => httpClient.patch(`/sucursales/${su.id}`, { nombre: su.nombre, tipo: su.tipo, cierreCadaDias: n }),
+                          `${su.nombre}: la caja se cierra ${textoCadaDias(n).toLowerCase()}. Rige desde la próxima apertura.`,
+                        );
+                      }}
+                    >
+                      {CIERRE_CADA_DIAS.map((n) => <option key={n} value={n}>{textoCadaDias(n)}</option>)}
+                    </select>
+                  </td>
+                  <td>
                     <span className={cx(s.pill, apagada ? s['est-cancelada'] : s['st-disponible'])}>{apagada ? 'Desactivada' : 'Activa'}</span>
                     {apagada && su.desactivadaEn && <div className={s.hint} style={{ margin: '2px 0 0' }}>desde el {new Date(su.desactivadaEn).toLocaleDateString('es-AR')}</div>}
                   </td>
@@ -863,6 +884,12 @@ export function GerenciaPage() {
             <strong>Mayorista</strong>: la sucursal en «Solo minorista» cobra todo a precio minorista — su caja no
             ofrece el aviso mayorista, el bulto ni la lista mayorista de un cliente, y el sistema no deja cobrar ahí
             un renglón mayorista. La Distribuidora vende mayorista siempre: surte la tienda online.
+          </div>
+          <div className={s.hint}>
+            <strong>Cierre de caja</strong>: cada cuántos días se cuenta y se manda el sobre. Se cuentan días corridos
+            desde el de la apertura (cada 3 días: abre el lunes y cierra a más tardar el miércoles). Si una caja de varios
+            días no se cierra a tiempo, desde el día siguiente <strong>no deja vender ni cobrar</strong> hasta que la cierren.
+            El cambio rige desde la próxima apertura: una caja ya abierta mantiene su plazo.
           </div>
           <div className={s.hint}>
             El <strong>fondo de caja</strong> es con cuánto abre la caja de cada local y cuánto queda

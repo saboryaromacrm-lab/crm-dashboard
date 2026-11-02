@@ -13,6 +13,7 @@ import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { httpClient } from '@core/services/httpClient.js';
 import { TildeControlar } from '@modules/gerencia/panels/cashflow/CajasAControlar.jsx';
 import { useTildeControlar, useUmbralControlar } from '@modules/gerencia/panels/cashflow/tildeControlar.js';
+import { diaEnPalabras } from '@shared/utils/plazoCaja.js';
 
 const norm = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
@@ -121,6 +122,15 @@ export function AbrirCajaModal({ onChange }) {
         <Di label="Sucursal">{sucursal?.nombre || '—'}</Di>
         <Di label="Cajero">{usuario?.nombre || '—'}</Di>
       </div>
+
+      {/* La caja de varios días (0212): desde la apertura se sabe hasta cuándo. */}
+      {ap.plazo?.plazoDias > 1 && (
+        <div className={s.callout}>
+          Esta caja se cierra cada <strong>{ap.plazo.plazoDias} días</strong>: queda abierta hasta el{' '}
+          <strong>{diaEnPalabras(ap.plazo.cerrarHasta)}</strong>, y ese día hay que cerrarla. Si no se cierra, desde el día
+          siguiente no se puede vender.
+        </div>
+      )}
 
       {conFondoFijo ? (
         <>

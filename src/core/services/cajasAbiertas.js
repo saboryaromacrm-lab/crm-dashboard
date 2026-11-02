@@ -1,5 +1,6 @@
 /**
- * CAJAS DE LOS LOCALES ABIERTAS HACE MÁS DE 24 H (Cash Flow, parte 3).
+ * CAJAS DE LOS LOCALES QUE NO CERRARON A TIEMPO (Cash Flow, parte 3; desde 0212
+ * con el plazo de cada local: todos los días o cada N días).
  * ============================================================================
  * Sondeo liviano cada minuto a `GET /cashflow/alertas` (solo el superadmin lo
  * tiene). Alimenta el banner persistente del ERP: mientras haya una caja
@@ -18,8 +19,8 @@ async function tick() {
   try {
     const r = await httpClient.get('/cashflow/alertas');
     const lista = Array.isArray(r?.cajasAbiertas) ? r.cajasAbiertas : [];
-    /* Se avisa solo si cambió algo (ids u horas): `useSyncExternalStore` compara por referencia. */
-    const firma = (l) => l.map((c) => `${c.id}:${c.horas}`).join(',');
+    /* Se avisa solo si cambió algo (ids o días de atraso): `useSyncExternalStore` compara por referencia. */
+    const firma = (l) => l.map((c) => `${c.id}:${c.diasVencida}`).join(',');
     if (firma(lista) !== firma(_cajas)) {
       _cajas = lista;
       _listeners.forEach((l) => l());
