@@ -1,6 +1,7 @@
 import { appConfig } from '@core/config/app.config.js';
 import { httpClient } from '@core/services/httpClient.js';
 import { leerTokenTerminal } from '@core/auth/terminal.js';
+import { esAppInstalada } from '@core/pwa/app.js';
 import {
   leerSesion, guardarSesion, actualizarSesion, actualizarCtx, limpiarSesion,
 } from './sesion.js';
@@ -89,11 +90,15 @@ export const authService = {
     const res = await httpClient.post('/auth/login', {
       ...credentials,
       terminalToken: leerTokenTerminal() || undefined,
+      /* SESIÓN RECORDADA (0210): desde la app instalada se pide; el servidor la
+       * concede solo al superadmin y nunca en una terminal registrada. */
+      recordar: esAppInstalada() || undefined,
     });
     // EL TOKEN ES LA SESIÓN. Sin él, guardar usuario y sucursal solo alcanzaría
     // para pintar el menú: la API no contestaría ni una llamada.
     const sesion = {
       token: res.token, usuario: res.usuario, sucursal: res.sucursal, terminal: res.terminal ?? null,
+      recordada: res.recordada === true,
     };
     guardarSesion(sesion);
     httpClient.reiniciarAvisoDeSesion();
