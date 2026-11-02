@@ -349,6 +349,11 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
   const [importe, setImporte] = useState(String(r2(c.falta)));
   const [fecha, setFecha] = useState(hoyISO());
   const [cuentaId, setCuentaId] = useState('');
+  /* DE UN TERCERO (0211, 2/11/2026, pedido del dueño): la transferencia la hizo
+   * otra persona desde SU cuenta. Mismo efecto que el pago propio (sin caja,
+   * baja la deuda con el proveedor), pero sin cuenta de Sabor y Aroma. */
+  const [deTercero, setDeTercero] = useState(false);
+  const [tercero, setTercero] = useState('');
   const [referencia, setReferencia] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [confirmando, setConfirmando] = useState(false);
@@ -357,7 +362,8 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
   const cambiar = (fn) => (e) => { fn(e.target.value); setConfirmando(false); };
 
   const registrar = async () => {
-    if (!(n > 0)) { toast('Poné el importe que transferiste.', 'err'); return; }
+    if (!(n > 0)) { toast('Poné el importe que se transfirió.', 'err'); return; }
+    if (deTercero && tercero.trim().length < 2) { toast('Escribí quién hizo la transferencia.', 'err'); return; }
     if (!c.puedePasarse && n > r2(c.falta) + 0.004) { toast(`A esta cuenta le faltan ${money(c.falta)}: no se puede pagar de más.`, 'err'); return; }
     if (!confirmando) { setConfirmando(true); return; }
     if (enCurso.current) return;
@@ -365,10 +371,13 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
     try {
       const ok = await act(
         provApi.pagoPropioCuenta(c.id, {
-          importe: n, fecha, cuentaPropiaId: Number(cuentaId) || undefined,
+          importe: n, fecha,
+          ...(deTercero ? { tercero: tercero.trim() } : { cuentaPropiaId: Number(cuentaId) || undefined }),
           referencia: referencia.trim() || undefined, observaciones: observaciones.trim() || undefined,
         }),
-        `Pago propio de ${money(n)} a ${c.proveedorNombre} (${c.titular}) registrado.`,
+        deTercero
+          ? `Pago de ${tercero.trim()} por ${money(n)} a ${c.proveedorNombre} (${c.titular}) registrado.`
+          : `Pago propio de ${money(n)} a ${c.proveedorNombre} (${c.titular}) registrado.`,
       );
       if (ok) onChange?.();
     } finally { enCurso.current = false; }
@@ -376,7 +385,7 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
 
   return (
     <ModalShell
-      title={`Pago propio a ${c.proveedorNombre}`}
+      title={`${deTercero ? 'Pago de un tercero' : 'Pago propio'} a ${c.proveedorNombre}`}
       subtitle={`${c.titular} · ${c.cbuAlias}`}
       onClose={closeModal}
       footer={[
@@ -385,8 +394,9 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
       ]}
     >
       <div className={cx(s.callout, s.info)} style={{ margin: 0 }}>
-        Una transferencia que hiciste <strong>vos, desde la cuenta de Sabor y Aroma</strong>, a esta cuenta del proveedor. No pasa
-        por la caja: suma a «Pagado» y baja lo que le debés al proveedor (queda como pago a cuenta, para aplicar a su factura).
+        {deTercero
+          ? <>Una transferencia que hizo <strong>otra persona, desde su propia cuenta</strong>, a esta cuenta del proveedor. No pasa por la caja ni por ninguna cuenta de Sabor y Aroma:</>
+          : <>Una transferencia que hiciste <strong>vos, desde la cuenta de Sabor y Aroma</strong>, a esta cuenta del proveedor. No pasa por la caja:</>} suma a «Pagado» y baja lo que le debés al proveedor (queda como pago a cuenta, para aplicar a su factura).
         A cubrir <strong>{money(c.importe)}</strong> · pagado <strong>{money(c.pagado)}</strong> · falta <strong>{money(c.falta)}</strong>.
         {c.puedePasarse && <> Esta cuenta <strong>puede pasarse del monto</strong>: lo de más queda a favor en la cuenta corriente del proveedor.</>}
       </div>
@@ -404,7 +414,16 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
         </div>
         <div className={s.field}>
           <label>¿De qué cuenta salió?</label>
-          <CuentaPropiaSelect value={cuentaId} onChange={(v) => { setCuentaId(v); setConfirmando(false); }} />
+          <select
+            id="pago-cuenta-quien" value={deTercero ? 'tercero' : 'propia'} style={{ marginBottom: 6 }}
+            onChange={(e) => { setDeTercero(e.target.value === 'tercero'); setConfirmando(false); }}
+          >
+            <option value="propia">Una cuenta de Sabor y Aroma</option>
+            <option value="tercero">La cuenta de un tercero</option>
+          </select>
+          {deTercero
+            ? <input id="pago-tercero" value={tercero} maxLength={80} onChange={cambiar(setTercero)} placeholder="¿Quién transfirió? Nombre del titular" />
+            : <CuentaPropiaSelect value={cuentaId} onChange={(v) => { setCuentaId(v); setConfirmando(false); }} />}
         </div>
         <div className={s.field}>
           <label>Nº de operación</label>
@@ -417,7 +436,7 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
       </div>
       {confirmando && (
         <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>
-          ¿Registrás la transferencia de <strong>{money(n)}</strong> desde tu cuenta a <strong>{c.proveedorNombre}</strong> ({c.titular} · {c.cbuAlias})?{' '}
+          ¿Registrás la transferencia de <strong>{money(n)}</strong> {deTercero ? <>que hizo <strong>{tercero.trim()}</strong> desde su cuenta</> : 'desde tu cuenta'} a <strong>{c.proveedorNombre}</strong> ({c.titular} · {c.cbuAlias})?{' '}
           {n > r2(c.falta) + 0.004
             ? `La cuenta queda cubierta y pasada por ${money(r2(n - c.falta))}: eso queda a favor en la cuenta corriente del proveedor.`
             : n >= r2(c.falta) - 0.004 ? 'La cuenta queda cubierta.' : `Le van a quedar ${money(r2(c.falta - n))} por cubrir.`}

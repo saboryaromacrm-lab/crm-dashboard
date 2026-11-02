@@ -193,7 +193,7 @@ function VistaPagos() {
     <>
       <div className={s.hint} style={{ marginTop: 0 }}>
         Cada transferencia con su cliente y su comprobante: las de clientes nacen del cobro en la caja o del recibo; las
-        tuyas, del botón «Pagar» de cada cuenta (dicen «Pago propio» y se anulan desde acá).
+        tuyas o de un tercero, del botón «Pagar» de cada cuenta (dicen «Pago propio» o «Tercero: nombre» y se anulan desde acá).
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
