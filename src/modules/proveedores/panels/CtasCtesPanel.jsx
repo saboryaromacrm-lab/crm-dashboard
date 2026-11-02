@@ -17,7 +17,9 @@ const FILTROS = [
  * cartera de echeqs.
  */
 export function CtasCtesPanel() {
-  const { proveedores, openModal, toast, recargarContadores } = useProveedores();
+  const { proveedores, openModal, toast, recargarContadores, panels, goPanel, getProveedor } = useProveedores();
+  /* Clic en el proveedor → su estado de cuenta (2/11/2026, pedido del dueño), si este usuario tiene esa sección. */
+  const veEdoc = (panels ?? []).some((p) => p.id === 'edoc');
   const [filtro, setFiltro] = useState('pendientes');
   const [proveedorId, setProveedorId] = useState('');
   const { data, reload } = useResource(
@@ -67,7 +69,22 @@ export function CtasCtesPanel() {
         {(data?.filas ?? []).map((k) => (
           <tr key={k.id}>
             <td>{fmtFecha(k.fechaVenc)} {!k.pagado && <VencePill dias={k.diasRest} />}</td>
-            <td>{k.proveedorNombre}</td>
+            <td>
+              {veEdoc ? (
+                <button
+                  type="button" title="Ver su estado de cuenta" onClick={() => goPanel('edoc', { proveedorId: k.proveedorId })}
+                  style={{
+                    all: 'unset', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline',
+                    textDecorationColor: 'var(--crm-color-border, #ccc)', textUnderlineOffset: 3,
+                  }}
+                >
+                  {k.proveedorNombre}
+                </button>
+              ) : k.proveedorNombre}
+              {getProveedor(k.proveedorId)?.modoCuenta === 'libre' && (
+                <div className={s.hint} style={{ margin: 0 }}>cuenta libre: lo pagado cubre lo más viejo</div>
+              )}
+            </td>
             <td>
               {k.comprobanteEtiqueta || (k.origen === 'manual' ? 'Manual' : '—')}
               {k.cuota ? ` · cuota ${k.cuota}/${k.cuotas}` : ''}
