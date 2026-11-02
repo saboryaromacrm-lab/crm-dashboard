@@ -259,11 +259,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
         <Stat label="Saldo" value={money(d.saldo)} accent={d.saldo > EPS ? 'accent-red' : undefined} />
         <Stat label="Comprometido" value={comprometido > 0 ? money(comprometido) : '—'} />
         <Stat label="Proyectado (saldo − compromisos)" value={money(r2(d.saldo - comprometido))} />
-        <Stat
-          label="Pagos sin aplicar"
-          value={d.pagosSinAplicar > EPS ? money(d.pagosSinAplicar) : '—'}
-          accent={d.pagosSinAplicar > EPS ? 'accent-amber' : undefined}
-        />
+        {/* «Pagos sin aplicar» se sacó a pedido del dueño (2/11/2026): no la usa. */}
         <Stat
           label={p.diasPago > 0 ? `Vencido (más de ${p.diasPago} días)` : 'Vencido'}
           value={montoVencido > EPS ? money(montoVencido) : '—'}
