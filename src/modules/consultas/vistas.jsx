@@ -278,7 +278,7 @@ export function CambiosPrecioVista({ compacto = false }) {
  * Existencias  (Alt+F3)
  * ------------------------------------------------------------------ */
 
-const FILTROS_STOCK = { q: '', proveedor: '', categoria: '', marca: '', soloConStock: false, faltaEn: '', pedido: '', nuncaTuvo: false };
+const FILTROS_STOCK = { q: '', proveedor: '', categoria: '', marca: '', soloConStock: false, faltaEn: '', pedido: '', nuncaTuvo: false, soloMadres: false };
 const totalDe = (i) => (i.stockSucursales ?? []).reduce((a, x) => a + (x.cantidad || 0), 0);
 const stockEn = (item, sucursalId) => item.stockSucursales?.find((x) => x.sucursalId === sucursalId)?.cantidad ?? 0;
 /** El stock de la columna por la que se ordena: una sucursal o 'total'. */
@@ -423,6 +423,8 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
       && (!f.marca || i.marca === f.marca)
       && (!f.categoria || i.categoria === f.categoria)
       && (!f.soloConStock || totalDe(i) > 0)
+      /* SOLO LOS MADRES (2/11/2026, pedido del dueño): el granel suelto por kg, sin sus fraccionados ni los enteros. */
+      && (!f.soloMadres || (i.tipo === 'granel' && !i.presentacionId))
       && (!faltaEn || (stockEn(i, faltaEn) <= 1e-9 && stockEn(i, dist.id) > 1e-9))
       /* Lo que el local nunca tuvo (no lo trabaja) queda afuera salvo que se pida: si no, tapa lo que se le terminó. */
       && (!faltaEn || !sin || f.nuncaTuvo || !!infoDe(i, faltaEn)?.desde)
@@ -537,6 +539,17 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
               Solo con stock
             </label>
           )}
+        </Campo>
+        <Campo label="Granel">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap', padding: '7px 0' }} title="Solo el granel suelto por kg (los productos madre), sin sus fraccionados ni los enteros">
+            <input
+              id="consulta-solo-madres"
+              type="checkbox"
+              checked={!!f.soloMadres}
+              onChange={(e) => set({ soloMadres: e.target.checked })}
+            />
+            Solo madres (suelto por kg)
+          </label>
         </Campo>
       </div>
 
