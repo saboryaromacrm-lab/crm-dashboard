@@ -19,15 +19,12 @@ import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
 import { urlWhatsApp } from '@shared/utils/whatsapp.js';
-import { direccionOrden, envioOrden, mapaOrden, origenPedido, telefonoWa, totalConEnvio } from '../domain/constants.js';
+import { ENTREGAS, direccionOrden, envioOrden, mapaOrden, origenPedido, telefonoWa, totalConEnvio } from '../domain/constants.js';
 import { envioAPagar, llevaEnvio, pasarCadeteAlCliente, pedirCadete } from '../domain/cadete.js';
 import { PARA, RECIBIDOS, cuandoDe, diaAr, paraCuando, porEntrega, recibidoEn, textoCuando } from '../domain/cuandoEnvio.js';
 import {
   Table, PanelHead, Btn, Di, ModalShell, money, num, fmtFechaHora, usePaginado, s,
 } from '../components/ui.jsx';
-
-/* `camioneta` es el id interno; se lee «Envío sin costo» como en la tienda (4/10/2026). */
-const ENTREGAS = { retiro: 'Retiro en local', cadete: 'Cadete', camioneta: 'Envío sin costo' };
 
 /** De qué tienda vino la orden (0173): acá son todas web, así que `origenPedido` da minorista o mayorista. */
 const MODOS = { mayorista: { label: 'Mayorista', pill: 'est-transito' }, minorista: { label: 'Minorista', pill: 'est-recibida' } };

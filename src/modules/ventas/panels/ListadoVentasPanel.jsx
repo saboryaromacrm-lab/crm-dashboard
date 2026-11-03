@@ -32,7 +32,7 @@ import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
 import { imprimirVenta } from '@core/services/imprimir.js';
 import {
-  MEDIOS_PAGO, ESTADOS_VENTA, ORIGENES_PEDIDO, TIPOS_VENTA, nroComprobante, esNotaCredito,
+  MEDIOS_PAGO, ESTADOS_VENTA, ENTREGAS, ORIGENES_PEDIDO, TIPOS_VENTA, esEnvio, nroComprobante, esNotaCredito,
 } from '../domain/constants.js';
 import {
   Table, PanelHead, Stat, Btn, Pill, VentaEstadoPill, VentaTag,
@@ -251,6 +251,18 @@ function ResumenMercadoPago({ mp }) {
 /** Un color fijo por tienda, como los medios de pago. */
 const COLOR_TIENDA = { minorista: '#db2777', mayorista: '#2563eb' };
 
+/** Cómo se entregó el pedido de la tienda (3/11/2026): retiro en el local o envío a domicilio (cadete o sin costo). */
+function Entrega({ entrega }) {
+  if (!entrega) return <span className={s.muted}>—</span>;
+  if (!esEnvio(entrega)) return ENTREGAS[entrega] ?? entrega;
+  return (
+    <>
+      Envío a domicilio
+      <div className={s.hint} style={{ margin: 0 }}>{ENTREGAS[entrega]}</div>
+    </>
+  );
+}
+
 /** Las ventas de la tienda online: las dos tiendas o una. */
 const TIENDAS = [['tienda', 'Todas'], ['minorista', ORIGENES_PEDIDO.minorista.label], ['mayorista', ORIGENES_PEDIDO.mayorista.label]];
 
@@ -259,13 +271,13 @@ export function ListadoVentasPanel({ tienda = false }) {
 
   /* La sucursal del puesto manda para todos menos administración. */
   const sucursalFija = esJefe ? null : (ctx.sucursalId ?? null);
-  /* Las de la tienda son menos: arrancan mostrando el mes. */
-  const rangoInicial = tienda ? 'mes' : 'hoy';
+  /* Las de la tienda son menos: arrancan mostrando todo (3/11/2026, pedido del dueño; antes el mes). */
+  const rangoInicial = tienda ? 'todo' : 'hoy';
   const origenInicial = tienda ? 'tienda' : '';
 
   const [rango, setRango] = useState(rangoInicial);
   const [desde, setDesde] = useState(() => RANGOS.find((r) => r.id === rangoInicial).calc().desde);
-  const [hasta, setHasta] = useState(hoyIso);
+  const [hasta, setHasta] = useState(() => RANGOS.find((r) => r.id === rangoInicial).calc().hasta);
   const [sucursalId, setSucursalId] = useState('');
   const [usuarioId, setUsuarioId] = useState('');
   const [clienteId, setClienteId] = useState('');
@@ -384,7 +396,7 @@ export function ListadoVentasPanel({ tienda = false }) {
   const exportar = () => descargarCsv(
     `ventas-${desde || 'todo'}.csv`,
     ['Comprobante', 'Tipo', 'Fecha', 'Sucursal', 'Cajero', 'Cliente', 'Turno', 'Renglones',
-      'Unidades', 'Medios de pago', 'Descuento', 'De ofertas', 'Neto', 'IVA', 'Total', 'Estado', 'Origen'],
+      'Unidades', 'Medios de pago', 'Descuento', 'De ofertas', 'Neto', 'IVA', 'Total', 'Estado', 'Origen', 'Entrega'],
     filas.map((v) => [
       nroComprobante(v), TIPOS_VENTA[v.tipo]?.label ?? v.tipo, fmtFechaHora(v.fecha),
       v.sucursalNombre, v.cajeroNombre, v.clienteNombre, v.cajaSesionId ? `#${v.cajaSesionId}` : '',
@@ -393,6 +405,7 @@ export function ListadoVentasPanel({ tienda = false }) {
       csvNum(v.descuentoTotal), csvNum(v.ofertaDescuento), csvNum(v.subtotalNeto), csvNum(v.ivaTotal),
       csvNum(v.total), ESTADOS_VENTA[v.estado]?.label ?? v.estado,
       v.tienda ? ORIGENES_PEDIDO[v.tienda].label : v.origen === 'pos' ? 'Mostrador' : 'Pedido',
+      v.entrega ? `${esEnvio(v.entrega) ? 'Envío a domicilio · ' : ''}${ENTREGAS[v.entrega] ?? v.entrega}` : '',
     ]),
   );
 
@@ -716,7 +729,7 @@ export function ListadoVentasPanel({ tienda = false }) {
         cols={[
           { h: 'Comprobante' }, { h: 'Fecha' },
           ...(esJefe ? [{ h: 'Sucursal' }] : []),
-          { h: 'Cajero' }, { h: 'Cliente' }, { h: 'Renglones', num: true },
+          { h: 'Cajero' }, { h: 'Cliente' }, ...(tienda ? [{ h: 'Entrega' }] : []), { h: 'Renglones', num: true },
           { h: 'Pago' }, { h: 'Descuento', num: true }, { h: 'Oferta' },
           { h: 'Total', num: true }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' },
         ]}
@@ -762,6 +775,7 @@ export function ListadoVentasPanel({ tienda = false }) {
                 </div>
               )}
             </td>
+            {tienda && <td><Entrega entrega={v.entrega} /></td>}
             <td className={s.num}>{v.renglones}</td>
             <td><Medios medios={v.medios} /></td>
             <td className={s.num}>{v.descuentoTotal > 0 ? money(v.descuentoTotal) : <span className={s.muted}>—</span>}</td>

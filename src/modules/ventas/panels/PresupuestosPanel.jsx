@@ -19,7 +19,7 @@ import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
 import { abrirWhatsApp } from '@shared/utils/whatsapp.js';
-import { ORIGENES_PEDIDO, direccionOrden, envioOrden, origenPedido, telefonoWa, totalConEnvio } from '../domain/constants.js';
+import { ENTREGAS, ORIGENES_PEDIDO, direccionOrden, envioOrden, origenPedido, telefonoWa, totalConEnvio } from '../domain/constants.js';
 import { envioAPagar, llevaEnvio, pasarCadeteAlCliente, pedirCadete } from '../domain/cadete.js';
 import { r2 } from '../domain/pos.js';
 import {
@@ -36,8 +36,6 @@ const ESTADOS = {
   cerrado: { label: 'Cerrado', pill: 'est-recibida' },
   cancelado: { label: 'Cancelado', pill: 'est-cancelada' },
 };
-/* `camioneta` es el id interno; se lee «Envío sin costo» como en la tienda (4/10/2026). */
-const ENTREGAS = { retiro: 'Retiro en local', cadete: 'Cadete', camioneta: 'Envío sin costo' };
 
 /** Lo que todavía hay que resolver (25/10/2026, el filtro por defecto): sin los cerrados ni los cancelados. */
 const PENDIENTES = 'pendientes';

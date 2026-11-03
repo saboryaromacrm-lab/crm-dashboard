@@ -202,6 +202,13 @@ export const ORIGENES_PEDIDO = {
   minorista: { label: 'Tienda minorista', icono: '🛒' },
   mayorista: { label: 'Tienda mayorista', icono: '🏪' },
 };
+/**
+ * Cómo se entrega un pedido. El cadete y la camioneta son envío a domicilio;
+ * `camioneta` es el id interno y se lee «Envío sin costo», como en la tienda (4/10/2026).
+ */
+export const ENTREGAS = { retiro: 'Retiro en local', cadete: 'Cadete', camioneta: 'Envío sin costo' };
+export const esEnvio = (entrega) => entrega === 'cadete' || entrega === 'camioneta';
+
 export const origenPedido = (p) => (p.origen === 'web' ? (p.modoTienda === 'minorista' ? 'minorista' : 'mayorista') : 'pos');
 
 /** El punto que marcó el cliente en el mapa, para el cadete. Vacío si no marcó. */
