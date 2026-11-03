@@ -1269,16 +1269,18 @@ export function imprimirEnvioCaja(d, { moneda, fechaHora, sucursal, cajero, usua
   if (d.billetesEnvio) {
     const sobre = d.billetesEnvio ?? {};
     const dens = Object.keys(sobre).map(Number).sort((x, y) => y - x);
+    const envia = dens.map((den) => [den, n(sobre[den])]);
+    /** Cuántos billetes físicos van en el sobre (3/11/2026, pedido del dueño): 3 de $20 + 5 de $2.000 = 8. */
+    const cantBilletes = envia.reduce((acc, [, c]) => acc + c, 0);
     const tabla = (pares, vacio) => {
       const con = pares.filter(([, c]) => c > 0);
       const total = con.reduce((acc, [den, c]) => acc + den * c, 0);
       const filasT = con.map(([den, c]) => `<tr><td>$ ${esc(den.toLocaleString('es-AR'))}</td><td class="n">${esc(String(c))}</td><td class="n">${esc(moneda(den * c))}</td></tr>`).join('');
       return con.length
         ? `<table><thead><tr><th>Billete</th><th class="n">Cantidad</th><th class="n">Importe</th></tr></thead>
-            <tbody>${filasT}<tr class="fuerte"><td>TOTAL</td><td class="n">${esc(String(con.reduce((acc, [, c]) => acc + c, 0)))}</td><td class="n">${esc(moneda(total))}</td></tr></tbody></table>`
+            <tbody>${filasT}<tr class="fuerte"><td>TOTAL</td><td class="n">${esc(String(cantBilletes))}</td><td class="n">${esc(moneda(total))}</td></tr></tbody></table>`
         : `<div class="nota">${vacio}</div>`;
     };
-    const envia = dens.map((den) => [den, n(sobre[den])]);
     const cuerpoNuevo = `
     <div class="arqueo">
     <h1>Envío de caja - Turno #${esc(String(d.sesionId ?? ''))}</h1>
@@ -1298,6 +1300,7 @@ export function imprimirEnvioCaja(d, { moneda, fechaHora, sucursal, cajero, usua
       <div>Envía (cajero)<br />${esc(cajero || '')}</div>
       <div>Recibe conforme</div>
     </div>
+    ${cantBilletes > 0 ? `<div class="sub" style="margin-top:6px;text-align:center">Van ${esc(String(cantBilletes))} billete${cantBilletes === 1 ? '' : 's'} en el sobre</div>` : ''}
     ${reimpresion ? selloReimpresion(usuario, new Date()) : ''}
     </div>`;
     return imprimirDocumento('cierreCaja', { titulo: `Envío de caja - Turno ${d.sesionId ?? ''}`, cuerpo: cuerpoNuevo });
