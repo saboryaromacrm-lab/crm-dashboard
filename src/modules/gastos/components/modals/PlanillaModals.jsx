@@ -5,6 +5,8 @@ import { errorMsg, gastosApi } from '../../services/gastos.api.js';
 import { hoyISO, mesLargo, periodoISO, r2 } from '../../domain/constants.js';
 import { costoMensual, cuotaMensual } from '../../domain/sueldos.js';
 import { ModalShell, Table, Btn, money, s } from '../ui.jsx';
+import { REPARTO, repartoAEnviar } from '../../domain/reparto.js';
+import { RepartoLocales } from '../RepartoLocales.jsx';
 
 /**
  * LA PLANILLA DE RESULTADOS (0152, solo superadmin): empleados con su
@@ -13,10 +15,11 @@ import { ModalShell, Table, Btn, money, s } from '../ui.jsx';
  */
 
 /** El selector de local de la planilla: un local, o «sin local» (se reparte o queda en Administración, según el rubro). */
-function SelectorLocal({ valor, onChange, sucursales, textoSinLocal }) {
+function SelectorLocal({ valor, onChange, sucursales, textoSinLocal, conReparto = false }) {
   return (
     <select value={valor} onChange={onChange}>
       <option value="">{textoSinLocal}</option>
+      {conReparto && <option value={REPARTO}>Repartido por % entre locales…</option>}
       {sucursales.filter((x) => x.activa || String(x.id) === String(valor)).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
     </select>
   );
@@ -39,7 +42,8 @@ export function EmpleadoFormModal({ empleado: inicial, sucursales = [], onChange
   const [e, setE] = useState(inicial);
   const editando = !!e;
   const [f, setF] = useState({
-    nombre: inicial?.nombre ?? '', cuil: inicial?.cuil ?? '', sucursalId: inicial?.sucursalId ?? '',
+    nombre: inicial?.nombre ?? '', cuil: inicial?.cuil ?? '',
+    sucursalId: inicial?.reparto?.length ? REPARTO : inicial?.sucursalId ?? '', reparto: inicial?.reparto ?? [],
     alta: inicial?.alta ?? hoyISO(), baja: inicial?.baja ?? '', observaciones: inicial?.observaciones ?? '',
     bruto: '', cargas: '',
   });
@@ -56,7 +60,9 @@ export function EmpleadoFormModal({ empleado: inicial, sucursales = [], onChange
     if (!f.alta) { toast('Poné la fecha de alta.', 'err'); return; }
     if (f.baja && f.baja < f.alta) { toast('La baja no puede ser anterior al alta.', 'err'); return; }
     const base = {
-      nombre: f.nombre.trim(), cuil: f.cuil.trim(), sucursalId: f.sucursalId ? Number(f.sucursalId) : null,
+      nombre: f.nombre.trim(), cuil: f.cuil.trim(),
+      sucursalId: f.sucursalId && f.sucursalId !== REPARTO ? Number(f.sucursalId) : null,
+      reparto: f.sucursalId === REPARTO ? repartoAEnviar(f.reparto) : [],
       alta: f.alta, observaciones: f.observaciones.trim(),
     };
     if (editando) {
@@ -125,9 +131,12 @@ export function EmpleadoFormModal({ empleado: inicial, sucursales = [], onChange
         </div>
         <div className={s.field}>
           <label>Local</label>
-          <SelectorLocal valor={f.sucursalId} onChange={set('sucursalId')} sucursales={sucursales} textoSinLocal="Varios locales / Administración" />
+          <SelectorLocal valor={f.sucursalId} onChange={set('sucursalId')} sucursales={sucursales} textoSinLocal="Varios locales / Administración" conReparto />
         </div>
       </div>
+      {f.sucursalId === REPARTO && (
+        <RepartoLocales filas={f.reparto} onChange={(reparto) => setF((x) => ({ ...x, reparto }))} sucursales={sucursales} />
+      )}
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label>Alta <span className={s.req}>*</span></label>

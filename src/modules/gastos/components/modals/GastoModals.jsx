@@ -12,6 +12,7 @@ import {
 } from '../ui.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
 import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
+import { textoReparto } from '../../domain/reparto.js';
 
 /* ==================================================================== *
  * Alta y edición del gasto
@@ -1050,7 +1051,9 @@ export function DetalleGastoModal({ gastoId, onChange }) {
         </Di>
         <Di label="Proveedor">{nombreProveedor(g, proveedores)}</Di>
         <Di label="Rubro">{cat?.nombre || '—'}</Di>
-        <Di label="Sucursal">{g.sucursalId ? nombreSucursal(g.sucursalId) : 'Toda la empresa'}</Di>
+        <Di label="Sucursal">
+          {g.reparto?.length ? `Repartido: ${textoReparto(g.reparto, nombreSucursal)}` : g.sucursalId ? nombreSucursal(g.sucursalId) : 'Toda la empresa'}
+        </Di>
         <Di label="Condición">{g.condicionPago === 'contado' ? 'Contado' : 'Cuenta corriente'}</Di>
         <Di label="Vence">{g.vencimiento ? fmtFecha(g.vencimiento) : '—'}</Di>
         {g.periodo && <Di label="Corresponde a">{mesLargo(String(g.periodo).slice(0, 7))}</Di>}

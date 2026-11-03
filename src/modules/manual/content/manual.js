@@ -2698,7 +2698,7 @@ export const MANUAL = [
       },
       {
         id: 'gastos-fijos',
-        actualizado: '2026-10-09',
+        actualizado: '2026-11-03',
         titulo: 'Gastos fijos y sueldos (solo el superadmin)',
         bloques: [
           {
@@ -2710,14 +2710,21 @@ export const MANUAL = [
             texto: 'Una **plantilla** de lo que llega todos los meses: alquiler, internet, seguro. No es un gasto todavía — es el recordatorio de que va a llegar. Con un clic se generan los del período, como pendientes y con el importe **estimado**, que se corrige cuando llega la factura real.',
           },
           {
+            t: 'p',
+            texto: 'Desde el 3/11/2026 está en **Gerencia › Resultados › Configuración › Gastos fijos y sueldos** (salió del menú de Gastos). Arriba, **Lo fijo de cada local**: sueldos, gastos fijos y amortizaciones del mes de cada local, la **contribución** (de cada $100 vendidos, lo que queda después de la mercadería y los gastos variables, tomada del mes anterior) y la **venta necesaria** para cubrir lo fijo (el punto de equilibrio). Abajo, las mismas tres pestañas de siempre.',
+          },
+          {
             t: 'lista',
             items: [
+              '**Un gasto fijo cuenta aunque no lo hayas generado**: en Resultados, cada mes desde **«Corre desde»** sin el gasto cargado cuenta con el importe estimado, y se avisa arriba del estado de resultados. Al cargar (o generar) el gasto real, lo reemplaza solo. Un bimestral o trimestral cuenta su parte por mes. Dado de baja, deja de contar desde ese mes.',
+              '**Repartido por % entre locales**: en el gasto fijo y en el empleado, la opción **«Repartido por % entre locales…»** del local abre un porcentaje por local (tienen que sumar 100 %). En Resultados cada local carga con su parte. Los gastos que genera la plantilla llevan el reparto copiado; si después le elegís un local al gasto, el reparto se va.',
+              'Los gastos de **packing, bolsas, limpieza y afines** no van acá: se cargan en Gastos con un rubro **variable** y entran solos al estado de resultados.',
               'La generación es **idempotente**: se comprueba contra los gastos ya emitidos por cada plantilla, no contra un flag. Reintentar nunca duplica, y si se borra el gasto generado la plantilla vuelve a ofrecerse sola.',
               'La **frecuencia** define la ventana: un seguro anual generado en agosto no vuelve a aparecer hasta el agosto siguiente, mientras que los mensuales reaparecen cada mes.',
               'El importe generado es el **estimado** de la plantilla y el vencimiento sale del día configurado (si el mes no llega a ese día, se usa el último). Los dos se corrigen editando el gasto cuando llega el papel.',
             ],
           },
-          { t: 'ruta', texto: 'Gastos › Gastos fijos' },
+          { t: 'ruta', texto: 'Gerencia › Resultados › Configuración › Gastos fijos y sueldos' },
         ],
       },
       {
@@ -3236,6 +3243,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**3/11/2026**', '**GASTOS FIJOS PARA EL ESTADO DE RESULTADOS** (pedido del dueño, migración 0216). «Gastos fijos y sueldos» se mudó de Gastos a **Gerencia › Resultados › Configuración**, con **Lo fijo de cada local** arriba (sueldos, fijos, amortizaciones, contribución y venta necesaria). Un gasto fijo **sin cargar cuenta igual** en Resultados con su importe estimado desde el mes en que corre (y se avisa); el real lo reemplaza. El gasto fijo y el empleado se pueden **repartir por % entre locales**. Al cargar una factura de compra se ofrecen también los **pagos a cuenta sin sucursal** (los del Cash Flow) y, al administrador, los de **otras sucursales** con su origen a la vista.'],
               ['**3/11/2026**', '**OTRA CUENTA, ESCRITA A MANO** (pedido del dueño, migración 0215). En **«¿De qué cuenta salió?»** hay una opción nueva: **Otra cuenta (escribirla a mano)…**, para una transferencia que no salió de Mis cuentas (por ejemplo, desde la cuenta de tu hermano). Se escribe el nombre y listo: no se agrega a Mis cuentas, pero queda asentada en el pago y se ve como **«desde Cuenta de mi hermano (a mano)»** en el estado de cuenta y en los listados de pagos. Está en todos los pagos que piden la cuenta (Pagarle, la cuota, Gastos, el contado de una factura) y en cada parte de un pago mixto; **Elegir de mis cuentas** vuelve a la lista. El filtro por cuenta de los listados no la incluye, porque no es una de tus cuentas. En el «Pagar» de Cuentas disponibles sigue la opción de siempre, «La cuenta de un tercero».'],
               ['**3/11/2026**', '**LOS DÍAS DE CIERRE DE CAJA** (pedido del dueño, migración 0214; reemplaza el «cada N días» del 2/11, que no servía para días salteados). En **Gerencia › Sucursales**, la columna **Días de cierre de caja** tiene un botón por día (L M M J V S D): se encienden los días en que el local **cuenta la caja y arma el sobre, al terminar el día**. Con los siete encendidos cierra todos los días, como siempre; siempre queda al menos uno. **Ejemplo:** si pasás a buscar la plata el martes y el jueves, encendé **lunes y miércoles**: el sobre trae lo de los días anteriores y lo que se vende el día que pasás va en la caja siguiente. Cada caja queda abierta hasta el **próximo día de cierre**, contando el de la apertura: abierta el martes, se cierra el miércoles; abierta el jueves, el lunes. Al abrir, la ventana dice ese día; en la caja y en el punto de venta se ve **«Cerrarla a más tardar»** (verde, amarillo el día de cierre, rojo si ya pasó) y ese día sale el cartel rojo **«Hoy hay que cerrar la caja»**. Si no se cierra el día de cierre, al día siguiente **no deja vender ni cobrar** hasta cerrarla (alcanza con cerrarla a primera hora, antes de vender: el sobre sigue trayendo solo lo de los días anteriores). Cerrar antes no tiene problema. El cambio rige desde la próxima apertura. Los locales de todos los días siguen como siempre: se avisan, no se frenan. Un local que hubiera quedado en «cada N días» pasó a todos los días: hay que elegirle los días.'],
               ['**3/11/2026**', '**RENTABILIDAD POR SUCURSAL** (pedido del dueño). En **Gerencia › Rentabilidad**, al lado de las fechas, el filtro **«Todas las sucursales»**. Con «Todas», debajo de los cuatro números aparece la tabla **Por sucursal**: venta neta, qué parte de la venta es de cada local, costo real, margen real y %, e IVA absorbido; tocando un local se elige arriba. Con un local elegido, todo lo de las ventas es de ese local: los cuatro números, lo vendido sin factura, el recargo por cuotas, el IVA débito y la tabla por producto, marca, categoría o proveedor. Las compras, el crédito fiscal, el stock sin factura y lo de Coffit son de todo el negocio y no se muestran con un local elegido. Es el margen de lo vendido, **antes de los gastos del local**: lo que queda después de gastos y sueldos se ve en **Gerencia › Resultados** con el local elegido.'],

@@ -1,16 +1,16 @@
 import { useState } from 'react';
-import { Button, Snackbar, Alert } from '@mui/material';
+import { Button } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
 import { FullScreenLoader } from '@shared/components/FullScreenLoader/FullScreenLoader.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import { useGastos } from '../context/GastosContext.jsx';
 import { ModalHost } from '../components/ModalHost.jsx';
+import { AvisoGastos } from '../components/AvisoGastos.jsx';
 import { Btn, s } from '../components/ui.jsx';
 
 import { GastosPanel } from '../panels/GastosPanel.jsx';
 import { CuentasAPagarPanel } from '../panels/CuentasAPagarPanel.jsx';
-import { FijosPanel } from '../panels/FijosPanel.jsx';
 import { CategoriasPanel } from '../panels/CategoriasPanel.jsx';
 import { ResumenPanel } from '../panels/ResumenPanel.jsx';
 
@@ -19,7 +19,6 @@ import { ResumenPanel } from '../panels/ResumenPanel.jsx';
 const PANEL_COMPONENTS = {
   gastos: GastosPanel,
   cuentas: CuentasAPagarPanel,
-  fijos: FijosPanel,
   categorias: CategoriasPanel,
   resumen: ResumenPanel,
 };
@@ -31,8 +30,7 @@ const PANEL_COMPONENTS = {
  */
 export function GastosShell({ title, subtitle }) {
   const {
-    loaded, loadError, recargar, panels, panel, goPanel, contadores,
-    toastState, closeToast, toast,
+    loaded, loadError, recargar, panels, panel, goPanel, contadores, toast,
   } = useGastos();
   const [refrescando, setRefrescando] = useState(false);
 
@@ -112,29 +110,7 @@ export function GastosShell({ title, subtitle }) {
       </div>
 
       <ModalHost />
-
-      {/* Abajo a la derecha, y por ENCIMA de cualquier modal (23/9/2026):
-          el aviso vivía arriba a la derecha y en formularios largos —el
-          "Guardar" queda abajo— pasaba lejos de donde estaban mirando: se
-          guardaba igual, pero nadie lo notaba hasta cerrar el modal. Abajo
-          es donde está la vista justo después de tocar Guardar. El zIndex
-          explícito es lo que evita que un modal grande vuelva a taparlo. */}
-      <Snackbar
-        open={toastState.open}
-        autoHideDuration={4000}
-        onClose={closeToast}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        sx={{ zIndex: (theme) => theme.zIndex.modal + 50 }}
-      >
-        <Alert
-          onClose={closeToast}
-          severity={toastState.kind === 'err' ? 'error' : 'success'}
-          variant="filled"
-          sx={{ width: '100%' }}
-        >
-          {toastState.msg}
-        </Alert>
-      </Snackbar>
+      <AvisoGastos />
     </div>
   );
 }

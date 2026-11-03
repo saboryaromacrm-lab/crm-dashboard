@@ -9,7 +9,6 @@
  */
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
-import AutorenewIcon from '@mui/icons-material/Autorenew';
 import CategoryIcon from '@mui/icons-material/Category';
 import InsightsIcon from '@mui/icons-material/Insights';
 
@@ -19,8 +18,7 @@ export const GASTOS_PANELS = [
   // viaja con la sección que la contiene.
   { id: 'gastos', label: 'Gastos', icon: ReceiptLongIcon, permiso: 'gastos.gastos', badge: 'sinAplicar' },
   { id: 'cuentas', label: 'Cuentas a pagar', icon: EventBusyIcon, permiso: 'gastos.pagos', badge: 'vencidos' },
-  // Gastos fijos (0152): con los sueldos adentro, solo el superadmin (llave fuera del catálogo).
-  { id: 'fijos', label: 'Gastos fijos y sueldos', icon: AutorenewIcon, permiso: 'gerencia.resultados' },
+  // Gastos fijos y sueldos (0152) se mudaron a Gerencia › Resultados › Configuración (3/11/2026).
   { id: 'categorias', label: 'Rubros', icon: CategoryIcon, permiso: 'gastos.categorias' },
   // El ABM de Proveedores se fue al MÓDULO Proveedores (0068): la ficha única
   // con lo comercial completo vive allá. Acá quedó solo lo que es de gastos.

@@ -5,6 +5,7 @@ import { gastosApi } from '../services/gastos.api.js';
 import { diaLegible, hoyISO, mesLargo } from '../domain/constants.js';
 import { costoMensual } from '../domain/sueldos.js';
 import { Table, PanelHead, Stat, Btn, Pill, money, s } from '../components/ui.jsx';
+import { textoReparto } from '../domain/reparto.js';
 
 /**
  * SUELDOS POR EMPLEADO (0152, solo superadmin). No son gastos: es la planilla
@@ -54,7 +55,11 @@ export function SueldosTab() {
                 <div>{e.nombre}</div>
                 {e.cuil && <div className={s.hint} style={{ margin: 0 }}>CUIL {e.cuil}</div>}
               </td>
-              <td>{nombreSuc(e.sucursalId) ?? <span className={s.muted}>{reparte ? 'Varios locales (se reparte)' : 'Administración'}</span>}</td>
+              <td>
+                {e.reparto?.length
+                  ? <span>{textoReparto(e.reparto, nombreSuc)}</span>
+                  : nombreSuc(e.sucursalId) ?? <span className={s.muted}>{reparte ? 'Varios locales (se reparte)' : 'Administración'}</span>}
+              </td>
               <td>{diaLegible(e.alta)}</td>
               <td className={s.num}>{e.vigente ? money(e.vigente.bruto) : '—'}</td>
               <td className={s.num}>{e.vigente ? `${e.vigente.cargas} %` : '—'}</td>

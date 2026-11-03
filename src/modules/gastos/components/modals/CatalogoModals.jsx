@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useGastos } from '../../context/GastosContext.jsx';
 import { gastosApi } from '../../services/gastos.api.js';
-import { FRECUENCIAS, r2 } from '../../domain/constants.js';
+import { FRECUENCIAS, periodoISO, r2 } from '../../domain/constants.js';
 import { ModalShell, money, s } from '../ui.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
+import { REPARTO, repartoAEnviar } from '../../domain/reparto.js';
+import { RepartoLocales } from '../RepartoLocales.jsx';
 
 /* ==================================================================== *
  * Rubros
@@ -139,6 +141,7 @@ export function RecurrenteFormModal({ recurrenteId, onChange }) {
   const [f, setF] = useState({
     nombre: '', categoriaId: '', proveedorId: '', sucursalId: '',
     importeEstimado: '', frecuencia: 'mensual', diaVencimiento: 10, activo: true, observaciones: '',
+    desde: periodoISO(), reparto: [],
   });
 
   useEffect(() => {
@@ -147,7 +150,9 @@ export function RecurrenteFormModal({ recurrenteId, onChange }) {
       nombre: original.nombre,
       categoriaId: original.categoriaId ?? '',
       proveedorId: original.proveedorId ?? '',
-      sucursalId: original.sucursalId ?? '',
+      sucursalId: original.reparto?.length ? REPARTO : original.sucursalId ?? '',
+      reparto: original.reparto ?? [],
+      desde: original.desde?.slice(0, 7) ?? periodoISO(),
       importeEstimado: original.importeEstimado || '',
       frecuencia: original.frecuencia,
       diaVencimiento: original.diaVencimiento,
@@ -165,7 +170,9 @@ export function RecurrenteFormModal({ recurrenteId, onChange }) {
       nombre: f.nombre.trim(),
       categoriaId: Number(f.categoriaId),
       proveedorId: f.proveedorId ? Number(f.proveedorId) : null,
-      sucursalId: f.sucursalId ? Number(f.sucursalId) : null,
+      sucursalId: f.sucursalId && f.sucursalId !== REPARTO ? Number(f.sucursalId) : null,
+      reparto: f.sucursalId === REPARTO ? repartoAEnviar(f.reparto) : [],
+      desde: f.desde,
       importeEstimado: r2(f.importeEstimado),
       frecuencia: f.frecuencia,
       diaVencimiento: Number(f.diaVencimiento) || 10,
@@ -215,11 +222,21 @@ export function RecurrenteFormModal({ recurrenteId, onChange }) {
           <label>Sucursal</label>
           <select value={f.sucursalId} onChange={set('sucursalId')}>
             <option value="">Toda la empresa</option>
-            <OpcionSucursalGuardada valor={f.sucursalId} lista={sucursales} nombre={nombreSucursal(Number(f.sucursalId))} />
+            <option value={REPARTO}>Repartido por % entre locales…</option>
+            {f.sucursalId !== REPARTO && <OpcionSucursalGuardada valor={f.sucursalId} lista={sucursales} nombre={nombreSucursal(Number(f.sucursalId))} />}
             {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
           </select>
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            {f.sucursalId === REPARTO
+              ? 'Cada local carga con su porcentaje en Resultados.'
+              : !f.sucursalId ? 'En Resultados se reparte por lo que vende cada local, o va a Administración, según el rubro.' : null}
+          </div>
         </div>
       </div>
+
+      {f.sucursalId === REPARTO && (
+        <RepartoLocales filas={f.reparto} onChange={(reparto) => setF((x) => ({ ...x, reparto }))} sucursales={sucursales} />
+      )}
 
       <div className={s['form-grid']}>
         <div className={s.field}>
@@ -235,6 +252,13 @@ export function RecurrenteFormModal({ recurrenteId, onChange }) {
           <select value={f.frecuencia} onChange={set('frecuencia')}>
             {Object.entries(FRECUENCIAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
+        </div>
+        <div className={s.field}>
+          <label>Corre desde</label>
+          <input type="month" value={f.desde} onChange={(e) => e.target.value && setF((x) => ({ ...x, desde: e.target.value }))} />
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            Desde ese mes, si no está cargado, Resultados lo cuenta con el importe estimado.
+          </div>
         </div>
         <div className={s.field}>
           <label>Vence el día</label>
@@ -258,7 +282,7 @@ export function RecurrenteFormModal({ recurrenteId, onChange }) {
               checked={!!f.activo}
               onChange={(e) => setF((x) => ({ ...x, activo: e.target.checked }))}
             />
-            Activo (se sigue generando cada período)
+            Activo (se sigue generando cada período; dado de baja, deja de contar desde este mes)
           </label>
         </div>
       )}

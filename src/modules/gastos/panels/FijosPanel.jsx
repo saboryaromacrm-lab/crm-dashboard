@@ -7,6 +7,7 @@ import { gastosApi } from '../services/gastos.api.js';
 import { FRECUENCIAS, mesLargo as nombrePeriodo, periodoISO } from '../domain/constants.js';
 import { Table, PanelHead, Stat, Btn, Pill, money, fmtFecha, s } from '../components/ui.jsx';
 import { SueldosTab } from './SueldosTab.jsx';
+import { textoReparto } from '../domain/reparto.js';
 import { BienesTab } from './BienesTab.jsx';
 
 /**
@@ -40,7 +41,7 @@ export function FijosPanel() {
  * cada plantilla, así que apretar dos veces no duplica nada.
  */
 function RecurrentesTab() {
-  const { recurrentes, categorias, proveedores, ctx, act, openModal, recargar } = useGastos();
+  const { recurrentes, categorias, proveedores, nombreSucursal, ctx, act, openModal, recargar } = useGastos();
   const [periodo, setPeriodo] = useState(periodoISO());
   const [generando, setGenerando] = useState(false);
 
@@ -72,7 +73,7 @@ function RecurrentesTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Gastos fijos"
-        desc="Plantillas de lo que se repite todos los meses. Generan el gasto del período con un clic; el importe se corrige cuando llega el comprobante."
+        desc="Plantillas de lo que se repite todos los meses. Generan el gasto del período con un clic; el importe se corrige cuando llega el comprobante. En Resultados, un mes sin el gasto cargado cuenta con el importe estimado."
         actions={
           <Btn variant="btn-primary" onClick={() => openModal('recurrenteForm', { onChange: reload })}>
             + Nuevo gasto fijo
@@ -119,7 +120,7 @@ function RecurrentesTab() {
       {/* ------------- Plantillas ------------- */}
       <Table
         cols={[
-          { h: 'Gasto fijo' }, { h: 'Rubro' }, { h: 'Proveedor' }, { h: 'Frecuencia' },
+          { h: 'Gasto fijo' }, { h: 'Rubro' }, { h: 'Local' }, { h: 'Proveedor' }, { h: 'Frecuencia' },
           { h: 'Vence el día', num: true }, { h: 'Estimado', num: true }, { h: 'Este período' },
           { h: 'Acciones', cls: 'actions-col' },
         ]}
@@ -131,9 +132,16 @@ function RecurrentesTab() {
             <tr key={r.id} className={s.clickable} onClick={() => openModal('recurrenteForm', { recurrenteId: r.id, onChange: reload })}>
               <td>
                 <div>{r.nombre}</div>
-                {!r.activo && <div className={s.hint} style={{ margin: 0 }}>Dado de baja</div>}
+                <div className={s.hint} style={{ margin: 0 }}>
+                  {r.activo ? `desde ${nombrePeriodo(r.desde.slice(0, 7))}` : `Dado de baja${r.hasta >= r.desde ? ` · contó hasta ${nombrePeriodo(r.hasta.slice(0, 7))}` : ''}`}
+                </div>
               </td>
               <td>{nombreCat(r.categoriaId)}</td>
+              <td>
+                {r.reparto?.length
+                  ? textoReparto(r.reparto, nombreSucursal)
+                  : r.sucursalId ? nombreSucursal(r.sucursalId) : <span className={s.muted}>Toda la empresa</span>}
+              </td>
               <td>{r.proveedorId ? nombreProv(r.proveedorId) : <span className={s.muted}>—</span>}</td>
               <td>{FRECUENCIAS[r.frecuencia] || r.frecuencia}</td>
               <td className={s.num}>{r.diaVencimiento}</td>
