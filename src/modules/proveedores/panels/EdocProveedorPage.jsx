@@ -258,8 +258,8 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <Stat label="Saldo" value={money(d.saldo)} accent={d.saldo > EPS ? 'accent-red' : undefined} />
         <Stat label="Comprometido" value={comprometido > 0 ? money(comprometido) : '—'} />
-        <Stat label="Proyectado (saldo − compromisos)" value={money(r2(d.saldo - comprometido))} />
-        {/* «Pagos sin aplicar» se sacó a pedido del dueño (2/11/2026): no la usa. */}
+        {/* «Pagos sin aplicar» (2/11/2026) y «Proyectado» (3/11/2026) se sacaron a pedido del dueño: no los usa.
+            El proyectado sigue en la lista de Estados de cuenta. */}
         <Stat
           label={p.diasPago > 0 ? `Vencido (más de ${p.diasPago} días)` : 'Vencido'}
           value={montoVencido > EPS ? money(montoVencido) : '—'}
