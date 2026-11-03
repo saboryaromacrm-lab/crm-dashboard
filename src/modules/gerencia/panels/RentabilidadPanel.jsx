@@ -12,6 +12,11 @@
  *
  * La tabla agrupa por producto / marca / categoría / proveedor con el MISMO
  * dato — no son cuatro reportes, es uno con cuatro lentes.
+ *
+ * POR LOCAL (3/11/2026, pedido del dueño): con «Todas», una tabla compara los
+ * locales; elegido uno, todo lo de las ventas es de ese local. Las compras, el
+ * crédito fiscal y el stock sin factura son del negocio entero (un CUIT, un
+ * depósito): con un local elegido no se muestran, para no mezclarlos con lo suyo.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
@@ -47,12 +52,13 @@ export function RentabilidadPanel() {
   const hoy = new Date();
   const [desde, setDesde] = useState(isoLocal(new Date(hoy.getFullYear(), hoy.getMonth(), 1)));
   const [hasta, setHasta] = useState(isoLocal(hoy));
+  const [sucursalId, setSucursalId] = useState('');
   const [lente, setLente] = useState('producto');
   const [soloSinFactura, setSoloSinFactura] = useState(false);
 
   const { data, loading, error, reload } = useResource(
-    `rentabilidad:${desde}:${hasta}`,
-    () => httpClient.get(`/gerencia/rentabilidad?desde=${desde}&hasta=${hasta}`),
+    `rentabilidad:${desde}:${hasta}:${sucursalId}`,
+    () => httpClient.get(`/gerencia/rentabilidad?desde=${desde}&hasta=${hasta}${sucursalId ? `&sucursalId=${sucursalId}` : ''}`),
   );
 
   /* ---- El lente: agrupar los productos por la clave elegida ---- */
@@ -83,7 +89,7 @@ export function RentabilidadPanel() {
       .sort((a, b) => b.ventaNeta - a.ventaNeta);
   }, [data, lente, soloSinFactura]);
 
-  const pag = usePaginado(filas, 'rentabilidad', `${lente}|${soloSinFactura}|${desde}|${hasta}`);
+  const pag = usePaginado(filas, 'rentabilidad', `${lente}|${soloSinFactura}|${desde}|${hasta}|${sucursalId}`);
 
   const recargar = useCallback(() => reload(), [reload]);
 
@@ -120,6 +126,10 @@ export function RentabilidadPanel() {
         <input type="date" className={s['select-inline']} value={desde} onChange={(e) => setDesde(e.target.value)} />
         <label className={s['mini-label']} style={{ margin: 0 }}>Hasta</label>
         <input type="date" className={s['select-inline']} value={hasta} onChange={(e) => setHasta(e.target.value)} />
+        <select className={s['select-inline']} value={sucursalId} onChange={(e) => setSucursalId(e.target.value)} aria-label="Sucursal">
+          <option value="">Todas las sucursales</option>
+          {(data?.sucursales ?? []).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+        </select>
         {loading && <span className={s.muted}>Cargando…</span>}
       </div>
 
@@ -157,16 +167,28 @@ export function RentabilidadPanel() {
             />
           </div>
 
+          {sucursalId ? (
+            <div className={s.hint} style={{ margin: 0 }}>
+              Ventas y margen de este local. Las compras, el crédito fiscal y el stock sin factura son de todo el negocio:
+              se ven con «Todas las sucursales». Para saber si el local gana plata después de sus gastos y sueldos, mirá
+              Gerencia › Resultados con el local elegido.
+            </div>
+          ) : data.porSucursal.length > 0 && (
+            <PorSucursal filas={data.porSucursal} onElegir={(id) => setSucursalId(String(id))} />
+          )}
+
           {/* ---- Lo sin factura y la posición fiscal ---- */}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <Stat
               label="Venta de mercadería sin factura" valor={money(sf.ventaNeta)}
               detalle={`${sf.productos} producto(s) · ${num(sf.participacion, 1)}% de la venta del período`}
             />
-            <Stat
-              label="Stock sin factura hoy" valor={money(stock.valorReal)}
-              detalle={`${stock.productos} producto(s) · si se vende todo, se absorben ${money(stock.ivaAbsorber)} más`}
-            />
+            {!sucursalId && (
+              <Stat
+                label="Stock sin factura hoy" valor={money(stock.valorReal)}
+                detalle={`${stock.productos} producto(s) · si se vende todo, se absorben ${money(stock.ivaAbsorber)} más`}
+              />
+            )}
             {/* LO QUE ENTRÓ POR FINANCIAR, en su propio renglón. No suma al
                 margen de ningún producto y no tiene que sumar: un mes con
                 muchas cuotas parecería un mes de mejores márgenes, y lo único
@@ -181,15 +203,17 @@ export function RentabilidadPanel() {
               label="IVA débito (ventas facturadas)" valor={money(f.debitoVentas)}
               detalle={`${f.ventasFacturadas} factura(s) de venta en el período`}
             />
-            <Stat
-              label="Crédito vs. débito" valor={money(f.posicion)}
-              tono={f.posicion > 0 ? 'warn' : 'ok'}
-              detalle={`Crédito: ${money(f.creditoCompras)} compras + ${money(f.creditoGastos)} gastos. ${f.posicion > 0 ? 'El crédito NO alcanza: esto queda por pagar.' : 'El crédito cubre el débito del período.'}`}
-            />
+            {!sucursalId && (
+              <Stat
+                label="Crédito vs. débito" valor={money(f.posicion)}
+                tono={f.posicion > 0 ? 'warn' : 'ok'}
+                detalle={`Crédito: ${money(f.creditoCompras)} compras + ${money(f.creditoGastos)} gastos. ${f.posicion > 0 ? 'El crédito NO alcanza: esto queda por pagar.' : 'El crédito cubre el débito del período.'}`}
+              />
+            )}
           </div>
 
           {/* ---- La plata sigue a la mercadería: qué parte de las compras es del café (0101) ---- */}
-          {data.coffit && (data.coffit.compradoDirecto > 0 || data.coffit.enviadoDesdeStock > 0) && (
+          {!sucursalId && data.coffit && (data.coffit.compradoDirecto > 0 || data.coffit.enviadoDesdeStock > 0) && (
             <div>
               <div className={s['section-title']}>Compras del período: distribuidora y Coffit</div>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -264,7 +288,7 @@ export function RentabilidadPanel() {
           )}
 
           {/* ---- El control por proveedor: lo declarado contra lo real ---- */}
-          {data.porProveedor.length > 0 && (
+          {!sucursalId && data.porProveedor.length > 0 && (
             <div>
               <div className={s['section-title']}>Compras sin factura por proveedor</div>
               <div className={s.hint} style={{ marginTop: 0 }}>
@@ -301,6 +325,43 @@ export function RentabilidadPanel() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/** Los locales lado a lado: cuánto vende cada uno y cuánto le queda. Un clic lo elige arriba. */
+function PorSucursal({ filas, onElegir }) {
+  return (
+    <div>
+      <div className={s['section-title']}>Por sucursal</div>
+      <div className={s.hint} style={{ marginTop: 0 }}>
+        El margen es de lo vendido (venta − costo congelado), antes de los gastos del local. Tocá un local para ver su detalle.
+      </div>
+      <Table cols={[
+        { h: 'Sucursal' }, { h: 'Venta neta', num: true }, { h: '% de la venta', num: true }, { h: 'Costo real', num: true },
+        { h: 'Margen real', num: true }, { h: '%', num: true }, { h: 'IVA absorbido', num: true },
+      ]}>
+        {filas.map((x) => (
+          <tr key={x.sucursalId}>
+            <td>
+              {x.sucursalId ? <button type="button" className={s.linkBtn} onClick={() => onElegir(x.sucursalId)}>{x.nombre}</button> : x.nombre}
+              {x.renglones > x.conCosto && (
+                <span className={s.hint} style={{ margin: 0 }}> · {x.renglones - x.conCosto} renglón(es) sin costo fuera del margen</span>
+              )}
+            </td>
+            <td className={s.num}>{money(x.ventaNeta)}</td>
+            <td className={s.num}>{num(x.participacion, 1)}%</td>
+            <td className={s.num}>{x.costo != null ? money(x.costo) : <span className={s.muted}>—</span>}</td>
+            <td className={s.num}>
+              {x.margenReal != null
+                ? <strong style={{ color: x.margenReal < 0 ? 'var(--crm-color-danger)' : undefined }}>{money(x.margenReal)}</strong>
+                : <span className={s.muted}>—</span>}
+            </td>
+            <td className={s.num}>{x.margenRealPct != null ? `${num(x.margenRealPct, 1)}%` : ''}</td>
+            <td className={s.num}>{x.ivaAbsorbido > 0 ? money(x.ivaAbsorbido) : <span className={s.muted}>—</span>}</td>
+          </tr>
+        ))}
+      </Table>
     </div>
   );
 }
