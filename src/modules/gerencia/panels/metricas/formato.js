@@ -30,6 +30,8 @@ export const puntosTxt = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${num(v
 export const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 export const DIAS_SEMANA = ['', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 export const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+/** «oct 2026», de un mes 'AAAA-MM'. */
+export const nombreMes = (m) => `${MESES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
 export const fechaCorta = (p) => `${Number(p.slice(8, 10))}/${Number(p.slice(5, 7))}`;
 export const fechaLarga = (p) => `${p.slice(8, 10)}/${p.slice(5, 7)}/${p.slice(0, 4)}`;
 

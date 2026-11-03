@@ -15,7 +15,7 @@ import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { money, num } from '@modules/productos/domain/format.js';
 import { Table, Btn, s } from '@modules/productos/components/ui.jsx';
 import { ColumnasMulti, Reparto } from './graficos.jsx';
-import { MESES, pctTxt } from './formato.js';
+import { nombreMes, pctTxt } from './formato.js';
 import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles } from './piezas.jsx';
 
 const C_FACT = 'var(--crm-color-primary)';
@@ -23,7 +23,6 @@ const C_PEND = '#2563eb';
 const C_SIN = '#ea580c';
 const C_DEB = '#dc2626';
 const C_CRED = 'var(--crm-color-primary)';
-const nombreMes = (m) => `${MESES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
 
 /** Un renglón «nombre · importe · %» con su color. */
 function Fila({ color, nombre, importe, pct, detalle }) {

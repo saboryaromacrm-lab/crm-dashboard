@@ -26,13 +26,14 @@ import { PestanaComparar } from './PestanaComparar.jsx';
 import { PestanaProductos } from './PestanaProductos.jsx';
 import { PestanaIva } from './PestanaIva.jsx';
 import { PestanaOfertas } from './PestanaOfertas.jsx';
+import { PestanaAnterior } from './PestanaAnterior.jsx';
 
 /* ============================================================================
  * EL PANEL
  * ========================================================================== */
 const PESTANAS = [
   ['ventas', 'Ventas'], ['productos', 'Productos y categorías'], ['marcas', 'Marcas'], ['comparar', 'Comparar fechas'], ['granel', 'Granel y enteros'], ['rentabilidad', 'Rentabilidad'], ['ofertas', 'Ofertas y descuentos'],
-  ['proveedores', 'Proveedores y listas'], ['stock', 'Stock'], ['iva', 'Resultados IVA'],
+  ['proveedores', 'Proveedores y listas'], ['stock', 'Stock'], ['iva', 'Resultados IVA'], ['anterior', 'Sistema anterior'],
 ];
 
 export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
@@ -71,6 +72,8 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
   const [, setTick] = useState(0);
   useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 30_000); return () => clearInterval(t); }, []);
 
+  /** Stock es de hoy y Sistema anterior va mes a mes: no usan el período ni el agrupado. */
+  const sinPeriodo = pestana === 'stock' || pestana === 'anterior';
   const qs = `desde=${desde}&hasta=${hasta}${sucursalId ? `&sucursalId=${sucursalId}` : ''}&paso=${paso}`;
   const e = estado.data;
 
@@ -78,7 +81,7 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)', minWidth: 0 }}>
       <PanelHead
         title="Métricas"
-        desc="Ventas, productos y categorías, marcas, comparación de fechas, granel y enteros, rentabilidad, ofertas y descuentos, proveedores y stock. Se actualiza solo cada 10 minutos; con «Sincronizar» traés lo último en el momento."
+        desc="Ventas, productos y categorías, marcas, comparación de fechas, granel y enteros, rentabilidad, ofertas y descuentos, proveedores, stock y el sistema anterior. Se actualiza solo cada 10 minutos; con «Sincronizar» traés lo último en el momento."
         actions={(
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span className={s.hint} style={{ margin: 0 }} title={e?.ultimaOk ? new Date(e.ultimaOk).toLocaleString('es-AR') : ''}>
@@ -97,12 +100,12 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
 
       {/* Filtros: una sola fila, arriba de todo, valen para todas las pestañas. */}
       <div className={s.toolbar} style={{ margin: 0 }}>
-        {pestana !== 'stock' && (
+        {!sinPeriodo && (
           <select className={s['select-inline']} value={preset} onChange={(ev) => { const v = ev.target.value; if (v === 'otro') setManual([desde, hasta]); setPreset(v); }} aria-label={pestana === 'comparar' ? 'Período A' : 'Período'}>
             {PRESETS.map(([k, l]) => <option key={k} value={k}>{pestana === 'comparar' ? `A: ${l}` : l}</option>)}
           </select>
         )}
-        {preset === 'otro' && pestana !== 'stock' && (
+        {preset === 'otro' && !sinPeriodo && (
           <>
             <input type="date" value={manual[0]} max={manual[1]} onChange={(ev) => setManual([ev.target.value, manual[1]])} aria-label="Desde" />
             <input type="date" value={manual[1]} min={manual[0]} onChange={(ev) => setManual([manual[0], ev.target.value])} aria-label="Hasta" />
@@ -112,7 +115,7 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
           <option value="">Todas las sucursales</option>
           {(sucs.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
         </select>
-        {pestana !== 'stock' && (
+        {!sinPeriodo && (
           <select className={s['select-inline']} value={pasoElegido} onChange={(ev) => setPasoElegido(ev.target.value)} aria-label="Agrupar por">
             <option value="">Agrupar: automático ({nombrePaso(paso)})</option>
             <option value="dia">Por día</option>
@@ -120,7 +123,7 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
             <option value="mes">Por mes</option>
           </select>
         )}
-        <span className={s.hint} style={{ margin: 0 }}>{pestana === 'stock' ? 'Stock de hoy' : `${fechaLarga(desde)} → ${fechaLarga(hasta)}`}</span>
+        <span className={s.hint} style={{ margin: 0 }}>{pestana === 'stock' ? 'Stock de hoy' : pestana === 'anterior' ? 'Mes a mes' : `${fechaLarga(desde)} → ${fechaLarga(hasta)}`}</span>
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} role="tablist">
@@ -149,6 +152,8 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
       {pestana === 'stock' && <PestanaStock sucursalId={sucursalId} version={version} />}
       {/* Resultados IVA (3/10/2026): con y sin factura, y la posición de IVA mes a mes. */}
       {pestana === 'iva' && <PestanaIva qs={qs} version={version} />}
+      {/* Sistema anterior (0213): los meses del sistema viejo contra los del ERP, por local. */}
+      {pestana === 'anterior' && <PestanaAnterior sucursalId={sucursalId} sucursales={sucs.data ?? []} version={version} />}
     </div>
   );
 }
