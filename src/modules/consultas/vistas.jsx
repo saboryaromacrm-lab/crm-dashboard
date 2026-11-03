@@ -409,6 +409,11 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
 
   const marcas = useMemo(() => [...new Set(items.map((i) => i.marca).filter(Boolean))].sort(), [items]);
   const categorias = useMemo(() => [...new Set(items.map((i) => i.categoria).filter(Boolean))].sort(), [items]);
+  /* Solo los proveedores que tienen algún artículo (3/11/2026): elegir uno de gastos daba «0 resultados». */
+  const provConArticulos = useMemo(() => {
+    const ids = new Set(items.flatMap((i) => i.proveedorIds ?? []));
+    return proveedores.filter((p) => ids.has(p.id));
+  }, [items, proveedores]);
 
   /* FALTAN EN (29/10/2026): lo que ese local tiene en 0 o menos y la Distribuidora tiene. */
   const faltaEn = f.faltaEn && dist ? Number(f.faltaEn) : null;
@@ -420,7 +425,8 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
     const filtrados = items.filter((i) => (
       (!n || norm(i.nombre).includes(n) || (i.codigoBarras ?? '').includes(f.q) || (i.codigo ?? '').includes(f.q))
       && (!prov || (i.proveedorIds ?? []).includes(prov))
-      && (!f.marca || i.marca === f.marca)
+      /* La marca se busca escribiendo (3/11/2026, pedido del dueño): alcanza con una parte del nombre. */
+      && (!f.marca || norm(i.marca).includes(norm(f.marca)))
       && (!f.categoria || i.categoria === f.categoria)
       && (!f.soloConStock || totalDe(i) > 0)
       /* SOLO LOS MADRES (2/11/2026, pedido del dueño): el granel suelto por kg, sin sus fraccionados ni los enteros. */
@@ -482,7 +488,7 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
         <Campo label="Proveedor">
           <select value={f.proveedor} onChange={(e) => set({ proveedor: e.target.value })}>
             <option value="">Todos</option>
-            {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            {provConArticulos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
         </Campo>
         <Campo label="Categoría">
@@ -492,10 +498,13 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
           </select>
         </Campo>
         <Campo label="Marca">
-          <select value={f.marca} onChange={(e) => set({ marca: e.target.value })}>
-            <option value="">Todas</option>
-            {marcas.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
+          <input
+            type="search" list="existencias-marcas" value={f.marca} placeholder="Todas · escribí la marca…"
+            onChange={(e) => set({ marca: e.target.value })}
+          />
+          <datalist id="existencias-marcas">
+            {marcas.map((m) => <option key={m} value={m} />)}
+          </datalist>
         </Campo>
         {dist && (
           <>
