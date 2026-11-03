@@ -69,9 +69,9 @@ function Cuenta({ n, texto, detalle, alerta }) {
 function Turno({ t, onControlar }) {
   const e = ESTADOS[t.estado] ?? { texto: t.estado, color: 'var(--crm-color-text-secondary)' };
   const olvidada = t.vencida;
-  /* La de varios días (0212) dentro de su plazo: abierta a propósito, con su último día. */
-  const enPlazo = t.estado === 'abierta' && !t.vencida && t.plazoDias > 1;
-  const cubre = t.estado !== 'abierta' && t.plazoDias > 1 ? diasDelTurno(t.apertura, t.cierre) : '';
+  /* La de un local con días de cierre (0214) dentro de su plazo: abierta a propósito, con su último día. */
+  const enPlazo = t.estado === 'abierta' && !t.vencida && t.programada;
+  const cubre = t.estado !== 'abierta' && t.programada ? diasDelTurno(t.apertura, t.cierre) : '';
   const dif = t.estado === 'rendida' ? t.diferenciaSobre : t.diferenciaCajero;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 12px', padding: '8px 0', borderTop: '1px solid var(--crm-color-border)' }}>

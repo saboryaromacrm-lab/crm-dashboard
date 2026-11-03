@@ -1,8 +1,8 @@
 /**
- * EL PLAZO DE UNA CAJA DE VARIOS DÍAS (0212), a la vista de quien vende. El
- * servidor manda `caja.plazo` (crm-api src/caja/plazo.ts): el último día para
- * cerrar, en qué estado está y si ya frena la venta. La caja de todos los
- * días no muestra nada nuevo: sigue como siempre.
+ * EL PLAZO DE UNA CAJA CON DÍAS DE CIERRE (0212 y 0214), a la vista de quien
+ * vende. El servidor manda `caja.plazo` (crm-api src/caja/plazo.ts): el último
+ * día para cerrar, en qué estado está y si ya frena la venta. La caja de todos
+ * los días no muestra nada nuevo: sigue como siempre.
  */
 import { cx } from '@shared/utils/classNames.js';
 import { diaEnPalabras } from '@shared/utils/plazoCaja.js';
@@ -16,22 +16,22 @@ const COLOR = {
   vencida: 'var(--crm-color-danger)',
 };
 
-/** Solo las cajas que se cierran cada varios días llevan plazo a la vista. */
-const deVariosDias = (caja) => caja?.estado === 'abierta' && caja.plazo?.plazoDias > 1;
+/** Solo las cajas de un local con días de cierre llevan plazo a la vista. */
+const programada = (caja) => caja?.estado === 'abierta' && !!caja.plazo?.programada;
 
 /** El dato de la barra de caja: hasta qué día queda abierta, en verde, amarillo o rojo. */
 export function PlazoCajaDato({ caja }) {
-  if (!deVariosDias(caja)) return null;
-  const { estado, cerrarHasta, plazoDias } = caja.plazo;
+  if (!programada(caja)) return null;
+  const { estado, cerrarHasta } = caja.plazo;
   return (
-    <div className={p.cajaDato} title={`Esta caja se cierra cada ${plazoDias} días`}>
+    <div className={p.cajaDato} title="Se cierra el próximo día de cierre del local">
       <span>{estado === 'vencida' ? 'Se tenía que cerrar' : 'Cerrarla a más tardar'}</span>
       <strong style={{ color: COLOR[estado] }}>{estado === 'vence_hoy' ? `hoy, ${diaEnPalabras(cerrarHasta)}` : diaEnPalabras(cerrarHasta)}</strong>
     </div>
   );
 }
 
-/** La caja de varios días vencida no vende: lo dice y lleva al cierre. */
+/** La caja con días de cierre vencida no vende: lo dice y lleva al cierre. */
 export function CajaVencidaAviso({ caja, onCerrar, textoBoton = 'Cerrar la caja' }) {
   if (!caja?.plazo?.bloquea) return null;
   return (
@@ -41,7 +41,7 @@ export function CajaVencidaAviso({ caja, onCerrar, textoBoton = 'Cerrar la caja'
     >
       <span>
         <strong>La caja se tenía que cerrar el {diaEnPalabras(caja.plazo.cerrarHasta)}.</strong>{' '}
-        Este local la cierra cada {caja.plazo.plazoDias} días: hasta que la cierres no se puede vender ni cobrar.
+        Ese era día de cierre de este local: hasta que la cierres no se puede vender ni cobrar.
         Después abrís una nueva.
       </span>
       {onCerrar && <Btn variant="btn-delete" small onClick={onCerrar}>{textoBoton}</Btn>}
@@ -51,13 +51,13 @@ export function CajaVencidaAviso({ caja, onCerrar, textoBoton = 'Cerrar la caja'
 
 /** El día que vence, el cartel rojo al entrar y cada 2 horas (como el del stock). */
 export function AvisoCierreCaja({ caja }) {
-  const activo = deVariosDias(caja) && caja.plazo.estado === 'vence_hoy';
+  const activo = programada(caja) && caja.plazo.estado === 'vence_hoy';
   const [abierto, entendido] = useAvisoCadaDosHoras('erp.avisoCierreCaja.', activo, `${caja?.id ?? ''}.`);
   if (!abierto) return null;
   return (
     <CartelRojo titulo="HOY HAY QUE CERRAR LA CAJA" onEntendido={entendido}>
-      <p style={{ margin: 0 }}>Esta caja se cierra cada {caja.plazo.plazoDias} días y hoy es el último.</p>
-      <p style={{ margin: '.6em 0 0' }}>Antes de irte, contala y mandá el sobre. Si no, mañana no se puede vender.</p>
+      <p style={{ margin: 0 }}>Hoy es día de cierre de este local.</p>
+      <p style={{ margin: '.6em 0 0' }}>Al terminar el día, contala y armá el sobre. Si no, mañana no se puede vender hasta cerrarla.</p>
     </CartelRojo>
   );
 }

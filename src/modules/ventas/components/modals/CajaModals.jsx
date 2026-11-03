@@ -123,12 +123,12 @@ export function AbrirCajaModal({ onChange }) {
         <Di label="Cajero">{usuario?.nombre || '—'}</Di>
       </div>
 
-      {/* La caja de varios días (0212): desde la apertura se sabe hasta cuándo. */}
-      {ap.plazo?.plazoDias > 1 && (
+      {/* Local con días de cierre (0214): desde la apertura se sabe hasta cuándo. */}
+      {ap.plazo?.programada && (
         <div className={s.callout}>
-          Esta caja se cierra cada <strong>{ap.plazo.plazoDias} días</strong>: queda abierta hasta el{' '}
-          <strong>{diaEnPalabras(ap.plazo.cerrarHasta)}</strong>, y ese día hay que cerrarla. Si no se cierra, desde el día
-          siguiente no se puede vender.
+          Esta caja queda abierta hasta el <strong>{diaEnPalabras(ap.plazo.cerrarHasta)}</strong>, el próximo día de cierre
+          del local: ese día, al terminar, hay que contarla y armar el sobre. Si no se cierra, al día siguiente no se
+          puede vender hasta cerrarla.
         </div>
       )}
 

@@ -1,6 +1,6 @@
 /**
- * EL PLAZO PARA CERRAR LA CAJA (0212): cómo se dice en pantalla. La regla
- * (qué día vence y si frena la venta) la calcula el servidor (crm-api
+ * EL PLAZO PARA CERRAR LA CAJA (0212 y 0214): cómo se dice en pantalla. La
+ * regla (qué día vence y si frena la venta) la calcula el servidor (crm-api
  * src/caja/plazo.ts); acá solo se ponen en palabras los datos que manda.
  */
 
@@ -11,8 +11,15 @@ export const diaEnPalabras = (dia) => {
   return `${d.toLocaleDateString('es-AR', { weekday: 'long' })} ${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
 };
 
-/** «Todos los días» o «Cada 3 días». */
-export const textoCadaDias = (n) => (Number(n) > 1 ? `Cada ${Number(n)} días` : 'Todos los días');
+/** Los días de la semana como los guarda el servidor: 1 = lunes … 7 = domingo. En plural, como se dice. */
+export const DIAS_CIERRE = [[1, 'L', 'lunes'], [2, 'M', 'martes'], [3, 'M', 'miércoles'], [4, 'J', 'jueves'], [5, 'V', 'viernes'], [6, 'S', 'sábados'], [7, 'D', 'domingos']];
+
+/** «Todos los días», «Los lunes» o «Los lunes y miércoles» (el mismo texto que la Auditoría). */
+export const textoDiasCierre = (dias) => {
+  const n = DIAS_CIERRE.filter(([d]) => (dias ?? []).includes(d)).map(([, , nombre]) => nombre);
+  if (!n.length || n.length === 7) return 'Todos los días';
+  return `Los ${n.length > 1 ? `${n.slice(0, -1).join(', ')} y ${n.at(-1)}` : n[0]}`;
+};
 
 /** El día de la apertura, en palabras, de un instante. */
 const diaDeApertura = (instante) => diaEnPalabras(new Date(instante).toLocaleDateString('sv-SE'));

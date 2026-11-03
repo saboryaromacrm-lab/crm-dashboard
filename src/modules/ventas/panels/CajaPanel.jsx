@@ -9,7 +9,7 @@ import p from '../styles/Pos.module.css';
 import { CajaMovimientos } from './CajaMovimientos.jsx';
 import { ATAJOS, diaAtras } from '../domain/diasCaja.js';
 import { CajaVencidaAviso, PlazoCajaDato } from '../components/PlazoCaja.jsx';
-import { diasDelTurno, textoCadaDias } from '@shared/utils/plazoCaja.js';
+import { diasDelTurno, textoDiasCierre } from '@shared/utils/plazoCaja.js';
 
 /** Diferencia de arqueo con su color: cero es verde, cualquier otra cosa rojo. */
 function Diferencia({ valor, cerrado }) {
@@ -116,7 +116,7 @@ export function CajaPanel() {
             <span className={s.hint} style={{ margin: 0 }}>
               {miSucursal?.nombre || 'Tu sucursal'} no tiene un turno abierto. La caja siempre
               arranca declarando su fondo inicial.
-              {miSucursal?.cierreCadaDias > 1 && <> Se cierra {textoCadaDias(miSucursal.cierreCadaDias).toLowerCase()}.</>}
+              {miSucursal?.diasCierre?.length < 7 && <> Se cierra {textoDiasCierre(miSucursal.diasCierre).toLowerCase()}.</>}
             </span>
             <span className={p.spacer} />
             <Btn variant="btn-primary" small onClick={() => openModal('abrirCaja', { onChange: alCambiar })}>
@@ -199,8 +199,8 @@ export function CajaPanel() {
               <td>{fmtFechaHora(t.apertura)}</td>
               <td>
                 {t.cierre ? fmtFechaHora(t.cierre) : <span className={s.muted}>—</span>}
-                {/* La caja de varios días (0212): qué días abarcó. */}
-                {t.plazoDias > 1 && diasDelTurno(t.apertura, t.cierre) && (
+                {/* La caja de un local con días de cierre (0214): qué días abarcó. */}
+                {t.cerrarHasta && diasDelTurno(t.apertura, t.cierre) && (
                   <div className={s.hint} style={{ margin: 0 }}>Caja {diasDelTurno(t.apertura, t.cierre)}</div>
                 )}
               </td>

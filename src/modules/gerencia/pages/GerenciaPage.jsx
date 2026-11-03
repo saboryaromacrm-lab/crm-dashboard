@@ -26,7 +26,7 @@ import { CashFlowPanel } from '../panels/cashflow/CashFlowPanel.jsx';
 import { AuditoriaPanel } from '../panels/AuditoriaPanel.jsx';
 import { ResultadosPanel } from '../panels/resultados/ResultadosPanel.jsx';
 import { AsesorPanel } from '../panels/asesor/AsesorPanel.jsx';
-import { textoCadaDias } from '@shared/utils/plazoCaja.js';
+import { DIAS_CIERRE, textoDiasCierre } from '@shared/utils/plazoCaja.js';
 
 /**
  * FACTURA ELECTRÓNICA DE UNA SUCURSAL (0124, 30/9/2026). Se enciende de a
@@ -96,8 +96,38 @@ function FacturaElectronica({ su, pendiente, onCambiar }) {
  * exige. Cambia lo que se le cobra al cliente, así que se confirma en la fila.
  * La Distribuidora no se apaga: surte la tienda online, que es mayorista.
  */
-/** Cada cuántos días puede cerrarse la caja de un local (0212): el mismo rango que valida la API. */
-const CIERRE_CADA_DIAS = [1, 2, 3, 4, 5, 6, 7];
+/**
+ * LOS DÍAS DE CIERRE DE CAJA (0214): un botón por día, se guarda al tocarlo y
+ * rige desde la próxima apertura. Siempre queda al menos uno: el último
+ * encendido no se puede apagar.
+ */
+function DiasCierre({ su, disabled, onCambiar }) {
+  const dias = su.diasCierre?.length ? su.diasCierre : DIAS_CIERRE.map(([d]) => d);
+  const tocar = (d) => onCambiar(dias.includes(d) ? dias.filter((x) => x !== d) : [...dias, d].sort((a, b) => a - b));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div role="group" aria-label={`Días de cierre de caja de ${su.nombre}`} style={{ display: 'flex', gap: 3 }}>
+        {DIAS_CIERRE.map(([d, letra, nombre]) => {
+          const on = dias.includes(d);
+          return (
+            <button
+              key={d} type="button" aria-pressed={on} title={nombre}
+              disabled={disabled || (on && dias.length === 1)}
+              onClick={() => tocar(d)}
+              style={{
+                width: 26, height: 26, padding: 0, borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                border: '1px solid var(--crm-color-border)',
+                background: on ? 'var(--crm-color-primary)' : 'transparent',
+                color: on ? 'var(--crm-color-primary-contrast)' : 'var(--crm-color-text-secondary)',
+              }}
+            >{letra}</button>
+          );
+        })}
+      </div>
+      <span className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>{textoDiasCierre(dias)}</span>
+    </div>
+  );
+}
 
 function VendeMayorista({ su, onCambiar }) {
   const [preguntando, setPreguntando] = useState(false);
@@ -752,7 +782,7 @@ export function GerenciaPage() {
           <Table
             cols={[
               { h: 'Sucursal' }, { h: 'Tipo' }, { h: 'Punto de venta' },
-              { h: 'Domicilio del comprobante' }, { h: 'Factura electrónica' }, { h: 'Mayorista' }, { h: 'Fondo de caja', num: true }, { h: 'Cierre de caja' }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' },
+              { h: 'Domicilio del comprobante' }, { h: 'Factura electrónica' }, { h: 'Mayorista' }, { h: 'Fondo de caja', num: true }, { h: 'Días de cierre de caja' }, { h: 'Estado' }, { h: 'Acciones', cls: 'actions-col' },
             ]}
             empty="Sin sucursales."
           >
@@ -833,21 +863,14 @@ export function GerenciaPage() {
                     />
                   </td>
                   <td>
-                    {/* CADA CUÁNTOS DÍAS SE CIERRA (0212): se guarda al elegir y rige desde la próxima apertura. */}
-                    <select
-                      value={su.cierreCadaDias ?? 1}
+                    <DiasCierre
+                      su={su}
                       disabled={apagada}
-                      aria-label={`Cierre de caja de ${su.nombre}`}
-                      onChange={(e) => {
-                        const n = Number(e.target.value);
-                        mutar(
-                          () => httpClient.patch(`/sucursales/${su.id}`, { nombre: su.nombre, tipo: su.tipo, cierreCadaDias: n }),
-                          `${su.nombre}: la caja se cierra ${textoCadaDias(n).toLowerCase()}. Rige desde la próxima apertura.`,
-                        );
-                      }}
-                    >
-                      {CIERRE_CADA_DIAS.map((n) => <option key={n} value={n}>{textoCadaDias(n)}</option>)}
-                    </select>
+                      onCambiar={(dias) => mutar(
+                        () => httpClient.patch(`/sucursales/${su.id}`, { nombre: su.nombre, tipo: su.tipo, diasCierre: dias }),
+                        `${su.nombre}: la caja se cierra ${textoDiasCierre(dias).toLowerCase()}. Rige desde la próxima apertura.`,
+                      )}
+                    />
                   </td>
                   <td>
                     <span className={cx(s.pill, apagada ? s['est-cancelada'] : s['st-disponible'])}>{apagada ? 'Desactivada' : 'Activa'}</span>
@@ -886,10 +909,13 @@ export function GerenciaPage() {
             un renglón mayorista. La Distribuidora vende mayorista siempre: surte la tienda online.
           </div>
           <div className={s.hint}>
-            <strong>Cierre de caja</strong>: cada cuántos días se cuenta y se manda el sobre. Se cuentan días corridos
-            desde el de la apertura (cada 3 días: abre el lunes y cierra a más tardar el miércoles). Si una caja de varios
-            días no se cierra a tiempo, desde el día siguiente <strong>no deja vender ni cobrar</strong> hasta que la cierren.
-            El cambio rige desde la próxima apertura: una caja ya abierta mantiene su plazo.
+            <strong>Días de cierre de caja</strong>: los días en que el local cuenta la caja y arma el sobre, al terminar
+            el día. Con los siete encendidos cierra todos los días, como siempre. Ejemplo: si pasás a buscar la plata el
+            martes y el jueves, encendé <strong>lunes y miércoles</strong>: el sobre trae lo de los días anteriores, y lo
+            que se vende el día que pasás va en la caja siguiente. Cada caja queda abierta hasta el <strong>próximo día de
+            cierre</strong>; si no se cierra ese día, al día siguiente <strong>no deja vender ni cobrar</strong> hasta que la
+            cierren (alcanza con cerrarla a primera hora, antes de vender). El cambio rige desde la próxima apertura: una
+            caja ya abierta mantiene su día.
           </div>
           <div className={s.hint}>
             El <strong>fondo de caja</strong> es con cuánto abre la caja de cada local y cuánto queda
