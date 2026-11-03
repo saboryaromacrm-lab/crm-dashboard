@@ -41,7 +41,7 @@ export function CtasCtesPanel() {
     <div>
       <PanelHead
         title="Cuentas corrientes"
-        desc="Las promesas de pago con fecha. Nacen solas al confirmar la factura de un proveedor de cta cte, y se cierran solas cuando el pago salda la factura."
+        desc="Las promesas de pago con fecha. Nacen solas al confirmar la factura de un proveedor de cta cte, y se cierran solas cuando el pago salda la factura. Lo pagado a cuenta y los ajustes ya están descontados: cubren primero lo que vence antes, así que acá nunca ves más de lo que le debés a cada proveedor."
         actions={<Btn variant="btn-primary" onClick={() => openModal('compromiso', { onChange: refrescar })}>+ Compromiso manual</Btn>}
       />
 
@@ -98,7 +98,7 @@ export function CtasCtesPanel() {
                 <div style={{ display: 'flex', gap: 4 }}>
                   {k.falta > 0.009
                     ? <Btn small variant="btn-primary" onClick={() => openModal('pagarCompromiso', { compromiso: k, onChange: refrescar })}>Pagar</Btn>
-                    : <span className={s.hint} style={{ margin: 0 }}>cubierta</span>}
+                    : <span className={s.hint} style={{ margin: 0 }}>{k.cubiertoACuenta > 0.009 ? 'cubierta con lo pagado a cuenta' : 'cubierta'}</span>}
                   <Btn small onClick={() => openModal('compromiso', { compromiso: k, onChange: refrescar })}>Editar</Btn>
                   <Btn small onClick={() => borrar(k)}>×</Btn>
                 </div>

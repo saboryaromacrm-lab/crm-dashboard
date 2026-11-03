@@ -49,6 +49,7 @@ export function EcheqCubre({ e }) {
 /**
  * El importe de un compromiso (27/10/2026): el pendiente muestra lo que de
  * verdad falta, y si la factura ya se pagó en parte, de cuánto era la promesa.
+ * Lo que ya cubre lo pagado a cuenta o un ajuste (3/11/2026) se dice aparte.
  */
 export function ImporteCompromiso({ k }) {
   if (k.pagado || Math.abs(k.falta - k.importe) < 0.01) return money(k.importe);
@@ -56,6 +57,9 @@ export function ImporteCompromiso({ k }) {
     <>
       {money(k.falta)}
       <div className={s.hint} style={{ margin: 0 }}>de {money(k.importe)}</div>
+      {k.cubiertoACuenta > 0.009 && (
+        <div className={s.hint} style={{ margin: 0 }}>{money(k.cubiertoACuenta)} ya pagado a cuenta</div>
+      )}
     </>
   );
 }
