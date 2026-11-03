@@ -28,6 +28,10 @@ const CONDICION_TEXTO = {
 };
 const letraPorDefecto = (cond) => (!cond || cond === 'responsable_inscripto' ? 'A' : 'C');
 const ALICUOTAS = [0, 2.5, 5, 10.5, 21, 27];
+
+/** Las columnas de un renglón de la factura en la PC (en el teléfono, tarjeta: ver `.renglon`). */
+const COLS_RENGLON = '2fr .6fr .8fr .9fr .6fr .6fr 1fr auto';
+
 /** Tres decimales: los kg de una bolsa vienen con coma (22,68 kg). */
 const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
 /** El «código de proveedor» del producto con ESE proveedor (el del formato que fija el precio, o el primero que tenga). */
@@ -1955,7 +1959,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1.2fr 1fr', gap: 8 }}>
+      <div className={s.filaNumeroComprobante}>
         <div className={s.field}>
           <label>Letra</label>
           {/* La liquidación es letra X y no se elige: la A significa "discrimina
@@ -2162,7 +2166,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           </span>
         </label>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr .6fr .8fr .9fr .6fr .6fr 1fr auto', gap: 8, marginBottom: 6 }}>
+      {/* En el teléfono cada renglón es una tarjeta y cada casillero lleva su nombre (`data-r`): este encabezado no se ve. */}
+      <div className={cx(s.renglon, s.renglonCabeza)} style={{ '--renglon-cols': COLS_RENGLON, marginBottom: 6 }}>
         {['Producto', 'Cantidad', 'Por bulto', 'Costo', 'Desc%', 'IVA%', 'Subtotal', ''].map((h, i) => (
           <div key={i} className={s['mini-label']}>{h}</div>
         ))}
@@ -2174,7 +2179,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         const pid = parseInt(provId, 10);
         const u = unidadDe(prod);
         return (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr .6fr .8fr .9fr .6fr .6fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'start' }}>
+          <div key={i} className={s.renglon} style={{ '--renglon-cols': COLS_RENGLON, marginBottom: 8, alignItems: 'start' }}>
             {prod ? (
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -2232,7 +2237,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                 autoFocus={i > 0}
               />
             )}
-            <div>
+            <div data-r={{ unidad: 'Unidades', display: 'Displays' }[it.modo] ?? 'Bultos'}>
               <input
                 type="number" min="0" step="any" value={it.bultos}
                 disabled={esConversion}
@@ -2285,12 +2290,13 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                 la góndola colgada de un dato de paso. */}
             {it.modo === 'unidad' ? (
               <div
-                className={s.hint}
+                className={s.hint} data-r="Por bulto"
                 style={{ margin: 0, textAlign: 'center', alignSelf: 'center' }}
                 title="Vino suelto: no cambia el tamaño del bulto que tiene el proveedor"
               >—</div>
             ) : (
               <div
+                data-r={it.modo === 'display' ? 'Por display' : 'Por bulto'}
                 style={{ textAlign: 'center', paddingTop: 8 }}
                 title={`El tamaño del ${it.modo === 'display' ? 'display' : 'bulto'} viene del Formato de compra del producto: se cambia ahí, no en la factura`}
               >
@@ -2298,7 +2304,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                 {prod && <div className={s.hint} style={{ margin: 0 }}>{u}/{it.modo === 'display' ? 'display' : 'bulto'}</div>}
               </div>
             )}
-            <div>
+            <div data-r="Costo">
               <input
                 type="number" min="0" step="any" value={it.costoBulto}
                 title={`Costo ${{ unidad: 'por unidad', display: 'del display' }[it.modo] ?? 'del bulto'}, como figura en la factura`}
@@ -2308,15 +2314,19 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                 <div className={s.hint} style={{ margin: 0, textAlign: 'center' }}>{it.modo === 'display' ? '$/display' : '$/u'}</div>
               )}
             </div>
-            <input type="number" min="0" step="any" value={it.descuento} onChange={(e) => setItem(i, { descuento: e.target.value })} />
+            <div data-r="Desc. %">
+              <input type="number" min="0" step="any" value={it.descuento} onChange={(e) => setItem(i, { descuento: e.target.value })} />
+            </div>
             {discriminaIva ? (
-              <select value={String(Number(it.iva) || 0)} onChange={(e) => setItem(i, { iva: e.target.value })}>
-                {ALICUOTAS.map((a) => <option key={a} value={String(a)}>{String(a).replace('.', ',')}%</option>)}
-              </select>
+              <div data-r="IVA">
+                <select value={String(Number(it.iva) || 0)} onChange={(e) => setItem(i, { iva: e.target.value })}>
+                  {ALICUOTAS.map((a) => <option key={a} value={String(a)}>{String(a).replace('.', ',')}%</option>)}
+                </select>
+              </div>
             ) : (
-              <span className={s.muted} style={{ alignSelf: 'center', textAlign: 'center' }} title="Esta letra no discrimina IVA: el precio del papel ya lo incluye">incl.</span>
+              <span className={s.muted} data-r="IVA" style={{ alignSelf: 'center', textAlign: 'center' }} title="Esta letra no discrimina IVA: el precio del papel ya lo incluye">incl.</span>
             )}
-            <div className={cx(s.mono, s.num)} style={{ fontWeight: 700, alignSelf: 'center' }}>{money(r.neto)}</div>
+            <div className={cx(s.mono, s.num)} data-r="Subtotal" style={{ fontWeight: 700, alignSelf: 'center' }}>{money(r.neto)}</div>
             {/* Quitar o agregar renglones cambiaría QUÉ entró — y eso ya pasó. */}
             {esConversion
               ? <span />

@@ -8,7 +8,10 @@
 
 .layout {
   min-height: 100vh;
+  min-height: 100dvh;
   background-color: var(--crm-color-bg);
+  /* Alto de la barra de abajo del teléfono (BarraInferior); 0 donde no está. */
+  --crm-barra-inferior: 0px;
 }
 
 /* ---- Mobile & tablet (< desktop): single column ---- */
@@ -64,3 +67,51 @@
     padding: var(--crm-space-6);
   }
 }
+
+/* ==========================================================================
+   EL TELÉFONO (< 768 px, 3/11/2026)
+   --------------------------------------------------------------------------
+   Barra de arriba más baja (y por debajo de la muesca si la app está
+   instalada), márgenes de 12 px para ganar ancho, y lugar abajo para la barra
+   de navegación del pulgar.
+   ========================================================================== */
+@media (max-width: 767px) {
+  .topbar {
+    height: calc(56px + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .contentInner {
+    padding: var(--crm-space-3) var(--crm-space-3) var(--crm-space-6);
+  }
+}
+
+.conBarraInferior {
+  --crm-barra-inferior: 60px;
+}
+.conBarraInferior .main {
+  padding-bottom: calc(var(--crm-barra-inferior) + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---- Avisos de arriba (AvisosArriba) ---- */
+.avisos { display: contents; }
+.avisosPlegados { display: none; }
+.avisosBarra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px var(--crm-space-3);
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--crm-color-warning) 40%, transparent);
+  background: color-mix(in srgb, var(--crm-color-warning) 12%, var(--crm-color-surface));
+  color: var(--crm-color-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.avisosBarra svg:first-child { color: var(--crm-color-warning); }
+.avisosVer { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--crm-color-text-secondary); }
+.avisosFlechaArriba { transform: rotate(180deg); }

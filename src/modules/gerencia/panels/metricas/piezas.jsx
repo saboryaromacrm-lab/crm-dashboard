@@ -36,12 +36,13 @@ export function ConParte({ children, p, title = 'Parte del total' }) {
 /** Un número con su comparación contra el período anterior. */
 export function Tile({ label, valor, variacion, contra, detalle, alerta, marca }) {
   return (
-    <div className={cx(s.card, s.cardPad)} style={{ minWidth: 0, flex: '1 1 180px', boxSizing: 'border-box' }}>
+    /* En el teléfono, de a dos por renglón (la base baja a media fila) y el número un poco más chico. */
+    <div className={cx(s.card, s.cardPad, s.tileMetrica)} style={{ minWidth: 0, flex: '1 1 min(180px, calc(50% - 5px))', boxSizing: 'border-box' }}>
       <div className={s['mini-label']} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {marca && <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, background: marca, flex: 'none' }} />}
         {label}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700, overflowWrap: 'anywhere', color: alerta ? 'var(--crm-color-warning, #b45309)' : 'var(--crm-color-text)' }}>{valor}</div>
+      <div className={s.tileValor} style={{ fontWeight: 700, overflowWrap: 'anywhere', color: alerta ? 'var(--crm-color-warning, #b45309)' : 'var(--crm-color-text)' }}>{valor}</div>
       {variacion != null && <div><Variacion valor={variacion} contra={contra} /></div>}
       {detalle && <div className={s.hint} style={{ margin: '2px 0 0' }}>{detalle}</div>}
     </div>

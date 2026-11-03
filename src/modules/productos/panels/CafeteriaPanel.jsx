@@ -286,7 +286,7 @@ export function CafeteriaPanel() {
       />
 
       {/* Pestañas. El contador de Pedidos es la demanda que espera respuesta. */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className={s.filaPestanas} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {PESTANAS.map((v) => {
           const pestanaRecibir = soloCafe ? 'envios' : 'recibidos';
           const abiertos = v.id === 'pedidos'

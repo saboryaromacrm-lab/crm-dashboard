@@ -72,3 +72,28 @@
     display: block;
   }
 }
+
+/* Teléfono (3/11/2026): la sucursal donde estás parado, a la izquierda. */
+.sucursalMovil {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 6px 12px 6px 10px;
+  border: 1px solid var(--crm-color-border);
+  border-radius: var(--crm-radius-pill);
+  background: var(--crm-color-surface-2);
+  color: var(--crm-color-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.sucursalMovil svg { color: var(--crm-color-primary); flex-shrink: 0; }
+.sucursalMovil span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 767px) {
+  .modoLocal { padding: 3px 7px; font-size: 11px; letter-spacing: 0.04em; }
+}

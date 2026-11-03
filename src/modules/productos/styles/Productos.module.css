@@ -124,6 +124,12 @@
 }
 .panel-head h2 { margin: 0; font-size: var(--crm-font-size-lg); color: var(--crm-color-text); }
 .desc { color: var(--crm-color-text-secondary); font-size: var(--crm-font-size-sm); margin-top: 2px; max-width: 70ch; }
+/* Teléfono: la bajada cortada a dos renglones con «Ver más» (PanelHead). */
+.descCorta { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.descMas {
+  padding: 6px 0; margin: -2px 0 -6px; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--crm-color-primary);
+}
 .panel-actions { display: flex; gap: var(--crm-space-2); flex-wrap: wrap; }
 
 /* ---- Tarjetas / stats ---- */
@@ -149,7 +155,7 @@
 .accent-amber .stat-value { color: var(--crm-color-warning); }
 .accent-green .stat-value { color: var(--crm-color-success); }
 
-.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--crm-space-4); }
+.dash-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--crm-space-4); }
 .card-title {
   font-size: var(--crm-font-size-sm);
   font-weight: 700;
@@ -267,6 +273,13 @@
 .empty-state { padding: 40px 20px; text-align: center; color: var(--crm-color-text-secondary); font-size: var(--crm-font-size-sm); }
 .muted { color: var(--crm-color-text-secondary); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+
+/* El número grande de los indicadores de Métricas (Tile). */
+.tileValor { font-size: 22px; }
+@media (max-width: 767px) {
+  .tileMetrica { padding: var(--crm-space-3); }
+  .tileValor { font-size: 18px; line-height: 1.3; }
+}
 
 /* ---- Badges / pills ---- */
 .badge { display: inline-block; padding: 2px 9px; border-radius: var(--crm-radius-pill); font-size: var(--crm-font-size-xs); font-weight: 600; }
@@ -515,22 +528,204 @@
 .detalle-actions { display: flex; flex-wrap: wrap; gap: var(--crm-space-2); margin-bottom: 8px; }
 
 /* ---- Responsive ---- */
+/*
+ * EL MENÚ DEL MÓDULO EN UNA SOLA FILA QUE SE DESLIZA (3/11/2026). En la tablet
+ * y el teléfono las secciones se partían en tres o cuatro renglones y ocupaban
+ * media pantalla antes del primer dato. En una fila, la sección elegida queda
+ * centrada a la vista (useSubnavALaVista) y la que asoma cortada en el borde
+ * avisa que hay más corriendo con el dedo.
+ */
 @media (max-width: 1024px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell { grid-template-columns: 1fr; gap: var(--crm-space-4); }
   .subnav {
     position: static;
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    gap: 4px;
+    padding: 6px;
   }
-  .subnavItem { width: auto; }
+  .subnav::-webkit-scrollbar { display: none; }
+  .subnavItem { width: auto; flex: 0 0 auto; scroll-snap-align: start; min-height: 40px; }
   .subnavLabel { white-space: nowrap; }
-  .dash-grid { grid-template-columns: 1fr; }
+  /* `minmax(0, …)`: con `1fr` a secas, una tabla ancha adentro estiraba la tarjeta más allá de la pantalla. */
+  .dash-grid { grid-template-columns: minmax(0, 1fr); }
   .detalle-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 760px) {
   .stats { grid-template-columns: 1fr 1fr; }
   .form-grid { grid-template-columns: 1fr; }
+}
+
+/*
+ * EL TELÉFONO (menos de 768 px, 3/11/2026). Lo que cambia es para el dedo:
+ *   · el menú del módulo de borde a borde, sin caja;
+ *   · los botones de al menos 44 px de alto (40 los chicos), que es lo que
+ *     mide una yema; los íconos de acción en las filas, igual;
+ *   · el buscador de cada listado a lo ancho y los filtros de a dos por renglón;
+ *   · el paginador con flechas grandes y sin «Filas por página» (el número alcanza);
+ *   · las tablas desde 4 columnas, en tarjetas (ver Table en ui.jsx).
+ */
+@media (max-width: 767px) {
+  .subnav {
+    margin-inline: calc(-1 * var(--crm-space-3));
+    padding: 6px var(--crm-space-3);
+    border-radius: 0;
+    border-inline: 0;
+    box-shadow: none;
+  }
+  .subnavItem { padding: 8px 12px; }
+
+  .btn { min-height: 44px; padding: 10px 16px; font-size: 15px; }
+  .btn-sm { min-height: 40px; padding: 8px 12px; font-size: 13.5px; }
+
+  .panel-head { align-items: flex-start; }
+  .panel-head h2 { font-size: 1.125rem; }
+  .panel-actions { width: 100%; }
+  .panel-actions > .btn { flex: 1 1 auto; }
+  /* Los grupos de botones armados a mano (un div flex adentro): que bajen de renglón en vez de salirse. */
+  .panel-actions > div,
+  .tblTarjetas td div[style*='display: flex'] { flex-wrap: wrap; }
+
+  .toolbar { gap: var(--crm-space-2); }
+  .toolbar input[type='search'],
+  .toolbar input[type='text'] { flex: 1 1 100%; min-width: 0; min-height: 44px; }
+  .toolbar > select,
+  .toolbar .select-inline { flex: 1 1 calc(50% - var(--crm-space-2)); min-width: 0; min-height: 44px; }
+  .select-inline { min-height: 44px; }
+
+  .paginador { gap: var(--crm-space-2); justify-content: space-between; padding: 6px 8px; }
+  .pagTam { margin-left: 0; font-size: 0; gap: 0; }
+  .pagTam select { font-size: 16px; min-height: 40px; }
+  .pagNav button { min-width: 40px; min-height: 40px; font-size: 16px; }
+
+  .field input, .field select, .field textarea,
+  .form input, .form select, .form textarea { min-height: 44px; }
+  .field textarea, .form textarea { min-height: 88px; }
+
+  .detalle-grid { grid-template-columns: 1fr 1fr; }
+  /* Los resúmenes de a dos por renglón también en las filas flex de cada panel. */
+  .stat { padding: var(--crm-space-3); flex: 1 1 calc(50% - 12px); min-width: 0; }
+  .stat-value { font-size: 1.05rem; line-height: 1.3; }
+
+  /* Las pestañas de adentro de un panel (botones en fila): una sola fila que se
+     desliza en vez de dos o tres renglones de botones. */
+  .filaPestanas { flex-wrap: nowrap !important; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin-inline: calc(-1 * var(--crm-space-3)); padding-inline: var(--crm-space-3); }
+  .filaPestanas::-webkit-scrollbar { display: none; }
+  .filaPestanas > * { flex: 0 0 auto; }
+  .pestanas { overflow-x: auto; scrollbar-width: none; }
+  .pestanas::-webkit-scrollbar { display: none; }
+  .pestana { flex: 0 0 auto; min-height: 40px; white-space: nowrap; }
+
+  .pickerItem { padding: 12px; }
+  /* «Ver todo →» y los demás enlaces de texto: más alto para el dedo, sin mover nada. */
+  .link { display: inline-block; padding: 10px 0; margin: -10px 0; }
+  .chip { padding: 6px 12px; font-size: 13px; }
+  .pres-row { grid-template-columns: 1fr 1fr; }
+  .formatoHead { grid-template-columns: 1fr; }
+
+  /* ---- Tablas en tarjetas ----
+   * Título arriba (la primera columna) y los datos de a dos por renglón, con
+   * su nombre chico encima: una tarjeta de 6 datos mide la mitad que en lista. */
+  .tblTarjetas { background: transparent; border: 0; box-shadow: none; overflow: visible; border-radius: 0; }
+  .tblTarjetas > .table,
+  .tblTarjetas > .table > tbody { display: block; }
+  .tblTarjetas > .table > thead { display: none; }
+  .tblTarjetas > .table > tbody > tr {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 14px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    background: var(--crm-color-surface);
+    border: 1px solid var(--crm-color-border);
+    border-radius: var(--crm-radius-md);
+    box-shadow: var(--crm-shadow-sm);
+  }
+  .tblTarjetas > .table > tbody > tr:last-child { margin-bottom: 0; }
+  .tblTarjetas > .table > tbody > tr > td {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    padding: 0;
+    border: 0;
+    text-align: left;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 14px;
+  }
+  .tblTarjetas > .table > tbody > tr > td::before {
+    content: attr(data-label);
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1.3;
+    letter-spacing: 0.01em;
+    color: var(--crm-color-text-secondary);
+    overflow-wrap: normal;
+  }
+  .tblTarjetas > .table > tbody > tr > td:empty { display: none; }
+  /* Sin nombre (los botones de la fila, una casilla): a lo ancho y a la derecha. */
+  .tblTarjetas > .table > tbody > tr > td[data-label='']::before,
+  .tblTarjetas > .table > tbody > tr > td:not([data-label])::before { content: none; }
+  .tblTarjetas > .table > tbody > tr > td[data-label=''] {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  /* La primera columna es el título de la tarjeta. */
+  .tblTarjetas > .table > tbody > tr > td:first-child {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    font-size: 15px;
+    font-weight: 600;
+    padding-bottom: 2px;
+  }
+  .tblTarjetas > .table > tbody > tr > td:first-child::before { content: none; }
+  /* Una casilla de selección adelante: va arriba a la derecha y el título es el que sigue. */
+  .tblTarjetas > .table > tbody > tr > td:first-child:has(> input[type='checkbox']) {
+    position: absolute; top: 10px; right: 12px; width: auto; padding: 0;
+  }
+  .tblTarjetas > .table > tbody > tr > td:first-child:has(> input[type='checkbox']) + td {
+    grid-column: 1 / -1;
+    flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px;
+    font-size: 15px; font-weight: 600;
+    padding: 0 34px 2px 0;
+  }
+  .tblTarjetas > .table > tbody > tr > td:first-child:has(> input[type='checkbox']) + td::before { content: none; }
+  .tblTarjetas input[type='checkbox'] { width: 22px; height: 22px; }
+  /* Los botones de la fila, abajo y separados de los datos. */
+  .tblTarjetas > .table > tbody > tr > td.actions-col,
+  .tblTarjetas > .table > tbody > tr > td:has(> .row-actions) {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    justify-content: flex-end;
+    padding-top: 10px;
+    border-top: 1px solid var(--crm-color-border);
+  }
+  .tblTarjetas > .table > tbody > tr > td.actions-col::before,
+  .tblTarjetas > .table > tbody > tr > td:has(> .row-actions)::before { content: none; }
+  .tblTarjetas .row-actions { justify-content: flex-end; width: 100%; }
+  /* Lo que ocupa varias columnas (detalle desplegado, subtotal, «sin datos»): a lo ancho. */
+  .tblTarjetas > .table > tbody > tr > td[colspan] { grid-column: 1 / -1; display: block; }
+  .tblTarjetas > .table > tbody > tr:has(> td[colspan]:only-child) { display: block; }
+  .tblTarjetas > .table > tbody > tr.clickable:active { background: var(--crm-color-surface-2); }
+  .tblTarjetas > .table > tbody > tr > td > input:not([type='checkbox']):not([type='radio']),
+  .tblTarjetas > .table > tbody > tr > td > select { width: 100%; }
+
+  /* Las tablas que quedan como tabla: se corren de costado con el dedo, sin rebotar la página. */
+  .tblScroll { overscroll-behavior-x: contain; }
 }
 
 /* ---------- Selectores de catálogo (marca, categoría, etiquetas) ---------- */
@@ -642,4 +837,44 @@
 @media (max-width: 900px) {
   .formatoBody { grid-template-columns: 1fr; }
   .formatoHead { grid-template-columns: 1fr 1fr; }
+}
+
+/* ---------------- Renglones de carga (factura de compra, envíos de Coffit) ---------------- */
+/* Las columnas de cada pantalla van en `--renglon-cols` (y no en el estilo de
+   la fila) para que el teléfono las pueda reacomodar. */
+.renglon { display: grid; grid-template-columns: var(--renglon-cols); gap: 8px; }
+.filaNumeroComprobante { display: grid; grid-template-columns: 80px 1fr 1.2fr 1fr; gap: 8px; }
+
+/*
+ * EN EL TELÉFONO (3/11/2026): cada renglón es una tarjeta —el producto arriba
+ * a lo ancho, la × arriba a la derecha y los casilleros de a dos o tres, cada
+ * uno con su nombre encima (`data-r`): el encabezado de columnas no se ve—.
+ * El número del comprobante, de a dos.
+ */
+@media (max-width: 767px) {
+  .renglonCabeza { display: none; }
+  .renglon:not(.renglonCabeza) {
+    position: relative;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--crm-color-border);
+    border-radius: var(--crm-radius-md);
+    background: var(--crm-color-surface);
+  }
+  .renglon:not(.renglonCabeza) > :first-child { grid-column: 1 / -1; padding-right: 40px; }
+  .renglon:not(.renglonCabeza) > :last-child:is(button, span:empty) { position: absolute; top: 8px; right: 8px; }
+  .renglon [data-r] { text-align: left !important; padding-top: 0 !important; align-self: start !important; }
+  .renglon [data-r]::before {
+    content: attr(data-r);
+    display: block;
+    margin-bottom: 3px;
+    font-family: var(--crm-font-sans);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--crm-color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .filaNumeroComprobante { grid-template-columns: 1fr 1fr; }
 }

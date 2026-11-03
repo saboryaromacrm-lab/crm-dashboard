@@ -37,7 +37,7 @@ export function CuentasDisponiblesPanel() {
           </Btn>
         )}
       />
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      <div className={s.filaPestanas} style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         {VISTAS.map(([k, v]) => (
           <Btn key={k} small variant={vista === k ? 'btn-primary' : undefined} onClick={() => setVista(k)}>{v}</Btn>
         ))}

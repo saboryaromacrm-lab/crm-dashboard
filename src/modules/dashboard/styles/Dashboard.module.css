@@ -55,3 +55,19 @@
   letter-spacing: 0.04em;
   color: var(--crm-color-text-secondary);
 }
+
+/* Teléfono (3/11/2026): los accesos en mosaico de a dos —ícono arriba, nombre
+   abajo— en vez de una lista de 8 renglones que llenaba la primera pantalla. */
+@media (max-width: 767px) {
+  .page { gap: var(--crm-space-4); }
+  .accesos { grid-template-columns: 1fr 1fr; gap: var(--crm-space-2); }
+  .acceso {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-height: 88px;
+    padding: var(--crm-space-3);
+  }
+  .acceso:active { border-color: var(--crm-color-primary); background: var(--crm-color-surface-2); }
+  .accesoIcono { font-size: 26px !important; }
+}

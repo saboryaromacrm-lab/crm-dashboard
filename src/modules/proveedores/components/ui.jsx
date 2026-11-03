@@ -1,7 +1,7 @@
 /* La MISMA piel que el resto del sistema (patrón de gastos/ui.jsx): se
  * re-exporta y se agregan solo las piezas propias del módulo. */
 export {
-  Table, PanelHead, Stat, Pill, Btn, usePaginado, s,
+  Table, TablaMovil, PanelHead, Stat, Pill, Btn, usePaginado, s,
 } from '@modules/productos/components/ui.jsx';
 export { ModalShell } from '@modules/productos/components/Modal.jsx';
 export { money, num, fmtFecha, fmtFechaHora } from '@modules/productos/domain/format.js';

@@ -1,0 +1,108 @@
+/* ==========================================================================
+   EL ERP EN EL TELÉFONO (3/11/2026, pedido del dueño: «que quede súper
+   utilizable en el celular»).
+   --------------------------------------------------------------------------
+   Reglas de toda la app para pantallas de menos de 768 px. Lo propio de cada
+   pieza vive en su CSS (tablas en tarjetas y menú de cada módulo en
+   Productos.module.css, barra de abajo en MainLayout.module.css).
+   ========================================================================== */
+
+html {
+  /* El iPhone agranda la letra sola al girar la pantalla: que la decida el CSS. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+@media (max-width: 767px) {
+  /* Gerencia y Sistema tenían 24 px propios de margen además del de la página: en el teléfono, nada más el de la página. */
+  :root { --crm-pagina-pad: 0px; }
+
+  /*
+   * 16 px EN TODOS LOS CAMPOS. Con menos, el iPhone hace zoom al tocar un
+   * campo y deja la pantalla agrandada y corrida al terminar. Va con
+   * `!important` porque cada formulario fija su tamaño con más peso que una
+   * regla general, y esta tiene que ganar siempre en el teléfono.
+   */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /*
+   * LOS CAMPOS SIN ESTILO PROPIO (buscadores y filtros armados a mano en cada
+   * pantalla): en el teléfono quedaban con el del navegador, de 25 px de alto
+   * y sin borde visible. Acá toman el de los formularios del ERP. Va con
+   * `:where()` —peso cero— para que cualquier campo con estilo propio lo
+   * siga teniendo; los de MUI quedan afuera.
+   */
+  :where(main, .MuiDialog-root, .MuiDrawer-root) :where(
+    input:not([type]):not([class*='Mui']),
+    input[type='text']:not([class*='Mui']),
+    input[type='search']:not([class*='Mui']),
+    input[type='number']:not([class*='Mui']),
+    input[type='date']:not([class*='Mui']),
+    input[type='month']:not([class*='Mui']),
+    input[type='time']:not([class*='Mui']),
+    input[type='datetime-local']:not([class*='Mui']),
+    input[type='email']:not([class*='Mui']),
+    input[type='tel']:not([class*='Mui']),
+    select:not([class*='Mui']),
+    textarea:not([class*='Mui'])
+  ) {
+    min-height: 44px;
+    max-width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--crm-color-border);
+    border-radius: var(--crm-radius-sm);
+    background-color: var(--crm-color-surface);
+    color: var(--crm-color-text);
+    font-family: inherit;
+  }
+  /* El buscador de un listado, a lo ancho: es lo primero que se toca. */
+  :where(main) :where(input[type='search']:not([class*='Mui'])) {
+    flex: 1 1 100%;
+  }
+
+  /* Sin el destello gris al tocar y sin la demora del doble toque para zoom. */
+  a, button, [role='button'], label, summary, select, input, textarea {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  /* Las casillas y opciones, del tamaño del dedo. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    min-width: 20px;
+    min-height: 20px;
+  }
+
+  /* Los botones de MUI (Actualizar, los de las pantallas de Gerencia), a 44 px. */
+  .MuiButton-root:not(.MuiButton-sizeSmall) { min-height: 44px; }
+  .MuiButton-sizeSmall { min-height: 36px; }
+  .MuiIconButton-root:not(.MuiIconButton-sizeSmall) { min-width: 44px; min-height: 44px; }
+
+  /* Los avisos de «Guardado» y de error: arriba de la barra de navegación de abajo. */
+  .MuiSnackbar-root.MuiSnackbar-anchorOriginBottomRight,
+  .MuiSnackbar-root.MuiSnackbar-anchorOriginBottomLeft,
+  .MuiSnackbar-root.MuiSnackbar-anchorOriginBottomCenter {
+    bottom: calc(var(--crm-barra-inferior, 0px) + 8px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /*
+   * LAS PESTAÑAS DE ADENTRO DE CADA PANEL (Métricas tiene 11) en una fila que
+   * se desliza, como el menú del módulo: partidas en renglones ocupaban media
+   * pantalla. `!important` porque varias fijan `flex-wrap` en su estilo.
+   */
+  main [role='tablist']:not([class*='Mui']) {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  main [role='tablist']:not([class*='Mui'])::-webkit-scrollbar { display: none; }
+  main [role='tablist']:not([class*='Mui']) > * { flex: 0 0 auto; }
+
+  /* Los menús desplegables de MUI: renglones del alto de un dedo. */
+  .MuiMenuItem-root { min-height: 44px; }
+}

@@ -2,8 +2,9 @@
  * Componentes de presentación compartidos del módulo Producto.
  * Puros: reciben props y pintan. Consumen el CSS Module del módulo (tokens).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
+import { useMediaQuery } from '@core/hooks/useMediaQuery.js';
 import {
   ESTADOS_STOCK,
   ESTADOS_TRANSFER,
@@ -116,6 +117,78 @@ export function Paginador({ pag }) {
   );
 }
 
+/* ---------------- Tablas en el celular ---------------- */
+
+/**
+ * EN EL TELÉFONO, CADA FILA ES UNA TARJETA (3/11/2026, pedido del dueño: «que
+ * quede súper utilizable en el celular»). Una tabla de 7 columnas en 375 px se
+ * leía corriéndola de costado y perdiendo de vista de qué fila era cada dato.
+ * En tarjeta, la primera columna es el título y cada dato lleva su nombre al
+ * lado: «Saldo   $ 120.000».
+ *
+ * El nombre de cada dato es el título de su columna. Las filas las pinta quien
+ * usa la tabla (y a veces un componente propio), así que se escribe en el DOM
+ * (`data-label`, que lee el CSS) y se vuelve a escribir cuando cambian las filas.
+ * Las celdas que ocupan varias columnas (un detalle desplegado, un subtotal) van
+ * sin nombre, a lo ancho.
+ */
+export const CONSULTA_TELEFONO = '(max-width: 767px)';
+
+export function etiquetarCeldas(tabla) {
+  const filas = tabla?.tHead?.rows;
+  if (!filas?.length) return;
+  const porColumna = (fila) => {
+    const v = [];
+    for (const th of fila.cells) for (let k = 0; k < th.colSpan; k += 1) v.push(th.textContent.trim());
+    return v;
+  };
+  const nombres = porColumna(filas[filas.length - 1]);
+  /* Con una fila de grupos arriba («Stock» sobre una columna por sucursal), el dato dice de qué grupo es. */
+  if (filas.length > 1) {
+    const grupos = porColumna(filas[0]);
+    nombres.forEach((n, i) => { if (grupos[i] && n && grupos[i] !== n) nombres[i] = `${grupos[i]} · ${n}`; });
+  }
+  for (const tbody of tabla.tBodies) {
+    for (const tr of tbody.rows) {
+      let i = 0;
+      for (const td of tr.cells) {
+        const nombre = td.colSpan > 1 ? '' : (nombres[i] ?? '');
+        if (td.getAttribute('data-label') !== nombre) td.setAttribute('data-label', nombre);
+        i += td.colSpan;
+      }
+    }
+  }
+}
+
+/** Mantiene los nombres de las celdas de `ref` mientras `activo` (solo en el teléfono: en la PC no hacen falta). */
+export function useCeldasConNombre(ref, activo) {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const tabla = el?.tagName === 'TABLE' ? el : el?.querySelector(':scope > table');
+    if (!activo || !tabla) return undefined;
+    etiquetarCeldas(tabla);
+    let pendiente = 0;
+    const obs = new MutationObserver(() => {
+      if (pendiente) return;
+      pendiente = requestAnimationFrame(() => { pendiente = 0; etiquetarCeldas(tabla); });
+    });
+    obs.observe(tabla, { childList: true, subtree: true });
+    return () => { obs.disconnect(); if (pendiente) cancelAnimationFrame(pendiente); };
+  }, [ref, activo]);
+}
+
+/**
+ * Para las tablas armadas a mano (`<table className={s.table}>`): envolverlas
+ * con esto les da lo mismo que a `Table` — en el teléfono, una tarjeta por fila;
+ * en la PC, la tabla de siempre que se corre de costado si no entra.
+ */
+export function TablaMovil({ children }) {
+  const telefono = useMediaQuery(CONSULTA_TELEFONO);
+  const ref = useRef(null);
+  useCeldasConNombre(ref, telefono);
+  return <div ref={ref} className={cx(styles.tblScroll, styles.tblTarjetas)}>{children}</div>;
+}
+
 /**
  * Tabla de datos con estado vacío. `cols`: [{ h, num }]. `children`: filas <tr>.
  * Con `pag` (lo que devuelve usePaginado) pinta la barra de paginación al pie;
@@ -125,12 +198,19 @@ export function Paginador({ pag }) {
  * para las tablas anchas donde varias columnas son la misma cosa (una por
  * sucursal, por ejemplo) y el título de arriba dice de qué son.
  */
-export function Table({ cols, children, empty = 'Sin datos.', pag, grupos }) {
+export function Table({ cols, children, empty = 'Sin datos.', pag, grupos, movil }) {
   const rows = Array.isArray(children) ? children.filter(Boolean) : children;
   const isEmpty = !rows || (Array.isArray(rows) && rows.length === 0);
+  /* En el teléfono: tarjetas desde 4 columnas (con menos, la tabla entra en
+     el ancho y se lee mejor como tabla). `movil="tabla"` la deja como tabla
+     corrida de costado; `movil="tarjetas"` fuerza las tarjetas. */
+  const telefono = useMediaQuery(CONSULTA_TELEFONO);
+  const tarjetas = movil === 'tarjetas' || (movil !== 'tabla' && cols.length >= 4);
+  const ref = useRef(null);
+  useCeldasConNombre(ref, telefono && tarjetas);
   const tabla = (
-    <div className={cx(styles.card, styles.tableCard, styles.tblScroll)}>
-      <table className={styles.table}>
+    <div className={cx(styles.card, styles.tableCard, styles.tblScroll, tarjetas && styles.tblTarjetas)}>
+      <table className={styles.table} ref={ref}>
         <thead>
           {grupos && (
             <tr>
@@ -172,12 +252,30 @@ export function Table({ cols, children, empty = 'Sin datos.', pag, grupos }) {
   );
 }
 
+/**
+ * En el teléfono la bajada de cada sección se corta a dos renglones con «Ver
+ * más» (3/11/2026): explicaciones de cinco renglones empujaban los datos fuera
+ * de la primera pantalla. En la PC se ve entera, como siempre.
+ */
 export function PanelHead({ title, desc, actions }) {
+  const telefono = useMediaQuery(CONSULTA_TELEFONO);
+  const ref = useRef(null);
+  const [abierta, setAbierta] = useState(false);
+  const [cortada, setCortada] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    setCortada(!!el && telefono && !abierta && el.scrollHeight > el.clientHeight + 1);
+  }, [telefono, abierta, desc]);
   return (
     <div className={styles['panel-head']}>
       <div>
         <h2>{title}</h2>
-        {desc && <div className={styles.desc}>{desc}</div>}
+        {desc && <div ref={ref} className={cx(styles.desc, telefono && !abierta && styles.descCorta)}>{desc}</div>}
+        {desc && telefono && (cortada || abierta) && (
+          <button type="button" className={styles.descMas} onClick={() => setAbierta((v) => !v)} aria-expanded={abierta}>
+            {abierta ? 'Ver menos' : 'Ver más'}
+          </button>
+        )}
       </div>
       {actions && <div className={styles['panel-actions']}>{actions}</div>}
     </div>

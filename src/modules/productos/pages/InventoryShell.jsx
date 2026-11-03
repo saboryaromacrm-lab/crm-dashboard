@@ -1,4 +1,5 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useSeccionEnUrl, useSubnavALaVista } from '@core/hooks/useSeccionEnUrl.js';
 import { Button, Snackbar, Alert } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
@@ -71,6 +72,9 @@ const PANEL_COMPONENTS = {
 export function InventoryShell({ title, subtitle }) {
   const { store, panels, panel, goPanel, toast, toastState, closeToast } = useProductos();
   const [refreshing, setRefreshing] = useState(false);
+  const subnavRef = useRef(null);
+  useSeccionEnUrl(panel, goPanel, panels.map((x) => x.id));
+  useSubnavALaVista(subnavRef, panel);
   const pedidosCafeSinResolver = useSyncExternalStore(
     pedidosCafe.subscribe, pedidosCafe.sinResolver, pedidosCafe.sinResolver,
   );
@@ -153,7 +157,7 @@ export function InventoryShell({ title, subtitle }) {
 
       {/* Shell: sub-navegación + contenido del panel */}
       <div className={s.shell}>
-        <nav className={s.subnav} aria-label={'Secciones de ' + title}>
+        <nav className={s.subnav} aria-label={'Secciones de ' + title} ref={subnavRef}>
           {panels.map((p) => {
             const Icon = p.icon;
             const count = p.badge ? counts[p.badge] : 0;
@@ -162,6 +166,7 @@ export function InventoryShell({ title, subtitle }) {
                 key={p.id}
                 type="button"
                 className={cx(s.subnavItem, panel === p.id && s.subnavItemActive)}
+                aria-current={panel === p.id}
                 onClick={() => goPanel(p.id)}
               >
                 <span className={s.subnavIcon}>

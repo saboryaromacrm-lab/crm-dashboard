@@ -399,7 +399,7 @@ function BandejaFacturas() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className={s.filaPestanas} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {VISTAS.map((v) => (
           <button
             key={v.id}

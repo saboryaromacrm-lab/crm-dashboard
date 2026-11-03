@@ -1,3 +1,9 @@
 .wrapper {
   margin-bottom: var(--crm-space-4);
 }
+
+/* En el teléfono el título de la pantalla y la barra de abajo ya dicen dónde
+   estás: el renglón «Inicio › Proveedores» era alto sin dato nuevo. */
+@media (max-width: 767px) {
+  .wrapper { display: none; }
+}

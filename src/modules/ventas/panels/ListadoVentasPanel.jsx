@@ -75,15 +75,16 @@ function FilaBarra({ nombre, pct, importe, ventas, color = 'var(--crm-color-prim
       <span style={{ height: 10, background: 'var(--crm-color-surface-2, rgba(0,0,0,.05))', borderRadius: 4, overflow: 'hidden' }}>
         <span style={{ display: 'block', height: '100%', width: `${Math.max(0, Math.min(100, pct ?? 0))}%`, background: color, borderRadius: '0 4px 4px 0' }} />
       </span>
-      <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-        <strong>{money(importe)}</strong> · <strong>{pct == null ? '—' : `${num(pct, 1)}%`}</strong>
-        <span className={s.hint} style={{ margin: 0 }}> · {num(ventas, 0)} tk</span>
+      {/* En el teléfono los tickets bajan de renglón antes que salirse de la tarjeta. */}
+      <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ whiteSpace: 'nowrap' }}><strong>{money(importe)}</strong> · <strong>{pct == null ? '—' : `${num(pct, 1)}%`}</strong></span>
+        <span className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}> · {num(ventas, 0)} tk</span>
       </span>
     </>
   );
 }
 
-const GRILLA_BARRA = { display: 'grid', gridTemplateColumns: 'minmax(90px, 1fr) minmax(60px, 2fr) auto', gap: 10, alignItems: 'center' };
+const GRILLA_BARRA = { display: 'grid', gridTemplateColumns: 'minmax(72px, 1fr) minmax(40px, 2fr) auto', gap: 8, alignItems: 'center' };
 
 /**
  * POR MODALIDAD (12/10/2026, pedido del dueño): cada modalidad con su % del

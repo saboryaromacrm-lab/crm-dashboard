@@ -1584,7 +1584,7 @@ export function VencimientosPanel() {
         title="Vencimientos"
         desc="El vigía de fechas: se anota lo que vence, el sistema avisa a tiempo (7/15/30 días), la oferta sale antes y lo vencido se procesa con la pérdida REAL. No es stock: la baja llega recién al procesar."
       />
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className={s.filaPestanas} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {PESTANAS.map((v) => {
           const globo = v.id === 'vencidos' ? abiertosVencidos
             : v.id === 'ofertas' ? (cruce?.resumen?.graves ?? 0)

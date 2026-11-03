@@ -97,7 +97,7 @@ export function PedidosPanel() {
             <button
               type="button" aria-expanded={abierta} aria-label={abierta ? 'Plegar la tarjeta' : 'Ver la tarjeta completa'}
               onClick={() => alternar(t.id)}
-              style={{ border: 0, background: 'none', cursor: 'pointer', padding: '2px 4px', font: 'inherit', fontSize: 14, color: 'var(--crm-color-text-secondary)' }}
+              style={{ border: 0, background: 'none', cursor: 'pointer', padding: '10px 10px', margin: '-8px -6px -8px 0', font: 'inherit', fontSize: 16, color: 'var(--crm-color-text-secondary)' }}
             >
               {abierta ? '▾' : '▸'}
             </button>

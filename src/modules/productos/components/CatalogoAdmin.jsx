@@ -20,7 +20,7 @@ import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@m
 import { useProductos } from '../context/ProductosContext.jsx';
 import { norm } from './CatalogoPicker.jsx';
 import { ModalShell } from './Modal.jsx';
-import { Btn, Paginador, s, usePaginado } from './ui.jsx';
+import { Btn, Paginador, s, TablaMovil, usePaginado } from './ui.jsx';
 
 /**
  * INHABILITAR / HABILITAR UNA MARCA (0135, pedido del dueño): sus productos
@@ -321,68 +321,70 @@ export function CatalogoAdmin({ tipo }) {
         <Btn variant="btn-primary" onClick={() => setCreandoNueva(true)}>+ Nueva {meta.singular}</Btn>
       </div>
 
-      <table className={s.table}>
-        <thead>
-          <tr>
-            <th>Nombre</th>
-            {tipo === 'subcategorias' && <th>Categoría</th>}
-            <th className={s.num}>Productos</th>
-            <th>Estado</th>
-            <th className={s['actions-col']}>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filas.length === 0 && (
-            <tr><td colSpan={5} className={s['empty-state']}>{hayFiltro ? 'Ninguna con esos filtros.' : `Sin ${meta.titulo.toLowerCase()}.`}</td></tr>
-          )}
-          {pag.visibles.map((f) => (
-            <tr key={f.id} style={{ opacity: f.activa ? 1 : 0.55 }}>
-              <td>
-                {editId === f.id ? (
-                  <input
-                    autoFocus
-                    value={editTxt}
-                    onChange={(e) => setEditTxt(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') { e.preventDefault(); renombrar(f); }
-                      if (e.key === 'Escape') setEditId(null);
-                    }}
-                    onBlur={() => renombrar(f)}
-                  />
-                ) : (
-                  <span style={f.color ? { color: f.color, fontWeight: 600 } : undefined}>{f.nombre}</span>
-                )}
-              </td>
-              {tipo === 'subcategorias' && <td className={s.muted}>{nombreCategoria(f.categoriaId)}</td>}
-              <td className={s.num}>{f.productos || <span className={s.muted}>0</span>}</td>
-              <td>{f.activa ? <span className={s.badge}>activa</span> : <span className={s.muted}>inactiva</span>}</td>
-              <td className={s['actions-col']}>
-                {fusionId === f.id ? (
-                  <div className={s['row-actions']}>
-                    <select value={fusionHacia} onChange={(e) => setFusionHacia(e.target.value)}>
-                      <option value="">— Fusionar con… —</option>
-                      {destinos(f).map((d) => <option key={d.id} value={d.id}>{d.nombre}</option>)}
-                    </select>
-                    <Btn small variant="btn-primary" onClick={() => fusionar(f)}>Aplicar</Btn>
-                    <Btn small onClick={() => setFusionId(null)}>Cancelar</Btn>
-                  </div>
-                ) : (
-                  <div className={s['row-actions']}>
-                    <Btn small onClick={() => { setEditId(f.id); setEditTxt(f.nombre); }}>Renombrar</Btn>
-                    {puedeFusionar(f) && (
-                      <Btn small onClick={() => { setFusionId(f.id); setFusionHacia(''); }}>Fusionar</Btn>
-                    )}
-                    <Btn small onClick={() => alternarActiva(f)}>
-                      {tipo === 'marcas' ? (f.activa ? 'Inhabilitar' : 'Habilitar') : (f.activa ? 'Desactivar' : 'Reactivar')}
-                    </Btn>
-                    <Btn small variant="btn-delete" onClick={() => eliminar(f)}>Eliminar</Btn>
-                  </div>
-                )}
-              </td>
+      <TablaMovil>
+        <table className={s.table}>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              {tipo === 'subcategorias' && <th>Categoría</th>}
+              <th className={s.num}>Productos</th>
+              <th>Estado</th>
+              <th className={s['actions-col']}>Acciones</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {filas.length === 0 && (
+              <tr><td colSpan={5} className={s['empty-state']}>{hayFiltro ? 'Ninguna con esos filtros.' : `Sin ${meta.titulo.toLowerCase()}.`}</td></tr>
+            )}
+            {pag.visibles.map((f) => (
+              <tr key={f.id} style={{ opacity: f.activa ? 1 : 0.55 }}>
+                <td>
+                  {editId === f.id ? (
+                    <input
+                      autoFocus
+                      value={editTxt}
+                      onChange={(e) => setEditTxt(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); renombrar(f); }
+                        if (e.key === 'Escape') setEditId(null);
+                      }}
+                      onBlur={() => renombrar(f)}
+                    />
+                  ) : (
+                    <span style={f.color ? { color: f.color, fontWeight: 600 } : undefined}>{f.nombre}</span>
+                  )}
+                </td>
+                {tipo === 'subcategorias' && <td className={s.muted}>{nombreCategoria(f.categoriaId)}</td>}
+                <td className={s.num}>{f.productos || <span className={s.muted}>0</span>}</td>
+                <td>{f.activa ? <span className={s.badge}>activa</span> : <span className={s.muted}>inactiva</span>}</td>
+                <td className={s['actions-col']}>
+                  {fusionId === f.id ? (
+                    <div className={s['row-actions']}>
+                      <select value={fusionHacia} onChange={(e) => setFusionHacia(e.target.value)}>
+                        <option value="">— Fusionar con… —</option>
+                        {destinos(f).map((d) => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+                      </select>
+                      <Btn small variant="btn-primary" onClick={() => fusionar(f)}>Aplicar</Btn>
+                      <Btn small onClick={() => setFusionId(null)}>Cancelar</Btn>
+                    </div>
+                  ) : (
+                    <div className={s['row-actions']}>
+                      <Btn small onClick={() => { setEditId(f.id); setEditTxt(f.nombre); }}>Renombrar</Btn>
+                      {puedeFusionar(f) && (
+                        <Btn small onClick={() => { setFusionId(f.id); setFusionHacia(''); }}>Fusionar</Btn>
+                      )}
+                      <Btn small onClick={() => alternarActiva(f)}>
+                        {tipo === 'marcas' ? (f.activa ? 'Inhabilitar' : 'Habilitar') : (f.activa ? 'Desactivar' : 'Reactivar')}
+                      </Btn>
+                      <Btn small variant="btn-delete" onClick={() => eliminar(f)}>Eliminar</Btn>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TablaMovil>
       <Paginador pag={pag} />
 
       {creandoNueva && (

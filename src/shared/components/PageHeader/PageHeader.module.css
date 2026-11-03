@@ -20,3 +20,27 @@
   gap: var(--crm-space-2);
   flex-shrink: 0;
 }
+
+/*
+ * EL TELÉFONO (3/11/2026): título más chico, sin la bajada (repetía lo que el
+ * menú del módulo muestra justo abajo) y las acciones en ícono a la derecha
+ * del título. «Actualizar» queda como la flecha circular: el texto sigue para
+ * el lector de pantalla.
+ */
+@media (max-width: 767px) {
+  .header {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--crm-space-2);
+    margin-bottom: var(--crm-space-3);
+  }
+  .titles :global(h1) { font-size: 1.375rem; line-height: 1.25; }
+  .subtitle { display: none; }
+  .actions { margin-left: auto; }
+  .actions :global(.MuiButton-root:has(.MuiButton-startIcon)) {
+    min-width: 44px;
+    padding: 0;
+    font-size: 0;
+  }
+  .actions :global(.MuiButton-root:has(.MuiButton-startIcon) .MuiButton-startIcon) { margin: 0; }
+}

@@ -1,0 +1,81 @@
+/* La barra de abajo del teléfono: fija, al alcance del pulgar, por encima de
+   la barra de gestos del sistema (safe-area). El alto vive en
+   --crm-barra-inferior (MainLayout.module.css) para que el contenido y los
+   avisos de «Guardado» la dejen libre. */
+.barra {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: var(--crm-z-topbar);
+  display: flex;
+  align-items: stretch;
+  height: calc(var(--crm-barra-inferior) + env(safe-area-inset-bottom, 0px));
+  padding: 0 4px env(safe-area-inset-bottom, 0px);
+  background: var(--crm-color-surface);
+  border-top: 1px solid var(--crm-color-border);
+  box-shadow: 0 -2px 12px color-mix(in srgb, var(--crm-color-text) 6%, transparent);
+}
+
+.item {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  color: var(--crm-color-text-secondary);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* El ícono va en una píldora: la elegida se rellena de verde (el lugar donde
+   estás), las otras quedan en gris. */
+.icono {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 30px;
+  border-radius: var(--crm-radius-pill);
+  transition: background-color var(--crm-transition-fast), color var(--crm-transition-fast);
+}
+.icono svg { font-size: 24px; }
+
+.texto {
+  max-width: 100%;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activo { color: var(--crm-color-primary); }
+.activo .icono {
+  background: color-mix(in srgb, var(--crm-color-primary) 14%, transparent);
+}
+.item:active .icono { background: color-mix(in srgb, var(--crm-color-primary) 22%, transparent); }
+
+.badge {
+  position: absolute;
+  top: -3px;
+  right: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--crm-radius-pill);
+  background: var(--crm-color-danger);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  border: 2px solid var(--crm-color-surface);
+  box-sizing: content-box;
+}

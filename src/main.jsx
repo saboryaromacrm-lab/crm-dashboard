@@ -9,6 +9,7 @@ import '@styles/reset.css';
 import '@styles/tokens.css';
 import '@styles/global.css';
 import '@styles/utilities.css';
+import '@styles/movil.css';
 
 // Composition root: register every feature module BEFORE the router reads the
 // registry to build routes and navigation. This is the app's bootstrap step.

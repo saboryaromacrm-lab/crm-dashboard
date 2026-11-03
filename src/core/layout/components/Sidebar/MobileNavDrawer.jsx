@@ -1,6 +1,7 @@
 import { Drawer } from '@mui/material';
 import { SidebarContent } from './SidebarContent.jsx';
 import { useUI } from '@core/context/UIContext.jsx';
+import { useAtrasCierra } from '@core/hooks/useAtrasCierra.js';
 
 /**
  * Off-canvas navigation for mobile/tablet. Uses MUI's Drawer (temporary) for
@@ -9,6 +10,8 @@ import { useUI } from '@core/context/UIContext.jsx';
  */
 export function MobileNavDrawer() {
   const { mobileNavOpen, closeMobileNav } = useUI();
+  /* «Atrás» del teléfono cierra el menú en vez de salir de la pantalla. */
+  useAtrasCierra(mobileNavOpen, closeMobileNav);
 
   return (
     <Drawer

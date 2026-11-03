@@ -35,7 +35,7 @@ import styles from './Topbar.module.css';
  */
 export function Topbar() {
   const { toggleSidebar, toggleMobileNav, sidebarCollapsed } = useUI();
-  const { isDesktop } = useBreakpoint();
+  const { isDesktop, isMobile } = useBreakpoint();
   const { mode, toggleThemeMode } = useThemeMode();
   const { user, logout } = useAuth();
 
@@ -82,13 +82,23 @@ export function Topbar() {
   return (
     <div className={styles.topbar}>
       <div className={styles.left}>
-        <IconButton
-          onClick={isDesktop ? toggleSidebar : toggleMobileNav}
-          aria-label={isDesktop ? 'Contraer menú' : 'Abrir menú'}
-          edge="start"
-        >
-          {isDesktop && !sidebarCollapsed ? <MenuOpenIcon /> : <MenuIcon />}
-        </IconButton>
+        {/* En el teléfono el menú se abre desde la barra de abajo (al alcance
+            del pulgar) y acá va DÓNDE estás parado: la sucursal, que con un
+            toque abre la cuenta (y, a los jefes, el cambio de sucursal). */}
+        {isMobile ? (
+          <button type="button" className={styles.sucursalMovil} onClick={openMenu} aria-label="Cuenta y sucursal">
+            <StorefrontIcon fontSize="small" />
+            <span>{user?.sucursalNombre || appNombreCorto}</span>
+          </button>
+        ) : (
+          <IconButton
+            onClick={isDesktop ? toggleSidebar : toggleMobileNav}
+            aria-label={isDesktop ? 'Contraer menú' : 'Abrir menú'}
+            edge="start"
+          >
+            {isDesktop && !sidebarCollapsed ? <MenuOpenIcon /> : <MenuIcon />}
+          </IconButton>
+        )}
         {/* Probando en la computadora: a la vista siempre, para no confundirlo con producción. */}
         {env.apiLocal && (
           <span className={styles.modoLocal} title={`Datos de esta computadora (${env.apiBaseUrl}), no los de producción`}>
@@ -107,11 +117,14 @@ export function Topbar() {
           </IconButton>
         </Tooltip>
 
-        <Tooltip title="Notificaciones">
-          <IconButton aria-label="Notificaciones">
-            <NotificationsNoneIcon />
-          </IconButton>
-        </Tooltip>
+        {/* Todavía no avisa nada: en el teléfono no gasta lugar. */}
+        {!isMobile && (
+          <Tooltip title="Notificaciones">
+            <IconButton aria-label="Notificaciones">
+              <NotificationsNoneIcon />
+            </IconButton>
+          </Tooltip>
+        )}
 
         {/* Quién sos y DÓNDE estás parado: la sucursal se eligió en el login
             y es el contexto de toda la sesión — tiene que estar a la vista. */}
@@ -180,6 +193,8 @@ export function Topbar() {
     </div>
   );
 }
+
+const appNombreCorto = 'ERP Sabor y Aroma';
 
 function getInitials(name) {
   if (!name) return '?';

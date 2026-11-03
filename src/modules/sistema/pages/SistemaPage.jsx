@@ -10,7 +10,8 @@
  * La impresora FÍSICA la elige cada puesto en el diálogo del navegador; en la
  * caja, Chrome con --kiosk-printing imprime directo a la predeterminada.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSeccionEnUrl, useSubnavALaVista } from '@core/hooks/useSeccionEnUrl.js';
 import { httpClient } from '@core/services/httpClient.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
@@ -282,7 +283,7 @@ export function SistemaPage() {
 
   if (!secciones.length) {
     return (
-      <div style={{ padding: 'var(--crm-space-6)' }}>
+      <div style={{ padding: 'var(--crm-pagina-pad, var(--crm-space-6))' }}>
         <PanelHead title="Sistema" desc="Configuración general del sistema." />
         <div className={cx(s.callout, s.warn)}>
           Tu rol no tiene ninguna sección de <strong>Sistema</strong> asignada.
@@ -294,13 +295,16 @@ export function SistemaPage() {
   const cargando = !empresa || !impresion;
   // Si el permiso de la sección activa se fue (rol editado), cae a la primera visible.
   const seccionActiva = secciones.some((x) => x.id === seccion) ? seccion : secciones[0].id;
+  const subnavRef = useRef(null);
+  useSeccionEnUrl(seccionActiva, setSeccion, secciones.map((x) => x.id), 'seccion');
+  useSubnavALaVista(subnavRef, seccionActiva);
 
   return (
-    <div style={{ padding: 'var(--crm-space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
+    <div style={{ padding: 'var(--crm-pagina-pad, var(--crm-space-6))', display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead title="Sistema" desc="Identidad de la empresa, impresión y todo lo que es del sistema." />
 
       <div className={s.shell}>
-        <nav className={s.subnav} aria-label="Secciones de Sistema">
+        <nav className={s.subnav} aria-label="Secciones de Sistema" ref={subnavRef}>
           {secciones.map((x) => {
             const Icon = x.icon;
             return (
@@ -308,6 +312,7 @@ export function SistemaPage() {
                 key={x.id}
                 type="button"
                 className={cx(s.subnavItem, seccionActiva === x.id && s.subnavItemActive)}
+                aria-current={seccionActiva === x.id}
                 onClick={() => setSeccion(x.id)}
               >
                 <span className={s.subnavIcon}><Icon fontSize="small" /></span>
@@ -436,7 +441,7 @@ export function SistemaPage() {
                 actions={<Btn variant="btn-primary" disabled={guardando} onClick={() => guardar('impresion', impresion)}>{guardando ? 'Guardando…' : 'Guardar'}</Btn>}
               />
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1fr) minmax(280px, 420px)', gap: 'var(--crm-space-5)', alignItems: 'start' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 'var(--crm-space-5)', alignItems: 'start' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {DOCUMENTOS.map((d) => (
                     <div key={d.clave} className={s.field} style={{ marginBottom: 0 }}>

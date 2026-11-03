@@ -12,6 +12,8 @@ import { FeriadosBanner } from './components/FeriadosBanner.jsx';
 import { AccesosTiendaBanner } from './components/AccesosTiendaBanner.jsx';
 import { CuentasVencidasBanner } from './components/CuentasVencidasBanner.jsx';
 import { DireccionViejaBanner } from './components/DireccionViejaBanner.jsx';
+import { AvisosArriba } from './components/AvisosArriba.jsx';
+import { BarraInferior } from './components/BarraInferior/BarraInferior.jsx';
 import { ConsultasRapidas } from '@modules/consultas/ConsultasRapidas.jsx';
 import { AvisoPedidosCaja } from '@modules/productos/components/AvisoPedidosCaja.jsx';
 import { useUI } from '@core/context/UIContext.jsx';
@@ -32,7 +34,7 @@ import styles from './MainLayout.module.css';
  */
 export function MainLayout() {
   const { sidebarCollapsed } = useUI();
-  const { isDesktop } = useBreakpoint();
+  const { isDesktop, isMobile } = useBreakpoint();
 
   return (
     <div
@@ -40,6 +42,7 @@ export function MainLayout() {
         styles.layout,
         isDesktop && sidebarCollapsed && styles.collapsed,
         !isDesktop && styles.mobile,
+        isMobile && styles.conBarraInferior,
       )}
     >
       {/* Desktop / tablet persistent sidebar */}
@@ -56,15 +59,18 @@ export function MainLayout() {
         <header className={styles.topbar}>
           <Topbar />
         </header>
-        {/* Persistente (no se va solo): una caja de un local olvidada abierta. Solo el superadmin lo ve. */}
-        <DireccionViejaBanner />
-        <CajasAbiertasBanner />
-        {/* Pedidos de ingreso a la tienda mayorista esperando (0155). */}
-        <AccesosTiendaBanner />
-        {/* Clientes que pasaron el plazo de su cuenta corriente y deben (28/10/2026): administración. */}
-        <CuentasVencidasBanner />
-        {/* El próximo feriado, de hoy a 10 días (0182): administración. */}
-        <FeriadosBanner />
+        {/* En el teléfono van plegados en un renglón (AvisosArriba). */}
+        <AvisosArriba>
+          {/* Persistente (no se va solo): una caja de un local olvidada abierta. Solo el superadmin lo ve. */}
+          <DireccionViejaBanner />
+          <CajasAbiertasBanner />
+          {/* Pedidos de ingreso a la tienda mayorista esperando (0155). */}
+          <AccesosTiendaBanner />
+          {/* Clientes que pasaron el plazo de su cuenta corriente y deben (28/10/2026): administración. */}
+          <CuentasVencidasBanner />
+          {/* El próximo feriado, de hoy a 10 días (0182): administración. */}
+          <FeriadosBanner />
+        </AvisosArriba>
 
         <main className={styles.content} id="main-content">
           <div className={styles.contentInner}>
@@ -73,6 +79,9 @@ export function MainLayout() {
           </div>
         </main>
       </div>
+
+      {/* Teléfono: Inicio, los módulos más usados y el menú, al alcance del pulgar. */}
+      {isMobile && <BarraInferior />}
 
       {/*
         Dependencia del layout hacia un módulo, deliberada (como el aviso de

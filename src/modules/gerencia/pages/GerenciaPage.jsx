@@ -12,6 +12,7 @@
  *   - usuarios: se desactivan, nunca se borran (viven en los historiales).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSeccionEnUrl, useSubnavALaVista } from '@core/hooks/useSeccionEnUrl.js';
 import { httpClient } from '@core/services/httpClient.js';
 import { useAuth } from '@core/auth/AuthContext.jsx';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
@@ -602,7 +603,7 @@ export function GerenciaPage() {
 
   if (!secciones.length) {
     return (
-      <div style={{ padding: 'var(--crm-space-6)' }}>
+      <div style={{ padding: 'var(--crm-pagina-pad, var(--crm-space-6))' }}>
         <PanelHead title="Gerencia" desc="Usuarios, roles y permisos del sistema." />
         <div className={cx(s.callout, s.warn)}>
           Tu rol no tiene ninguna sección de <strong>Gerencia</strong> asignada.
@@ -613,6 +614,9 @@ export function GerenciaPage() {
 
   // Si el permiso de la sección activa se fue (rol editado), cae a la primera visible.
   const activa = secciones.find((x) => x.id === seccion) ?? secciones[0];
+  const subnavRef = useRef(null);
+  useSeccionEnUrl(activa?.id, setSeccion, secciones.map((x) => x.id), 'seccion');
+  useSubnavALaVista(subnavRef, activa?.id);
 
   const panelUsuarios = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
@@ -931,12 +935,12 @@ export function GerenciaPage() {
   );
 
   return (
-    <div style={{ padding: 'var(--crm-space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
+    <div style={{ padding: 'var(--crm-pagina-pad, var(--crm-space-6))', display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead title="Gerencia" desc="Administración y tablero de gestión del negocio." />
 
       {/* Mismo shell que Compras/Almacén: sub-menú lateral + panel activo. */}
       <div className={s.shell}>
-        <nav className={s.subnav} aria-label="Secciones de Gerencia">
+        <nav className={s.subnav} aria-label="Secciones de Gerencia" ref={subnavRef}>
           {secciones.map((x) => {
             const Icon = x.icon;
             return (
@@ -944,6 +948,7 @@ export function GerenciaPage() {
                 key={x.id}
                 type="button"
                 className={cx(s.subnavItem, activa.id === x.id && s.subnavItemActive)}
+                aria-current={activa.id === x.id}
                 onClick={() => setSeccion(x.id)}
               >
                 <span className={s.subnavIcon}><Icon fontSize="small" /></span>

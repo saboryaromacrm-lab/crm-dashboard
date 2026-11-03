@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { useSeccionEnUrl, useSubnavALaVista } from '@core/hooks/useSeccionEnUrl.js';
 import { Button, Snackbar, Alert } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
@@ -38,6 +39,9 @@ export function ProveedoresShell({ title, subtitle }) {
     toastState, closeToast, toast,
   } = useProveedores();
   const [refrescando, setRefrescando] = useState(false);
+  const subnavRef = useRef(null);
+  useSeccionEnUrl(panel, goPanel, panels.map((x) => x.id));
+  useSubnavALaVista(subnavRef, panel);
 
   const primero = panels[0]?.id;
   const visible = panels.some((x) => x.id === panel) ? panel : primero;
@@ -79,7 +83,7 @@ export function ProveedoresShell({ title, subtitle }) {
       />
 
       <div className={s.shell}>
-        <nav className={s.subnav} aria-label={`Secciones de ${title}`}>
+        <nav className={s.subnav} aria-label={`Secciones de ${title}`} ref={subnavRef}>
           {panels.map((pnl) => {
             const Icon = pnl.icon;
             const count = pnl.badge ? contadores[pnl.badge] ?? 0 : 0;
@@ -88,6 +92,7 @@ export function ProveedoresShell({ title, subtitle }) {
                 key={pnl.id}
                 type="button"
                 className={cx(s.subnavItem, panel === pnl.id && s.subnavItemActive)}
+                aria-current={panel === pnl.id}
                 onClick={() => goPanel(pnl.id)}
               >
                 <span className={s.subnavIcon}><Icon fontSize="small" /></span>

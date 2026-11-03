@@ -22,6 +22,7 @@
  * dato. Acá ya no hay «Productos del sitio».
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useSeccionEnUrl, useSubnavALaVista } from '@core/hooks/useSeccionEnUrl.js';
 import { useSearchParams } from 'react-router-dom';
 import { httpClient } from '@core/services/httpClient.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
@@ -607,6 +608,9 @@ export function WebPage() {
   // Si el rol pierde la sección activa (permisos vivos al recargar), cae en la
   // primera que sí tenga en vez de quedar en una que no existe.
   const activa = secciones.some((x) => x.id === seccion) ? seccion : secciones[0]?.id;
+  const subnavRef = useRef(null);
+  useSeccionEnUrl(activa, setSeccion, secciones.map((x) => x.id), 'seccion');
+  useSubnavALaVista(subnavRef, activa);
   const usaCatalogo = CON_CATALOGO.has(activa);
 
   const recargar = useCallback(async () => {
@@ -647,7 +651,7 @@ export function WebPage() {
       />
 
       <div className={s.shell}>
-        <nav className={s.subnav} aria-label="Secciones de Tienda online">
+        <nav className={s.subnav} aria-label="Secciones de Tienda online" ref={subnavRef}>
           {secciones.map((x) => {
             const Icon = x.icon;
             return (
@@ -655,6 +659,7 @@ export function WebPage() {
                 key={x.id}
                 type="button"
                 className={cx(s.subnavItem, activa === x.id && s.subnavItemActive)}
+                aria-current={activa === x.id}
                 onClick={() => setSeccion(x.id)}
               >
                 <span className={s.subnavIcon}><Icon fontSize="small" /></span>

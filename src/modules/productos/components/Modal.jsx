@@ -15,6 +15,7 @@ import { Dialog, DialogTitle, DialogContent, DialogActions, IconButton } from '@
 import CloseIcon from '@mui/icons-material/Close';
 import { Btn, s } from './ui.jsx';
 import { useModalModo } from './modalModo.js';
+import { useAtrasCierra } from '@core/hooks/useAtrasCierra.js';
 
 /* Modo celular (ver modalModo.js): pantalla entera, campos de 16 px, botones
  * grandes abajo y margen para la muesca y la barra de gestos del teléfono. */
@@ -29,7 +30,9 @@ const SX_MOVIL = {
 };
 
 export function ModalShell({ title, subtitle, size, wide, muted, onClose, children, footer = [] }) {
-  const { movil } = useModalModo();
+  const { movil, auto } = useModalModo();
+  /* En el teléfono, «atrás» cierra la ventana (el Cash Flow del celular lo maneja él). */
+  useAtrasCierra(movil && auto, onClose);
   const maxWidth = size ?? (wide ? 'md' : 'sm');
   const esConsulta = maxWidth === 'xl';
   const paperSx = {

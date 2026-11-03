@@ -12,7 +12,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { Pill, s } from '@modules/productos/components/ui.jsx';
 import { ESTADOS_GASTO, TIPOS_GASTO, urgenciaDe } from '../domain/constants.js';
 
-export { Table, PanelHead, Stat, Pill, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
+export { Table, TablaMovil, PanelHead, Stat, Pill, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
 export { ModalShell } from '@modules/productos/components/Modal.jsx';
 /* `isoDate` NO se re-exporta a propósito: es la trampa del `toISOString()` para
  * un día del calendario (después de las 21 h devuelve MAÑANA). Para la fecha de

@@ -656,7 +656,7 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr .8fr 1fr 1fr auto', gap: 8, marginBottom: 6 }}>
+      <div className={cx(s.renglon, s.renglonCabeza)} style={{ '--renglon-cols': '2fr 1fr .8fr 1fr 1fr auto', marginBottom: 6 }}>
         {['Producto', 'Presentación', 'Cantidad', 'Costo unit.', 'Subtotal', ''].map((h, i) => (
           <div key={i} className={s['mini-label']}>{h}</div>
         ))}
@@ -669,7 +669,7 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
         const { costo: costoU, congelado } = costoDe(it);
         const porBulto = bultoOfrecible(prod, entrada);
         return (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr .8fr 1fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'start' }}>
+          <div key={i} className={s.renglon} style={{ '--renglon-cols': '2fr 1fr .8fr 1fr 1fr auto', marginBottom: 8, alignItems: 'start' }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 600 }}>
                 {prod.nombre}
@@ -690,28 +690,32 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
               )}
               {porBulto > 1 && <div className={s.hint} style={{ margin: 0, fontWeight: 600 }}>Viene en bulto de {porBulto} u.</div>}
             </div>
-            <select
-              value={valorPresentacion(it, porBulto)}
-              onChange={(e) => {
-                const cambio = cambioPresentacion(it, e.target.value, porBulto);
-                /* El costo de un paquete no es el de la unidad: al cambiar de
-                 * presentación se re-propone, pero SOLO si el campo está
-                 * vacío — un número tipeado a mano no se pisa nunca. */
-                setItem(i, {
-                  ...cambio,
-                  ...(entrada && it.costo === '' ? { costo: costoPrevio(it.prodId, cambio.presId) } : {}),
-                });
-              }}
-            >
-              <option value="">{prod.tipo === 'granel' ? 'Granel (kg)' : 'Unidad'}</option>
-              {porBulto > 1 && <option value={BULTO}>Bulto ×{porBulto}</option>}
-              {(prod.presentaciones || []).map((p) => (
-                <option key={p.id} value={p.id}>{store.presLabel(prod, p.id)}</option>
-              ))}
-            </select>
-            <CantidadRenglon it={it} prod={prod} unidad={u} porBulto={porBulto} onCantidad={(cantidad) => setItem(i, { cantidad })} />
+            <div data-r="Presentación">
+              <select
+                value={valorPresentacion(it, porBulto)}
+                onChange={(e) => {
+                  const cambio = cambioPresentacion(it, e.target.value, porBulto);
+                  /* El costo de un paquete no es el de la unidad: al cambiar de
+                   * presentación se re-propone, pero SOLO si el campo está
+                   * vacío — un número tipeado a mano no se pisa nunca. */
+                  setItem(i, {
+                    ...cambio,
+                    ...(entrada && it.costo === '' ? { costo: costoPrevio(it.prodId, cambio.presId) } : {}),
+                  });
+                }}
+              >
+                <option value="">{prod.tipo === 'granel' ? 'Granel (kg)' : 'Unidad'}</option>
+                {porBulto > 1 && <option value={BULTO}>Bulto ×{porBulto}</option>}
+                {(prod.presentaciones || []).map((p) => (
+                  <option key={p.id} value={p.id}>{store.presLabel(prod, p.id)}</option>
+                ))}
+              </select>
+            </div>
+            <div data-r="Cantidad">
+              <CantidadRenglon it={it} prod={prod} unidad={u} porBulto={porBulto} onCantidad={(cantidad) => setItem(i, { cantidad })} />
+            </div>
             {entrada ? (
-              <div>
+              <div data-r="Costo unit.">
                 {/* Si el renglón va a entrar y no tiene costo, el campo lo
                     muestra: es el único error de esta pantalla que no se ve
                     después, porque el producto entra al stock igual. */}
@@ -766,14 +770,14 @@ export function EnvioCafeteriaFormModal({ envio = null, pedido = null, sentido =
                 })()}
               </div>
             ) : (
-              <div style={{ alignSelf: 'center' }}>
+              <div data-r="Costo unit." style={{ alignSelf: 'center' }}>
                 <span className={cx(s.mono)}>{money(costoU)}</span>
                 <div className={s.hint} style={{ margin: 0 }}>
                   {congelado ? 'congelado' : (costosSalida[it.prodId] != null ? 'última factura' : 'costo de lista')}
                 </div>
               </div>
             )}
-            <div className={cx(s.mono, s.num)} style={{ fontWeight: 700, alignSelf: 'center' }}>
+            <div className={cx(s.mono, s.num)} data-r="Subtotal" style={{ fontWeight: 700, alignSelf: 'center' }}>
               {money(costoU * (Number(it.cantidad) || 0))}
             </div>
             <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>
@@ -1575,7 +1579,7 @@ export function PedidoCafeteriaFormModal({ inicial = null }) {
       </div>
 
       <div className={s['section-title']}>Renglones</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr .8fr auto', gap: 8, marginBottom: 6 }}>
+      <div className={cx(s.renglon, s.renglonCabeza)} style={{ '--renglon-cols': '2fr 1fr .8fr auto', marginBottom: 6 }}>
         {['Producto', 'Presentación', 'Cantidad', ''].map((h, i) => (
           <div key={i} className={s['mini-label']}>{h}</div>
         ))}
@@ -1593,7 +1597,7 @@ export function PedidoCafeteriaFormModal({ inicial = null }) {
          * presentación (paquete de granel) no aplica: lo que viaja es el paquete. */
         const porBulto = bultoOfrecible(prod);
         return (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr .8fr auto', gap: 8, marginBottom: 8, alignItems: 'start' }}>
+          <div key={i} className={s.renglon} style={{ '--renglon-cols': '2fr 1fr .8fr auto', marginBottom: 8, alignItems: 'start' }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 600 }}>{prod.nombre}</div>
               {porBulto > 1 && <div className={s.hint} style={{ margin: 0, fontWeight: 600 }}>Viene en bulto de {porBulto} u.</div>}
@@ -1603,17 +1607,21 @@ export function PedidoCafeteriaFormModal({ inicial = null }) {
                   : <>elegí la sucursal para ver qué tiene</>}
               </div>
             </div>
-            <select
-              value={valorPresentacion(it, porBulto)}
-              onChange={(e) => setItem(i, cambioPresentacion(it, e.target.value, porBulto))}
-            >
-              <option value="">{prod.tipo === 'granel' ? 'Granel (kg)' : 'Unidad'}</option>
-              {porBulto > 1 && <option value={BULTO}>Bulto ×{porBulto}</option>}
-              {(prod.presentaciones || []).map((p) => (
-                <option key={p.id} value={p.id}>{store.presLabel(prod, p.id)}</option>
-              ))}
-            </select>
-            <CantidadRenglon it={it} prod={prod} unidad={u} porBulto={porBulto} onCantidad={(cantidad) => setItem(i, { cantidad })} />
+            <div data-r="Presentación">
+              <select
+                value={valorPresentacion(it, porBulto)}
+                onChange={(e) => setItem(i, cambioPresentacion(it, e.target.value, porBulto))}
+              >
+                <option value="">{prod.tipo === 'granel' ? 'Granel (kg)' : 'Unidad'}</option>
+                {porBulto > 1 && <option value={BULTO}>Bulto ×{porBulto}</option>}
+                {(prod.presentaciones || []).map((p) => (
+                  <option key={p.id} value={p.id}>{store.presLabel(prod, p.id)}</option>
+                ))}
+              </select>
+            </div>
+            <div data-r="Cantidad">
+              <CantidadRenglon it={it} prod={prod} unidad={u} porBulto={porBulto} onCantidad={(cantidad) => setItem(i, { cantidad })} />
+            </div>
             <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>
           </div>
         );

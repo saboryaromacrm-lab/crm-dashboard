@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { MEDIOS_PAGO } from '../domain/constants.js';
-import { PanelHead, Btn, money, s } from '../components/ui.jsx';
+import { PanelHead, Btn, money, s, TablaMovil } from '../components/ui.jsx';
 
 /**
  * FORMATO DE VENTA — catálogo de modalidades, listas y reglas globales.
@@ -145,43 +145,45 @@ export function ListasPanel() {
           </div>
         </div>
 
-        <table className={s.table}>
-          <thead>
-            <tr>
-              <th>Marca</th>
-              <th className={s.num}>Desde</th>
-              <th>Desbloquea</th>
-              <th className={s['actions-col']}>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reglas.length === 0 && (
+        <TablaMovil>
+          <table className={s.table}>
+            <thead>
               <tr>
-                <td colSpan={4} className={s['empty-state']}>
-                  Sin reglas. Por ejemplo: <strong>12 unidades de Coca-Cola → Mayorista</strong>.
-                </td>
+                <th>Marca</th>
+                <th className={s.num}>Desde</th>
+                <th>Desbloquea</th>
+                <th className={s['actions-col']}>Acciones</th>
               </tr>
-            )}
-            {reglas.map((r) => (
-              <tr key={r.id} style={{ opacity: r.activa ? 1 : 0.5 }}>
-                <td>
-                  <strong>{r.marca}</strong>
-                  {!r.activa && <span className={s.muted}> · inactiva</span>}
-                </td>
-                <td className={s.num}><strong>{r.unidadesMinimas}</strong> u.</td>
-                <td>{r.modalidad}</td>
-                <td className={s['actions-col']}>
-                  <div className={s['row-actions']}>
-                    <Btn small onClick={() => openModal('reglaMarcaForm', { reglaId: r.id })}>Editar</Btn>
-                    <Btn variant="btn-delete" small onClick={() => openModal('borrarReglaMarca', { reglaId: r.id })}>
-                      Eliminar
-                    </Btn>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {reglas.length === 0 && (
+                <tr>
+                  <td colSpan={4} className={s['empty-state']}>
+                    Sin reglas. Por ejemplo: <strong>12 unidades de Coca-Cola → Mayorista</strong>.
+                  </td>
+                </tr>
+              )}
+              {reglas.map((r) => (
+                <tr key={r.id} style={{ opacity: r.activa ? 1 : 0.5 }}>
+                  <td>
+                    <strong>{r.marca}</strong>
+                    {!r.activa && <span className={s.muted}> · inactiva</span>}
+                  </td>
+                  <td className={s.num}><strong>{r.unidadesMinimas}</strong> u.</td>
+                  <td>{r.modalidad}</td>
+                  <td className={s['actions-col']}>
+                    <div className={s['row-actions']}>
+                      <Btn small onClick={() => openModal('reglaMarcaForm', { reglaId: r.id })}>Editar</Btn>
+                      <Btn variant="btn-delete" small onClick={() => openModal('borrarReglaMarca', { reglaId: r.id })}>
+                        Eliminar
+                      </Btn>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TablaMovil>
       </div>
 
       {/* ---------------------- Acceso por monto ---------------------- */}

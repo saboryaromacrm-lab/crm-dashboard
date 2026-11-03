@@ -1,4 +1,5 @@
-import { useCallback, useState, useSyncExternalStore } from 'react';
+import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
+import { useSeccionEnUrl, useSubnavALaVista } from '@core/hooks/useSeccionEnUrl.js';
 import { Button } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
@@ -53,6 +54,9 @@ export function VentasShell({ title, subtitle }) {
     loaded, loadError, recargar, panels, panel, goPanel, toast,
   } = useVentas();
   const [refrescando, setRefrescando] = useState(false);
+  const subnavRef = useRef(null);
+  useSeccionEnUrl(panel, goPanel, panels.map((x) => x.id));
+  useSubnavALaVista(subnavRef, panel);
 
   /* Las caídas por ARCA: solo se consulta si el rol ve la sección (sin eso,
    * un rol sin el listado se comería un 403 por minuto). */
@@ -110,7 +114,7 @@ export function VentasShell({ title, subtitle }) {
       {/* El puesto de trabajo (usuario + sucursal) vive en la sesión y se ve
           arriba, al lado del perfil: acá sería repetirlo. */}
       <div className={s.shell}>
-        <nav className={s.subnav} aria-label={`Secciones de ${title}`}>
+        <nav className={s.subnav} aria-label={`Secciones de ${title}`} ref={subnavRef}>
           {panels.map((p) => {
             const Icon = p.icon;
             const count = p.badge ? counts[p.badge] ?? 0 : 0;
@@ -119,6 +123,7 @@ export function VentasShell({ title, subtitle }) {
                 key={p.id}
                 type="button"
                 className={cx(s.subnavItem, panel === p.id && s.subnavItemActive)}
+                aria-current={panel === p.id}
                 onClick={() => goPanel(p.id)}
               >
                 <span className={s.subnavIcon}><Icon fontSize="small" /></span>

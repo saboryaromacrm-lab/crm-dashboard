@@ -79,7 +79,7 @@ export function FraccionamientoPanel() {
         title="Fraccionamiento"
         desc="Convertí granel en paquetes en la misma sucursal, y sacá las etiquetas de los paquetes. Fraccionar mueve stock; imprimir etiquetas no toca nada."
       />
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className={s.filaPestanas} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {PESTANAS.map((v) => (
           <button
             key={v.id}
