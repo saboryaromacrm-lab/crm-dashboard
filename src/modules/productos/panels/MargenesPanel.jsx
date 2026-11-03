@@ -59,6 +59,8 @@ export function MargenesPanel() {
   const [categoria, setCategoria] = useState('');
   const [proveedorId, setProveedorId] = useState('');
   const [estadoF, setEstadoF] = useState('vigentes');
+  /** '' | 'granel' | 'entero' (3/11/2026, pedido del dueño). */
+  const [tipo, setTipo] = useState('');
   /** El valor elegido en el resumen: filtra la grilla de abajo. */
   const [grupoSel, setGrupoSel] = useState(null);
   /** Listas cuyo resumen se desplegó entero (ver `TOPE_VALORES`). */
@@ -91,11 +93,12 @@ export function MargenesPanel() {
       if (estadoF !== 'vigentes' && estadoF !== '' && est !== estadoF) return false;
       if (marca && p.marca !== marca) return false;
       if (categoria && p.categoria !== categoria) return false;
+      if (tipo && (p.tipo === 'granel') !== (tipo === 'granel')) return false;
       if (provId && !(p.formatosCompra || []).some((e) => e.proveedorId === provId)) return false;
       if (!ql) return true;
       return norm(p.nombre).includes(ql) || norm(p.marca).includes(ql) || norm(p.categoria).includes(ql);
     });
-  }, [store.state.productos, q, marca, categoria, proveedorId, estadoF]);
+  }, [store.state.productos, q, marca, categoria, proveedorId, estadoF, tipo]);
 
   const filas = useMemo(() => filasDeMargenes(productos), [productos]);
   const grupos = useMemo(() => agruparMargenes(filas), [filas]);
@@ -139,16 +142,16 @@ export function MargenesPanel() {
     aMano: grupos.filter((g) => g.modoPrecio === 'precio').reduce((a, g) => a + g.cantidad, 0),
   }), [filas, grupos]);
 
-  const hayFiltro = !!(q || marca || categoria || proveedorId || estadoF !== 'vigentes');
+  const hayFiltro = !!(q || marca || categoria || proveedorId || tipo || estadoF !== 'vigentes');
   const limpiar = () => {
-    setQ(''); setMarca(''); setCategoria(''); setProveedorId(''); setEstadoF('vigentes');
+    setQ(''); setMarca(''); setCategoria(''); setProveedorId(''); setTipo(''); setEstadoF('vigentes');
     setGrupoSel(null);
   };
 
   const pag = usePaginado(
     grilla,
     'margenes',
-    `${q}|${marca}|${categoria}|${proveedorId}|${estadoF}|${grupoSel ?? ''}`,
+    `${q}|${marca}|${categoria}|${proveedorId}|${tipo}|${estadoF}|${grupoSel ?? ''}`,
   );
 
   /**
@@ -263,6 +266,11 @@ export function MargenesPanel() {
           <option value="discontinuado">Solo discontinuados</option>
           <option value="archivado">Solo archivados</option>
           <option value="">Todos, incluso archivados</option>
+        </select>
+        <select className={s['select-inline']} value={tipo} onChange={(e) => setTipo(e.target.value)} aria-label="Entero o a granel">
+          <option value="">Enteros y a granel</option>
+          <option value="entero">Solo enteros</option>
+          <option value="granel">Solo a granel</option>
         </select>
         {hayFiltro && <Btn small onClick={limpiar}>Limpiar</Btn>}
       </div>

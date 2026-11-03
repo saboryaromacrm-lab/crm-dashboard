@@ -771,7 +771,7 @@ export const MANUAL = [
               '**Las dos están enganchadas.** Clic en un valor del resumen y la grilla queda mostrando exactamente esos artículos, con un chip arriba para sacar el filtro. Ese movimiento es el que reemplaza al "entrar producto por producto".',
               '**Cambiar todo un grupo de una vez.** Cada valor tiene su botón *"Cambiar estos N"*, que abre la actualización masiva de márgenes **ya apuntada a ese grupo exacto**. Y exacto quiere decir exacto: si un producto está al 40% suelto y al 55% en su paquete de 500 g, cambiar "el grupo del 40%" **no toca el 55%**. El alcance viaja como las filas puntuales y no como "estos productos", que es lo que haría moverse precios que nadie pidió.',
               '**El precio puesto a mano no es un markup 0%.** Esas filas tienen su propio grupo por lista y no se pueden mover con un porcentaje: ese precio lo fijó una persona. El recuadro **"Con precio a mano"** de arriba dice cuántas son — si son muchas, el mapa de márgenes explica menos de lo que parece.',
-              '**Los filtros son los mismos de Productos** (búsqueda, categoría, marca, proveedor, estado), así que todo lo de abajo se puede acotar a un proveedor o a una marca. Y el botón **Exportar CSV** baja exactamente lo que estás viendo.',
+              '**Los filtros son los mismos de Productos** (búsqueda, categoría, marca, proveedor, estado), más **Solo enteros / Solo a granel**, así que todo lo de abajo se puede acotar a un proveedor, a una marca o a un tipo de producto. Y el botón **Exportar CSV** baja exactamente lo que estás viendo.',
             ],
           },
           {
