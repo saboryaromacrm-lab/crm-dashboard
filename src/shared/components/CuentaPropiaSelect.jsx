@@ -7,6 +7,18 @@ import { Btn, s } from '@modules/productos/components/ui.jsx';
 /** Quien maneja el Cash Flow (el superadmin) carga cuentas; los demás solo eligen. */
 const PERMISO_CARGAR = 'gerencia.cashflow';
 const NUEVA = '__nueva__';
+/** Otra cuenta escrita a mano (0215): el valor es este prefijo + el texto. */
+const A_MANO = 'mano:';
+
+/** Lo que el pago manda al servidor según lo elegido: una de Mis cuentas o la escrita a mano. */
+export const cuentaDelPago = (value) => (String(value ?? '').startsWith(A_MANO)
+  ? { cuentaAMano: String(value).slice(A_MANO.length) }
+  : { cuentaPropiaId: Number(value) || undefined });
+
+/** El nombre de lo elegido, para confirmar el pago: «Mercado Pago» o «cuenta de mi hermano (a mano)». */
+export const nombreCuentaElegida = (value, cuentas) => (String(value ?? '').startsWith(A_MANO)
+  ? `${String(value).slice(A_MANO.length).trim()} (a mano)`
+  : cuentas?.find((c) => String(c.id) === String(value))?.nombre);
 
 /** La lista de Mis cuentas (todas, activas primero), viva en todo el ERP. */
 export const useCuentasPropias = () => useSyncExternalStore(cuentasPropias.subscribe, cuentasPropias.estado);
@@ -18,8 +30,13 @@ export const useCuentasPropias = () => useSyncExternalStore(cuentasPropias.subsc
  * sin ninguna no pide nada (la regla está en el servidor: con cuentas cargadas,
  * elegir es obligatorio). Quien maneja el Cash Flow agrega una cuenta desde acá
  * mismo, sin salir del pago. `value` es el id como texto ('' = sin elegir).
+ *
+ * OTRA CUENTA, A MANO (0215, 3/11/2026, pedido del dueño): «desde la cuenta de
+ * mi hermano». La escribe cualquiera que paga, no se agrega a Mis cuentas y
+ * queda asentada en el pago como «… (a mano)». Se manda con `cuentaDelPago`.
+ * `aMano={false}` la saca donde ya hay otra forma de decirlo.
  */
-export function CuentaPropiaSelect({ value, onChange, style }) {
+export function CuentaPropiaSelect({ value, onChange, style, aMano = true }) {
   const { cuentas, error } = useCuentasPropias();
   const { can } = usePermissions();
   const puedeCargar = can(PERMISO_CARGAR);
@@ -42,6 +59,17 @@ export function CuentaPropiaSelect({ value, onChange, style }) {
     }
   };
 
+  if (aMano && String(value ?? '').startsWith(A_MANO)) {
+    return (
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', ...style }}>
+        <input
+          autoFocus maxLength={80} value={value.slice(A_MANO.length)} aria-label="Otra cuenta, escrita a mano"
+          placeholder="¿De qué cuenta? Ej.: cuenta de mi hermano" onChange={(e) => onChange(A_MANO + e.target.value)}
+        />
+        <Btn small onClick={() => onChange('')}>Elegir de mis cuentas</Btn>
+      </div>
+    );
+  }
   if (nueva !== null) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, ...style }}>
@@ -69,6 +97,7 @@ export function CuentaPropiaSelect({ value, onChange, style }) {
         {puedeCargar
           ? <Btn small onClick={() => setNueva('')}>Agregar una cuenta</Btn>
           : 'Se cargan en Gerencia › Cash Flow › Configuración.'}
+        {aMano && <>{' '}<Btn small onClick={() => onChange(A_MANO)}>Escribir otra cuenta</Btn></>}
       </div>
     );
   }
@@ -79,6 +108,7 @@ export function CuentaPropiaSelect({ value, onChange, style }) {
     >
       <option value="">— Elegí la cuenta —</option>
       {activas.map((c) => <option key={c.id} value={c.id}>{c.detalle ? `${c.nombre} · ${c.detalle}` : c.nombre}</option>)}
+      {aMano && <option value={A_MANO}>Otra cuenta (escribirla a mano)…</option>}
       {puedeCargar && <option value={NUEVA}>+ Agregar una cuenta…</option>}
     </select>
   );

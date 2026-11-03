@@ -9,7 +9,7 @@ import {
 } from '../ui.jsx';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '../segundaConfirmacion.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
-import { CuentaPropiaSelect } from '@shared/components/CuentaPropiaSelect.jsx';
+import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
 
 /* ==================================================================== *
  * Registrar un pago (desde el módulo, no desde la caja)
@@ -54,7 +54,7 @@ export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
         proveedorId: Number(proveedorId),
         importe: r2(importe),
         medio,
-        cuentaPropiaId: Number(cuentaId) || undefined,
+        ...cuentaDelPago(cuentaId),
         fecha,
         concepto: concepto.trim(),
         referencia: referencia.trim(),

@@ -11,7 +11,7 @@ import {
   Table, Btn, Di, ModalShell, GastoEstadoPill, Saldo, money, fmtFecha, fmtFechaHora, s,
 } from '../ui.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
-import { CuentaPropiaSelect } from '@shared/components/CuentaPropiaSelect.jsx';
+import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
 
 /* ==================================================================== *
  * Alta y edición del gasto
@@ -454,7 +454,7 @@ export function GastoFormModal({ gastoId, onChange }) {
           pagoInmediato: {
             importe: resto,
             medio: medioPago,
-            cuentaPropiaId: Number(cuentaPago) || undefined,
+            ...cuentaDelPago(cuentaPago),
             fecha: f.fecha || undefined,
             cajaSesionId: saleDeCaja ? caja.id : undefined,
             // Sin `usuarioId`: el pago del gasto lo firma el mismo que carga el
@@ -1173,7 +1173,7 @@ export function PagarGastoModal({ gastoId, onChange }) {
         gastosApi.pagarGasto(gastoId, {
           importe: r2(importe),
           medio,
-          cuentaPropiaId: Number(cuentaId) || undefined,
+          ...cuentaDelPago(cuentaId),
           fecha,
           referencia: referencia.trim(),
           cajaSesionId: saleDeCaja ? caja.id : undefined,

@@ -423,7 +423,7 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
           </select>
           {deTercero
             ? <input id="pago-tercero" value={tercero} maxLength={80} onChange={cambiar(setTercero)} placeholder="¿Quién transfirió? Nombre del titular" />
-            : <CuentaPropiaSelect value={cuentaId} onChange={(v) => { setCuentaId(v); setConfirmando(false); }} />}
+            : <CuentaPropiaSelect aMano={false} value={cuentaId} onChange={(v) => { setCuentaId(v); setConfirmando(false); }} />}
         </div>
         <div className={s.field}>
           <label>Nº de operación</label>

@@ -5,7 +5,7 @@ import { useResource } from '../../hooks/useResource.js';
 import { provApi, MEDIOS_PAGO_REAL } from '../../services/proveedores.api.js';
 import { Btn, ModalShell, money, fmtFecha, s } from '../ui.jsx';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '@modules/gastos/components/segundaConfirmacion.jsx';
-import { CuentaPropiaSelect, useCuentasPropias } from '@shared/components/CuentaPropiaSelect.jsx';
+import { CuentaPropiaSelect, cuentaDelPago, nombreCuentaElegida, useCuentasPropias } from '@shared/components/CuentaPropiaSelect.jsx';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -150,7 +150,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
   const cambiarForma = (i, k, v) => setFormas((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
   const setForma = (i, k) => (e) => cambiarForma(i, k, e.target.value);
   const { cuentas: misCuentas } = useCuentasPropias();
-  const nombreCuenta = misCuentas?.find((c) => String(c.id) === cuentaId)?.nombre;
+  const nombreCuenta = nombreCuentaElegida(cuentaId, misCuentas);
   const alternar = (d) => setTildados((m) => {
     const k = claveDoc(d);
     return { ...m, [k]: !m[k] };
@@ -254,7 +254,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
       body.cambioPor = cambioPor.trim();
     } else if (modo === 'simple') {
       body.medio = medio;
-      body.cuentaPropiaId = Number(cuentaId) || undefined;
+      Object.assign(body, cuentaDelPago(cuentaId));
     } else {
       const filas = formas.filter((x) => Number(x.importe) > 0);
       if (!filas.length) { toast('Cargá al menos una parte del pago.', 'err'); return; }
@@ -263,7 +263,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
         return;
       }
       body.formas = filas.map((x) => ({
-        medio: x.medio, importe: r2(x.importe), fecha: x.fecha || undefined, cuentaPropiaId: Number(x.cuentaId) || undefined,
+        medio: x.medio, importe: r2(x.importe), fecha: x.fecha || undefined, ...cuentaDelPago(x.cuentaId),
       }));
     }
     if (usaEfectivo && hayTurno && desdeCaja) body.cajaSesionId = caja.id;

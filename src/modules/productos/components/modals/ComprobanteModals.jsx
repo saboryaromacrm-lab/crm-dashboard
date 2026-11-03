@@ -7,7 +7,7 @@ import { displaysDe, envasesDelRenglon, nombreEnvase } from '../../domain/bulto.
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
-import { CuentaPropiaSelect } from '@shared/components/CuentaPropiaSelect.jsx';
+import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
 
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
@@ -1721,7 +1721,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           ? {
             importe: r2(ahora),
             medio: medioPago,
-            cuentaPropiaId: Number(cuentaPago) || undefined,
+            ...cuentaDelPago(cuentaPago),
             cajaSesionId: origenPago ? Number(origenPago) : undefined,
             referencia: refPago.trim() || undefined,
           }
@@ -1778,7 +1778,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         ? {
           importe: r2(ahora),
           medio: medioPago,
-          cuentaPropiaId: Number(cuentaPago) || undefined,
+          ...cuentaDelPago(cuentaPago),
           cajaSesionId: origenPago ? Number(origenPago) : undefined,
           referencia: refPago.trim() || undefined,
         }

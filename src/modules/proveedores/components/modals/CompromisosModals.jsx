@@ -4,7 +4,7 @@ import { useResource } from '../../hooks/useResource.js';
 import { provApi, MEDIOS_PAGO_REAL } from '../../services/proveedores.api.js';
 import { Btn, Di, ImporteCompromiso, ModalShell, money, fmtFecha, s } from '../ui.jsx';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '@modules/gastos/components/segundaConfirmacion.jsx';
-import { CuentaPropiaSelect } from '@shared/components/CuentaPropiaSelect.jsx';
+import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -121,10 +121,10 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
     const body = { fecha, referencia: referencia.trim() || undefined };
     if (modo === 'simple') {
       body.medio = medio;
-      body.cuentaPropiaId = Number(cuentaId) || undefined;
+      Object.assign(body, cuentaDelPago(cuentaId));
     } else {
       body.formas = formas.filter((x) => Number(x.importe) > 0).map((x) => ({
-        medio: x.medio, importe: r2(x.importe), fecha: x.fecha || undefined, cuentaPropiaId: Number(x.cuentaId) || undefined,
+        medio: x.medio, importe: r2(x.importe), fecha: x.fecha || undefined, ...cuentaDelPago(x.cuentaId),
       }));
     }
     if (usaEfectivo && hayTurno && desdeCaja) body.cajaSesionId = caja.id;
