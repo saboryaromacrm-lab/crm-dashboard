@@ -29,7 +29,8 @@ const TIPO = { factura: 'Factura', remito: 'Remito', liquidacion: 'Liquidación'
 const cant = (n, tipo) => `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 3 })}${tipo === 'granel' ? ' kg' : ''}`;
 const nroDe = (c) => `${TIPO[c.tipo] ?? c.tipo}${c.tipo === 'factura' ? ` ${c.letra}` : ''} ${c.puntoVenta}-${String(c.numero ?? 0).padStart(8, '0')}`;
 
-export function ProveedorMenu({ proveedorId, nombre, enPadron = false }) {
+/** `unaLinea`: el nombre en un solo renglón, cortado con «…» (la tarjeta plegada de Pedidos, 3/11/2026). */
+export function ProveedorMenu({ proveedorId, nombre, enPadron = false, unaLinea = false }) {
   const { openModal, goPanel, panels, panel, getProveedor } = useProveedores();
   const [anchor, setAnchor] = useState(null);
   /* El celular de la ficha en el formato de WhatsApp (el mismo que usa la orden de pedido): solo con el menú abierto. */
@@ -53,13 +54,14 @@ export function ProveedorMenu({ proveedorId, nombre, enPadron = false }) {
         onClick={(e) => setAnchor(e.currentTarget)}
         aria-haspopup="menu"
         aria-expanded={!!anchor}
-        title={enPadron ? 'Orden de pedido, estado de cuenta y WhatsApp' : 'Ver stock, estado de cuenta e ingresos'}
+        title={`${unaLinea ? `${nombre} · ` : ''}${enPadron ? 'Orden de pedido, estado de cuenta y WhatsApp' : 'Ver stock, estado de cuenta e ingresos'}`}
         style={{
           all: 'unset', cursor: 'pointer', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 2,
           textDecoration: 'underline', textDecorationColor: 'var(--crm-color-border, #ccc)', textUnderlineOffset: 3,
+          ...(unaLinea ? { minWidth: 0, maxWidth: '100%' } : {}),
         }}
       >
-        {nombre}
+        {unaLinea ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre}</span> : nombre}
         <ExpandMoreIcon fontSize="small" style={{ opacity: 0.6 }} />
       </button>
       <Menu anchorEl={anchor} open={!!anchor} onClose={cerrar}>

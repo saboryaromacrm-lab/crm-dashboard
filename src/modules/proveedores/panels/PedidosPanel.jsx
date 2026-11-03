@@ -49,6 +49,14 @@ export function PedidosPanel() {
   /* 0164: la pizarra solo con los proveedores de la localidad. */
   const [soloLocales, setSoloLocales] = useState(false);
   const [filtro, setFiltro] = useState(SIN_FILTROS);
+  /* TARJETAS PLEGADAS (3/11/2026, pedido del dueño): arrancan cerradas, con el
+   * proveedor y hace cuánto se anotó; el resto se ve al abrirlas. */
+  const [abiertas, setAbiertas] = useState(() => new Set());
+  const alternar = (id) => setAbiertas((xs) => {
+    const n = new Set(xs);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
   const { data: tarjetas, reload } = useResource('prov-kanban', provApi.kanban);
   /* Lo que cada proveedor te debe en cambios de mercadería (0202): para reclamárselo al pedirle. */
   const { data: cambios } = useResource('prov-cambios-pendientes', provApi.reposicionesPorProveedor);
@@ -76,84 +84,101 @@ export function PedidosPanel() {
   const Tarjeta = ({ t }) => {
     const revisadoHace = t.revisadoAt ? diasCalendario(t.revisadoAt) : null;
     const anotadaHace = t.fechaAlta ? diasCalendario(t.fechaAlta) : null;
+    const abierta = abiertas.has(t.id);
     return (
-      <div className={s.card} style={{ padding: 10, marginBottom: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-          <ProveedorMenu proveedorId={t.proveedorId} nombre={t.proveedorNombre} />
-          <Btn small onClick={() => mutar(provApi.borrarPedido(t.id), 'Tarjeta eliminada.')}>×</Btn>
-        </div>
-        {/* CUÁNDO SE ANOTÓ (19/10/2026, pedido del dueño): la fecha en que se asentó
-            la tarjeta, en las tres columnas; en «Pedido» además el día que se le pidió. */}
-        {t.fechaAlta && (
-          <div style={{ fontSize: 12.5, margin: '2px 0', color: 'var(--crm-color-text-secondary)' }}>
-            Anotado el <strong style={{ color: 'var(--crm-color-text)' }}>{fmtFechaHora(t.fechaAlta)}</strong> · {hace(anotadaHace)}
+      <div className={s.card} style={{ padding: abierta ? 10 : '6px 10px', marginBottom: abierta ? 8 : 6 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+          <div style={{ minWidth: 0, display: 'flex' }}>
+            <ProveedorMenu proveedorId={t.proveedorId} nombre={t.proveedorNombre} unaLinea={!abierta} />
           </div>
-        )}
-        {t.productosProveedor > 0 && (
-          <div className={s.hint} style={{ margin: '2px 0' }}>trae {t.productosProveedor} producto(s)</div>
-        )}
-        {(() => {
-          const c = (cambios ?? []).find((x) => x.proveedorId === t.proveedorId);
-          return c && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            {!abierta && anotadaHace != null && <span className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>{hace(anotadaHace)}</span>}
+            {abierta && <Btn small onClick={() => mutar(provApi.borrarPedido(t.id), 'Tarjeta eliminada.')}>×</Btn>}
             <button
-              type="button" onClick={() => goPanel('reposiciones', { proveedorId: t.proveedorId })}
-              style={{ display: 'block', margin: '4px 0', padding: '3px 8px', border: '1px solid #fde68a', borderRadius: 999, background: '#fffbeb', color: '#92400e', font: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              type="button" aria-expanded={abierta} aria-label={abierta ? 'Plegar la tarjeta' : 'Ver la tarjeta completa'}
+              onClick={() => alternar(t.id)}
+              style={{ border: 0, background: 'none', cursor: 'pointer', padding: '2px 4px', font: 'inherit', fontSize: 14, color: 'var(--crm-color-text-secondary)' }}
             >
-              🔄 Te debe {money(c.debe)} en cambios
+              {abierta ? '▾' : '▸'}
             </button>
-          );
-        })()}
-        {/* Una orden de pedido de Almacén trae la lista entera: en la tarjeta, las
-            primeras líneas (la nota completa al pasar el mouse y en «Notas»). */}
-        {t.notas && (
-          <div
-            className={s.hint} title={t.notas}
-            style={{ margin: '4px 0', whiteSpace: 'pre-wrap', display: '-webkit-box', WebkitLineClamp: 6, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
-          >
-            {t.notas}
           </div>
+        </div>
+        {abierta && (
+          <>
+            {/* CUÁNDO SE ANOTÓ (19/10/2026, pedido del dueño): la fecha en que se asentó
+                la tarjeta, en las tres columnas; en «Pedido» además el día que se le pidió. */}
+            {t.fechaAlta && (
+              <div style={{ fontSize: 12.5, margin: '2px 0', color: 'var(--crm-color-text-secondary)' }}>
+                Anotado el <strong style={{ color: 'var(--crm-color-text)' }}>{fmtFechaHora(t.fechaAlta)}</strong> · {hace(anotadaHace)}
+              </div>
+            )}
+            {t.productosProveedor > 0 && (
+              <div className={s.hint} style={{ margin: '2px 0' }}>trae {t.productosProveedor} producto(s)</div>
+            )}
+            {(() => {
+              const c = (cambios ?? []).find((x) => x.proveedorId === t.proveedorId);
+              return c && (
+                <button
+                  type="button" onClick={() => goPanel('reposiciones', { proveedorId: t.proveedorId })}
+                  style={{ display: 'block', margin: '4px 0', padding: '3px 8px', border: '1px solid #fde68a', borderRadius: 999, background: '#fffbeb', color: '#92400e', font: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  🔄 Te debe {money(c.debe)} en cambios
+                </button>
+              );
+            })()}
+            {/* Una orden de pedido de Almacén trae la lista entera: en la tarjeta, las
+                primeras líneas (la nota completa al pasar el mouse y en «Notas»). */}
+            {t.notas && (
+              <div
+                className={s.hint} title={t.notas}
+                style={{ margin: '4px 0', whiteSpace: 'pre-wrap', display: '-webkit-box', WebkitLineClamp: 6, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+              >
+                {t.notas}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', margin: '4px 0' }}>
+              {t.estado === 'solicitado' && t.pedidoEnviado && <Pill pill="est-recibida" label="pedido enviado" />}
+              {t.estado === 'solicitado' && revisadoHace != null && (
+                <Pill label={`lo viste ${hace(revisadoHace)}`} />
+              )}
+              {t.estado === 'pedido' && t.fechaPedido && (
+                <Pill label={`pedido el ${fmtFecha(t.fechaPedido)}`} />
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <Btn small onClick={() => openModal('pedidoNotas', { pedido: t, onChange: reload })}>Notas</Btn>
+              {t.estado === 'solicitado' && (
+                <>
+                  <Btn small onClick={() => mutar(provApi.togglePedidoEnviado(t.id))}>
+                    {t.pedidoEnviado ? 'No enviado' : 'Enviado ✓'}
+                  </Btn>
+                  <Btn small onClick={() => mutar(provApi.marcarRevisado(t.id, !!t.revisadoAt))}>
+                    {t.revisadoAt ? 'Volver a revisar' : 'Ya lo vi'}
+                  </Btn>
+                  <Btn small variant="btn-primary" onClick={() => mutar(provApi.estadoPedido(t.id, 'pedido'), 'A Pedido.')}>
+                    → Pedido
+                  </Btn>
+                  <Btn small onClick={() => mutar(provApi.estadoPedido(t.id, 'retomar'), 'Aparcado.')}>Aparcar</Btn>
+              </>
+            )}
+            {t.estado === 'pedido' && (
+              <>
+                <Btn small variant="btn-primary" onClick={() => mutar(provApi.estadoPedido(t.id, 'recibido'), 'Recibido: pasó al historial de Ingresos.')}>
+                  ✓ Recibido
+                </Btn>
+                <Btn small onClick={() => mutar(provApi.estadoPedido(t.id, 'solicitado'), 'De vuelta en Solicitado.')}>
+                  ← Solicitado
+                </Btn>
+              </>
+            )}
+            {t.estado === 'retomar' && (
+              <Btn small variant="btn-primary" onClick={() => mutar(provApi.estadoPedido(t.id, 'solicitado'), 'Retomado.')}>
+                → Solicitado
+              </Btn>
+            )}
+          </div>
+          </>
         )}
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', margin: '4px 0' }}>
-          {t.estado === 'solicitado' && t.pedidoEnviado && <Pill pill="est-recibida" label="pedido enviado" />}
-          {t.estado === 'solicitado' && revisadoHace != null && (
-            <Pill label={`lo viste ${hace(revisadoHace)}`} />
-          )}
-          {t.estado === 'pedido' && t.fechaPedido && (
-            <Pill label={`pedido el ${fmtFecha(t.fechaPedido)}`} />
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          <Btn small onClick={() => openModal('pedidoNotas', { pedido: t, onChange: reload })}>Notas</Btn>
-          {t.estado === 'solicitado' && (
-            <>
-              <Btn small onClick={() => mutar(provApi.togglePedidoEnviado(t.id))}>
-                {t.pedidoEnviado ? 'No enviado' : 'Enviado ✓'}
-              </Btn>
-              <Btn small onClick={() => mutar(provApi.marcarRevisado(t.id, !!t.revisadoAt))}>
-                {t.revisadoAt ? 'Volver a revisar' : 'Ya lo vi'}
-              </Btn>
-              <Btn small variant="btn-primary" onClick={() => mutar(provApi.estadoPedido(t.id, 'pedido'), 'A Pedido.')}>
-                → Pedido
-              </Btn>
-              <Btn small onClick={() => mutar(provApi.estadoPedido(t.id, 'retomar'), 'Aparcado.')}>Aparcar</Btn>
-            </>
-          )}
-          {t.estado === 'pedido' && (
-            <>
-              <Btn small variant="btn-primary" onClick={() => mutar(provApi.estadoPedido(t.id, 'recibido'), 'Recibido: pasó al historial de Ingresos.')}>
-                ✓ Recibido
-              </Btn>
-              <Btn small onClick={() => mutar(provApi.estadoPedido(t.id, 'solicitado'), 'De vuelta en Solicitado.')}>
-                ← Solicitado
-              </Btn>
-            </>
-          )}
-          {t.estado === 'retomar' && (
-            <Btn small variant="btn-primary" onClick={() => mutar(provApi.estadoPedido(t.id, 'solicitado'), 'Retomado.')}>
-              → Solicitado
-            </Btn>
-          )}
-        </div>
       </div>
     );
   };
@@ -190,6 +215,10 @@ export function PedidosPanel() {
             </select>
           ))}
           {(filtro.estado || conMarcas) && <Btn small onClick={() => setFiltro(SIN_FILTROS)}>Ver todo</Btn>}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            <Btn small disabled={!visibles.length} onClick={() => setAbiertas(new Set(visibles.map((t) => t.id)))}>Desplegar todas</Btn>
+            <Btn small disabled={!abiertas.size} onClick={() => setAbiertas(new Set())}>Plegar todas</Btn>
+          </div>
         </div>
       )}
       {vista === 'pizarra' ? (
