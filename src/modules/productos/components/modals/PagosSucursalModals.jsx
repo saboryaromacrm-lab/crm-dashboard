@@ -16,6 +16,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, fmtFecha, fmtFechaHora } from '../../domain/format.js';
+import { deOtraSucursal, esJefeSesion, pagoSeOfrece } from '../../domain/pagosACuenta.js';
+import { leerSesion } from '@core/auth/sesion.js';
 import { ModalShell } from '../Modal.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
 
@@ -54,19 +56,11 @@ export function TomarPagosComprobanteModal({ comprobanteId, proveedorId, onChang
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  /**
-   * Misma regla que el alta: solo los pagos de LA SUCURSAL de esta factura.
-   * Un pago de otra sucursal explica mercadería que entró allá — se toma
-   * cargando o abriendo la factura de esa sucursal.
-   */
+  /* Misma regla que el alta (`pagoSeOfrece`): los de la sucursal de esta factura,
+   * los sin sucursal y, al administrador, los de otras; los fletes nunca. */
   const sucComp = store.getComprobante(comprobanteId)?.sucursalId ?? null;
-  /* Los FLETES no se ofrecen acá (18/8): la factura se paga por su total y el
-   * flete se descuenta al pagar la cuenta corriente, desde el estado de cuenta.
-   * Mismo criterio que el alta del comprobante. */
-  const lista = useMemo(() => {
-    const todos = (pagos ?? []).filter((x) => !x.esFlete);
-    return sucComp ? todos.filter((x) => x.sucursalId === sucComp) : todos;
-  }, [pagos, sucComp]);
+  const esJefe = esJefeSesion(leerSesion());
+  const lista = useMemo(() => (pagos ?? []).filter((x) => pagoSeOfrece(x, sucComp, esJefe)), [pagos, sucComp, esJefe]);
   const sinFlete = useMemo(() => (pagos ?? []).filter((x) => !x.esFlete), [pagos]);
   const enOtras = r2(sinFlete.reduce((a, x) => a + x.saldo, 0) - lista.reduce((a, x) => a + x.saldo, 0));
   const enFletes = r2((pagos ?? []).filter((x) => x.esFlete).reduce((a, x) => a + x.saldo, 0));
@@ -130,7 +124,7 @@ export function TomarPagosComprobanteModal({ comprobanteId, proveedorId, onChang
       ]}
     >
       <div className={s.hint} style={{ marginTop: 0 }}>
-        Plata que ya salió de las cajas de las sucursales y esperaba esta factura. Tomarla acá la
+        Plata que ya se le pagó (desde una caja o desde el Cash Flow) y esperaba esta factura. Tomarla acá la
         descuenta de la deuda — no vuelve a mover plata.
       </div>
 
@@ -156,7 +150,8 @@ export function TomarPagosComprobanteModal({ comprobanteId, proveedorId, onChang
               {x.concepto && <div className={s.hint} style={{ margin: 0 }}>{x.concepto}</div>}
             </td>
             <td>
-              {x.sucursalNombre || '—'}
+              {x.sucursalNombre || <span className={s.muted}>Sin sucursal (Cash Flow o transferencia)</span>}
+              {deOtraSucursal(x, sucComp) && <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-warning, #b45309)' }}>de otra sucursal</div>}
               {x.cajaSesionId && <div className={s.hint} style={{ margin: 0 }}>Turno #{x.cajaSesionId} · {x.usuarioNombre}</div>}
             </td>
             <td className={s.num}><strong>{money(x.saldo)}</strong></td>

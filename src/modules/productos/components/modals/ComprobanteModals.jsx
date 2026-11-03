@@ -4,6 +4,8 @@ import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFecha, isoDate } from '../../domain/format.js';
 import { TIPOS_COMPROBANTE, ESTADOS_COMPROBANTE, LETRAS_COMPROBANTE, CONDICIONES_PAGO } from '../../domain/constants.js';
 import { displaysDe, envasesDelRenglon, nombreEnvase } from '../../domain/bulto.js';
+import { deOtraSucursal, esJefeSesion, pagoSeOfrece } from '../../domain/pagosACuenta.js';
+import { leerSesion } from '@core/auth/sesion.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
@@ -1346,11 +1348,10 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   }, [cuotasTocadas, esDiferido, saldoCuotas, fecha, provElegido]);
 
   /**
-   * Solo se ofrecen los pagos de LA SUCURSAL DE RECEPCIÓN de esta factura: la
-   * plata que salió de la caja de Express 2 explica mercadería que entró en
-   * Express 2 — mezclar las bandejas de todas las sucursales invitaba a aplicar
-   * el pago equivocado. Los de otras sucursales se avisan aparte: se toman
-   * cargando la factura que corresponde a esa sucursal.
+   * Se ofrecen los pagos de LA SUCURSAL DE RECEPCIÓN de esta factura y los sin
+   * sucursal (los del Cash Flow); al administrador, también los de otras
+   * sucursales con su origen a la vista (ver `pagoSeOfrece`, 3/11/2026). Los que
+   * no se ofrecen se avisan aparte: se toman cargando la factura de su sucursal.
    */
   /*
    * LA FACTURA SE CARGA TAL CUAL DICE EL PAPEL (decisión del dueño, 18/8).
@@ -1362,12 +1363,11 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * decide cuánto transferir. Ofrecerlo acá invitaba a mezclar dos papeles
    * distintos —la factura y el remito del flete— en un mismo renglón.
    */
-  const pagosOfrecidos = useMemo(() => {
-    const sid = parseInt(sucId, 10);
-    const lista = (sid ? pagosACuenta.filter((p) => p.sucursalId === sid) : pagosACuenta)
-      .filter((p) => !p.esFlete);
-    return [...lista].sort((a, b) => new Date(a.fecha) - new Date(b.fecha) || a.id - b.id);
-  }, [pagosACuenta, sucId]);
+  const sucDoc = parseInt(sucId, 10) || null;
+  const esJefe = esJefeSesion(leerSesion());
+  const pagosOfrecidos = useMemo(() => pagosACuenta
+    .filter((p) => pagoSeOfrece(p, sucDoc, esJefe))
+    .sort((a, b) => new Date(a.fecha) - new Date(b.fecha) || a.id - b.id), [pagosACuenta, sucDoc, esJefe]);
   const aCuentaSuc = pagosOfrecidos.reduce((a, x) => a + x.saldo, 0);
   const aCuentaOtras = r2(aCuenta - aCuentaSuc
     - pagosACuenta.filter((p) => p.esFlete).reduce((a, x) => a + x.saldo, 0));
@@ -2854,8 +2854,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
             <>
               <div className={cx(s.callout, s.info)}>
                 {provElegido?.nombre || 'Este proveedor'} tiene <strong>{money(aCuentaSuc)}</strong> pagados
-                desde <strong>{store.getSucursal(parseInt(sucId, 10))?.nombre || 'esta sucursal'}</strong> y
-                sin aplicar. Tildá los que esta factura explica: tomarlos es lo que los{' '}
+                a cuenta y sin aplicar (desde <strong>{store.getSucursal(sucDoc)?.nombre || 'esta sucursal'}</strong>,
+                sin sucursal{esJefe ? ' o de otras sucursales' : ''}). Tildá los que esta factura explica: tomarlos es lo que los{' '}
                 <strong>aplica</strong> — no vuelve a mover plata. Si esta factura se pagó por otro
                 lado, no tildes nada y usá «Se paga ahora».
               </div>
@@ -2882,7 +2882,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                         {p.concepto && <div className={s.hint} style={{ margin: 0 }}>{p.concepto}</div>}
                       </td>
                       <td>
-                        {p.sucursalNombre || <span className={s.muted}>—</span>}
+                        {p.sucursalNombre || <span className={s.muted}>Sin sucursal (Cash Flow o transferencia)</span>}
+                        {deOtraSucursal(p, sucDoc) && <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-warning, #b45309)' }}>de otra sucursal</div>}
                         {p.cajaSesionId && (
                           <div className={s.hint} style={{ margin: 0 }}>
                             turno #{p.cajaSesionId}{p.usuarioNombre ? ` · ${p.usuarioNombre}` : ''}
