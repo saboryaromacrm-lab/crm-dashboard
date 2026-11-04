@@ -11,6 +11,29 @@ import {
 const EPS = 0.009;
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
+/**
+ * LA FACTURA YA TIENE SU ECHEQ (4/11/2026, pedido del dueño): «entro a su
+ * cuenta y veo que no se pagó nada, pero sí se pagó y se generó un echeq».
+ * El saldo sigue igual hasta que el banco debita (al marcarlo cobrado), pero
+ * cada factura dice con qué echeq se paga y cuándo sale. `cubren`: los echeqs
+ * que la cubren, con lo que cubre cada uno.
+ */
+function ConEcheq({ cubren }) {
+  if (!cubren?.length) return null;
+  return cubren.map(({ e, monto }) => {
+    const hecho = e.estado === 'emitido' || e.estado === 'entregado';
+    const cuando = hecho && e.diasRest < 0
+      ? `debitaba el ${fmtFecha(e.fechaVenc)}: si ya salió, marcalo cobrado en Echeqs`
+      : `se debita el ${fmtFecha(e.fechaVenc)}`;
+    return (
+      <div key={e.id} className={s.hint} style={{ margin: '2px 0 0' }}>
+        <Pill pill={hecho ? 'est-transito' : 'est-pendiente'} label={hecho ? `Echeq${e.numero ? ` N° ${e.numero}` : ''}` : 'Echeq pendiente de confirmar'} />
+        {' '}{money(monto)} · {cuando}
+      </div>
+    );
+  });
+}
+
 /** El día CALENDARIO de un movimiento, en hora local. Cortar el ISO
  *  (`slice(0, 10)`) daría el día en UTC: un pago hecho a las 22 h figuraría
  *  mañana y se escaparía del filtro "hasta hoy". */
@@ -225,6 +248,16 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
   const hoyDia = diaLocal(new Date());
   const vencidos = docs.filter((doc) => { const v = venceDoc(doc); return v && v < hoyDia && doc.saldo > EPS; });
   const montoVencido = r2(vencidos.reduce((a, doc) => a + doc.saldo, 0));
+  /* Qué echeqs cubren cada factura, y lo que suman: el saldo baja recién cuando se debitan. */
+  const cubrenDe = new Map();
+  for (const e of echeqs) {
+    for (const f of e.facturas) cubrenDe.set(f.comprobanteId, [...(cubrenDe.get(f.comprobanteId) ?? []), { e, monto: f.falta }]);
+  }
+  const conEcheq = (comprobanteId) => r2((cubrenDe.get(comprobanteId) ?? []).reduce((a, x) => a + x.monto, 0));
+  const totalEcheqs = r2(echeqs.reduce((a, e) => a + e.importe, 0));
+  const sinCubrir = r2(Math.max(0, d.saldo - totalEcheqs));
+  const vencidoConEcheq = r2(vencidos.filter((doc) => doc.tipo === 'comprobante')
+    .reduce((a, doc) => a + Math.min(doc.saldo, conEcheq(doc.docId)), 0));
   const abrirPago = (preseleccion = []) => openModal('pagoProveedor', {
     proveedor: p, docs, preseleccion, saldo: d.saldo, onChange: refrescar,
   });
@@ -257,6 +290,14 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <Stat label="Saldo" value={money(d.saldo)} accent={d.saldo > EPS ? 'accent-red' : undefined} />
+        {echeqs.length > 0 && (
+          <Stat
+            label="Con echeqs (sin debitar)"
+            value={money(totalEcheqs)}
+            nota={`${echeqs.length} ${echeqs.length === 1 ? 'echeq' : 'echeqs'} · el primero debita el ${fmtFecha(echeqs.map((e) => e.fechaVenc).sort()[0])} · ${
+              sinCubrir > EPS ? `sin cubrir ${money(sinCubrir)}` : 'cubren todo el saldo'}`}
+          />
+        )}
         <Stat label="Comprometido" value={comprometido > 0 ? money(comprometido) : '—'} />
         {/* «Pagos sin aplicar» (2/11/2026) y «Proyectado» (3/11/2026) se sacaron a pedido del dueño: no los usa.
             El proyectado sigue en la lista de Estados de cuenta. */}
@@ -265,7 +306,8 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
           value={montoVencido > EPS ? money(montoVencido) : '—'}
           accent={montoVencido > EPS ? 'accent-red' : undefined}
           nota={vencidos.length
-            ? `${vencidos.length} ${vencidos.length === 1 ? 'documento' : 'documentos'} · desde el ${fmtFecha(`${vencidos.map(venceDoc).sort()[0]}T00:00:00`)}`
+            ? `${vencidos.length} ${vencidos.length === 1 ? 'documento' : 'documentos'} · desde el ${fmtFecha(`${vencidos.map(venceDoc).sort()[0]}T00:00:00`)}${
+              vencidoConEcheq > EPS ? ` · de eso, ${money(vencidoConEcheq)} ya tiene echeq` : ''}`
             : (p.diasPago > 0 || docs.some((doc) => doc.vencimiento) ? 'nada vencido' : 'sin días de pago en la ficha')}
         />
         <Stat label="Arrastra deuda desde" value={d.deudaDesde ? fmtFecha(d.deudaDesde) : '—'} />
@@ -319,6 +361,30 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
           cada factura muestra lo que de verdad le falta. La deuda actual arrastra desde
           el <strong>{fmtFecha(d.deudaDesde)}</strong>.
         </div>
+      )}
+
+      {echeqs.length > 0 && (
+        <>
+          <div className={s['section-title']}>Echeqs que todavía no se debitaron</div>
+          <div className={s.hint}>El saldo baja cuando el banco los debita y se marcan cobrados en Proveedores › Echeqs.</div>
+          <Table cols={[{ h: 'Echeq' }, { h: 'Debita' }, { h: 'Importe', num: true }, { h: 'Cubre' }, { h: '' }]}>
+            {echeqs.map((e) => (
+              <tr key={e.id}>
+                <td>
+                  {e.estado === 'pendiente' ? <EstadoEcheqPill estado={e.estado} /> : `N° ${e.numero}${e.banco ? ` · ${e.banco}` : ''}`}
+                </td>
+                <td>{fmtFecha(e.fechaVenc)} {enCartera(e) && <VencePill dias={e.diasRest} />}</td>
+                <td className={s.num}>{money(e.importe)}</td>
+                <td><EcheqCubre e={e} /></td>
+                <td>
+                  {enCartera(e) && (
+                    <Btn small onClick={() => openModal('facturasEcheq', { echeq: e, onChange: refrescar })}>Facturas</Btn>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </Table>
+        </>
       )}
 
       <div className={s['section-title']}>Movimientos ({d.movs.length})</div>
@@ -392,6 +458,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
                 {m.saldoDoc > EPS && (
                   <div className={s.hint} style={{ margin: 0 }}>Queda debiendo {money(m.saldoDoc)}</div>
                 )}
+                {m.kind === 'comprobante' && <ConEcheq cubren={cubrenDe.get(m.id)} />}
                 {m.paraCoffit > EPS && (
                   <div className={s.hint} style={{ margin: 0 }} title="El proveedor cobra la factura entera. Esta parte se la carga a Coffit en su cuenta corriente (Almacén › Coffit).">
                     ☕ {m.kind.startsWith('nc') ? 'Descuenta' : 'Incluye'} {money(m.paraCoffit)} {m.kind.startsWith('nc') ? 'de lo de' : 'para'} Coffit (precio final)
@@ -439,6 +506,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
             <td>
               {doc.etiqueta}
               {doc.detalle && <div className={s.hint} style={{ margin: 0 }}>{doc.detalle}</div>}
+              {doc.tipo === 'comprobante' && <ConEcheq cubren={cubrenDe.get(doc.docId)} />}
               {!!doc.ajuste && (
                 <div className={s.hint} style={{ margin: 0 }}>
                   {doc.ajuste > 0 ? 'Una ND le sumó ' : 'Una NC le restó '}
@@ -465,29 +533,6 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
           </tr>
         ))}
       </Table>
-
-      {echeqs.length > 0 && (
-        <>
-          <div className={s['section-title']}>Echeqs que todavía no se debitaron</div>
-          <Table cols={[{ h: 'Echeq' }, { h: 'Debita' }, { h: 'Importe', num: true }, { h: 'Cubre' }, { h: '' }]}>
-            {echeqs.map((e) => (
-              <tr key={e.id}>
-                <td>
-                  {e.estado === 'pendiente' ? <EstadoEcheqPill estado={e.estado} /> : `N° ${e.numero}${e.banco ? ` · ${e.banco}` : ''}`}
-                </td>
-                <td>{fmtFecha(e.fechaVenc)} {enCartera(e) && <VencePill dias={e.diasRest} />}</td>
-                <td className={s.num}>{money(e.importe)}</td>
-                <td><EcheqCubre e={e} /></td>
-                <td>
-                  {enCartera(e) && (
-                    <Btn small onClick={() => openModal('facturasEcheq', { echeq: e, onChange: refrescar })}>Facturas</Btn>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </Table>
-        </>
-      )}
 
       {(d.compromisos?.length ?? 0) > 0 && (
         <>
