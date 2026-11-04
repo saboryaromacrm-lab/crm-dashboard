@@ -197,9 +197,9 @@ export function MargenesMasivosModal({ productos, soloFilas = null, contexto = '
       for (const l of p.listas || []) agregar(p, l, '', undefined);
       for (const pr of p.presentaciones || []) {
         const tam = pr.tamKg < 1 ? `${Math.round(pr.tamKg * 1000)} g` : `${pr.tamKg} kg`;
-        // La BASE del precio del paquete (0072): la del kilo × su tamaño. El
-        // `costoNeto` del payload es el costo REAL — acá se proyecta góndola.
-        const basePaquete = store.costoPrecio(p) * (Number(pr.tamKg) || 0);
+        // La BASE del precio del paquete (0072): la del kilo × sus kilos con la
+        // merma. El `costoNeto` del payload es el costo REAL — acá se proyecta góndola.
+        const basePaquete = store.costoPrecioPaquete(p, pr);
         for (const l of pr.listas || []) agregar(p, l, `${tam} · `, basePaquete);
       }
     }

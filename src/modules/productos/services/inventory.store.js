@@ -271,6 +271,10 @@ function escalaPaquete(tamKg, mermaPct) {
   const m = Math.min(Math.max(Number(mermaPct) || 0, 0), 50) / 100;
   return (Number(tamKg) || 0) / (1 - m);
 }
+/** La BASE del precio de un paquete: la del kilo × sus kilos con la merma (espejo del inventario del servidor). */
+function costoPrecioPaquete(prod, pres) {
+  return costoPrecio(prod) * escalaPaquete(pres?.tamKg, prod?.merma);
+}
 
 /** El costo REAL unitario: valuación de stock y pérdidas. NO cotiza. */
 function costoNetoEntry(e, iva) { return costosFormato(e, iva).costoNetoUnitario; }
@@ -1631,7 +1635,7 @@ export const inventoryStore = {
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,
   guardarFormatosCompra, guardarListasProducto, guardarListasPresentacion,
-  proyectarPrecios, filaPiso, precioGondola, escalaPaquete,
+  proyectarPrecios, filaPiso, precioGondola, escalaPaquete, costoPrecioPaquete,
   costoNeto, costoNetoEntry, costoPrecio, costoPrecioEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPaquete,
   precioFinal, redondearPrecio,
   crearComprobante, facturarRemito, anulacionComprobante, anularComprobante, getComprobante, comprobantesDe, cuentaProveedor, saldoTotalProveedores,

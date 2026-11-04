@@ -81,7 +81,7 @@ export function AjustarMarkupsModal() {
   /* El precio de góndola antes y después, con el MISMO motor que la ficha y la caja. */
   const cambios = useMemo(() => planAjuste(filas, regla).map((f) => {
     const { producto: p, presentacion: pres, lista: l } = f;
-    const base = pres ? store.costoPrecio(p) * (Number(pres.tamKg) || 0) : undefined;
+    const base = pres ? store.costoPrecioPaquete(p, pres) : undefined;
     const conIva = 1 + (Number(p.iva) || 0) / 100;
     const antes = l.precioFinalUnitario ?? Math.round((l.precio ?? 0) * conIva * 100) / 100;
     const despues = store.ventaFormato(p, { ...l, markup: f.nuevo }, base).finalUnitario;

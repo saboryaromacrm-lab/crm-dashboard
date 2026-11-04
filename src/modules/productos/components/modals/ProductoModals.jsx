@@ -1290,7 +1290,7 @@ function EvolucionPreciosTab({ prod: p }) {
         {(filas ?? []).map((f) => (
           <tr key={f.id}>
             <td className={s.mono}>{fmtFechaHora(f.fecha)}</td>
-            <td>{f.lista}</td>
+            <td>{f.forma ? `${f.lista} · ${f.forma}` : f.lista}</td>
             <td className={cx(s.num, s.mono)}>{f.precioAnterior != null ? money(f.precioAnterior) : '—'}</td>
             <td className={cx(s.num, s.mono)}><strong>{money(f.precio)}</strong></td>
             <td className={s.num}>
@@ -1334,9 +1334,7 @@ function VentaTab({ prod: p, pres = null }) {
   /* La BASE del precio (0072), no el costo real: acá vive el markup, y con
    * mercadería sin factura las dos difieren — el paquete la hereda del kilo. */
   // El paquete consume sus kilos MÁS la merma del fraccionado (0110).
-  const neto = esPaquete
-    ? store.costoPrecio(p) * store.escalaPaquete(pres.tamKg, p.merma)
-    : store.costoPrecio(p);
+  const neto = esPaquete ? store.costoPrecioPaquete(p, pres) : store.costoPrecio(p);
   const unidad = esPaquete ? '/paquete' : (p.tipo === 'granel' ? '/kg' : '/u');
   /** El código del artículo en sí: el del paquete es el de su etiqueta. */
   const codigoPropio = esPaquete ? pres.codigoBarras : p.codigoBarras;

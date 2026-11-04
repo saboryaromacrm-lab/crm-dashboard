@@ -132,7 +132,7 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
         return f ? { id: f.proveedorId, nombre: nombreDeProv.get(f.proveedorId) ?? `Proveedor ${f.proveedorId}` } : null;
       },
       cotizar: (prod, pres, fila) => {
-        const costo = pres ? store.costoPrecio(prod) * store.escalaPaquete(pres.tamKg, prod.merma) : undefined;
+        const costo = pres ? store.costoPrecioPaquete(prod, pres) : undefined;
         const v = store.ventaFormato(prod, fila, costo);
         return v.finalFormato > 0 ? v.finalFormato : null;
       },
