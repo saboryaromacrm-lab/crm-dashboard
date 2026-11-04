@@ -5,6 +5,8 @@ import { costoMensual, cuotaMensual } from './sueldos.js';
 test('costo mensual: bruto + cargas + 1/12 de aguinaldo (igual que el servidor)', () => {
   assert.deepEqual(costoMensual(1000000, 25), { cargas: 250000, aguinaldo: 104166.67, total: 1354166.67 });
   assert.equal(costoMensual(0, 25).total, 0);
+  /* 0217: sin aguinaldo, sueldo + cargas. */
+  assert.deepEqual(costoMensual(1000000, 25, false), { cargas: 250000, aguinaldo: 0, total: 1250000 });
 });
 
 test('cuota de un bien de uso', () => {

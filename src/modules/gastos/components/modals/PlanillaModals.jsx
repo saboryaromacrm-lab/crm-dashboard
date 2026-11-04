@@ -45,6 +45,7 @@ export function EmpleadoFormModal({ empleado: inicial, sucursales = [], onChange
     nombre: inicial?.nombre ?? '', cuil: inicial?.cuil ?? '',
     sucursalId: inicial?.reparto?.length ? REPARTO : inicial?.sucursalId ?? '', reparto: inicial?.reparto ?? [],
     alta: inicial?.alta ?? hoyISO(), baja: inicial?.baja ?? '', observaciones: inicial?.observaciones ?? '',
+    aguinaldo: inicial?.aguinaldo ?? true,
     bruto: '', cargas: '',
   });
   const ultimo = e?.sueldos?.[e.sueldos.length - 1];
@@ -52,8 +53,8 @@ export function EmpleadoFormModal({ empleado: inicial, sucursales = [], onChange
   const [borrando, setBorrando] = useState(false);
   const set = (k) => (ev) => setF((x) => ({ ...x, [k]: ev.target.value }));
   const setN = (k) => (ev) => setNuevo((x) => ({ ...x, [k]: ev.target.value }));
-  const prev = costoMensual(f.bruto, f.cargas);
-  const prevNuevo = costoMensual(nuevo.bruto, nuevo.cargas);
+  const prev = costoMensual(f.bruto, f.cargas, f.aguinaldo);
+  const prevNuevo = costoMensual(nuevo.bruto, nuevo.cargas, f.aguinaldo);
 
   const guardar = () => unaVez(async () => {
     if (!f.nombre.trim()) { toast('Poné el nombre del empleado.', 'err'); return; }
@@ -63,7 +64,7 @@ export function EmpleadoFormModal({ empleado: inicial, sucursales = [], onChange
       nombre: f.nombre.trim(), cuil: f.cuil.trim(),
       sucursalId: f.sucursalId && f.sucursalId !== REPARTO ? Number(f.sucursalId) : null,
       reparto: f.sucursalId === REPARTO ? repartoAEnviar(f.reparto) : [],
-      alta: f.alta, observaciones: f.observaciones.trim(),
+      alta: f.alta, observaciones: f.observaciones.trim(), aguinaldo: f.aguinaldo,
     };
     if (editando) {
       const ok = await act(gastosApi.editarEmpleado(e.id, { ...base, baja: f.baja || null }), 'Empleado actualizado.');
@@ -154,6 +155,18 @@ export function EmpleadoFormModal({ empleado: inicial, sucursales = [], onChange
           <input value={f.observaciones} maxLength={300} placeholder="Opcional" onChange={set('observaciones')} />
         </div>
       </div>
+      {/* 0217 (4/11/2026, pedido del dueño): a quien no le corresponde, Resultados no le suma el 1/12. */}
+      <label className={s['granel-toggle']}>
+        <input type="checkbox" checked={f.aguinaldo} onChange={(ev) => setF((x) => ({ ...x, aguinaldo: ev.target.checked }))} />
+        <span>
+          <span className={s['t-title']}>Le corresponde aguinaldo</span>
+          <span className={s['t-sub']} style={{ display: 'block' }}>
+            {f.aguinaldo
+              ? 'Resultados le suma cada mes 1/12 del aguinaldo (sueldo + cargas), así junio y diciembre no salen con una pérdida de golpe.'
+              : 'Sin aguinaldo: su costo del mes es el sueldo más las cargas, nada más.'}
+          </span>
+        </span>
+      </label>
 
       {!editando && (
         <div className={s['form-grid']}>
@@ -172,8 +185,8 @@ export function EmpleadoFormModal({ empleado: inicial, sucursales = [], onChange
             <label>Costo de un mes</label>
             <div className={s.hint} style={{ margin: 0 }}>
               {Number(f.bruto) > 0
-                ? <>{money(prev.total)} <span className={s.muted}>(cargas {money(prev.cargas)} · aguinaldo {money(prev.aguinaldo)})</span></>
-                : 'Sueldo + cargas + 1/12 de aguinaldo.'}
+                ? <>{money(prev.total)} <span className={s.muted}>(cargas {money(prev.cargas)}{f.aguinaldo ? ` · aguinaldo ${money(prev.aguinaldo)}` : ' · sin aguinaldo'})</span></>
+                : f.aguinaldo ? 'Sueldo + cargas + 1/12 de aguinaldo.' : 'Sueldo + cargas.'}
             </div>
           </div>
         </div>
@@ -194,7 +207,7 @@ export function EmpleadoFormModal({ empleado: inicial, sucursales = [], onChange
                 <td>{mesLargo(x.desde)}</td>
                 <td className={s.num}>{money(x.bruto)}</td>
                 <td className={s.num}>{x.cargas} %</td>
-                <td className={s.num}>{money(costoMensual(x.bruto, x.cargas).total)}</td>
+                <td className={s.num}>{money(costoMensual(x.bruto, x.cargas, f.aguinaldo).total)}</td>
                 <td>{e.sueldos.length > 1 && <Btn small variant="btn-delete" onClick={() => borrarSueldo(x.id)}>Borrar</Btn>}</td>
               </tr>
             ))}

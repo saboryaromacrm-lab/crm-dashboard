@@ -20,7 +20,7 @@ export function SueldosTab() {
   const hoy = hoyISO();
   const activo = (e) => e.alta <= hoy && (!e.baja || e.baja >= hoy);
   const activos = lista.filter(activo);
-  const costoDe = (e) => (e.vigente ? costoMensual(e.vigente.bruto, e.vigente.cargas) : { total: 0, aguinaldo: 0 });
+  const costoDe = (e) => (e.vigente ? costoMensual(e.vigente.bruto, e.vigente.cargas, e.aguinaldo !== false) : { total: 0, aguinaldo: 0 });
   const total = activos.reduce((a, e) => a + costoDe(e).total, 0);
   const aguinaldo = activos.reduce((a, e) => a + costoDe(e).aguinaldo, 0);
   const nombreSuc = (id) => (id ? data?.sucursales?.find((x) => x.id === id)?.nombre ?? `#${id}` : null);
@@ -31,7 +31,7 @@ export function SueldosTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
       <PanelHead
         title="Sueldos"
-        desc="Cada empleado con su sueldo bruto y las cargas del empleador. Resultados suma cada mes el sueldo, las cargas y 1/12 del aguinaldo, en el local de cada uno."
+        desc="Cada empleado con su sueldo bruto y las cargas del empleador. Resultados suma cada mes el sueldo, las cargas y 1/12 del aguinaldo (salvo al que no le corresponde), en el local de cada uno."
         actions={<Btn variant="btn-primary" onClick={() => abrir(null)}>+ Nuevo empleado</Btn>}
       />
       <div className={s.stats}>
@@ -54,6 +54,7 @@ export function SueldosTab() {
               <td>
                 <div>{e.nombre}</div>
                 {e.cuil && <div className={s.hint} style={{ margin: 0 }}>CUIL {e.cuil}</div>}
+                {e.aguinaldo === false && <div className={s.hint} style={{ margin: 0 }}>sin aguinaldo</div>}
               </td>
               <td>
                 {e.reparto?.length
