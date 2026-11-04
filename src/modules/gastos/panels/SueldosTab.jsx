@@ -3,7 +3,7 @@ import { useGastos } from '../context/GastosContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { gastosApi } from '../services/gastos.api.js';
 import { diaLegible, hoyISO, mesLargo } from '../domain/constants.js';
-import { costoMensual } from '../domain/sueldos.js';
+import { costoMensual, detalleCosto } from '../domain/sueldos.js';
 import { Table, PanelHead, Stat, Btn, Pill, money, s } from '../components/ui.jsx';
 import { textoReparto } from '../domain/reparto.js';
 
@@ -64,7 +64,10 @@ export function SueldosTab() {
               <td>{diaLegible(e.alta)}</td>
               <td className={s.num}>{e.vigente ? money(e.vigente.bruto) : '—'}</td>
               <td className={s.num}>{e.vigente ? `${e.vigente.cargas} %` : '—'}</td>
-              <td className={s.num}>{e.vigente ? money(c.total) : '—'}</td>
+              <td className={s.num}>
+                {e.vigente ? money(c.total) : '—'}
+                {e.vigente && <div className={s.hint} style={{ margin: 0 }}>{detalleCosto(c, e.aguinaldo !== false)}</div>}
+              </td>
               <td>
                 {e.baja && e.baja < hoy
                   ? <Pill pill="est-cancelada" label={`Baja ${diaLegible(e.baja)}`} />

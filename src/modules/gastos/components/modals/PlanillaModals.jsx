@@ -3,7 +3,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useGastos } from '../../context/GastosContext.jsx';
 import { errorMsg, gastosApi } from '../../services/gastos.api.js';
 import { hoyISO, mesLargo, periodoISO, r2 } from '../../domain/constants.js';
-import { costoMensual, cuotaMensual } from '../../domain/sueldos.js';
+import { costoMensual, cuotaMensual, detalleCosto } from '../../domain/sueldos.js';
 import { ModalShell, Table, Btn, money, s } from '../ui.jsx';
 import { REPARTO, repartoAEnviar } from '../../domain/reparto.js';
 import { RepartoLocales } from '../RepartoLocales.jsx';
@@ -207,7 +207,10 @@ export function EmpleadoFormModal({ empleado: inicial, sucursales = [], onChange
                 <td>{mesLargo(x.desde)}</td>
                 <td className={s.num}>{money(x.bruto)}</td>
                 <td className={s.num}>{x.cargas} %</td>
-                <td className={s.num}>{money(costoMensual(x.bruto, x.cargas, f.aguinaldo).total)}</td>
+                <td className={s.num}>
+                  {money(costoMensual(x.bruto, x.cargas, f.aguinaldo).total)}
+                  <div className={s.hint} style={{ margin: 0 }}>{detalleCosto(costoMensual(x.bruto, x.cargas, f.aguinaldo), f.aguinaldo)}</div>
+                </td>
                 <td>{e.sueldos.length > 1 && <Btn small variant="btn-delete" onClick={() => borrarSueldo(x.id)}>Borrar</Btn>}</td>
               </tr>
             ))}

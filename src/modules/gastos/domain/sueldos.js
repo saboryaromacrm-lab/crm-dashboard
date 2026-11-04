@@ -13,5 +13,18 @@ export function costoMensual(bruto, cargas, conAguinaldo = true) {
   return { cargas: r2(conCargas - b), aguinaldo: r2(aguinaldo), total: r2(conCargas + aguinaldo) };
 }
 
+/** La plata como se lee en pantalla («$127.242,83»). */
+const moneda = (n) => `$${(Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * Lo que explica el costo del mes debajo del número (4/11/2026, pedido del
+ * dueño: «aclarame que es parte del aguinaldo»): el sueldo con sus cargas y el
+ * 1/12 de aguinaldo que Resultados le suma, o que no le corresponde.
+ */
+export function detalleCosto(c, conAguinaldo = true) {
+  if (!conAguinaldo) return 'sin aguinaldo';
+  return `${c.cargas > 0 ? 'sueldo + cargas' : 'sueldo'} + 1/12 de aguinaldo (${moneda(c.aguinaldo)})`;
+}
+
 /** La cuota mensual de un bien de uso (línea recta). */
 export const cuotaMensual = (valor, vidaMeses) => r2((Number(valor) || 0) / Math.max(1, Number(vidaMeses) || 1));
