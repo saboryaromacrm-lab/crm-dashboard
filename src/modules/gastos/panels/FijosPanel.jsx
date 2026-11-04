@@ -46,6 +46,8 @@ function RecurrentesTab() {
   const [generando, setGenerando] = useState(false);
   /* Filtro por rubro (4/11/2026, pedido del dueño): solo los rubros que tienen algún gasto fijo. */
   const [rubro, setRubro] = useState('');
+  /* Y por local (4/11/2026): «Toda la empresa», «Repartidos» o un local (los suyos y los repartidos que lo incluyen). */
+  const [local, setLocal] = useState('');
 
   const { data: previa, loading, error, reload } = useResource(
     `fijos-periodo:${periodo}`,
@@ -73,8 +75,24 @@ function RecurrentesTab() {
     for (const r of recurrentes) cuenta.set(r.categoriaId, (cuenta.get(r.categoriaId) ?? 0) + 1);
     return [...cuenta].map(([id, n]) => ({ id, n, nombre: nombreCat(id) })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   }, [recurrentes, categorias]); // eslint-disable-line react-hooks/exhaustive-deps
-  const lista = rubro ? recurrentes.filter((r) => String(r.categoriaId) === rubro) : recurrentes;
-  const estimadoFiltro = lista.filter((r) => r.activo).reduce((a, r) => a + r.importeEstimado, 0);
+  const sucId = /^\d+$/.test(local) ? Number(local) : null;
+  const pctEn = (r, id) => (r.sucursalId === id ? 100 : Number(r.reparto?.find((x) => x.sucursalId === id)?.pct) || 0);
+  const locales = useMemo(() => {
+    const ids = new Set(recurrentes.flatMap((r) => [r.sucursalId, ...(r.reparto ?? []).map((x) => x.sucursalId)]).filter(Boolean));
+    return [...ids].map((id) => ({ id, nombre: nombreSucursal(id) })).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+  }, [recurrentes]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hayEmpresa = recurrentes.some((r) => !r.sucursalId && !r.reparto?.length);
+  const hayRepartidos = recurrentes.some((r) => r.reparto?.length);
+  const lista = recurrentes.filter((r) => {
+    if (rubro && String(r.categoriaId) !== rubro) return false;
+    if (local === 'empresa') return !r.sucursalId && !r.reparto?.length;
+    if (local === 'repartidos') return r.reparto?.length > 0;
+    if (sucId) return pctEn(r, sucId) > 0;
+    return true;
+  });
+  /* Con un local elegido, de los repartidos suma solo su parte (como en Resultados). */
+  const estimadoFiltro = lista.filter((r) => r.activo).reduce((a, r) => a + r.importeEstimado * (sucId ? pctEn(r, sucId) / 100 : 1), 0);
+  const filtrado = Boolean(rubro || local);
   const nombreProv = (id) => proveedores.find((p) => p.id === id)?.nombre || '—';
   const stop = (e) => e.stopPropagation();
 
@@ -132,10 +150,18 @@ function RecurrentesTab() {
           <option value="">Todos los rubros</option>
           {rubros.map((x) => <option key={x.id} value={String(x.id)}>{`${x.nombre} (${x.n})`}</option>)}
         </select>
-        {rubro && (
+        <select className={s['select-inline']} value={local} onChange={(e) => setLocal(e.target.value)} aria-label="Filtrar por local">
+          <option value="">Todos los locales</option>
+          {hayEmpresa && <option value="empresa">Toda la empresa (sin local)</option>}
+          {hayRepartidos && <option value="repartidos">Repartidos entre locales</option>}
+          {locales.map((x) => <option key={x.id} value={String(x.id)}>{x.nombre}</option>)}
+        </select>
+        {filtrado && (
           <>
-            <span className={s.hint} style={{ margin: 0 }}>{`${lista.length} gasto(s) · estimado mensual ${money(estimadoFiltro)}`}</span>
-            <Btn small onClick={() => setRubro('')}>Ver todos</Btn>
+            <span className={s.hint} style={{ margin: 0 }}>
+              {`${lista.length} gasto(s) · estimado mensual ${money(estimadoFiltro)}${sucId && lista.some((r) => pctEn(r, sucId) < 100) ? ` (la parte de ${nombreSucursal(sucId)})` : ''}`}
+            </span>
+            <Btn small onClick={() => { setRubro(''); setLocal(''); }}>Ver todos</Btn>
           </>
         )}
       </div>
@@ -145,7 +171,7 @@ function RecurrentesTab() {
           { h: 'Vence el día', num: true }, { h: 'Estimado', num: true }, { h: 'Este período' },
           { h: 'Acciones', cls: 'actions-col' },
         ]}
-        empty={rubro ? 'No hay gastos fijos de ese rubro.' : 'Todavía no hay gastos fijos cargados.'}
+        empty={filtrado ? 'No hay gastos fijos con ese filtro.' : 'Todavía no hay gastos fijos cargados.'}
       >
         {lista.map((r) => {
           const yaEsta = emitidos.find((e) => e.plantilla.id === r.id);
