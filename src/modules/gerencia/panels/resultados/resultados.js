@@ -40,18 +40,18 @@ export const mesActual = (d = new Date()) => `${d.getFullYear()}-${String(d.getM
 
 /* ------------------------------ sumar ------------------------------ */
 
-const GRUPOS = ['variables', 'fijos', 'financieros'];
+const GRUPOS = ['variables', 'fijos', 'financieros', 'sueldosPor'];
 /** Todos los números de una columna, en cero: un local sin nada en el mes da cero, no «vacío». */
 const CEROS = Object.fromEntries([
   'ventasLista', 'descuentos', 'notasCredito', 'cargos', 'cmv', 'mermas', 'ajustesStock', 'iibb', 'municipalidad',
   'comisiones', 'sueldos', 'amortizaciones', 'recargos', 'retiros', 'sinCosto', 'ventaSinCosto', 'facturado',
-  'ivaSinFactura', 'comisionesMp', 'ventasNetas', 'margenBruto', 'otrosVariables', 'totalVariables', 'contribucion',
+  'ivaSinFactura', 'comisionesMp', 'cobradoTarjeta', 'ventasNetas', 'margenBruto', 'otrosVariables', 'totalVariables', 'contribucion',
   'otrosFijos', 'totalFijos', 'operativo', 'resultadoFinanciero', 'antesGanancias',
 ].map((k) => [k, 0]));
 
 /** Suma objetos de hechos/cascada: los números campo a campo y los rubros por id. */
 export function sumar(lista) {
-  const out = { variables: {}, fijos: {}, financieros: {} };
+  const out = { variables: {}, fijos: {}, financieros: {}, sueldosPor: {} };
   for (const x of lista) {
     if (!x) continue;
     for (const [k, v] of Object.entries(x)) {
@@ -103,7 +103,7 @@ export const RENGLONES = [
   { id: 'comisiones', texto: 'Comisiones de tarjetas y Mercado Pago', valor: (v) => -N(v.comisiones), origen: 'comisiones' },
   { id: 'otrosVariables', texto: 'Otros gastos variables', valor: (v) => -N(v.otrosVariables), grupo: 'variables' },
   { id: 'contribucion', texto: 'Contribución marginal', valor: (v) => N(v.contribucion), sub: true },
-  { id: 'sueldos', texto: 'Sueldos y cargas (con aguinaldo)', valor: (v) => -N(v.sueldos), siempre: true, origen: 'sueldos' },
+  { id: 'sueldos', texto: 'Sueldos y cargas (con aguinaldo)', valor: (v) => -N(v.sueldos), siempre: true, origen: 'sueldos', grupo: 'sueldosPor' },
   { id: 'otrosFijos', texto: 'Gastos fijos', valor: (v) => -N(v.otrosFijos), siempre: true, grupo: 'fijos' },
   { id: 'amortizaciones', texto: 'Amortizaciones', valor: (v) => -N(v.amortizaciones) },
   { id: 'operativo', texto: 'Resultado operativo', valor: (v) => N(v.operativo), sub: true },
@@ -114,6 +114,26 @@ export const RENGLONES = [
   { id: 'neto', texto: 'Resultado neto', valor: (v) => v.neto, sub: true, final: true, soloEmpresa: true },
 ];
 
+/**
+ * SOBRE QUÉ IMPORTE SE CALCULA (4/11/2026, pedido del dueño): Ingresos Brutos
+ * y la tasa municipal, sobre lo facturado sin IVA; el posnet, sobre lo cobrado
+ * con débito y crédito (Mercado Pago va con su comisión real).
+ */
+export const BASES = {
+  iibb: { texto: 'facturado', valor: (v) => N(v.facturado) },
+  municipalidad: { texto: 'facturado', valor: (v) => N(v.facturado) },
+  comisiones: { texto: 'con tarjeta', valor: (v) => N(v.cobradoTarjeta) },
+};
+
+/** Debajo del empleado: dónde trabaja (o cómo se reparte) y si no le toca aguinaldo. */
+export function notaEmpleado(e, sucursales = []) {
+  const nombre = (id) => sucursales.find((x) => x.id === id)?.nombre ?? `Local ${id}`;
+  const donde = e.reparto?.length
+    ? e.reparto.map((x) => `${nombre(x.sucursalId)} ${Number(x.pct).toLocaleString('es-AR', { maximumFractionDigits: 2 })} %`).join(' · ')
+    : e.sucursalId ? nombre(e.sucursalId) : 'sin local';
+  return e.aguinaldo === false ? `${donde} · sin aguinaldo` : donde;
+}
+
 const sumaGrupo = (o) => Object.values(o ?? {}).reduce((a, x) => a + N(x), 0);
 
 /**
@@ -121,9 +141,17 @@ const sumaGrupo = (o) => Object.values(o ?? {}).reduce((a, x) => a + N(x), 0);
  * (salvo `siempre` y los subtotales), con el detalle por rubro de los grupos
  * abiertos, y sin Ganancias/neto si ninguna columna es la empresa entera.
  */
-export function renglones(columnas, rubros = [], abiertos = new Set()) {
+export function renglones(columnas, rubros = [], abiertos = new Set(), { empleados = [], sucursales = [] } = {}) {
   const empresa = columnas.some((c) => c.ganancias != null);
   const nombreRubro = (id) => rubros.find((r) => String(r.id) === String(id))?.nombre ?? `Rubro ${id}`;
+  /* Sueldos se abren por empleado (`e<id>`) o, sin planilla, por rubro de Gastos (`r<id>`) (4/11/2026). */
+  const empleado = (id) => empleados.find((e) => `e${e.id}` === id);
+  const nombreDe = (grupo, id) => {
+    if (grupo !== 'sueldosPor') return nombreRubro(id);
+    if (id.startsWith('r')) return nombreRubro(id.slice(1));
+    return empleado(id)?.nombre ?? `Empleado ${id.slice(1)}`;
+  };
+  const notaDe = (grupo, id) => (grupo === 'sueldosPor' && empleado(id) ? notaEmpleado(empleado(id), sucursales) : '');
   const out = [];
   for (const def of RENGLONES) {
     if (def.soloEmpresa && !empresa) continue;
@@ -131,10 +159,14 @@ export function renglones(columnas, rubros = [], abiertos = new Set()) {
     const vacio = valores.every((x) => x == null || Math.abs(x) < 0.005);
     if (vacio && !def.sub && !def.siempre) continue;
     const ids = def.grupo ? [...new Set(columnas.flatMap((c) => Object.keys(c[def.grupo] ?? {})))] : [];
-    out.push({ ...def, valores, abrible: ids.length > 0, abierto: abiertos.has(def.id) });
+    const bases = BASES[def.id] ? columnas.map((c) => BASES[def.id].valor(c)) : null;
+    out.push({ ...def, valores, bases, abrible: ids.length > 0, abierto: abiertos.has(def.id) });
     if (def.grupo && abiertos.has(def.id)) {
       const detalle = ids
-        .map((id) => ({ id: `${def.id}:${id}`, texto: nombreRubro(id), detalle: true, valores: columnas.map((c) => -N(c[def.grupo]?.[id])) }))
+        .map((id) => ({
+          id: `${def.id}:${id}`, texto: nombreDe(def.grupo, id), nota: notaDe(def.grupo, id), detalle: true,
+          valores: columnas.map((c) => -N(c[def.grupo]?.[id])),
+        }))
         .filter((x) => x.valores.some((v) => Math.abs(v) >= 0.005))
         .sort((a, b) => a.valores.reduce((s, v) => s + v, 0) - b.valores.reduce((s, v) => s + v, 0));
       out.push(...detalle);
@@ -214,7 +246,9 @@ export function textoOrigen(cuenta, clave = '') {
     ? ORIGEN_TXT[claves[0]] ?? claves[0]
     : claves.map((k) => `${ORIGEN_TXT[k] ?? k} en ${cuenta[k]} mes${cuenta[k] === 1 ? '' : 'es'}`).join(', ');
   /* Mercado Pago va siempre con su comisión real: lo estimado o pagado es el posnet. */
-  return clave === 'comisiones' ? `posnet: ${t} · Mercado Pago: real` : t;
+  if (clave === 'comisiones') return `posnet: ${t} sobre lo cobrado con tarjeta · Mercado Pago: real`;
+  if (clave === 'iibb' || clave === 'municipalidad') return `${t} · sobre lo facturado sin IVA`;
+  return t;
 }
 
 /* ------------------------------ baldes ------------------------------ */

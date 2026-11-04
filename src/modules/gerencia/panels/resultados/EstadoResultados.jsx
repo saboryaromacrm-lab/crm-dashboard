@@ -2,7 +2,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { s } from '@modules/productos/components/ui.jsx';
 import { Tile, Tiles } from '../metricas/piezas.jsx';
 import {
-  cumplimiento, indicadores, origenDe, pct, pesos, pesosRedondo, renglones, sobreVentas, textoOrigen, variacion,
+  BASES, cumplimiento, indicadores, origenDe, pct, pesos, pesosRedondo, renglones, sobreVentas, textoOrigen, variacion,
 } from './resultados.js';
 
 /**
@@ -14,7 +14,7 @@ import {
  * `columnas`: [{ key, titulo, sub, col }] — `col` es lo que arma `columna()`.
  */
 export function TablaEstado({ datos, columnas, mesesOrigen, abiertos, alternar }) {
-  const filas = renglones(columnas.map((c) => c.col), datos?.rubros ?? [], abiertos);
+  const filas = renglones(columnas.map((c) => c.col), datos?.rubros ?? [], abiertos, { empleados: datos?.empleados, sucursales: datos?.sucursales });
   const retiros = columnas.map((c) => c.col.retiros);
   const hayRetiros = retiros.some((v) => Math.abs(v) > 0.004);
   const celda = { padding: '6px 10px', textAlign: 'right', whiteSpace: 'nowrap', verticalAlign: 'top' };
@@ -53,6 +53,7 @@ export function TablaEstado({ datos, columnas, mesesOrigen, abiertos, alternar }
                     </button>
                   ) : f.texto}
                   {origen && <div className={s.hint} style={{ margin: 0, fontWeight: 400 }}>{origen}</div>}
+                  {f.nota && <div className={s.hint} style={{ margin: 0, fontWeight: 400 }}>{f.nota}</div>}
                 </td>
                 {f.valores.map((v, i) => {
                   const p = sobreVentas(v, columnas[i].col);
@@ -61,6 +62,9 @@ export function TablaEstado({ datos, columnas, mesesOrigen, abiertos, alternar }
                       <div style={{ fontVariantNumeric: 'tabular-nums', color: f.sub && v < -0.004 ? 'var(--crm-color-danger)' : undefined }}>{pesos(v)}</div>
                       {p != null && Math.abs(v) >= 0.005 && f.id !== 'ventasNetas' && f.id !== 'ventasLista' && (
                         <div className={s.hint} style={{ margin: 0, fontWeight: 400 }}>{pct(p)}</div>
+                      )}
+                      {f.bases && Math.abs(f.bases[i]) >= 0.005 && (
+                        <div className={s.hint} style={{ margin: 0, fontWeight: 400 }}>{`${BASES[f.id].texto} ${pesos(f.bases[i])}`}</div>
                       )}
                     </td>
                   );

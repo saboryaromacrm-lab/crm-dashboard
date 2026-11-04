@@ -19,7 +19,7 @@ import { cx } from '@shared/utils/classNames.js';
 import c from '../cashflow/CashFlowMovil.module.css';
 import { resultadosApi } from './resultados.api.js';
 import {
-  armarColumnas, baldesDe, cumplimiento, indicadores, mesActual, nombreMes, objetivoDe, origenDe, pct, pesosRedondo,
+  BASES, armarColumnas, baldesDe, cumplimiento, indicadores, mesActual, nombreMes, objetivoDe, origenDe, pct, pesosRedondo,
   renglones, sobreVentas, sumarMeses, textoOrigen, variacion,
 } from './resultados.js';
 import { useAbiertos } from './useAbiertos.js';
@@ -60,7 +60,7 @@ export function ResultadosMovil() {
   const contra = vista?.contra;
   const varVentas = col && contra ? variacion(col.ventasNetas, contra.ventasNetas) : null;
   const obj = vista ? objetivoDe(data.objetivos, [mes], balde) : null;
-  const filas = col ? renglones([col], data.rubros, abiertos) : [];
+  const filas = col ? renglones([col], data.rubros, abiertos, { empleados: data.empleados, sucursales: data.sucursales }) : [];
   const ivaMes = data?.meses?.find((m) => m.mes === mes)?.iva;
 
   return (
@@ -133,7 +133,8 @@ export function ResultadosMovil() {
                 {filas.map((f) => {
                   const v = f.valores[0];
                   const p = f.id === 'ventasNetas' ? null : sobreVentas(v, col);
-                  const origen = f.origen ? textoOrigen(origenDe(data, [mes], f.origen), f.origen) : '';
+                  const base = f.bases && Math.abs(f.bases[0]) >= 0.005 ? `${BASES[f.id].texto} ${pesosRedondo(f.bases[0])}` : '';
+                  const origen = [f.origen ? textoOrigen(origenDe(data, [mes], f.origen), f.origen) : '', base, f.nota].filter(Boolean).join(' · ');
                   const contenido = (
                     <>
                       <span className={c.filaTexto}>

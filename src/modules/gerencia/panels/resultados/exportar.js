@@ -7,10 +7,11 @@ import { csvNum, descargarCsv } from '@shared/utils/csv.js';
 import { esc, imprimirDocumento } from '@core/services/imprimir.js';
 import { pct, pesos, renglones, sobreVentas } from './resultados.js';
 
-const TODO_ABIERTO = new Set(['otrosVariables', 'otrosFijos', 'financieros']);
+const TODO_ABIERTO = new Set(['otrosVariables', 'sueldos', 'otrosFijos', 'financieros']);
+const extras = (datos) => ({ empleados: datos?.empleados, sucursales: datos?.sucursales });
 
 export function exportarCsv(nombre, datos, columnas) {
-  const filas = renglones(columnas.map((c) => c.col), datos?.rubros ?? [], TODO_ABIERTO);
+  const filas = renglones(columnas.map((c) => c.col), datos?.rubros ?? [], TODO_ABIERTO, extras(datos));
   const cab = ['Concepto', ...columnas.flatMap((c) => [c.titulo, `${c.titulo} (% de ventas)`])];
   const cuerpo = filas.map((f) => [
     `${f.detalle ? '   ' : ''}${f.sub ? f.texto.toUpperCase() : f.texto}`,
@@ -26,7 +27,7 @@ export function exportarCsv(nombre, datos, columnas) {
 }
 
 export function imprimirEstado({ titulo, subtitulo, datos, columnas, avisos = [] }) {
-  const filas = renglones(columnas.map((c) => c.col), datos?.rubros ?? [], TODO_ABIERTO);
+  const filas = renglones(columnas.map((c) => c.col), datos?.rubros ?? [], TODO_ABIERTO, extras(datos));
   const td = (t, extra = '') => `<td style="padding:3px 6px;border-bottom:1px solid #ddd;${extra}">${t}</td>`;
   const num = 'text-align:right;white-space:nowrap';
   const cab = `<tr><th style="text-align:left;padding:3px 6px;border-bottom:2px solid #333">Concepto</th>${columnas
