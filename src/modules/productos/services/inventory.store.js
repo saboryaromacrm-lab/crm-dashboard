@@ -1598,6 +1598,10 @@ const actualizarMargenes = (o) => _mutate(() => httpClient.post('/precios/margen
 const historialPrecios = (q = '') => httpClient.get('/precios/historial' + q);
 const evolucionPrecios = (productoId) => httpClient.get('/precios/evolucion?productoId=' + productoId);
 const revertirLotePrecios = (lote) => _mutate(() => httpClient.post('/precios/revertir/' + lote, {}));
+/* Ajustes de markup con «deshacer» (0218): el servidor guarda el antes de cada fila. */
+const ajustarMarkups = (o) => _mutate(() => httpClient.post('/precios/ajustes-markup', o));
+const ajustesMarkup = () => httpClient.get('/precios/ajustes-markup');
+const deshacerAjusteMarkup = (id) => _mutate(() => httpClient.post(`/precios/ajustes-markup/${id}/deshacer`, {}));
 
 export const inventoryStore = {
   get state() { return state; },
@@ -1649,6 +1653,7 @@ export const inventoryStore = {
   reglasVencimientos, guardarReglasVencimientos, aplicarReglasVencimientos, volverAReglaVencimiento,
   imputarPago, quitarImputacionPago, anularPago, moverDestinoPago, actualizarPapelPago,
   actualizarCostos, actualizarMargenes, historialPrecios, evolucionPrecios, revertirLotePrecios,
+  ajustarMarkups, ajustesMarkup, deshacerAjusteMarkup,
   stockBajo, incidenciasAbiertas, transferenciasPendientes, borradorDeRuta, misBorradores,
   recibirTransferencia, operacionesAlmacen,
 };

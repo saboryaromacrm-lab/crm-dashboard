@@ -226,9 +226,13 @@ export function MargenesPanel() {
         title="Listas de precios"
         desc="Todas las listas con sus markups. Tocá una lista para desplegarla y un valor para ver qué artículos lo tienen."
         actions={(
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {isAdmin && (
-              <Btn small onClick={() => redondear()} disabled={!totales.valores}>Redondear markups</Btn>
+              <>
+                <Btn variant="btn-primary" small onClick={() => openModal('ajustarMarkups')}>Ajustar markups</Btn>
+                <Btn small onClick={() => openModal('ajustesMarkup')}>Ajustes hechos</Btn>
+                <Btn small onClick={() => redondear()} disabled={!totales.valores}>Redondear markups</Btn>
+              </>
             )}
             <Btn small onClick={exportar} disabled={!grilla.length}>Exportar CSV</Btn>
           </div>

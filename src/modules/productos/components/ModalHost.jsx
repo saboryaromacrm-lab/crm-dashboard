@@ -35,6 +35,7 @@ import { ImportarCatalogoModal } from './modals/ImportarCatalogoModal.jsx';
 import { ImportarCostosModal } from './modals/ImportarCostosModal.jsx';
 import { ImportarFormatosVentaModal } from './modals/ImportarFormatosVentaModal.jsx';
 import { RedondearMarkupsModal } from './modals/RedondearMarkupsModal.jsx';
+import { AjustarMarkupsModal, AjustesMarkupModal } from './modals/AjustarMarkupsModal.jsx';
 import { MoverListaModal } from './modals/MoverListaModal.jsx';
 import { ActualizarClasificacionModal } from './modals/ActualizarClasificacionModal.jsx';
 import { AccionLoteModal } from './modals/AccionLoteModal.jsx';
@@ -263,6 +264,8 @@ const REGISTRY = {
   importarCostos: ImportarCostosModal,
   importarFormatosVenta: ImportarFormatosVentaModal,
   redondearMarkups: RedondearMarkupsModal,
+  ajustarMarkups: AjustarMarkupsModal,
+  ajustesMarkup: AjustesMarkupModal,
   moverLista: MoverListaModal,
   movimientoCoffit: MovimientoCoffitModal,
   cierreCoffit: CierreCoffitModal,

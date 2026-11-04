@@ -4,6 +4,7 @@ import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFechaHora } from '../../domain/format.js';
 import { ModalShell } from '../Modal.jsx';
 import { Table, Btn, usePaginado, s } from '../ui.jsx';
+import { REGLAS, aplicarRegla } from '../../domain/ajusteMarkups.js';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -120,19 +121,6 @@ export function HistorialPreciosModal({ proveedorId, productoId }) {
  * Márgenes masivos
  * ==================================================================== */
 
-const MODOS = [
-  { id: 'porcentaje', label: 'Variar un %' },
-  { id: 'monto', label: 'Sumar / restar puntos' },
-  { id: 'fijar', label: 'Fijar valor' },
-];
-
-function aplicarRegla(actual, modo, valor) {
-  const a = Number(actual) || 0;
-  const v = Number(valor) || 0;
-  if (modo === 'fijar') return r2(v);
-  if (modo === 'monto') return r2(a + v);
-  return r2(a * (1 + v / 100));
-}
 
 /**
  * El margen es una decisión propia y transversal a los proveedores, por eso vive
@@ -195,7 +183,7 @@ export function MargenesMasivosModal({ productos, soloFilas = null, contexto = '
       // El alcance fino manda sobre todo lo demás (ver el encabezado).
       if (soloFilas && !soloFilas.has(l.id)) return;
       if (lista && l.etiqueta !== lista) return;
-      const nuevo = Math.max(0, aplicarRegla(l.markup, modo, valor));
+      const nuevo = aplicarRegla(l.markup, modo, valor);
       if (Math.abs(nuevo - l.markup) < 0.005) return;
       const conIva = 1 + (Number(p.iva) || 0) / 100;
       out.push({
@@ -299,7 +287,7 @@ export function MargenesMasivosModal({ productos, soloFilas = null, contexto = '
         <div className={s.field}>
           <label>Cómo</label>
           <select value={modo} onChange={(e) => setModo(e.target.value)}>
-            {MODOS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            {REGLAS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
           </select>
         </div>
         <div className={s.field}>
