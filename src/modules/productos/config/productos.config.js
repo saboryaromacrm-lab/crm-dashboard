@@ -10,6 +10,7 @@
  * Incidencias viven en Almacén.
  */
 import Inventory2Icon from '@mui/icons-material/Inventory2';
+import RemoveShoppingCartIcon from '@mui/icons-material/RemoveShoppingCart';
 import SellIcon from '@mui/icons-material/Sell';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import DocumentScannerIcon from '@mui/icons-material/DocumentScanner';
@@ -98,6 +99,9 @@ export const ALMACEN_PANELS = [
      bajo el mínimo (automático por la venta, o a mano). El globito: cuántos
      proveedores están en rojo en la Distribuidora. */
   { id: 'bajos',          label: 'Bajos en stock', icon: TrendingDownIcon,   permiso: 'almacen.bajos', badge: 'bajos' },
+  /* Quiebres de stock (4/11/2026): en un período, cuántas veces y cuántos días
+     sin stock cada artículo en cada local, y lo que se dejó de vender. */
+  { id: 'quiebres',       label: 'Quiebres de stock', icon: RemoveShoppingCartIcon, permiso: 'almacen.quiebres' },
   // Punto de SALIDA hacia coffit: el ERP no lleva el stock del café. El globito
   // avisa la demanda del café que espera (pedidos pendientes o armándose).
   /* Dos permisos: la distribuidora entra por `almacen.cafeteria` y el rol

@@ -1,21 +1,24 @@
 /**
- * MÉTRICAS › QUIEBRES DE STOCK (4/11/2026, pedido del dueño)
+ * ALMACÉN › QUIEBRES DE STOCK (4/11/2026, pedido del dueño; nació como pestaña
+ * de Métricas y se mudó acá el mismo día: «llevalo a una sección nueva en almacén»)
  * ============================================================================
  * «¿En alguna parte del ERP puedo ver quiebres de stock?» Lo de hoy (qué está
  * en 0 y desde cuándo) ya estaba en Existencias (Alt+F3). Esto es el período:
  * cuánto tiempo tuvo cada local la góndola completa, qué artículos se quedaron
  * sin stock, cuántas veces y cuántos días, y cuánto se dejó de vender.
  *
- * La cuenta la hace la API (`metricas/quiebres.ts`): acá se filtra y se agrupa.
+ * La cuenta la hace la API (`metricas/quiebres.ts`, ruta `/quiebres-stock`,
+ * llave `almacen.quiebres`): acá se elige el período y se filtra y agrupa.
  */
 import { useMemo, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
 import { useResource } from '@modules/ventas/hooks/useResource.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { money, num } from '@modules/productos/domain/format.js';
-import { Table, Btn, Pill, usePaginado, s } from '@modules/productos/components/ui.jsx';
-import { fechaLarga, pctTxt } from './formato.js';
-import { Aviso, Bloque, Cargando, Tile, Tiles } from './piezas.jsx';
+import { fechaLarga, pctTxt, PRESETS, rangoDe } from '@modules/gerencia/panels/metricas/formato.js';
+import { Aviso, Bloque, Cargando, Tile, Tiles } from '@modules/gerencia/panels/metricas/piezas.jsx';
+import { Table, Btn, PanelHead, Pill, usePaginado, s } from '../components/ui.jsx';
+import { useProductos } from '../context/ProductosContext.jsx';
 
 const VISTAS = [['quiebre', 'Con quiebre'], ['final', 'Sin stock al final'], ['contar', 'Hay que contarlos']];
 const fecha = (d) => new Date(d).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' });
@@ -36,8 +39,45 @@ function porProveedor(items) {
   return [...m.values()].sort((a, b) => b.ventaPerdida - a.ventaPerdida || b.dias - a.dias);
 }
 
-export function PestanaQuiebres({ qs, version }) {
-  const { data: d, loading, error } = useResource(`metricas:quiebres:${qs}:${version}`, () => httpClient.get(`/metricas/quiebres?${qs}`));
+/** La sección: el período y el local arriba (los mismos atajos que Métricas) y el reporte. */
+export function QuiebresPanel() {
+  const { store } = useProductos();
+  const [preset, setPreset] = useState('mes');
+  const [manual, setManual] = useState(() => rangoDe('mes'));
+  const [desde, hasta] = preset === 'otro' ? manual : rangoDe(preset);
+  const [sucursalId, setSucursalId] = useState('');
+  const sucursales = store.state.sucursales.filter((x) => x.activa !== false);
+  const qs = `desde=${desde}&hasta=${hasta}${sucursalId ? `&sucursalId=${sucursalId}` : ''}`;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)', minWidth: 0 }}>
+      <PanelHead
+        title="Quiebres de stock"
+        desc="Cuánto tiempo tuvo cada local la mercadería en la góndola, qué artículos se quedaron sin stock, cuántas veces y cuántos días, y cuánto se dejó de vender."
+      />
+      <div className={s.toolbar} style={{ margin: 0 }}>
+        <select className={s['select-inline']} value={preset} onChange={(ev) => { const v = ev.target.value; if (v === 'otro') setManual([desde, hasta]); setPreset(v); }} aria-label="Período">
+          {PRESETS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+        {preset === 'otro' && (
+          <>
+            <input type="date" value={manual[0]} max={manual[1]} onChange={(ev) => setManual([ev.target.value, manual[1]])} aria-label="Desde" />
+            <input type="date" value={manual[1]} min={manual[0]} onChange={(ev) => setManual([manual[0], ev.target.value])} aria-label="Hasta" />
+          </>
+        )}
+        <select className={s['select-inline']} value={sucursalId} onChange={(ev) => setSucursalId(ev.target.value)} aria-label="Sucursal">
+          <option value="">Todas las sucursales</option>
+          {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+        </select>
+        <span className={s.hint} style={{ margin: 0 }}>{fechaLarga(desde)} → {fechaLarga(hasta)}</span>
+      </div>
+      <Reporte qs={qs} />
+    </div>
+  );
+}
+
+function Reporte({ qs }) {
+  const { data: d, loading, error } = useResource(`quiebres-stock:${qs}`, () => httpClient.get(`/quiebres-stock?${qs}`));
   const [vista, setVista] = useState('quiebre');
   const [local, setLocal] = useState('');
   const [proveedor, setProveedor] = useState('');

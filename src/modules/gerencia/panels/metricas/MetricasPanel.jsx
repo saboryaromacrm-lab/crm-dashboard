@@ -27,14 +27,13 @@ import { PestanaProductos } from './PestanaProductos.jsx';
 import { PestanaIva } from './PestanaIva.jsx';
 import { PestanaOfertas } from './PestanaOfertas.jsx';
 import { PestanaAnterior } from './PestanaAnterior.jsx';
-import { PestanaQuiebres } from './PestanaQuiebres.jsx';
 
 /* ============================================================================
  * EL PANEL
  * ========================================================================== */
 const PESTANAS = [
   ['ventas', 'Ventas'], ['productos', 'Productos y categorías'], ['marcas', 'Marcas'], ['comparar', 'Comparar fechas'], ['granel', 'Granel y enteros'], ['rentabilidad', 'Rentabilidad'], ['ofertas', 'Ofertas y descuentos'],
-  ['proveedores', 'Proveedores y listas'], ['stock', 'Stock'], ['quiebres', 'Quiebres de stock'], ['iva', 'Resultados IVA'], ['anterior', 'Sistema anterior'],
+  ['proveedores', 'Proveedores y listas'], ['stock', 'Stock'], ['iva', 'Resultados IVA'], ['anterior', 'Sistema anterior'],
 ];
 
 export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
@@ -75,8 +74,6 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
 
   /** Stock es de hoy y Sistema anterior va mes a mes: no usan el período ni el agrupado. */
   const sinPeriodo = pestana === 'stock' || pestana === 'anterior';
-  /** Quiebres de stock mira el período entero: no agrupa por día, semana ni mes. */
-  const sinAgrupar = sinPeriodo || pestana === 'quiebres';
   const qs = `desde=${desde}&hasta=${hasta}${sucursalId ? `&sucursalId=${sucursalId}` : ''}&paso=${paso}`;
   const e = estado.data;
 
@@ -84,7 +81,7 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)', minWidth: 0 }}>
       <PanelHead
         title="Métricas"
-        desc="Ventas, productos y categorías, marcas, comparación de fechas, granel y enteros, rentabilidad, ofertas y descuentos, proveedores, stock, quiebres de stock y el sistema anterior. Se actualiza solo cada 10 minutos; con «Sincronizar» traés lo último en el momento."
+        desc="Ventas, productos y categorías, marcas, comparación de fechas, granel y enteros, rentabilidad, ofertas y descuentos, proveedores, stock y el sistema anterior. Se actualiza solo cada 10 minutos; con «Sincronizar» traés lo último en el momento."
         actions={(
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span className={s.hint} style={{ margin: 0 }} title={e?.ultimaOk ? new Date(e.ultimaOk).toLocaleString('es-AR') : ''}>
@@ -118,7 +115,7 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
           <option value="">Todas las sucursales</option>
           {(sucs.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
         </select>
-        {!sinAgrupar && (
+        {!sinPeriodo && (
           <select className={s['select-inline']} value={pasoElegido} onChange={(ev) => setPasoElegido(ev.target.value)} aria-label="Agrupar por">
             <option value="">Agrupar: automático ({nombrePaso(paso)})</option>
             <option value="dia">Por día</option>
@@ -153,8 +150,6 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
       {pestana === 'ofertas' && <PestanaOfertas qs={qs} version={version} />}
       {pestana === 'proveedores' && <PestanaProveedores qs={qs} version={version} />}
       {pestana === 'stock' && <PestanaStock sucursalId={sucursalId} version={version} />}
-      {/* Quiebres de stock (4/11/2026): cuántas veces y cuántos días sin stock, y lo que se dejó de vender. */}
-      {pestana === 'quiebres' && <PestanaQuiebres qs={qs} version={version} />}
       {/* Resultados IVA (3/10/2026): con y sin factura, y la posición de IVA mes a mes. */}
       {pestana === 'iva' && <PestanaIva qs={qs} version={version} />}
       {/* Sistema anterior (0213): los meses del sistema viejo contra los del ERP, por local. */}

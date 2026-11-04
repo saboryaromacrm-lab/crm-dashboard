@@ -28,6 +28,7 @@ import { VencimientosPanel } from '../panels/VencimientosPanel.jsx';
 import { ConteosPanel } from '../panels/ConteosPanel.jsx';
 import { SinMovimientoPanel } from '../panels/SinMovimientoPanel.jsx';
 import { BajosStockPanel } from '../panels/BajosStockPanel.jsx';
+import { QuiebresPanel } from '../panels/QuiebresPanel.jsx';
 
 /**
  * Registro de paneles disponibles. Cada módulo elige cuáles muestra (config).
@@ -59,6 +60,7 @@ const PANEL_COMPONENTS = {
   conteos: ConteosPanel,
   'sin-movimiento': SinMovimientoPanel,
   bajos: BajosStockPanel,
+  quiebres: QuiebresPanel,
   // Las llaves de stock (3/10/2026): antes en Ventas › Configuración.
   configuracion: ConfiguracionAlmacenPanel,
 };
