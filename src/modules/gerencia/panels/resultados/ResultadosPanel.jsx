@@ -130,6 +130,7 @@ export function ResultadosPanel() {
                 <>
                   <TarjetasEstado col={vistaArmada.principal} contra={vistaArmada.contra} contraTxt={vistaArmada.contraTxt} objetivo={objetivo} esEmpresa={vistaArmada.empresa} />
                   {(data.avisos ?? []).map((a, i) => <Aviso key={i} tono={a.tono}>{a.texto}</Aviso>)}
+                  <CasillaDiferencias cuenta={data.config?.diferenciasInventario !== false} alCambiar={() => setVersion((v) => v + 1)} />
                   <TablaEstado datos={data} columnas={vistaArmada.columnas} mesesOrigen={vistaArmada.meses} abiertos={abiertos} alternar={alternar} />
                   <div className={cx(s.hint)} style={{ margin: 0 }}>
                     Todo en neto, sin IVA. Los costos van en negativo y abajo de cada importe, su % sobre las ventas netas. Tocá los grupos con ▸ para ver cada rubro.
@@ -146,6 +147,38 @@ export function ResultadosPanel() {
       )}
       {pestana === 'objetivos' && <ObjetivosResultados alGuardar={() => setVersion((v) => v + 1)} />}
       {pestana === 'config' && <ConfigResultados alGuardar={() => setVersion((v) => v + 1)} />}
+    </div>
+  );
+}
+
+/**
+ * LAS DIFERENCIAS DE INVENTARIO, OPTATIVAS (4/11/2026, pedido del dueño:
+ * «muchas veces son ajustes que así nomás hago»). La elección se guarda en la
+ * configuración de Resultados, así el margen, Ganancias y el Asesor cuentan lo
+ * mismo en todos lados. Las mermas, vencidos y defectuosos se cuentan siempre.
+ */
+function CasillaDiferencias({ cuenta, alCambiar }) {
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+  const cambiar = async (valor) => {
+    setGuardando(true);
+    setError('');
+    try {
+      await resultadosApi.guardarConfig({ diferenciasInventario: valor });
+      alCambiar();
+    } catch (e) {
+      setError(e?.message || 'No se pudo guardar.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: guardando ? 'wait' : 'pointer', width: 'fit-content' }}>
+        <input id="resultados-diferencias" type="checkbox" checked={cuenta} disabled={guardando} onChange={(e) => cambiar(e.target.checked)} />
+        Contar las diferencias de inventario (ajustes y controles de stock)
+      </label>
+      {error && <Aviso tono="warn">{error}</Aviso>}
     </div>
   );
 }
