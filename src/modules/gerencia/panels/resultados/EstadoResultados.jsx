@@ -2,7 +2,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { s } from '@modules/productos/components/ui.jsx';
 import { Tile, Tiles } from '../metricas/piezas.jsx';
 import {
-  BASES, cumplimiento, indicadores, origenDe, pct, pesos, pesosRedondo, renglones, sobreVentas, textoOrigen, variacion,
+  BASES, PRORRATEADOS, cumplimiento, indicadores, origenDe, pct, pesos, pesosRedondo, renglones, sobreVentas, textoEnCurso, textoOrigen, variacion,
 } from './resultados.js';
 
 /**
@@ -15,6 +15,7 @@ import {
  */
 export function TablaEstado({ datos, columnas, mesesOrigen, abiertos, alternar }) {
   const filas = renglones(columnas.map((c) => c.col), datos?.rubros ?? [], abiertos, { empleados: datos?.empleados, sucursales: datos?.sucursales });
+  const enCurso = textoEnCurso(datos, mesesOrigen);
   const retiros = columnas.map((c) => c.col.retiros);
   const hayRetiros = retiros.some((v) => Math.abs(v) > 0.004);
   const celda = { padding: '6px 10px', textAlign: 'right', whiteSpace: 'nowrap', verticalAlign: 'top' };
@@ -38,7 +39,7 @@ export function TablaEstado({ datos, columnas, mesesOrigen, abiertos, alternar }
         </thead>
         <tbody>
           {filas.map((f) => {
-            const origen = f.origen ? textoOrigen(origenDe(datos, mesesOrigen, f.origen), f.origen) : '';
+            const origen = [f.origen ? textoOrigen(origenDe(datos, mesesOrigen, f.origen), f.origen) : '', PRORRATEADOS.has(f.id) ? enCurso : ''].filter(Boolean).join(' · ');
             const fuerte = f.sub ? { fontWeight: 700, borderTop: '2px solid var(--crm-color-border)' } : {};
             const fondo = f.final ? { background: 'var(--crm-color-primary-soft, rgba(22,101,52,0.08))' } : {};
             return (

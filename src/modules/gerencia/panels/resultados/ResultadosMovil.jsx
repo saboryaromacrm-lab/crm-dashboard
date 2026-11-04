@@ -19,8 +19,8 @@ import { cx } from '@shared/utils/classNames.js';
 import c from '../cashflow/CashFlowMovil.module.css';
 import { resultadosApi } from './resultados.api.js';
 import {
-  BASES, armarColumnas, baldesDe, cumplimiento, indicadores, mesActual, nombreMes, objetivoDe, origenDe, pct, pesosRedondo,
-  renglones, sobreVentas, sumarMeses, textoOrigen, variacion,
+  BASES, PRORRATEADOS, armarColumnas, baldesDe, cumplimiento, indicadores, mesActual, nombreMes, objetivoDe, origenDe, pct, pesosRedondo,
+  renglones, sobreVentas, sumarMeses, textoEnCurso, textoOrigen, variacion,
 } from './resultados.js';
 import { useAbiertos } from './useAbiertos.js';
 
@@ -134,7 +134,7 @@ export function ResultadosMovil() {
                   const v = f.valores[0];
                   const p = f.id === 'ventasNetas' ? null : sobreVentas(v, col);
                   const base = f.bases && Math.abs(f.bases[0]) >= 0.005 ? `${BASES[f.id].texto} ${pesosRedondo(f.bases[0])}` : '';
-                  const origen = [f.origen ? textoOrigen(origenDe(data, [mes], f.origen), f.origen) : '', base, f.nota].filter(Boolean).join(' · ');
+                  const origen = [f.origen ? textoOrigen(origenDe(data, [mes], f.origen), f.origen) : '', PRORRATEADOS.has(f.id) ? textoEnCurso(data, [mes]) : '', base, f.nota].filter(Boolean).join(' · ');
                   const contenido = (
                     <>
                       <span className={c.filaTexto}>

@@ -119,6 +119,16 @@ export const RENGLONES = [
  * y la tasa municipal, sobre lo facturado sin IVA; el posnet, sobre lo cobrado
  * con débito y crédito (Mercado Pago va con su comisión real).
  */
+/**
+ * El mes en curso (4/11/2026): sueldos de la planilla, fijos estimados y
+ * amortizaciones van por los días que pasaron. Devuelve «4 de 30 días» o ''.
+ */
+export const PRORRATEADOS = new Set(['sueldos', 'otrosFijos', 'amortizaciones']);
+export function textoEnCurso(datos, meses) {
+  const c = (datos?.meses ?? []).find((m) => meses.includes(m.mes) && m.enCurso)?.enCurso;
+  return c ? `mes en curso: ${c.dias} de ${c.de} días` : '';
+}
+
 export const BASES = {
   iibb: { texto: 'facturado', valor: (v) => N(v.facturado) },
   municipalidad: { texto: 'facturado', valor: (v) => N(v.facturado) },
