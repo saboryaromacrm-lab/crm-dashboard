@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 import { useGastos } from '../context/GastosContext.jsx';
@@ -44,6 +44,8 @@ function RecurrentesTab() {
   const { recurrentes, categorias, proveedores, nombreSucursal, ctx, act, openModal, recargar } = useGastos();
   const [periodo, setPeriodo] = useState(periodoISO());
   const [generando, setGenerando] = useState(false);
+  /* Filtro por rubro (4/11/2026, pedido del dueño): solo los rubros que tienen algún gasto fijo. */
+  const [rubro, setRubro] = useState('');
 
   const { data: previa, loading, error, reload } = useResource(
     `fijos-periodo:${periodo}`,
@@ -66,6 +68,13 @@ function RecurrentesTab() {
   };
 
   const nombreCat = (id) => categorias.find((c) => c.id === id)?.nombre || '—';
+  const rubros = useMemo(() => {
+    const cuenta = new Map();
+    for (const r of recurrentes) cuenta.set(r.categoriaId, (cuenta.get(r.categoriaId) ?? 0) + 1);
+    return [...cuenta].map(([id, n]) => ({ id, n, nombre: nombreCat(id) })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  }, [recurrentes, categorias]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lista = rubro ? recurrentes.filter((r) => String(r.categoriaId) === rubro) : recurrentes;
+  const estimadoFiltro = lista.filter((r) => r.activo).reduce((a, r) => a + r.importeEstimado, 0);
   const nombreProv = (id) => proveedores.find((p) => p.id === id)?.nombre || '—';
   const stop = (e) => e.stopPropagation();
 
@@ -118,15 +127,27 @@ function RecurrentesTab() {
       </div>
 
       {/* ------------- Plantillas ------------- */}
+      <div className={s.toolbar} style={{ margin: 0 }}>
+        <select className={s['select-inline']} value={rubro} onChange={(e) => setRubro(e.target.value)} aria-label="Filtrar por rubro">
+          <option value="">Todos los rubros</option>
+          {rubros.map((x) => <option key={x.id} value={String(x.id)}>{`${x.nombre} (${x.n})`}</option>)}
+        </select>
+        {rubro && (
+          <>
+            <span className={s.hint} style={{ margin: 0 }}>{`${lista.length} gasto(s) · estimado mensual ${money(estimadoFiltro)}`}</span>
+            <Btn small onClick={() => setRubro('')}>Ver todos</Btn>
+          </>
+        )}
+      </div>
       <Table
         cols={[
           { h: 'Gasto fijo' }, { h: 'Rubro' }, { h: 'Local' }, { h: 'Proveedor' }, { h: 'Frecuencia' },
           { h: 'Vence el día', num: true }, { h: 'Estimado', num: true }, { h: 'Este período' },
           { h: 'Acciones', cls: 'actions-col' },
         ]}
-        empty="Todavía no hay gastos fijos cargados."
+        empty={rubro ? 'No hay gastos fijos de ese rubro.' : 'Todavía no hay gastos fijos cargados.'}
       >
-        {recurrentes.map((r) => {
+        {lista.map((r) => {
           const yaEsta = emitidos.find((e) => e.plantilla.id === r.id);
           return (
             <tr key={r.id} className={s.clickable} onClick={() => openModal('recurrenteForm', { recurrenteId: r.id, onChange: reload })}>
