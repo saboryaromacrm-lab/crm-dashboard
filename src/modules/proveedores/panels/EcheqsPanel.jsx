@@ -91,14 +91,13 @@ function ComprometidoPorMes({ porMes = [] }) {
  * sobra queda a cuenta.
  */
 export function EcheqsPanel() {
-  const { proveedores, openModal, toast, recargarContadores } = useProveedores();
+  const { openModal, toast, recargarContadores } = useProveedores();
   const [filtro, setFiltro] = useState('activos');
-  const [proveedorId, setProveedorId] = useState('');
   const [buscar, setBuscar] = useState('');
   const { data, reload } = useResource(
-    `echeqs:${filtro}:${proveedorId}:${buscar}`,
-    /* De la fecha de cobro más lejana a la más vieja, sin importar el estado (4/11/2026, pedido del dueño). */
-    () => provApi.echeqs({ filtro, proveedorId: proveedorId || undefined, buscar: buscar || undefined, orden: 'recientes' }),
+    `echeqs:${filtro}:${buscar}`,
+    /* Arriba el próximo a debitarse; los que ya pasaron su fecha, al final (4/11/2026, pedido del dueño). */
+    () => provApi.echeqs({ filtro, buscar: buscar || undefined, orden: 'proximos' }),
   );
   const { data: stats, reload: reloadStats } = useResource('echeqs-stats', provApi.statsEcheqs);
 
@@ -146,13 +145,12 @@ export function EcheqsPanel() {
         {FILTROS.map(([k, v]) => (
           <Btn key={k} small variant={filtro === k ? 'btn-primary' : undefined} onClick={() => setFiltro(k)}>{v}</Btn>
         ))}
-        <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-          <option value="">Todos los proveedores</option>
-          {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        {/* Un solo buscador para escribir (4/11/2026, pedido del dueño: la lista de proveedores para
+            elegir sobraba): encuentra por proveedor o a nombre de quien va, número, banco u observaciones. */}
         <input
-          type="search" placeholder="N°, banco, a nombre de…" value={buscar}
-          onChange={(e) => setBuscar(e.target.value)} style={{ marginLeft: 'auto' }}
+          type="search" placeholder="Buscar proveedor, a nombre de, N° o banco…" value={buscar}
+          onChange={(e) => setBuscar(e.target.value)} style={{ marginLeft: 'auto', minWidth: 280 }}
+          aria-label="Buscar echeqs"
         />
       </div>
 
