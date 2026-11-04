@@ -97,7 +97,8 @@ export function EcheqsPanel() {
   const [buscar, setBuscar] = useState('');
   const { data, reload } = useResource(
     `echeqs:${filtro}:${proveedorId}:${buscar}`,
-    () => provApi.echeqs({ filtro, proveedorId: proveedorId || undefined, buscar: buscar || undefined }),
+    /* De la fecha de cobro más lejana a la más vieja, sin importar el estado (4/11/2026, pedido del dueño). */
+    () => provApi.echeqs({ filtro, proveedorId: proveedorId || undefined, buscar: buscar || undefined, orden: 'recientes' }),
   );
   const { data: stats, reload: reloadStats } = useResource('echeqs-stats', provApi.statsEcheqs);
 
