@@ -68,7 +68,7 @@ export function ResultadosPanel() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
       <PanelHead
         title="Resultados"
-        desc="El estado de resultados del negocio, todo en neto (sin IVA): cuánto se vende, cuánto cuesta y cuánto queda, por mes y por local. El IVA va aparte, en su pestaña."
+        desc="El estado de resultados del negocio, en neto (sin IVA): cuánto se vende, cuánto cuesta y cuánto queda, por mes y por local. El IVA de lo vendido sin factura sí suma, porque no se paga y queda en la casa; el IVA declarado va aparte, en su pestaña."
         actions={pestana === 'estado' && vistaArmada ? (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Btn small onClick={() => exportarCsv(`resultados-${modo === 'mes' ? mes : `${rango[0]}-a-${rango[1]}`}${nombreLocal ? `-${nombreLocal}` : ''}.csv`, data, vistaArmada.columnas)}>Excel</Btn>
@@ -134,7 +134,7 @@ export function ResultadosPanel() {
                   <CasillaDiferencias cuenta={data.config?.diferenciasInventario !== false} alCambiar={() => setVersion((v) => v + 1)} />
                   <TablaEstado datos={data} columnas={vistaArmada.columnas} mesesOrigen={vistaArmada.meses} abiertos={abiertos} alternar={alternar} />
                   <div className={cx(s.hint)} style={{ margin: 0 }}>
-                    Todo en neto, sin IVA. Los costos van en negativo y abajo de cada importe, su % sobre las ventas netas. Tocá los grupos con ▸ para ver cada rubro.
+                    Todo en neto, sin IVA (salvo el de lo vendido sin factura, que queda en la casa). Los costos van en negativo y abajo de cada importe, su % sobre las ventas netas. Tocá los grupos con ▸ para ver cada rubro.
                     {balde ? ' Por local: los gastos sin local se reparten por lo que vende cada uno (o quedan en «Administración», según el rubro); Ganancias es de la empresa entera.' : ''}
                     {' '}Ganancias es un estimado por lo acumulado del año con la escala de ARCA; el impuesto real lo determina la contadora.
                   </div>

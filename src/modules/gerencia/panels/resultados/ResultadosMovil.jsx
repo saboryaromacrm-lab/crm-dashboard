@@ -160,11 +160,11 @@ export function ResultadosMovil() {
                   <div><span>Saldo a favor</span><strong>{pesosRedondo(ivaMes.saldoAFavor)}</strong></div>
                   <div><span>De gestión</span><strong>{pesosRedondo(ivaMes.sinFactura)}</strong></div>
                 </div>
-                <p className={c.nota}>«De gestión»: el IVA de lo vendido sin factura, que queda en la casa. Con él, el mes deja {pesosRedondo(col.neto + ivaMes.sinFactura)}.</p>
+                <p className={c.nota}>«De gestión»: el IVA de lo vendido sin factura, que queda en la casa. Ya está sumado arriba, en las ventas.</p>
               </section>
             )}
             <p className={c.nota}>
-              Todo en neto, sin IVA. Ganancias es un estimado por lo acumulado del año. Los objetivos se cargan en la computadora (Gerencia › Resultados); los gastos fijos y sueldos en Gerencia › Gastos fijos y sueldos, y las tasas en Ventas › Configuración.
+              Todo en neto, sin IVA, salvo el IVA de lo vendido sin factura, que queda en la casa. Ganancias es un estimado por lo acumulado del año. Los objetivos se cargan en la computadora (Gerencia › Resultados); los gastos fijos y sueldos en Gerencia › Gastos fijos y sueldos, y las tasas en Ventas › Configuración.
             </p>
           </>
         )}

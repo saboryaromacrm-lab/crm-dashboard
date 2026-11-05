@@ -93,6 +93,8 @@ export const RENGLONES = [
   { id: 'descuentos', texto: 'Descuentos y ofertas', valor: (v) => -N(v.descuentos) },
   { id: 'notasCredito', texto: 'Devoluciones y notas de crédito', valor: (v) => -N(v.notasCredito) },
   { id: 'cargos', texto: 'Envíos y otros cargos cobrados', valor: (v) => N(v.cargos) },
+  /* 5/11/2026: el IVA de lo vendido sin factura no se paga: es parte del precio que queda en la casa. */
+  { id: 'ivaSinFactura', texto: 'IVA de lo vendido sin factura (queda en la casa)', valor: (v) => N(v.ivaSinFactura) },
   { id: 'ventasNetas', texto: 'Ventas netas', valor: (v) => N(v.ventasNetas), sub: true },
   { id: 'cmv', texto: 'Costo de la mercadería vendida', valor: (v) => -N(v.cmv), siempre: true },
   { id: 'mermas', texto: 'Mermas, vencidos y defectuosos', valor: (v) => -N(v.mermas) },

@@ -123,3 +123,13 @@ test('las columnas: un mes con sus comparaciones, varios meses con total, por lo
   assert.equal(fontana.empresa, false);
   assert.equal(fontana.columnas.length, 2, 'Fontana vendió en septiembre: hay mes anterior');
 });
+
+test('el IVA de lo vendido sin factura es un renglón de las ventas, antes de las ventas netas', () => {
+  const col = { ventasLista: 1000, ivaSinFactura: 84, ventasNetas: 1084 };
+  const r = renglones([col]);
+  const ids = r.map((x) => x.id);
+  const fila = r.find((x) => x.id === 'ivaSinFactura');
+  assert.deepEqual(fila.valores, [84]);
+  assert.ok(ids.indexOf('ivaSinFactura') < ids.indexOf('ventasNetas'));
+  assert.equal(renglones([{ ventasLista: 1000, ventasNetas: 1000 }]).some((x) => x.id === 'ivaSinFactura'), false, 'en cero no se muestra');
+});

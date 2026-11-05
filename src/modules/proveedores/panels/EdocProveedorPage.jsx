@@ -8,6 +8,12 @@ import {
   fmtFecha, money, s, usePaginado,
 } from '../components/ui.jsx';
 
+/**
+ * La fecha de asiento (5/11/2026): solo el día. La «fecha de carga» de las
+ * compras es un día (se guarda a mediodía), así que una hora ahí mentiría.
+ */
+const fechaAsentado = (v) => (v ? fmtFecha(v) : '—');
+
 const EPS = 0.009;
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -409,7 +415,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
 
       <Table
         cols={[
-          { h: 'Fecha' }, { h: 'Movimiento' }, { h: 'Debe', num: true },
+          { h: 'Fecha fc / pago' }, { h: 'Asentado' }, { h: 'Movimiento' }, { h: 'Debe', num: true },
           { h: 'Haber', num: true }, { h: 'Saldo', num: true }, { h: '' },
         ]}
         empty={hayFiltro ? 'Ningún movimiento con esos filtros.' : 'Todavía no hay movimientos.'}
@@ -425,6 +431,8 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
                   y la API la guarda a medianoche, así que la hora sería un
                   "12:00 a. m." que no pasó. */}
               <td>{fmtFecha(m.fecha)}</td>
+              {/* Cuándo se cargó en el sistema (5/11/2026). Los pagos anteriores al 5/11 no lo guardaban: «—». */}
+              <td style={{ whiteSpace: 'nowrap' }} title="Cuándo se cargó en el sistema">{fechaAsentado(m.asentado)}</td>
               <td>
                 <Pill pill={k.pill} label={m.kind === 'factura_mes' ? k.label : (tag || k.label)} /> {m.kind === 'factura_mes' ? m.etiqueta.replace(/^Factura /, '') : resto}
                 {m.detalle && <div className={s.hint} style={{ margin: 0 }}>{m.detalle}</div>}

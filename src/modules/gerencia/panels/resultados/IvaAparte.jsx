@@ -12,8 +12,9 @@ import { columna, nombreMes, pesos, pesosRedondo } from './resultados.js';
  *               viene arrastrado, lo que toca pagar a ARCA. Misma cuenta que
  *               Métricas › Resultados IVA.
  *   DE GESTIÓN  el IVA de lo vendido SIN factura: se cobró dentro del precio y
- *               no se le paga a nadie, así que queda en la casa. Sumado al
- *               resultado neto da lo que de verdad dejó el negocio.
+ *               no se le paga a nadie, así que queda en la casa. Desde el
+ *               5/11/2026 ya suma en el estado de resultados (en las ventas de
+ *               cada local): acá se muestra mes a mes, sin volver a sumarlo.
  */
 export function IvaAparte({ datos, meses }) {
   const filas = (datos?.meses ?? []).filter((m) => meses.includes(m.mes));
@@ -27,10 +28,9 @@ export function IvaAparte({ datos, meses }) {
       <Tiles>
         <Tile label="A pagar a ARCA (declarado)" valor={pesosRedondo(suma('aPagar'))} detalle="Lo que toca pagar en el período, con el saldo a favor descontado." />
         <Tile label="Saldo a favor al cierre" valor={pesosRedondo(ultimo?.saldoAFavor ?? 0)} detalle="Crédito que pasa al mes siguiente." />
-        <Tile label="IVA de gestión" valor={pesosRedondo(gestion)} detalle="El IVA de lo vendido sin factura: se cobró y queda en la casa." />
         <Tile
-          label="Resultado neto + IVA de gestión" valor={pesosRedondo(empresa.neto + gestion)} alerta={empresa.neto + gestion < 0}
-          detalle={`Resultado neto ${pesosRedondo(empresa.neto)} + IVA de gestión ${pesosRedondo(gestion)}.`}
+          label="IVA de gestión" valor={pesosRedondo(gestion)}
+          detalle={`El IVA de lo vendido sin factura: queda en la casa. Ya está sumado en el estado de resultados (resultado neto ${pesosRedondo(empresa.neto)}).`}
         />
       </Tiles>
       <Bloque titulo="Mes a mes" sub="El IVA se declara por mes completo y por CUIT: con todos los locales juntos.">
@@ -79,8 +79,8 @@ export function IvaAparte({ datos, meses }) {
       <Aviso>
         <strong>Declarado:</strong> débito de lo facturado − crédito de las compras y gastos con factura A − percepciones de IVA, con el saldo
         a favor arrastrado (cargá el saldo inicial en Métricas › Resultados IVA). Es una cuenta de gestión: la declaración la hace la contadora.
-        {' '}<strong>De gestión:</strong> en lo vendido sin factura el precio ya trae el IVA, pero no se le paga a nadie: esa plata queda en la casa
-        y por eso el estado de resultados (en neto) no la muestra.
+        {' '}<strong>De gestión:</strong> en lo vendido sin factura el precio ya trae el IVA, pero no se le paga a nadie: esa plata queda en la casa,
+        así que en el estado de resultados suma en las ventas del local que vendió («IVA de lo vendido sin factura»).
       </Aviso>
     </div>
   );

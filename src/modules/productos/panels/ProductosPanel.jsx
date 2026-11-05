@@ -165,6 +165,13 @@ function CatalogoProductos() {
   const [controlF, setControlF] = useState('');
   /** FOTO (4/10/2026): 'con' / 'sin' foto para la tienda (la misma que ve el cliente: `fotoUrl`). */
   const [imagenF, setImagenF] = useState('');
+  /**
+   * COSTO (5/11/2026): 'sin-formato' = ningún formato de compra cargado;
+   * 'sin-costo' = el costo da $0 (sin formato, o con formato sin precio). Usa el
+   * mismo costo que la ficha y la caja (`store.costoNeto`): lo que elabora Coffit
+   * con su costo declarado no entra aunque no tenga formato.
+   */
+  const [costoF, setCostoF] = useState('');
   /** Las fotos de a muchas (19/10/2026, antes en Tienda online): 'lote' | 'rafaga' | null. */
   const [fotos, setFotos] = useState(null);
   const puedeFotos = store.can('compras.productos');
@@ -198,6 +205,8 @@ function CatalogoProductos() {
       if (provIds && !(p.formatosCompra || []).some((e) => provIds.has(e.proveedorId))) return false;
       if (imagenF === 'con' && !p.fotoUrl) return false;
       if (imagenF === 'sin' && p.fotoUrl) return false;
+      if (costoF === 'sin-formato' && (p.formatosCompra || []).length) return false;
+      if (costoF === 'sin-costo' && store.costoNeto(p) > 0) return false;
       if (controlF) {
         const c = store.controlDe(p);
         if (controlF === 'con' && !c.controla) return false;
@@ -217,7 +226,7 @@ function CatalogoProductos() {
       : lista;
     // `configVentas`: el control efectivo depende de las llaves generales.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.state.productos, store.state.proveedores, store.state.configVentas, q, tipo, sinHijos, sinBulto, kgDe, marcas, categoria, proveedorId, estadoF, controlF, imagenF]);
+  }, [store.state.productos, store.state.proveedores, store.state.configVentas, q, tipo, sinHijos, sinBulto, kgDe, marcas, categoria, proveedorId, estadoF, controlF, imagenF, costoF]);
 
   /*
    * CADA FRACCIONADO ES UNA FILA PROPIA (decisión del dueño, 9/8/2026): el
@@ -235,7 +244,7 @@ function CatalogoProductos() {
     return out;
   }, [productos]);
 
-  const hayFiltro = !!(q || tipo || marcas.length || categoria || proveedorId || controlF || imagenF || estadoF !== 'vigentes');
+  const hayFiltro = !!(q || tipo || marcas.length || categoria || proveedorId || controlF || imagenF || costoF || estadoF !== 'vigentes');
   /* El modo ráfaga recorre los de ESTA lista que no tienen foto: se filtra por marca o proveedor y se le pone foto a eso. */
   const sinFoto = useMemo(() => productos.filter((p) => !p.fotoUrl), [productos]);
   const avisar = (tipo, texto) => toast(texto, tipo);
@@ -281,7 +290,7 @@ function CatalogoProductos() {
     }),
   );
 
-  const pag = usePaginado(filasLista, 'productos', `${q}|${tipo}|${marcas.join(',')}|${categoria}|${proveedorId}|${estadoF}|${controlF}|${imagenF}`);
+  const pag = usePaginado(filasLista, 'productos', `${q}|${tipo}|${marcas.join(',')}|${categoria}|${proveedorId}|${estadoF}|${controlF}|${imagenF}|${costoF}`);
   /* Se eligen productos: los renglones de fraccionados no llevan casilla. */
   const idsPagina = pag.visibles.filter((f) => !f.pr).map((f) => f.p.id);
   const idsFiltro = useMemo(() => productos.map((p) => p.id), [productos]);
@@ -423,6 +432,11 @@ function CatalogoProductos() {
           <option value="con">Con foto</option>
           <option value="sin">Sin foto</option>
         </select>
+        <select className={s['select-inline']} value={costoF} onChange={(e) => setCostoF(e.target.value)} aria-label="Costo">
+          <option value="">Con y sin costo</option>
+          <option value="sin-formato">Sin formato de compra</option>
+          <option value="sin-costo">Sin costo ($0)</option>
+        </select>
         {puedeFotos && (
           <>
             <Btn onClick={() => setFotos('lote')} title="Arrastrar muchas fotos y emparejarlas por el nombre del archivo">Fotos en lote</Btn>
@@ -440,7 +454,7 @@ function CatalogoProductos() {
             small
             onClick={() => {
               setQ(''); setTipo(''); setMarcas([]); setCategoria(''); setProveedorId('');
-              setControlF(''); setImagenF(''); setEstadoF('vigentes');
+              setControlF(''); setImagenF(''); setCostoF(''); setEstadoF('vigentes');
             }}
           >
             Limpiar
@@ -456,6 +470,9 @@ function CatalogoProductos() {
           {controlF === 'sin' && ' Sin control: se venden, fraccionan y mueven aunque no haya stock (el stock se sigue registrando y puede quedar en negativo).'}
           {controlF === 'propio' && ' Tienen el control elegido en su ficha: no siguen a las llaves generales de Ventas › Configuración.'}
           {controlF && ' Se cambia en el detalle de cada producto (pestaña Resumen).'}
+          {costoF === 'sin-formato' && ' No tienen ningún formato de compra: no se sabe a quién se compran ni a cuánto.'}
+          {costoF === 'sin-costo' && ' Su costo da $0 (sin formato de compra, o con uno sin precio): se venden con margen inflado y valen $0 en el stock.'}
+          {costoF && ' El formato se carga en el detalle de cada producto (pestaña «Formato de Compra»), o de a muchos desde la pestaña «Actualizar e importar».'}
           {imagenF && ' La foto se carga en el detalle de cada producto (pestaña Tienda online), o de a muchas con «Fotos en lote» y «Modo ráfaga».'}
           {isAdmin && ' «Exportar CSV» alcanza solo a los filtrados.'}
           {puedeExportarMaxi && ' «Exportar para ERP Maxi» lleva los filtrados, o solo los tildados si tildaste alguno.'}

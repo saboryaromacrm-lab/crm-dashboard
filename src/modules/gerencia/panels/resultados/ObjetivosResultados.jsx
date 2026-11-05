@@ -76,7 +76,7 @@ export function ObjetivosResultados({ alGuardar }) {
       </div>
       {msg && <Aviso tono={msg.tono}>{msg.texto}</Aviso>}
       {obj.loading && !obj.data ? <Cargando /> : (
-        <Bloque titulo={`Objetivos ${anio}${balde ? ` · ${locales.find((x) => x.id === balde)?.nombre ?? ''}` : ' · empresa'}`} sub="Ventas netas (sin IVA) y resultado antes de Ganancias. Vacío = sin objetivo ese mes.">
+        <Bloque titulo={`Objetivos ${anio}${balde ? ` · ${locales.find((x) => x.id === balde)?.nombre ?? ''}` : ' · empresa'}`} sub="Ventas netas (sin IVA, salvo el de lo vendido sin factura) y resultado antes de Ganancias. Vacío = sin objetivo ese mes.">
           <div className={cx(s.tblScroll)}>
             <table className={s.table} style={{ minWidth: 760 }}>
               <thead>

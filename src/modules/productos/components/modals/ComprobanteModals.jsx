@@ -4,6 +4,7 @@ import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFecha, isoDate } from '../../domain/format.js';
 import { TIPOS_COMPROBANTE, ESTADOS_COMPROBANTE, LETRAS_COMPROBANTE, CONDICIONES_PAGO } from '../../domain/constants.js';
 import { displaysDe, envasesDelRenglon, nombreEnvase } from '../../domain/bulto.js';
+import { cargaDelRenglon } from '../../domain/renglonPapel.js';
 import { deOtraSucursal, esJefeSesion, pagoSeOfrece } from '../../domain/pagosACuenta.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { ModalShell } from '../Modal.jsx';
@@ -1108,13 +1109,20 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    */
   const filaDeRenglon = (x, prod, porBulto) => {
     const codigo = String(x.codigo ?? '').trim();
+    const entry = (prod.formatosCompra || []).find((e) => e.proveedorId === parseInt(provId, 10));
+    /* Bultos o unidades, precio por bulto o por unidad (5/11/2026): ver domain/renglonPapel.js. */
+    const carga = cargaDelRenglon(
+      { cantidad: x.cantidad, costoPapel: x.costoBulto, bultosPapel: x.bultosPapel },
+      { porBulto: porBulto || entry?.cantidad, costoFormato: entry?.costo },
+    );
     return {
       productoId: String(prod.id),
-      bultos: String(x.cantidad),
-      porBulto: String(porBulto || 1),
-      porDisplay: porDisplayDe((prod.formatosCompra || []).find((e) => e.proveedorId === parseInt(provId, 10))),
+      bultos: String(carga.bultos),
+      porBulto: String(carga.porBulto),
+      modo: carga.modo,
+      porDisplay: porDisplayDe(entry),
       // El costo vino del papel: que el catálogo no lo pise al re-elegir.
-      costoBulto: x.costoBulto != null ? String(x.costoBulto) : '',
+      costoBulto: carga.costoBulto != null ? String(carga.costoBulto) : '',
       descuento: String(x.dto || 0),
       iva: String(x.iva ?? prod.iva ?? 21),
       costoAuto: false,
@@ -1616,6 +1624,20 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * esperaba, y un doble clic mandaba el comprobante dos veces. */
   const [registrando, setRegistrando] = useState(false);
   const registrandoRef = useRef(false);
+  /*
+   * EL SALTO DE COSTO SIN CONFIRMAR (5/11/2026): el aviso solo salía como un
+   * cartel abajo de todo, tapado por la ventana, y al dueño no lo dejaba seguir
+   * sin poder leer por qué. Ahora queda escrito arriba del paso 2 y la pantalla
+   * baja sola hasta «Impacto en precios», donde se confirma o se corrige.
+   */
+  const impactoRef = useRef(null);
+  const irAImpacto = () => setTimeout(() => impactoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  const nombresSalto = saltosSinConfirmar.map((d) => d.nombre).join(', ');
+  const frenarPorSalto = () => {
+    toast(`Confirmá el costo de ${nombresSalto} en «Impacto en precios» (el aviso en rojo).`, 'err');
+    setPaso(2);
+    irAImpacto();
+  };
   const guardar = async () => {
     if (registrandoRef.current) return;
     registrandoRef.current = true;
@@ -1629,11 +1651,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   };
   const guardarUnaVez = async () => {
     if (venc && fecha && venc < fecha) { toast('El vencimiento del pago no puede ser anterior a la fecha del comprobante.', 'err'); return; }
-    if (saltosSinConfirmar.length) {
-      toast(`Revisá el bulto y el costo de ${saltosSinConfirmar.map((d) => d.nombre).join(', ')}: el costo por unidad cambia más de ${SALTO_COSTO} veces. Si es correcto, tildá "Es correcto" en Impacto en precios; si no, corregí el renglón o destildá ese costo.`, 'err');
-      setPaso(2);
-      return;
-    }
+    if (saltosSinConfirmar.length) { frenarPorSalto(); return; }
     const parsed = items
       .filter((it) => it.productoId && Number(it.bultos) > 0 && tamDelModo(it) > 0)
       .map((it) => {
@@ -1839,6 +1857,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       setPaso(2);
     } else if (paso === 2) {
       if (!itemsValidos) { toast('Agregá al menos un ítem completo: cantidad y, si va por bultos, el tamaño del bulto.', 'err'); return; }
+      if (saltosSinConfirmar.length) { frenarPorSalto(); return; }
       setPaso(3);
     }
   };
@@ -2126,6 +2145,16 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       {/* ==================== PASO 2 · ÍTEMS ==================== */}
       {paso === 2 && (
       <>
+      {saltosSinConfirmar.length > 0 && (
+        <div className={cx(s.callout, s.danger)} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ flex: 1, minWidth: 240 }}>
+            <strong>Falta confirmar un costo.</strong> El costo por unidad de {nombresSalto} cambia más de {SALTO_COSTO} veces
+            contra el cargado: casi siempre es el tamaño del bulto mal leído. En «Impacto en precios» tildá <strong>«Es correcto»</strong> si
+            está bien; si no, corregí el renglón o destildá «Actualizar costo».
+          </span>
+          <button type="button" className={cx(s.btn, s['btn-sm'])} onClick={irAImpacto}>Ir a Impacto en precios</button>
+        </div>
+      )}
       <div className={s['section-title']}>Ítems</div>
 
       {/* LA LECTURA CON IA (0153): lo que leyó del papel, con lo que falta resolver. */}
@@ -2349,7 +2378,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       */}
       {(diferencias.length > 0 || cambiablesActivo.length > 0 || conDescuentoDistinto.length > 0) && (
         <>
-          <div className={s['section-title']}>Impacto en precios</div>
+          <div ref={impactoRef} className={s['section-title']}>Impacto en precios</div>
           <div className={cx(s.callout, s.warn)}>
             La factura es la lista nueva del proveedor. Si el costo no se actualiza, el catálogo
             queda viejo y se sigue vendiendo con el margen anterior. <strong>Pasar el proveedor a
