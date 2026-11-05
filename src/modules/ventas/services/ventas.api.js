@@ -86,6 +86,8 @@ export const ventasApi = {
   listadoVentas: (filtros) => httpClient.get(`/ventas/listado${qs(filtros)}`),
   /** Ventas › Variaciones: lo vendido en dos períodos (A = desde/hasta, B = bDesde/bHasta), de todas las sucursales. */
   variaciones: (periodos) => httpClient.get(`/ventas-variaciones${qs(periodos)}`),
+  /* Lo cobrado con «Cargo extra» escrito a mano (5/11/2026). */
+  aMano: (filtros) => httpClient.get(`/ventas-a-mano${qs(filtros)}`),
   venta: (id) => httpClient.get(`/ventas/${id}`),
   /** El motivo es obligatorio: queda en `anuladoMotivo` junto a quién y cuándo. */
   anularVenta: (id, motivo) => httpClient.post(`/ventas/${id}/anular`, { motivo }),

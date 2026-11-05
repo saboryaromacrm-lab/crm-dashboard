@@ -15,6 +15,7 @@ import { PosPanel } from '../panels/PosPanel.jsx';
 import { ListadoVentasPanel } from '../panels/ListadoVentasPanel.jsx';
 import { ArcaCaidasPanel } from '../panels/ArcaCaidasPanel.jsx';
 import { VariacionesPanel } from '../panels/VariacionesPanel.jsx';
+import { AManoPanel } from '../panels/AManoPanel.jsx';
 import { PresupuestosPanel } from '../panels/PresupuestosPanel.jsx';
 import { ClientesPanel } from '../panels/ClientesPanel.jsx';
 import { CobranzasPanel } from '../panels/CobranzasPanel.jsx';
@@ -32,6 +33,7 @@ const PANEL_COMPONENTS = {
   listado: ListadoVentasPanel,
   arca: ArcaCaidasPanel,
   variaciones: VariacionesPanel,
+  aMano: AManoPanel,
   presupuestos: PresupuestosPanel,
   clientes: ClientesPanel,
   cobranzas: CobranzasPanel,

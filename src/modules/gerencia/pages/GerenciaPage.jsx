@@ -23,6 +23,7 @@ import { GERENCIA_SECCIONES } from '../config/gerencia.config.js';
 import { RentabilidadPanel } from '../panels/RentabilidadPanel.jsx';
 import { MetricasPanel } from '../panels/metricas/MetricasPanel.jsx';
 import { IndicadoresPanel } from '../panels/indicadores/IndicadoresPanel.jsx';
+import { VistaProfesionalPanel } from '../panels/vista/VistaProfesionalPanel.jsx';
 import { CashFlowPanel } from '../panels/cashflow/CashFlowPanel.jsx';
 import { AuditoriaPanel } from '../panels/AuditoriaPanel.jsx';
 import { ResultadosPanel } from '../panels/resultados/ResultadosPanel.jsx';
@@ -960,7 +961,8 @@ export function GerenciaPage() {
         </nav>
 
         <div className={s.content}>
-          {activa.id === 'rentabilidad' ? <RentabilidadPanel />
+          {activa.id === 'vista' ? <VistaProfesionalPanel />
+            : activa.id === 'rentabilidad' ? <RentabilidadPanel />
             : activa.id === 'metricas' ? <MetricasPanel />
             : activa.id === 'indicadores' ? <IndicadoresPanel />
             : activa.id === 'resultados' ? <ResultadosPanel />

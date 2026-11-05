@@ -18,9 +18,16 @@ import PaymentsIcon from '@mui/icons-material/Payments';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import PercentIcon from '@mui/icons-material/Percent';
+import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
 
 export const GERENCIA_SECCIONES = [
+  {
+    /* 5/11/2026 (pedido del dueño): los números que hay que mirar, explicados,
+     * por mes o por semana. Misma llave que Resultados: solo el superadmin. */
+    id: 'vista', label: 'Vista profesional', icon: SpaceDashboardIcon, permiso: 'gerencia.resultados',
+    desc: 'Cómo le va al negocio y dónde está la plata, por mes o por semana, con gráficos y explicado.',
+  },
   { id: 'usuarios', label: 'Usuarios y roles', icon: GroupIcon, permiso: 'gerencia.usuarios' },
   {
     /* Construida el 19/8/2026 (0072): margen real vs aparente, IVA absorbido

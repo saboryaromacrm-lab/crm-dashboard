@@ -23,6 +23,7 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import SettingsIcon from '@mui/icons-material/Settings';
 import PercentIcon from '@mui/icons-material/Percent';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import EditNoteIcon from '@mui/icons-material/EditNote';
 
 /**
  * `permiso`: clave de sección del catálogo — sin ella, el panel no existe para
@@ -41,6 +42,8 @@ export const VENTAS_PANELS = [
   /* Las cobradas que ARCA no pudo facturar (26/9/2026): misma llave que el
      listado, porque el que vende es el que tiene que dejarlas en regla. */
   { id: 'arca', label: 'Caídas por ARCA', icon: CloudOffIcon, permiso: 'ventas.listado', badge: 'arca' },
+  /* Lo cobrado con «Cargo extra» escribiendo el nombre (5/11/2026): misma llave que el listado. */
+  { id: 'aMano', label: 'Cargados a mano', icon: EditNoteIcon, permiso: 'ventas.listado' },
   /* Cuánto subió o bajó lo vendido entre dos períodos (14/10/2026). Sin costos. */
   { id: 'variaciones', label: 'Variaciones', icon: CompareArrowsIcon, permiso: 'ventas.variaciones' },
   /* Los de MOSTRADOR (25/10/2026): los de la tienda están en Tienda online › Presupuestos. */
