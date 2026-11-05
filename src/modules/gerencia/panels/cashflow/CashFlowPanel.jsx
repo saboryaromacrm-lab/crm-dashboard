@@ -32,18 +32,14 @@ import { iso } from '../metricas/formato.js';
 import { Fecha } from './Fecha.jsx';
 import { CajasAControlar, TildeControlar } from './CajasAControlar.jsx';
 import { PlanillaDia } from './PlanillaDia.jsx';
+import { Diferencia } from './Diferencia.jsx';
+import { Conciliacion } from './Conciliacion.jsx';
 import { diasDelTurno, textoCajaVencida } from '@shared/utils/plazoCaja.js';
 import { MisCuentas } from './MisCuentas.jsx';
 import { useTildeControlar, useUmbralControlar } from './tildeControlar.js';
 import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, DONDE, DONDE_A_CAMPOS, donde, esConceptoCambio, esDeposito, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaHoraSinDia, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
 
-/** La diferencia, con su color: rojo faltó, verde sobró, gris nada. */
-export function Diferencia({ v }) {
-  if (v == null) return <span className={s.muted}>—</span>;
-  const n = Number(v) || 0;
-  if (Math.abs(n) < 0.009) return <span style={{ color: 'var(--crm-color-text-muted)' }}>sin diferencia</span>;
-  return <strong style={{ color: n < 0 ? 'var(--crm-color-danger)' : 'var(--crm-color-primary)' }}>{n > 0 ? '+' : '−'}{money(Math.abs(n))}</strong>;
-}
+export { Diferencia } from './Diferencia.jsx';
 const Campo = ({ label, hint, children }) => (
   <div className={s.field}><label>{label}</label>{children}{hint && <div className={s.hint} style={{ margin: '6px 0 0' }}>{hint}</div>}</div>
 );
@@ -1512,7 +1508,7 @@ function Reportes({ version, conceptos }) {
  * El panel
  * ==================================================================== */
 /* «Conceptos» vive dentro de Configuración (9/10/2026, pedido del dueño). */
-const PESTANAS = [['resumen', 'Resumen'], ['planilla', 'Planilla del día'], ['sobres', 'Sobres de caja'], ['controlar', 'Cajas a controlar'], ['movimientos', 'Movimientos'], ['reportes', 'Reportes'], ['configuracion', 'Configuración']];
+const PESTANAS = [['resumen', 'Resumen'], ['planilla', 'Planilla del día'], ['sobres', 'Sobres de caja'], ['controlar', 'Cajas a controlar'], ['movimientos', 'Movimientos'], ['reportes', 'Reportes'], ['conciliacion', 'Conciliación de efectivo'], ['configuracion', 'Configuración']];
 /** El número entre paréntesis de las pestañas que piden algo. */
 const PENDIENTES = { sobres: (d) => d.enTransito.sobres, controlar: (d) => d.aControlar };
 
@@ -1560,6 +1556,7 @@ export function CashFlowPanel() {
           {pestana === 'controlar' && <CajasAControlar version={version} bump={bump} avisar={avisar} />}
           {pestana === 'movimientos' && <Movimientos version={version} bump={bump} avisar={avisar} conceptos={conceptos ?? []} saldo={d.saldo} />}
           {pestana === 'reportes' && <Reportes version={version} conceptos={conceptos ?? []} />}
+          {pestana === 'conciliacion' && <Conciliacion version={version} irA={setPestana} />}
           {pestana === 'configuracion' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <ArranqueConfig caja={d.caja} avisar={avisar} onHecho={bump} />

@@ -26,6 +26,7 @@ import { IndicadoresPanel } from '../panels/indicadores/IndicadoresPanel.jsx';
 import { CashFlowPanel } from '../panels/cashflow/CashFlowPanel.jsx';
 import { AuditoriaPanel } from '../panels/AuditoriaPanel.jsx';
 import { ResultadosPanel } from '../panels/resultados/ResultadosPanel.jsx';
+import { GastosFijosPanel } from '../panels/resultados/GastosFijosPanel.jsx';
 import { AsesorPanel } from '../panels/asesor/AsesorPanel.jsx';
 import { DIAS_CIERRE, textoDiasCierre } from '@shared/utils/plazoCaja.js';
 
@@ -963,6 +964,7 @@ export function GerenciaPage() {
             : activa.id === 'metricas' ? <MetricasPanel />
             : activa.id === 'indicadores' ? <IndicadoresPanel />
             : activa.id === 'resultados' ? <ResultadosPanel />
+            : activa.id === 'gastosfijos' ? <GastosFijosPanel />
             : activa.id === 'cashflow' ? <CashFlowPanel />
             : activa.id === 'asesor' ? <AsesorPanel />
             : activa.id === 'auditoria' ? <AuditoriaPanel />

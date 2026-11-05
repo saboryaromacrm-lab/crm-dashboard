@@ -18,6 +18,7 @@ import PaymentsIcon from '@mui/icons-material/Payments';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import PercentIcon from '@mui/icons-material/Percent';
+import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
 
 export const GERENCIA_SECCIONES = [
   { id: 'usuarios', label: 'Usuarios y roles', icon: GroupIcon, permiso: 'gerencia.usuarios' },
@@ -44,6 +45,12 @@ export const GERENCIA_SECCIONES = [
      * aparte), por mes y por local, con objetivos y su configuración. */
     id: 'resultados', label: 'Resultados', icon: AssessmentIcon, permiso: 'gerencia.resultados',
     desc: 'El estado de resultados: ventas, costos, gastos y lo que queda, por mes y por local, con el IVA aparte.',
+  },
+  {
+    /* 5/11/2026: sale de Resultados › Configuración a su propio botón (pedido
+     * del dueño). Misma llave que Resultados: solo el superadmin. */
+    id: 'gastosfijos', label: 'Gastos fijos y sueldos', icon: RequestQuoteIcon, permiso: 'gerencia.resultados',
+    desc: 'Lo fijo de cada local, cuánto tiene que vender para cubrirlo, y la carga de gastos fijos, sueldos y bienes de uso.',
   },
   {
     /* 4/10/2026 (0133): la caja central de efectivo físico del dueño — los

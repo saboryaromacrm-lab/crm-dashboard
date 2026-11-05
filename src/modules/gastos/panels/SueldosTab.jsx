@@ -128,7 +128,7 @@ export function SueldosTab() {
         Un aumento se carga como un sueldo nuevo «vigente desde» su mes: los meses anteriores siguen con el sueldo viejo.
         La baja se pone con la fecha en que dejó de trabajar (el último mes cuenta por los días).
         {` El que no tiene local ${reparte ? 'se reparte entre los locales por lo que vende cada uno' : 'queda en «Administración»'}`}
-        {' '}(se cambia en Gerencia › Resultados › Configuración, rubro «Sueldos y cargas sociales»).
+        {' '}(se cambia en Ventas › Configuración › Impuestos, rubros y Ganancias, rubro «Sueldos y cargas sociales»).
         {data?.empleados?.some((e) => e.sueldos.some((x) => x.desde > hoy.slice(0, 7))) && ` Hay aumentos cargados para meses que vienen (${mesLargo(hoy.slice(0, 7))} en adelante).`}
       </div>
     </div>

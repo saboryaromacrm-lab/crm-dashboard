@@ -18,7 +18,7 @@ export const GASTOS_PANELS = [
   // viaja con la sección que la contiene.
   { id: 'gastos', label: 'Gastos', icon: ReceiptLongIcon, permiso: 'gastos.gastos', badge: 'sinAplicar' },
   { id: 'cuentas', label: 'Cuentas a pagar', icon: EventBusyIcon, permiso: 'gastos.pagos', badge: 'vencidos' },
-  // Gastos fijos y sueldos (0152) se mudaron a Gerencia › Resultados › Configuración (3/11/2026).
+  // Gastos fijos y sueldos (0152) se mudaron a Gerencia (3/11/2026; desde el 5/11 con botón propio en su menú).
   { id: 'categorias', label: 'Rubros', icon: CategoryIcon, permiso: 'gastos.categorias' },
   // El ABM de Proveedores se fue al MÓDULO Proveedores (0068): la ficha única
   // con lo comercial completo vive allá. Acá quedó solo lo que es de gastos.

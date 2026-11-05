@@ -21,8 +21,8 @@ import { Aviso, Cargando } from '../metricas/piezas.jsx';
 import { fechaIso, fechaIsoSinDia, horaCorta, hoy } from './formato.js';
 import { diaEnPalabras, diasDelTurno } from '@shared/utils/plazoCaja.js';
 
-/** Cómo se ve cada estado: texto y color (tokens del tema, andan en claro y en oscuro). */
-const ESTADOS = {
+/** Cómo se ve cada estado: texto y color (tokens del tema, andan en claro y en oscuro). También lo usa la Conciliación. */
+export const ESTADOS = {
   abierta: { texto: 'Abierta', color: 'var(--crm-color-info)' },
   sin_rendir: { texto: 'Sin rendir', color: 'var(--crm-color-warning)' },
   rendida: { texto: 'Rendida', color: 'var(--crm-color-success)' },
@@ -41,7 +41,7 @@ const otroDia = (dia, delta) => {
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const nombreDia = (dia) => `${DIAS[new Date(`${dia}T12:00:00`).getDay()]} ${fechaIsoSinDia(dia)}`;
 
-function Pastilla({ color, children }) {
+export function Pastilla({ color, children }) {
   return (
     <span style={{
       display: 'inline-block', padding: '2px 10px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap',

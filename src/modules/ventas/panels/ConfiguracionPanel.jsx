@@ -13,6 +13,7 @@ import { mediosDeDescuento } from '../domain/pos.js';
 import { MercadoPagoPanel } from '../components/MercadoPagoPanel.jsx';
 import { ListasPanel } from './ListasPanel.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
+import { ReglasResultados } from '@modules/gerencia/panels/resultados/ConfigResultados.jsx';
 
 /*
  * CONFIGURACIÓN EN PESTAÑAS (28/9/2026, pedido del dueño): "quedaron todas las
@@ -31,8 +32,14 @@ const PESTANAS = [
   { id: 'clientes', label: 'Cuenta corriente y presupuestos', permiso: 'ventas.configuracion' },
   // Cobro con QR de Mercado Pago (0126): conexión y cajas con su QR.
   { id: 'mercadopago', label: 'Mercado Pago', permiso: 'ventas.configuracion' },
-  /* La pestaña «Tienda online» se mudó a Tienda online › Configuración (16/10/2026). */
+  /* La pestaña «Tienda online» se mudó a Tienda online › Configuración (16/10/2026). */  /* 5/11/2026 (pedido del dueño): las tasas, los rubros y Ganancias del estado
+   * de resultados se mudaron acá desde Gerencia › Resultados › Configuración.
+   * Guardan solas (cada cambio al toque, con auditoría): no usan el borrador ni
+   * el botón «Guardar cambios». Misma llave que pide la API: solo superadmin. */
+  { id: 'impuestos', label: 'Impuestos, rubros y Ganancias', permiso: 'gerencia.resultados' },
 ];
+/** Las pestañas que guardan solas, sin el borrador de la configuración de ventas. */
+const GUARDAN_SOLAS = new Set(['formato', 'impuestos']);
 const TAB_KEY = 'crm.ventas.configuracion.tab';
 
 /** En qué pestaña vive cada campo de la config: para marcar dónde hay cambios. */
@@ -434,7 +441,7 @@ export function ConfiguracionPanel() {
 
   const tabsVisibles = PESTANAS.filter((t) => [].concat(t.permiso).some((p) => can(p)));
   const tabActiva = tabsVisibles.some((t) => t.id === tab) ? tab : tabsVisibles[0]?.id;
-  const esConfig = tabActiva !== 'formato';
+  const esConfig = !GUARDAN_SOLAS.has(tabActiva);
   /* Qué pestañas tienen algo sin guardar: el borrador es uno solo para todas,
      así que se avisa DÓNDE quedó el cambio y no solo cuántos hay. */
   const tabsSucias = new Set(Object.keys(cambios).map(tabDeCampo));
@@ -480,6 +487,7 @@ export function ConfiguracionPanel() {
       )}
 
       {tabActiva === 'formato' && <ListasPanel />}
+      {tabActiva === 'impuestos' && <ReglasResultados />}
 
       {tabActiva === 'precios' && (
         <div className={s['dash-grid']}>

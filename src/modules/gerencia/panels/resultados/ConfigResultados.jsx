@@ -6,44 +6,19 @@ import { Btn, s } from '@modules/productos/components/ui.jsx';
 import { Aviso, Bloque, Cargando, Grilla } from '../metricas/piezas.jsx';
 import { resultadosApi } from './resultados.api.js';
 import { mesActual, nombreMes, pct, pesos, r2 } from './resultados.js';
-import { ResumenFijos } from './ResumenFijos.jsx';
-import { GastosFijosEmbebido } from '@modules/gastos/pages/FijosEmbebido.jsx';
-
-/** Las dos partes de la configuración (3/11/2026): lo fijo del negocio y las tasas/reglas. */
-const SECCIONES = [['fijos', 'Gastos fijos y sueldos'], ['reglas', 'Impuestos, rubros y Ganancias']];
 
 /**
- * LA CONFIGURACIÓN DE RESULTADOS (0152, solo superadmin). Dos partes:
- *   · GASTOS FIJOS Y SUELDOS (3/11/2026, pedido del dueño: «todo configurable
- *     desde Configuración»): lo fijo de cada local con su venta necesaria, y
- *     la pantalla de gastos fijos, sueldos y bienes de uso que antes estaba en
- *     Gastos.
- *   · IMPUESTOS, RUBROS Y GANANCIAS: cada tasa con «vigente desde» (un cambio
- *     no reescribe los meses viejos). Todo lo que se cambia queda en Auditoría.
+ * IMPUESTOS, RUBROS Y GANANCIAS (0152, solo superadmin): las reglas con que se
+ * arma el estado de resultados. Cada tasa con «vigente desde» (un cambio no
+ * reescribe los meses viejos). Todo lo que se cambia queda en Auditoría.
+ *
+ * 5/11/2026 (pedido del dueño): la configuración salió de Gerencia ›
+ * Resultados. Esta parte vive en Ventas › Configuración (pestaña propia) y los
+ * gastos fijos y sueldos tienen su botón en el menú de Gerencia
+ * (GastosFijosPanel.jsx). Se ve solo con la llave de Resultados, la misma que
+ * pide la API.
  */
-export function ConfigResultados({ alGuardar }) {
-  const [seccion, setSeccion] = useState('fijos');
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} role="tablist" aria-label="Partes de la configuración">
-        {SECCIONES.map(([id, label]) => (
-          <Btn key={id} small variant={seccion === id ? 'btn-primary' : undefined} onClick={() => setSeccion(id)} role="tab" aria-selected={seccion === id}>
-            {label}
-          </Btn>
-        ))}
-      </div>
-      {seccion === 'fijos' ? (
-        <>
-          <ResumenFijos />
-          <GastosFijosEmbebido />
-        </>
-      ) : <Reglas alGuardar={alGuardar} />}
-    </div>
-  );
-}
-
-/** Tasas de impuestos y comisiones, cómo entra cada rubro, Ganancias y amortizaciones. */
-function Reglas({ alGuardar }) {
+export function ReglasResultados({ alGuardar }) {
   const { data, loading, error, mutate } = useResource('resultados:configuracion', () => resultadosApi.configuracion());
   const [msg, setMsg] = useState(null);
   const enVuelo = useRef(false);
@@ -97,7 +72,7 @@ function Reglas({ alGuardar }) {
 
       <Grilla>
         <Ganancias data={data} hacer={hacer} />
-        <Bloque titulo="Amortizaciones" sub="Restan la cuota mensual de los bienes de uso (heladeras, balanzas, reformas) que se cargan en «Gastos fijos y sueldos» › Bienes de uso, en esta misma Configuración.">
+        <Bloque titulo="Amortizaciones" sub="Restan la cuota mensual de los bienes de uso (heladeras, balanzas, reformas) que se cargan en Gerencia › Gastos fijos y sueldos › Bienes de uso.">
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
               type="checkbox" checked={!!data.config.amortizaciones}

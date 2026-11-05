@@ -164,7 +164,7 @@ export function ResultadosMovil() {
               </section>
             )}
             <p className={c.nota}>
-              Todo en neto, sin IVA. Ganancias es un estimado por lo acumulado del año. La configuración y los objetivos se cargan en la computadora: Gerencia › Resultados.
+              Todo en neto, sin IVA. Ganancias es un estimado por lo acumulado del año. Los objetivos se cargan en la computadora (Gerencia › Resultados); los gastos fijos y sueldos en Gerencia › Gastos fijos y sueldos, y las tasas en Ventas › Configuración.
             </p>
           </>
         )}

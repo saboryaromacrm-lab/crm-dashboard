@@ -15,13 +15,14 @@ import { Aviso, Cargando } from '../metricas/piezas.jsx';
 import { TablaEstado, TarjetasEstado } from './EstadoResultados.jsx';
 import { IvaAparte } from './IvaAparte.jsx';
 import { ObjetivosResultados } from './ObjetivosResultados.jsx';
-import { ConfigResultados } from './ConfigResultados.jsx';
 import { exportarCsv, imprimirEstado } from './exportar.js';
 import { resultadosApi } from './resultados.api.js';
 import { armarColumnas, baldesDe, mesActual, mesesEntre, nombreMes, objetivoDe, sumarMeses } from './resultados.js';
 import { useAbiertos } from './useAbiertos.js';
 
-const PESTANAS = [['estado', 'Estado de resultados'], ['iva', 'IVA (aparte)'], ['objetivos', 'Objetivos'], ['config', 'Configuración']];
+const PESTANAS = [['estado', 'Estado de resultados'], ['iva', 'IVA (aparte)'], ['objetivos', 'Objetivos']];
+/* La configuración salió el 5/11/2026: los gastos fijos y sueldos tienen su botón en el menú de
+ * Gerencia y los impuestos, rubros y Ganancias viven en Ventas › Configuración. */
 /** El período más largo que se deja elegir (con la comparación, el servidor calcula hasta 36). */
 const MAX_MESES = 24;
 
@@ -146,7 +147,6 @@ export function ResultadosPanel() {
             : data && <IvaAparte datos={data} meses={modo === 'mes' ? [mes] : mesesEntre(rango[0], rango[1])} />
       )}
       {pestana === 'objetivos' && <ObjetivosResultados alGuardar={() => setVersion((v) => v + 1)} />}
-      {pestana === 'config' && <ConfigResultados alGuardar={() => setVersion((v) => v + 1)} />}
     </div>
   );
 }

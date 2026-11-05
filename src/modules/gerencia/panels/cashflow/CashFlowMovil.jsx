@@ -61,6 +61,8 @@ import {
 } from './formato.js';
 import { CajasAControlar } from './CajasAControlar.jsx';
 import { PlanillaDia } from './PlanillaDia.jsx';
+import { Renglones, estadoDe, exportarConciliacion, useConciliacion } from './Conciliacion.jsx';
+import { cascada, mesDe, nombreMes, otroMes, puenteMetricas, textoSinCaja, turnoParaMirar } from './renglonesConciliacion.js';
 import c from './CashFlowMovil.module.css';
 
 const MODO_MOVIL = { movil: true };
@@ -632,6 +634,131 @@ function Reportes({ f, setF, version, avisar, conceptos }) {
 }
 
 /* ==================================================================== *
+ * Conciliación de efectivo (4/11/2026): la misma de la PC, en tarjetas.
+ * Las cuentas y los renglones son los de Conciliacion.jsx.
+ * ==================================================================== */
+const textoDif = (v) => (Math.abs(v ?? 0) < 0.005 ? 'sin diferencia' : `${v < 0 ? 'faltan' : 'sobran'} ${money(Math.abs(v))}`);
+const LINEAS = { whiteSpace: 'normal' };
+
+function ConciliacionMovil({ f, setF, version, irA }) {
+  const actual = mesDe();
+  const { d, loading, error, local, sucursales } = useConciliacion(f.mes, f.sucursalId, version);
+  const t = d?.total;
+  const turnos = d ? (f.todas ? d.turnos : d.turnos.filter(turnoParaMirar)) : [];
+  const puente = d?.desdeMetricas;
+  return (
+    <>
+      <div className={c.chips} data-envolver>
+        <button type="button" className={c.chip} aria-pressed={f.mes === actual} onClick={() => setF({ ...f, mes: actual })}>Este mes</button>
+        <button type="button" className={c.chip} aria-pressed={f.mes === otroMes(actual, -1)} onClick={() => setF({ ...f, mes: otroMes(actual, -1) })}>Mes pasado</button>
+      </div>
+      <div className={c.campos}>
+        <label className={c.campo}>
+          <span>Mes</span>
+          <input id="cfm-conciliacion-mes" type="month" value={f.mes} max={actual} onChange={(e) => e.target.value && setF({ ...f, mes: e.target.value })} />
+        </label>
+        <label className={c.campo}>
+          <span>Local</span>
+          <select id="cfm-conciliacion-local" value={f.sucursalId} onChange={(e) => setF({ ...f, sucursalId: e.target.value })}>
+            <option value="">Todos</option>
+            {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+          </select>
+        </label>
+      </div>
+      {error && <Aviso tono="error">{error}</Aviso>}
+      {loading && !d ? <div className={cx(c.card, c.vacio)}>Cargando…</div> : !d ? null : !t.turnos ? (
+        <div className={cx(c.card, c.vacio)}>No hay cajas cerradas en {nombreMes(d.mes)}{local ? ` en ${local}` : ''}.</div>
+      ) : (
+        <>
+          <div className={c.resumenLinea}>
+            <span><strong>{plural(t.turnos, 'caja cerrada', 'cajas cerradas')}</strong> en {nombreMes(d.mes)}{local ? ` · ${local}` : ''}</span>
+            {d.enCurso && <span>hasta hoy</span>}
+          </div>
+          {d.descuadres.length > 0 && (
+            <Aviso tono="error">
+              <strong>{d.descuadres.length === 1 ? 'Una caja no cuadra' : `${d.descuadres.length} cajas no cuadran`} con sus propios números:</strong>{' '}
+              {d.descuadres.map((x) => `${x.sucursal}, ${cuando(x.cierre)} (${x.motivos.join('; ')})`).join(' · ')}.
+            </Aviso>
+          )}
+          {textoSinCaja(d.sinCaja) && <Aviso tono="error"><strong>Efectivo cobrado sin caja.</strong> {textoSinCaja(d.sinCaja)}</Aviso>}
+          <div className={c.tiles}>
+            <div className={c.tile}><span>Ventas en efectivo</span><strong>{money(t.ventas)}</strong><small>{t.cobranzas ? `+ ${moneyCorto(t.cobranzas)} de cobranzas` : 'en esas cajas'}</small></div>
+            <div className={c.tile}><span>Debía llegar</span><strong>{money(t.debiaSobres)}</strong><small>en los sobres</small></div>
+            <div className={c.tile}><span>Contaste</span><strong className={c.ingreso}>{money(t.contado)}</strong><small>de {moneyCorto(t.enviado)} que mandaron</small></div>
+            <div className={c.tile}><span>Faltó</span><strong className={t.faltantes < -0.004 ? c.egreso : undefined}>{t.faltantes < -0.004 ? money(Math.abs(t.faltantes)) : 'Nada'}</strong><small>sobró {moneyCorto(t.sobrantes)}, sin compensar</small></div>
+            <div className={c.tile}><span>Sin rendir</span><strong className={t.sinRendir > 0.004 ? c.egreso : undefined}>{money(t.sinRendir)}</strong><small>{t.sinRendirN ? plural(t.sinRendirN, 'sobre sin controlar', 'sobres sin controlar') : 'todos controlados'}</small></div>
+          </div>
+          <Seccion titulo="De lo cobrado a lo contado">
+            <div className={c.card} style={{ padding: '6px 12px' }}>
+              <Renglones renglones={cascada(t)} detalle={d.detalle} irA={irA} />
+            </div>
+          </Seccion>
+          {puente && (
+            <Seccion titulo="Para cotejar con Métricas" accion={<span className={c.pill} data-tono={puente.cuadra ? 'verde' : 'rojo'}>{puente.cuadra ? 'Coincide' : 'No coincide'}</span>}>
+              <div className={c.card} style={{ padding: '6px 12px' }}>
+                <Renglones renglones={puenteMetricas(puente)} />
+              </div>
+              <p className={c.nota}>
+                Métricas cuenta por día de venta; esta pantalla, por la caja en la que se cobró.
+                {!puente.cuadra && ` El puente da ${money(puente.resultado)} y no ${money(t.ventas)}: hay ventas cuyo local no es el de su caja. Avisá para revisarlo.`}
+                {d.enCurso && ' Métricas se actualiza cada 10 minutos: en el mes en curso puede ir un poco atrás.'}
+              </p>
+            </Seccion>
+          )}
+          {d.porSucursal.length > 1 && (
+            <Seccion titulo="Por local">
+              <div className={cx(c.card, c.lista)}>
+                {d.porSucursal.map((x) => (
+                  <button key={x.sucursalId} type="button" className={c.fila} onClick={() => setF({ ...f, sucursalId: String(x.sucursalId) })} aria-label={`Ver solo ${x.sucursal}`}>
+                    <span className={c.filaTexto}>
+                      <strong>{x.sucursal}</strong>
+                      <small style={LINEAS}>
+                        {plural(x.turnos, 'caja', 'cajas')} · debía {moneyCorto(x.debiaSobres)} · contaste {moneyCorto(x.contado)}
+                        {x.sinRendir > 0.004 ? ` · sin rendir ${moneyCorto(x.sinRendir)}` : ''}
+                        {x.sobrantes > 0.004 ? ` · sobró ${moneyCorto(x.sobrantes)}` : ''}
+                      </small>
+                    </span>
+                    <span className={c.pill} data-tono={x.faltantes < -0.004 ? 'rojo' : undefined}>{x.faltantes < -0.004 ? `faltó ${moneyCorto(Math.abs(x.faltantes))}` : 'sin faltantes'}</span>
+                  </button>
+                ))}
+              </div>
+              <p className={c.nota}>Tocá un local para ver solo el suyo.</p>
+            </Seccion>
+          )}
+          <Seccion
+            titulo="Caja por caja"
+            accion={<button type="button" className={c.chip} aria-pressed={f.todas} onClick={() => setF({ ...f, todas: !f.todas })}>Ver todas</button>}
+          >
+            <div className={cx(c.card, c.lista)}>
+              {turnos.length ? turnos.map((x) => {
+                const e = estadoDe(x);
+                return (
+                  <div key={x.id} className={c.fila}>
+                    <span className={c.filaTexto}>
+                      <strong>{x.sucursal}{x.cajero ? ` · ${x.cajero}` : ''}</strong>
+                      <small>{cuando(x.cierre)}</small>
+                      <small style={LINEAS}>
+                        {Math.abs(x.difApertura ?? 0) >= 0.005 ? `al abrir ${textoDif(x.difApertura)} · ` : ''}
+                        {x.debiaSobre == null ? `generó ${moneyCorto(x.generado)}` : `debía ${moneyCorto(x.debiaSobre)}`} · al contar {textoDif(x.difCajero)}
+                        {x.envio != null ? ` · mandó ${moneyCorto(x.envio)}` : ''}
+                        {x.contado != null ? ` · contaste ${moneyCorto(x.contado)}, ${textoDif(x.difControl)}` : ''}
+                      </small>
+                      {x.descuadre.length > 0 && <small style={{ ...LINEAS, color: 'var(--crm-color-danger)' }}>No cuadra: {x.descuadre.join('; ')}</small>}
+                    </span>
+                    {e && <span className={c.pill} style={{ color: e.color }}>{e.texto}</span>}
+                  </div>
+                );
+              }) : <div className={c.vacio}>Ninguna caja con diferencia ni sin rendir: todo llegó como debía.</div>}
+            </div>
+          </Seccion>
+          <button type="button" className={cx(c.btn, c.btnAncho)} onClick={() => exportarConciliacion(d, local)}>Descargar las cajas del mes (CSV)</button>
+        </>
+      )}
+    </>
+  );
+}
+
+/* ==================================================================== *
  * Conceptos
  * ==================================================================== */
 function Conceptos({ conceptos, abrir, cambiarActivo, ocupado }) {
@@ -869,6 +996,9 @@ export function CashFlowMovil() {
   const [fSobres, setFSobres] = useState({ estado: 'pendientes', sucursalId: '', desde: '', hasta: '', verFechas: false });
   const [fMov, setFMov] = useState({ tipo: '', desde: '', hasta: '', anulados: false, porCaja: false, cambio: false, verFiltros: false });
   const [fRep, setFRep] = useState(() => ({ k: 'mes', desde: primerDiaMes(), hasta: hoy(), ...FILTROS_REPORTE_VACIOS }));
+  /* Reportes tiene dos vistas: los reportes de siempre y la conciliación de efectivo (4/11/2026). */
+  const [vistaRep, setVistaRep] = useState('reportes');
+  const [fCon, setFCon] = useState(() => ({ mes: mesDe(), sucursalId: '', todas: false }));
 
   const { data: d, loading, error } = useResource(`cfm:resumen:${version}`, () => httpClient.get('/cashflow/resumen'), { enabled: puede });
   const { data: conceptos } = useResource(`cfm:conceptos:${version}`, () => httpClient.get('/cashflow/conceptos'), { enabled: puede });
@@ -967,7 +1097,17 @@ export function CashFlowMovil() {
         {pestana === 'inicio' && <Inicio d={datos} abrir={abrir} irA={irA} actualizado={actualizado} version={version} bump={bump} avisar={avisar} />}
         {pestana === 'sobres' && <Sobres f={fSobres} setF={setFSobres} version={version} abrir={abrir} pendientes={pend} />}
         {pestana === 'movimientos' && <Movimientos f={fMov} setF={setFMov} version={version} abrir={abrir} />}
-        {pestana === 'reportes' && <Reportes f={fRep} setF={setFRep} version={version} avisar={avisar} conceptos={conceptos ?? []} />}
+        {pestana === 'reportes' && (
+          <>
+            <div className={c.chips} role="group" aria-label="Qué ver">
+              <button type="button" className={c.chip} aria-pressed={vistaRep === 'reportes'} onClick={() => setVistaRep('reportes')}>Reportes</button>
+              <button type="button" className={c.chip} aria-pressed={vistaRep === 'conciliacion'} onClick={() => setVistaRep('conciliacion')}>Conciliación de efectivo</button>
+            </div>
+            {vistaRep === 'reportes'
+              ? <Reportes f={fRep} setF={setFRep} version={version} avisar={avisar} conceptos={conceptos ?? []} />
+              : <ConciliacionMovil f={fCon} setF={setFCon} version={version} irA={irA} />}
+          </>
+        )}
         {pestana === 'configuracion' && <Conceptos conceptos={conceptos ?? []} abrir={abrir} cambiarActivo={cambiarActivo} ocupado={ocupado} />}
       </>
     );

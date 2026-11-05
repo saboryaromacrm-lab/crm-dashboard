@@ -12,7 +12,7 @@ export const gerenciaModule = defineModule({
   enabled: true,
   basePath: '/gerencia',
   // Cualquier sección hace visible el módulo; sin ninguna, no existe.
-  permissions: GERENCIA_SECCIONES.map((x) => x.permiso),
+  permissions: [...new Set(GERENCIA_SECCIONES.map((x) => x.permiso))],
   navigation: { showInSidebar: true, group: 'catalog', order: 50 },
   routes: [
     { path: '', Component: GerenciaPage, handle: { crumb: 'Gerencia' } },
