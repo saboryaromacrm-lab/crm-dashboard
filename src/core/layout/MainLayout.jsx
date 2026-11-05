@@ -9,6 +9,7 @@ import { PreciosAlert } from './components/PreciosAlert.jsx';
 import { AvisoStock } from './components/AvisoStock.jsx';
 import { CajasAbiertasBanner } from './components/CajasAbiertasBanner.jsx';
 import { FeriadosBanner } from './components/FeriadosBanner.jsx';
+import { RecordatoriosBanner } from './components/RecordatoriosBanner.jsx';
 import { AccesosTiendaBanner } from './components/AccesosTiendaBanner.jsx';
 import { CuentasVencidasBanner } from './components/CuentasVencidasBanner.jsx';
 import { DireccionViejaBanner } from './components/DireccionViejaBanner.jsx';
@@ -61,6 +62,8 @@ export function MainLayout() {
         </header>
         {/* En el teléfono van plegados en un renglón (AvisosArriba). */}
         <AvisosArriba>
+          {/* Los recordatorios de una anotación que le avisaron a ESTE usuario (0219): cualquiera. */}
+          <RecordatoriosBanner />
           {/* Persistente (no se va solo): una caja de un local olvidada abierta. Solo el superadmin lo ve. */}
           <DireccionViejaBanner />
           <CajasAbiertasBanner />

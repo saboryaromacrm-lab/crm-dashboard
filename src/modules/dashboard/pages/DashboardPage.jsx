@@ -8,6 +8,7 @@ import { ProductosProvider, useProductos } from '@modules/productos/context/Prod
 import { ResumenInventario } from '@modules/productos/panels/ResumenInventario.jsx';
 import { AccesosDirectos } from '../components/AccesosDirectos.jsx';
 import { EcheqsResumen } from '../components/EcheqsResumen.jsx';
+import { Anotaciones } from '../components/Anotaciones.jsx';
 import styles from '../styles/Dashboard.module.css';
 
 /**
@@ -63,8 +64,9 @@ function ResumenConHeader() {
           </Button>
         }
       />
-      {/* Los accesos directos (13/10/2026) y los echeqs (22/10/2026): no esperan al inventario. */}
+      {/* Los accesos directos (13/10/2026), las anotaciones (5/11/2026) y los echeqs (22/10/2026): no esperan al inventario. */}
       <AccesosDirectos />
+      <Notas />
       <Echeqs />
       {store.loaded ? <ResumenInventario /> : <FullScreenLoader label="Cargando datos…" />}
     </>
@@ -77,6 +79,12 @@ function Echeqs() {
   return can('proveedores.echeqs') ? <EcheqsResumen /> : null;
 }
 
+/** Las anotaciones (5/11/2026): admin y superadmin (la API pide lo mismo). */
+function Notas() {
+  const { esAdmin } = usePermissions();
+  return esAdmin ? <Anotaciones /> : null;
+}
+
 export function DashboardPage() {
   const { can } = usePermissions();
   const veInventario = CLAVES_INVENTARIO.some((clave) => can(clave));
@@ -86,6 +94,7 @@ export function DashboardPage() {
       <div className={styles.page}>
         <PageHeader title="Dashboard" subtitle="El estado del inventario, en una pantalla" />
         <AccesosDirectos />
+        <Notas />
         <Echeqs />
         <p className={styles.sinAcceso}>
           Tu usuario no tiene acceso al inventario. Entrá por el menú al módulo con el que
