@@ -824,6 +824,8 @@ export function PosPanel() {
    * entera recién al cobrar.
    */
   const puedePisarPrecio = permisosActual.includes('*') || permisosActual.includes('precio_manual');
+  /* El cargo a mano libre (6/11/2026): sin el permiso, «Cargo extra» ofrece solo Envío y Bolsa al 21 %. El servidor manda igual. */
+  const puedeCargoExtra = permisosActual.includes('*') || permisosActual.includes('cargo_extra');
 
   /* --------------------------- Datos del puesto --------------------------- */
 
@@ -1811,7 +1813,7 @@ export function PosPanel() {
               <Btn small onClick={reimprimirTicket} title="Reimprimir el último ticket cobrado en este puesto">
                 Reimprimir
               </Btn>
-              <Btn small onClick={() => openModal('cargaExtra', { onAgregar: (x) => dispatch({ tipo: 'extraAgregar', ...x }) })}>
+              <Btn small onClick={() => openModal('cargaExtra', { libre: puedeCargoExtra, onAgregar: (x) => dispatch({ tipo: 'extraAgregar', ...x }) })}>
                 Cargo extra
               </Btn>
               {/*

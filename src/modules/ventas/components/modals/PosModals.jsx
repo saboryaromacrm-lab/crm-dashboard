@@ -324,10 +324,19 @@ export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
  * Carga extra
  * ==================================================================== */
 
-/** Cargos que no son mercadería: envío, packaging, un ajuste puntual. */
-export function CargaExtraModal({ onAgregar }) {
+/**
+ * Cargos que no son mercadería: envío, packaging, un ajuste puntual.
+ *
+ * `libre` = el permiso `cargo_extra` (6/11/2026). Sin él, el concepto es FIJO
+ * (Envío o Bolsa) y el IVA es 21 %: en octubre el cargo libre se usó para
+ * vender productos tipeados a mano, casi todos exentos. El servidor aplica la
+ * misma regla (`crm-api/src/ventas/cargo-extra.ts`).
+ */
+const CARGOS_FIJOS = ['Envío', 'Bolsa'];
+
+export function CargaExtraModal({ onAgregar, libre = false }) {
   const { closeModal, toast } = useVentas();
-  const [concepto, setConcepto] = useState('');
+  const [concepto, setConcepto] = useState(libre ? '' : CARGOS_FIJOS[0]);
   const [importe, setImporte] = useState('');
   const [iva, setIva] = useState(21);
 
@@ -336,9 +345,52 @@ export function CargaExtraModal({ onAgregar }) {
   const agregar = () => {
     if (!concepto.trim()) { toast('Indicá el concepto.', 'err'); return; }
     if (!(Number(importe) > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return; }
-    onAgregar({ concepto: concepto.trim(), importe: r2(importe), iva: Number(iva) || 0 });
+    onAgregar({ concepto: concepto.trim(), importe: r2(importe), iva: libre ? (Number(iva) || 0) : 21 });
     closeModal();
   };
+
+  if (!libre) {
+    return (
+      <ModalShell
+        title="Cargo extra"
+        onClose={closeModal}
+        footer={[
+          { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+          { texto: 'Agregar', clase: 'btn-primary', onClick: agregar },
+        ]}
+      >
+        <div className={s.hint}>
+          Desde esta caja se puede cargar <strong>Envío</strong> o <strong>Bolsa</strong>, siempre con IVA 21 %.
+          Si es mercadería, cargala como producto. Para escribir otro concepto hace falta el permiso
+          «Cargo extra a mano».
+        </div>
+
+        <div className={s.field}>
+          <label>Concepto</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {CARGOS_FIJOS.map((x) => (
+              <Btn key={x} variant={concepto === x ? 'btn-primary' : 'btn-ghost'} onClick={() => setConcepto(x)}>{x}</Btn>
+            ))}
+          </div>
+        </div>
+
+        <div className={s.field}>
+          <label>Importe (neto, sin IVA)</label>
+          <input
+            autoFocus type="number" min="0" step="100" value={importe}
+            onChange={(e) => setImporte(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') agregar(); }}
+          />
+        </div>
+
+        {Number(importe) > 0 && (
+          <div className={s.callout}>
+            Suma al ticket: <strong>{money(r2(Number(importe) * 1.21))}</strong> con IVA.
+          </div>
+        )}
+      </ModalShell>
+    );
+  }
 
   return (
     <ModalShell
