@@ -29,6 +29,7 @@ import { AuditoriaPanel } from '../panels/AuditoriaPanel.jsx';
 import { ResultadosPanel } from '../panels/resultados/ResultadosPanel.jsx';
 import { GastosFijosPanel } from '../panels/resultados/GastosFijosPanel.jsx';
 import { AsesorPanel } from '../panels/asesor/AsesorPanel.jsx';
+import { EmpleadosPestana } from '../panels/EmpleadosPestana.jsx';
 import { DIAS_CIERRE, textoDiasCierre } from '@shared/utils/plazoCaja.js';
 
 /**
@@ -202,6 +203,8 @@ function UsuarioModal({ usuario, roles, sucursales = [], onGuardar, onCerrar }) 
   /* El relevo de caja (0088): la marca + su PIN. El PIN nunca vuelve del
    * servidor — el campo siempre arranca vacío y vacío = no cambiarlo. */
   const [relevoCaja, setRelevoCaja] = useState(usuario?.relevoCaja ?? false);
+  /* Es empleado (0221): aparece para elegir en los adelantos de sueldo. */
+  const [esEmpleado, setEsEmpleado] = useState(usuario?.esEmpleado ?? false);
   const [pin, setPin] = useState('');
   /* EN QUÉ SUCURSALES ENTRA (0105). Ninguna tildada = todas, lo de siempre. */
   const [sucs, setSucs] = useState(() => new Set(usuario?.sucursales ?? []));
@@ -219,7 +222,7 @@ function UsuarioModal({ usuario, roles, sucursales = [], onGuardar, onCerrar }) 
     const tope = descManual ? Number(descTope) || 0 : 0;
     const ok = await onGuardar({
       nombre, rolId: Number(rolId), activo,
-      relevoCaja,
+      relevoCaja, esEmpleado,
       ...(puedeFijarDescuento ? { descuentoManualMax: tope } : {}),
       sucursales: [...sucs],
       ...(password ? { password } : {}),
@@ -291,6 +294,16 @@ function UsuarioModal({ usuario, roles, sucursales = [], onGuardar, onCerrar }) 
             </div>
           </>
         )}
+      </div>
+
+      <div className={s.field} style={{ marginTop: 12 }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" checked={esEmpleado} onChange={(e) => setEsEmpleado(e.target.checked)} />
+          Es empleado
+        </label>
+        <div className={s.hint} style={{ margin: '4px 0 0' }}>
+          Aparece para elegir al sacar un adelanto de sueldo. Los empleados que no usan el sistema se cargan en la pestaña «Empleados».
+        </div>
       </div>
 
       {/* EL RELEVO DE CAJA (0088): "la cajera se ausenta, cobra el repositor".
@@ -641,7 +654,7 @@ export function GerenciaPage() {
       />
 
       <div style={{ display: 'flex', gap: 8 }}>
-        {[['usuarios', 'Usuarios'], ['roles', 'Roles y permisos'], ['sucursales', 'Sucursales']].map(([id, label]) => (
+        {[['usuarios', 'Usuarios'], ['empleados', 'Empleados'], ['roles', 'Roles y permisos'], ['sucursales', 'Sucursales']].map(([id, label]) => (
           <button
             key={id}
             type="button"
@@ -715,6 +728,8 @@ export function GerenciaPage() {
           })}
         </Table>
       )}
+
+      {tab === 'empleados' && <EmpleadosPestana usuarios={usuarios} mutar={mutar} />}
 
       {tab === 'roles' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 'var(--crm-space-4)' }}>

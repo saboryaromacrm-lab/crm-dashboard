@@ -36,6 +36,7 @@ import { Diferencia } from './Diferencia.jsx';
 import { Conciliacion } from './Conciliacion.jsx';
 import { diasDelTurno, textoCajaVencida } from '@shared/utils/plazoCaja.js';
 import { MisCuentas } from './MisCuentas.jsx';
+import { EmpleadoAdelanto } from '@shared/components/EmpleadoAdelanto.jsx';
 import { useTildeControlar, useUmbralControlar } from './tildeControlar.js';
 import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, DONDE, DONDE_A_CAMPOS, donde, esConceptoCambio, esDeposito, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaHoraSinDia, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
 
@@ -706,6 +707,8 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
   const [importe, setImporte] = useState('');
   const [fecha, setFecha] = useState(hoy());
   const [detalle, setDetalle] = useState('');
+  /* Adelanto de sueldo (0221): a qué empleado, obligatorio. */
+  const [personalId, setPersonalId] = useState('');
   const [error, setError] = useState('');
   /* Un depósito (o un cambio) se puede aplicar a un proveedor: el paso siguiente es el pago, con este importe. */
   const [aProveedor, setAProveedor] = useState(false);
@@ -730,10 +733,12 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
     const propuesto = v === 'cambio' ? nueva.find((c) => esConceptoCambio(c.nombre)) : nueva.find((c) => c.id === Number(conceptoId));
     setConceptoId((propuesto ?? nueva[0])?.id ?? '');
   };
-  const sc = useSegundaConfirmacion(`${conceptoId}|${importe}|${fecha}|${detalle}|${como}|${cambioPor}|${cambioCuenta}`);
+  const esAdelanto = !cambioAProv && !!concepto?.esAdelanto;
+  const sc = useSegundaConfirmacion(`${conceptoId}|${importe}|${fecha}|${detalle}|${como}|${cambioPor}|${cambioCuenta}|${personalId}`);
   const valido = () => {
     setError('');
     if (!cambioAProv && !concepto) { setError('Elegí el concepto.'); return false; }
+    if (esAdelanto && !personalId) { setError('Elegí a qué empleado se le dio el adelanto.'); return false; }
     if (!cambioAProv && concepto?.pideDetalle && !detalle.trim()) { setError(`Escribí el detalle: «${concepto.nombre}» lo pide.`); return false; }
     if (!Number.isFinite(n) || n <= 0) { setError('Escribí el importe.'); return false; }
     if (!fecha || fecha > hoy()) { setError('La fecha tiene que ser hoy o anterior.'); return false; }
@@ -748,6 +753,7 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
       try {
         const r = await httpClient.post('/cashflow/movimientos', {
           tipo, conceptoId: concepto.id, importe: n, fecha, detalle: detalle.trim(), confirmado: true,
+          ...(esAdelanto ? { personalId: Number(personalId) } : {}),
           ...(esCambio ? { cambioPor: cambioPor.trim(), cambioCuenta: cambioCuenta.trim() } : {}),
         });
         avisar('ok', `${tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} registrado. Efectivo en mano: ${money(r.saldo)}.`);
@@ -807,6 +813,7 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
         )}
         <Campo label="Importe *"><input type="number" min="0" step="0.01" inputMode="decimal" value={importe} onChange={(e) => setImporte(e.target.value)} autoFocus /></Campo>
       </div>
+      {esAdelanto && <Campo label="Empleado *"><EmpleadoAdelanto value={personalId} onChange={setPersonalId} /></Campo>}
       {esCambio && !cambioAProv && (
         <Campo label="¿A qué cuenta transfirió? *">
           <input maxLength={120} value={cambioCuenta} onChange={(e) => setCambioCuenta(e.target.value)} placeholder="Ej.: mi cuenta del banco, Mercado Pago…" />
@@ -1068,6 +1075,9 @@ function AccionesCaja({ saldo, enTransito, conceptos, conConteo, small, onHecho,
   );
 }
 
+/** Los orígenes que son siempre de un solo lado (el conteo puede ser de los dos). */
+const TIPO_DE_ORIGEN = { sobre: 'ingreso', gasto: 'egreso', pago_proveedor: 'egreso' };
+
 function Movimientos({ version, bump, avisar, conceptos, saldo }) {
   const [tipo, setTipo] = useState('');
   const [desde, setDesde] = useState('');
@@ -1077,8 +1087,22 @@ function Movimientos({ version, bump, avisar, conceptos, saldo }) {
   const [soloCambio, setSoloCambio] = useState(false);
   /* 'mov' = cuándo entró a tu caja; 'caja' = el cierre del turno del local (solo sobres). */
   const [fechaDe, setFechaDe] = useState('mov');
+  /*
+   * POR CONCEPTO (6/11/2026, pedido del dueño): un solo desplegable con los
+   * conceptos de ingreso y de egreso, más lo que no lleva concepto (sobres,
+   * pagos a proveedores, ajustes de conteo). 'c:<id>' = un concepto, 'o:<origen>'
+   * = todo lo de ese origen. Con «Solo ingresos/egresos» muestra solo los suyos.
+   */
+  const [que, setQue] = useState('');
   const [modal, setModal] = useState(null);
-  const qs = `${tipo ? `tipo=${tipo}&` : ''}${desde ? `desde=${desde}&` : ''}${hasta ? `hasta=${hasta}&` : ''}${anulados ? 'anulados=1&' : ''}${fechaDe === 'caja' ? 'fechaDe=caja&' : ''}${soloCambio ? 'cambio=1&' : ''}`;
+  const conceptoTipo = (v) => conceptos.find((c) => `c:${c.id}` === v)?.tipo;
+  const cambiarTipo = (t) => {
+    setTipo(t);
+    const tq = que.startsWith('c:') ? conceptoTipo(que) : TIPO_DE_ORIGEN[que.slice(2)];
+    if (t && tq && tq !== t) setQue('');
+  };
+  const qsQue = que.startsWith('c:') ? `conceptoId=${que.slice(2)}&` : que.startsWith('o:') ? `origen=${que.slice(2)}&` : '';
+  const qs = `${qsQue}${tipo ? `tipo=${tipo}&` : ''}${desde ? `desde=${desde}&` : ''}${hasta ? `hasta=${hasta}&` : ''}${anulados ? 'anulados=1&' : ''}${fechaDe === 'caja' ? 'fechaDe=caja&' : ''}${soloCambio ? 'cambio=1&' : ''}`;
   const { data, loading, error } = useResource(`cashflow:mov:${qs}:${version}`, () => httpClient.get(`/cashflow/movimientos?${qs}`));
   const filas = data ?? [];
   const vivos = filas.filter((m) => !m.anuladoEn);
@@ -1087,8 +1111,22 @@ function Movimientos({ version, bump, avisar, conceptos, saldo }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div className={s.toolbar}>
-        <select className={s['select-inline']} value={tipo} onChange={(e) => setTipo(e.target.value)} aria-label="Tipo">
+        <select className={s['select-inline']} value={tipo} onChange={(e) => cambiarTipo(e.target.value)} aria-label="Tipo">
           <option value="">Ingresos y egresos</option><option value="ingreso">Solo ingresos</option><option value="egreso">Solo egresos</option>
+        </select>
+        <select className={s['select-inline']} value={que} onChange={(e) => setQue(e.target.value)} aria-label="Concepto">
+          <option value="">Todos los conceptos</option>
+          {['ingreso', 'egreso'].filter((t) => !tipo || t === tipo).map((t) => {
+            const lista = conceptos.filter((c) => c.tipo === t).sort((a, b) => (a.activo === false) - (b.activo === false) || a.nombre.localeCompare(b.nombre, 'es'));
+            return lista.length ? (
+              <optgroup key={t} label={t === 'ingreso' ? 'Conceptos de ingreso' : 'Conceptos de egreso'}>
+                {lista.map((c) => <option key={c.id} value={`c:${c.id}`}>{c.nombre}{c.activo === false ? ' (desactivado)' : ''}</option>)}
+              </optgroup>
+            ) : null;
+          })}
+          <optgroup label="Por tipo de movimiento">
+            {ORIGENES_REPORTE.filter(([k]) => k !== 'concepto' && (!tipo || TIPO_DE_ORIGEN[k] === tipo || !TIPO_DE_ORIGEN[k])).map(([k, l]) => <option key={k} value={`o:${k}`}>{l}</option>)}
+          </optgroup>
         </select>
         <select className={s['select-inline']} value={fechaDe} onChange={(e) => setFechaDe(e.target.value)} aria-label="Qué fecha">
           <option value="mov">Por fecha en que entró a tu caja</option>

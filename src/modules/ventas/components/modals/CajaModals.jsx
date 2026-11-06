@@ -14,6 +14,7 @@ import { httpClient } from '@core/services/httpClient.js';
 import { TildeControlar } from '@modules/gerencia/panels/cashflow/CajasAControlar.jsx';
 import { useTildeControlar, useUmbralControlar } from '@modules/gerencia/panels/cashflow/tildeControlar.js';
 import { diaEnPalabras } from '@shared/utils/plazoCaja.js';
+import { EmpleadoAdelanto } from '@shared/components/EmpleadoAdelanto.jsx';
 
 const norm = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
@@ -231,6 +232,9 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
   const conceptos = (conceptosData ?? []).filter((c) => c.tipo === tipo);
   const concepto = conceptos.find((c) => c.id === Number(conceptoId));
   const cambiarTipo = (v) => { setTipo(v); setConceptoId(''); };
+  /* Adelanto de sueldo (0221): a qué empleado, obligatorio. */
+  const [personalId, setPersonalId] = useState('');
+  const esAdelanto = !esPagoProveedor && !!concepto?.esAdelanto;
 
   /**
    * Primero el TIPO, después el proveedor: la lista se pide filtrada
@@ -293,7 +297,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
    * pago igual al mismo proveedor; el siguiente "Sí" lo confirma a propósito. */
   const [gemelo, setGemelo] = useState(null);
   const enviando = useRef(false);
-  const firma = [tipo, destino, importe, motivo, conceptoId, tipoProveedor, proveedorId, referencia, esFlete].join('|');
+  const firma = [tipo, destino, importe, motivo, conceptoId, tipoProveedor, proveedorId, referencia, esFlete, personalId].join('|');
   const firmaConfirmada = useRef('');
   if (confirmando && firmaConfirmada.current !== firma) { setConfirmando(false); setGemelo(null); }
 
@@ -304,6 +308,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
       if (!proveedorId) { toast('Elegí a qué proveedor se le pagó.', 'err'); return false; }
     } else {
       if (!concepto) { toast('Elegí el concepto.', 'err'); return false; }
+      if (esAdelanto && !personalId) { toast('Elegí a qué empleado se le dio el adelanto.', 'err'); return false; }
       if (concepto.pideDetalle && !motivo.trim()) { toast(`Escribí la descripción: «${concepto.nombre}» la pide.`, 'err'); return false; }
     }
     return true;
@@ -356,6 +361,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
     const ok = await act(
       ventasApi.movimientoCaja(cajaSesionId, {
         tipo, importe: r2(importe), conceptoId: concepto.id, detalle: motivo.trim(),
+        ...(esAdelanto ? { personalId: Number(personalId) } : {}),
         usuarioId: ctx.usuarioId ?? undefined,
         // El relevo (0088): el movimiento manual lo firma quien está en la caja.
         operadorId: operadorId ?? undefined,
@@ -532,6 +538,13 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
           </div>
         )}
       </div>
+
+      {esAdelanto && (
+        <div className={s.field}>
+          <label htmlFor="empleado-adelanto">Empleado <span className={s.req}>*</span></label>
+          <EmpleadoAdelanto value={personalId} onChange={setPersonalId} />
+        </div>
+      )}
 
       <div className={s.field}>
         <label>{esPagoProveedor ? 'Detalle' : 'Descripción'} {!esPagoProveedor && concepto?.pideDetalle && <span className={s.req}>*</span>}</label>
@@ -1524,22 +1537,28 @@ function MovimientoPosterior({ sesion, onHecho, onCancelar }) {
   const { data: conceptosData } = useResource('caja-conceptos', () => ventasApi.conceptosCaja());
   const conceptos = (conceptosData ?? []).filter((c) => c.tipo === tipo && c.clase !== 'gasto');
   const concepto = conceptos.find((c) => c.id === Number(conceptoId));
+  /* Adelanto de sueldo (0221): a qué empleado, obligatorio. */
+  const [personalId, setPersonalId] = useState('');
+  const esAdelanto = !!concepto?.esAdelanto;
   const n = Number(importe);
   const valido = Number.isFinite(n) && n > 0;
   const difAntes = Number(sesion.diferencia) || 0;
   const difDespues = valido ? r2(difAntes + (tipo === 'egreso' ? n : -n)) : difAntes;
-  const sc = useSegundaConfirmacion(`${tipo}|${importe}|${conceptoId}|${motivo}`);
+  const sc = useSegundaConfirmacion(`${tipo}|${importe}|${conceptoId}|${motivo}|${personalId}`);
   const confirmar = () => sc.clic(
     () => {
       setError('');
       if (!valido) { setError('Escribí el importe.'); return false; }
       if (!concepto) { setError('Elegí el concepto.'); return false; }
+      if (esAdelanto && !personalId) { setError('Elegí a qué empleado se le dio el adelanto.'); return false; }
       if (motivo.trim().length < 5) { setError('Escribí la descripción: qué fue y quién avisó.'); return false; }
       return true;
     },
     async () => {
       try {
-        const r = await ventasApi.movimientoPosterior(sesion.id, { tipo, importe: n, conceptoId: concepto.id, detalle: motivo.trim(), confirmado: true });
+        const r = await ventasApi.movimientoPosterior(sesion.id, {
+          tipo, importe: n, conceptoId: concepto.id, detalle: motivo.trim(), confirmado: true, ...(esAdelanto ? { personalId: Number(personalId) } : {}),
+        });
         toast(`${tipo === 'egreso' ? 'Egreso' : 'Ingreso'} asentado en el turno #${sesion.id}. Diferencia del cierre: ${money(r.sesion.diferencia)}.`, 'ok');
         onHecho();
       } catch (e) { setError(errorMsg(e)); }
@@ -1572,6 +1591,12 @@ function MovimientoPosterior({ sesion, onHecho, onCancelar }) {
           Los conceptos de gasto no van acá: el gasto olvidado se carga en Gastos (pagado) y acá su egreso, por ejemplo con «Otro egreso».
         </div>
       </div>
+      {esAdelanto && (
+        <div className={s.field}>
+          <label htmlFor="empleado-adelanto-posterior">Empleado <span className={s.req}>*</span></label>
+          <EmpleadoAdelanto id="empleado-adelanto-posterior" value={personalId} onChange={setPersonalId} />
+        </div>
+      )}
       <div className={s.field}>
         <label>Descripción <span className={s.req}>*</span></label>
         <input value={motivo} maxLength={300} placeholder="Ej: pago al flete de $5.000; avisó Ale el 6/10" onChange={(e) => setMotivo(e.target.value)} />
