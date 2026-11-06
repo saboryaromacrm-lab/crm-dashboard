@@ -27,12 +27,13 @@ import { PestanaProductos } from './PestanaProductos.jsx';
 import { PestanaIva } from './PestanaIva.jsx';
 import { PestanaOfertas } from './PestanaOfertas.jsx';
 import { PestanaAnterior } from './PestanaAnterior.jsx';
+import { PestanaSucursales } from './PestanaSucursales.jsx';
 
 /* ============================================================================
  * EL PANEL
  * ========================================================================== */
 const PESTANAS = [
-  ['ventas', 'Ventas'], ['productos', 'Productos y categorías'], ['marcas', 'Marcas'], ['comparar', 'Comparar fechas'], ['granel', 'Granel y enteros'], ['rentabilidad', 'Rentabilidad'], ['ofertas', 'Ofertas y descuentos'],
+  ['ventas', 'Ventas'], ['sucursales', 'Sucursales'], ['productos', 'Productos y categorías'], ['marcas', 'Marcas'], ['comparar', 'Comparar fechas'], ['granel', 'Granel y enteros'], ['rentabilidad', 'Rentabilidad'], ['ofertas', 'Ofertas y descuentos'],
   ['proveedores', 'Proveedores y listas'], ['stock', 'Stock'], ['iva', 'Resultados IVA'], ['anterior', 'Sistema anterior'],
 ];
 
@@ -81,7 +82,7 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)', minWidth: 0 }}>
       <PanelHead
         title="Métricas"
-        desc="Ventas, productos y categorías, marcas, comparación de fechas, granel y enteros, rentabilidad, ofertas y descuentos, proveedores, stock y el sistema anterior. Se actualiza solo cada 10 minutos; con «Sincronizar» traés lo último en el momento."
+        desc="Ventas, sucursales (turnos y horas), productos y categorías, marcas, comparación de fechas, granel y enteros, rentabilidad, ofertas y descuentos, proveedores, stock y el sistema anterior. Se actualiza solo cada 10 minutos; con «Sincronizar» traés lo último en el momento."
         actions={(
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span className={s.hint} style={{ margin: 0 }} title={e?.ultimaOk ? new Date(e.ultimaOk).toLocaleString('es-AR') : ''}>
@@ -115,7 +116,7 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
           <option value="">Todas las sucursales</option>
           {(sucs.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
         </select>
-        {!sinPeriodo && (
+        {!sinPeriodo && pestana !== 'sucursales' && (
           <select className={s['select-inline']} value={pasoElegido} onChange={(ev) => setPasoElegido(ev.target.value)} aria-label="Agrupar por">
             <option value="">Agrupar: automático ({nombrePaso(paso)})</option>
             <option value="dia">Por día</option>
@@ -139,6 +140,8 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
       </div>
 
       {pestana === 'ventas' && <PestanaVentas qs={qs} paso={paso} version={version} />}
+      {/* Sucursales (6/11/2026): por local, por turno y por hora. */}
+      {pestana === 'sucursales' && <PestanaSucursales qs={qs} version={version} sucursalId={sucursalId} setSucursalId={setSucursalId} />}
       {pestana === 'productos' && <PestanaProductos key="productos" qs={qs} paso={paso} version={version} />}
       {pestana === 'marcas' && <PestanaProductos key="marcas" qs={qs} paso={paso} version={version} porMarca />}
       {pestana === 'comparar' && <PestanaComparar desde={desde} hasta={hasta} sucursalId={sucursalId} paso={paso} version={version} />}
