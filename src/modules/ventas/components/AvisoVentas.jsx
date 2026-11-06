@@ -20,7 +20,7 @@ export function AvisoVentas() {
     >
       <Alert
         onClose={closeToast}
-        severity={toastState.kind === 'err' ? 'error' : 'success'}
+        severity={toastState.kind === 'err' ? 'error' : toastState.kind === 'warn' ? 'warning' : 'success'}
         variant="filled"
         sx={{ width: '100%' }}
       >

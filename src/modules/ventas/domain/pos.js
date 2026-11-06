@@ -365,7 +365,74 @@ export const ticketInicial = {
  * Si nada cambia devuelve el MISMO estado (misma referencia): sin eso, cada
  * tecla dispararía un re-render y un autoguardado inútiles.
  */
+/*
+ * LO DE MÁS DE UN PRESUPUESTO VA AL PRECIO DE HOY (6/11/2026, decisión del dueño).
+ *
+ * El renglón que cierra un presupuesto confirmado trae `cotizado`: cuánto de ese
+ * artículo cubre el precio garantizado (lo cotizado, o lo armado si la casa armó
+ * más). Si el cliente lleva más —sube la cantidad o vuelve a escanearlo—, el
+ * renglón queda en lo cotizado y lo de más pasa a OTRO renglón del mismo
+ * artículo, sin precio fijo, que el motor cotiza a precio de hoy. Y se avisa.
+ * El servidor mide lo mismo (`resolverRenglones`).
+ */
+const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+
+export function partirCotizados(estado) {
+  const cupo = new Map();
+  for (const r of estado.renglones) if (r.cotizado != null && !cupo.has(r.key)) cupo.set(r.key, Number(r.cotizado) || 0);
+  if (!cupo.size) return estado;
+
+  const exceso = new Map();
+  const renglones = [];
+  let partio = false;
+  for (const r of estado.renglones) {
+    if (r.cotizado == null) { renglones.push(r); continue; }
+    const queda = cupo.get(r.key);
+    const cant = Number(r.cantidad) || 0;
+    if (cant <= queda + 1e-9) { cupo.set(r.key, r3(queda - cant)); renglones.push(r); continue; }
+    partio = true;
+    const entra = Math.max(0, r3(queda));
+    cupo.set(r.key, 0);
+    exceso.set(r.key, { r, cant: r3((exceso.get(r.key)?.cant ?? 0) + cant - entra) });
+    if (entra > 1e-9) renglones.push({ ...r, cantidad: entra });
+  }
+  if (!partio) return estado;
+
+  let uid = estado.uid;
+  const avisos = [];
+  for (const [key, { r, cant }] of exceso) {
+    const i = renglones.findIndex((x) => x.key === key && x.cotizado == null);
+    if (i >= 0) {
+      renglones[i] = { ...renglones[i], cantidad: r3(renglones[i].cantidad + cant) };
+    } else {
+      renglones.push({
+        ...r,
+        uid: uid++,
+        cotizado: undefined,
+        excedeCotizado: true,
+        cantidad: cant,
+        /* Sin nada del presupuesto: lista y precio los pone el motor, sin descuentos heredados. */
+        listaId: null, lista: '', listaOrigen: 'base', listaManual: false, listaMotivo: '',
+        descuentoBase: 0, descuento: 0, descuentoAutorizado: 0, descuentoId: null, descuentoNombre: '',
+        ofertaId: null, oferta: '', ofertaDescuento: 0, ofertaDetalle: '',
+      });
+    }
+    const tope = Number(r.cotizado) || 0;
+    avisos.push(`${r.nombre}: el presupuesto cotizó ${String(tope).replace('.', ',')} ${r.unidad || 'u'}; lo de más va en otro renglón al precio de hoy.`);
+  }
+  return {
+    ...estado,
+    renglones,
+    uid,
+    avisoCotizado: { n: (estado.avisoCotizado?.n ?? 0) + 1, texto: avisos.join(' ') },
+  };
+}
+
 function recalcular(estado) {
+  return recalcularPrecios(partirCotizados(estado));
+}
+
+function recalcularPrecios(estado) {
   const { catalogo, cliente, precios } = estado.ctx;
   if (!catalogo?.listas?.length) return estado;
 
@@ -405,8 +472,11 @@ function recalcular(estado) {
     sucursalId: estado.ctx.sucursalId,
     ticketAplicadaId: estado.ofertaTicket,
   });
+  /* Un artículo en dos renglones (lo cotizado y lo de más, 6/11/2026): la promo es por artículo y va UNA vez. */
+  const conPromo = new Set();
   renglones = renglones.map((r) => {
-    const p = promos.get(r.key) ?? null;
+    const p = conPromo.has(r.key) ? null : (promos.get(r.key) ?? null);
+    if (p) conPromo.add(r.key);
     const igual = p
       ? r.ofertaId === p.ofertaId && r.ofertaDescuento === p.descuento
       : !r.ofertaId && !(r.ofertaDescuento > 0);
@@ -1030,6 +1100,8 @@ export function extrasParaApi(extras) {
  */
 export function ticketDesdeBorrador(borrador, catalogo) {
   const porClave = new Map(catalogo.map((c) => [`${c.productoId}:${c.presentacionId ?? ''}`, c]));
+  /* Lo que cubre el precio garantizado de un presupuesto, por artículo (6/11/2026). */
+  const cotizados = new Map((borrador.cotizados ?? []).map((c) => [c.clave, Number(c.cantidad) || 0]));
   let uid = 1;
 
   const renglones = (borrador.items ?? []).map((it) => {
@@ -1061,6 +1133,7 @@ export function ticketDesdeBorrador(borrador, catalogo) {
       // recotizara, la venta que cierra el presupuesto perdería el precio que
       // la casa prometió por escrito.
       listaManual: it.listaOrigen === 'manual' || it.listaOrigen === 'presupuesto',
+      cotizado: it.listaOrigen === 'presupuesto' ? cotizados.get(`${it.productoId}:${it.presentacionId ?? ''}`) : undefined,
       precioLista: it.precioLista,
       precioUnitario: it.precioUnitario,
       descuento: it.descuento,

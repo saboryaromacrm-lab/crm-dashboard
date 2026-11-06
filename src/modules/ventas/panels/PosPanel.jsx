@@ -453,6 +453,8 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, sinD
         </thead>
         <tbody>
           {renglones.map((r) => {
+            /* Lo de más de un presupuesto (6/11/2026): el renglón sin precio garantizado de un artículo que sí lo tiene. */
+            const deMasCotizado = r.cotizado == null && renglones.some((x) => x.key === r.key && x.cotizado != null);
             const calc = calcularRenglon(r);
             /* Granel sin control de stock (1/10/2026): ni frena ni avisa. */
             const faltaStock = !r.stockLibre && r.cantidad > r.stock + 1e-9;
@@ -512,6 +514,16 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, sinD
                   {/* La oferta se muestra donde está el producto, con nombre e
                       importe: el cajero contesta "por qué dio ese número" sin
                       hacer cuentas. */}
+                  {r.cotizado != null && (
+                    <div style={{ fontSize: 12, color: 'var(--crm-color-text-secondary)' }} title="Precio del presupuesto confirmado: vale hasta esta cantidad">
+                      Presupuesto · precio garantizado hasta {num(r.cotizado)} {r.unidad}
+                    </div>
+                  )}
+                  {deMasCotizado && (
+                    <div style={{ fontSize: 12, color: 'var(--crm-color-warning)', fontWeight: 600 }} title="El presupuesto no cubre esta cantidad: va al precio de hoy">
+                      Más de lo cotizado · precio de hoy
+                    </div>
+                  )}
                   {r.ofertaDescuento > 0 && (
                     <div className={p.ofertaBadge} title={r.ofertaDetalle || r.oferta}>
                       {r.oferta} · −{money(r.ofertaDescuento)}
@@ -1112,6 +1124,15 @@ export function PosPanel() {
     }
     enMayoristaRef.current = { ventaId: activaId, uids: ahora };
   }, [ticket.renglones, ticket.mayoristaAplicado, activaId, toast]);
+
+  /* Lo de más de un presupuesto pasó a otro renglón a precio de hoy (6/11/2026): se avisa una vez por cada partición. */
+  const avisoCotizadoRef = useRef(0);
+  useEffect(() => {
+    const a = ticket.avisoCotizado;
+    if (!a || a.n === avisoCotizadoRef.current) return;
+    avisoCotizadoRef.current = a.n;
+    toast(a.texto, 'warn');
+  }, [ticket.avisoCotizado, toast]);
 
   /**
    * QUÉ ESTÁ APLICADO AHORA, para que el selector lo diga en vez de volver

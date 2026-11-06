@@ -47,6 +47,14 @@ const estadoDe = (p) => (
     ? 'vencido' : p.estado
 );
 
+/*
+ * CONFIRMADO CON LA FECHA PASADA (6/11/2026, decisión del dueño). El cliente dijo que sí dentro del
+ * plazo y la mercadería está apartada: el precio cotizado vale hasta que se cobre o se cancele (el
+ * servidor lo respeta, ver `presupuestos/precio-garantizado.ts`). Se marca para que no quede olvidado.
+ */
+const confirmadoAtrasado = (p) => p.estado === 'confirmado' && p.vencimiento && new Date(p.vencimiento).getTime() < Date.now();
+const diasDesde = (f) => Math.max(1, Math.floor((Date.now() - new Date(f).getTime()) / 86400000));
+
 const finalUnit = (it) => it.precioLista * (1 - (it.descuento || 0) / 100) * (1 + (it.iva ?? 21) / 100);
 const armadaDe = (it) => (it.cantidadArmada ?? it.cantidad);
 /** Los paquetes del renglón que se fraccionan al guardar `armada`: los que pasan de los ya armados, hasta lo apartado (la cuenta de la API). */
@@ -516,6 +524,15 @@ export function PresupuestosPanel({ tienda = false }) {
         <td>{fmtFecha(p.fecha)}</td>
         <td style={est === 'vencido' ? { color: 'var(--crm-color-accent-2)', fontWeight: 700 } : undefined}>
           {p.vencimiento ? fmtFecha(p.vencimiento) : '—'}
+          {confirmadoAtrasado(p) && (
+            <div
+              className={s.hint}
+              style={{ margin: 0, color: 'var(--crm-color-warning, #b26a00)', whiteSpace: 'nowrap' }}
+              title="El cliente confirmó dentro del plazo: se cobra al precio cotizado aunque la fecha haya pasado. Cerralo en el POS o cancelalo."
+            >
+              Pasó hace {diasDesde(p.vencimiento)} día{diasDesde(p.vencimiento) === 1 ? '' : 's'} · precio garantizado
+            </div>
+          )}
         </td>
         <td>
           {puedeCotizar && est !== 'cerrado' && est !== 'cancelado' ? (
