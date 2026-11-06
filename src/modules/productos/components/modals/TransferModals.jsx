@@ -1409,9 +1409,11 @@ export function PrepararTransferModal({ id }) {
    * encargado necesita revisar antes de despachar.
    */
   const [informe, setInforme] = useState({});
-  /* Quién fracciona lo que la confirmación arme sola (0102). */
+  /* Quién fracciona lo que la confirmación arme sola (0102): uno para toda la
+   * lista y, si un producto lo armó otra persona, el suyo (6/11/2026). */
   const ops = useOperadoresFraccion(t?.origenId);
   const [operadorId, setOperadorId] = useState(null);
+  const [opRenglon, setOpRenglon] = useState({});
 
   const grupos = useMemo(() => {
     const g = { enteros: [], granel: [] };
@@ -1449,12 +1451,12 @@ export function PrepararTransferModal({ id }) {
   const destino = store.getSucursal(t.destinoId);
 
   /*
-   * ¿CONFIRMAR LA LISTA DE GRANEL VA A FRACCIONAR? La misma cuenta que hace el
+   * ¿CONFIRMAR VA A FRACCIONAR ESTE RENGLÓN? La misma cuenta que hace el
    * servidor (`completarPreparado`): un paquete corto con granel suelto que
    * alcanza para al menos uno. Solo entonces el operador es obligatorio — una
    * lista con los paquetes ya hechos no fracciona nada.
    */
-  const granelArma = grupos.granel.some(({ it, p }) => {
+  const arma = ({ it, p }) => {
     if (p.tipo !== 'granel' || !it.presentacionId) return false;
     const tam = (p.presentaciones || []).find((x) => x.id === it.presentacionId)?.tamKg;
     if (!(tam > 0)) return false;
@@ -1462,8 +1464,11 @@ export function PrepararTransferModal({ id }) {
     const prep = e != null ? Math.max(parseFloat(e) || 0, 0) : it.cantidadPreparada;
     if (prep <= store.cant(p.id, t.origenId, it.presentacionId, 'disponible') + 1e-9) return false;
     return store.cant(p.id, t.origenId, null, 'disponible') / tam + 1e-9 >= 1;
-  });
-  const faltaOperador = granelArma && ops.disponibles.length > 0 && !operadorId;
+  };
+  const delRenglon = (itemId) => ops.disponibles.find((o) => o.id === opRenglon[itemId])?.id ?? null;
+  /* El de toda la lista hace falta solo si algún renglón que arma no tiene el suyo. */
+  const pideOperadorLista = grupos.granel.some((r) => arma(r) && !delRenglon(r.it.id));
+  const faltaOperador = pideOperadorLista && ops.disponibles.length > 0 && !operadorId;
 
   const setEdit = (itemId, patch) => setEdits((e) => ({ ...e, [itemId]: { ...(e[itemId] || {}), ...patch } }));
   const limpiarEdit = (itemId) => setEdits((e) => { const n = { ...e }; delete n[itemId]; return n; });
@@ -1490,7 +1495,11 @@ export function PrepararTransferModal({ id }) {
     for (const { it } of grupos[tipo]) {
       if (!(await guardarItem(it))) { setOcupado(false); return; }
     }
-    const res = await store.confirmarListaTransferencia(t.id, tipo, listo, tipo === 'granel' && listo ? operadorId : null);
+    const conOperador = tipo === 'granel' && listo;
+    const operadores = conOperador
+      ? grupos.granel.map(({ it }) => ({ itemId: it.id, operadorId: delRenglon(it.id) })).filter((x) => x.operadorId && x.operadorId !== operadorId)
+      : [];
+    const res = await store.confirmarListaTransferencia(t.id, tipo, listo, conOperador ? operadorId : null, operadores);
     setOcupado(false);
     if (!res.ok) { toast(res.error, 'err'); return; }
     const armados = res.armados ?? [];
@@ -1567,9 +1576,9 @@ export function PrepararTransferModal({ id }) {
           {tipo === 'granel' && editable && filas.length > 0 && ops.disponibles.length > 0 && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <span className={s.hint} style={{ margin: 0 }}>
-                Fracciona{granelArma ? <span className={s.req}> *</span> : ''}
+                Fracciona toda la lista{pideOperadorLista ? <span className={s.req}> *</span> : ''}
               </span>
-              <SelectorOperador ops={ops} value={operadorId} onChange={setOperadorId} compacto label="Quién fracciona" />
+              <SelectorOperador ops={ops} value={operadorId} onChange={setOperadorId} compacto label="Quién fracciona toda la lista" />
             </span>
           )}
           {puedeTocar && enPrep && filas.length > 0 && (confirmada
@@ -1628,6 +1637,19 @@ export function PrepararTransferModal({ id }) {
                 <td>
                   <strong>{p.nombre}</strong>
                   {it.agregado && <span className={cx(s.pill, s['est-transito'])} style={{ marginLeft: 6 }}>Agregado</span>}
+                  {/* Si este producto lo arma otra persona, se elige acá; vacío = el de toda la lista. */}
+                  {tipo === 'granel' && editable && ops.disponibles.length > 1 && arma({ it, p }) && (
+                    <div className={s.hint} style={{ margin: '4px 0 0' }}>
+                      Lo arma
+                      <select
+                        value={delRenglon(it.id) ?? ''} aria-label={`Quién arma ${p.nombre}`} style={{ display: 'block', width: 'auto', maxWidth: '100%' }}
+                        onChange={(e) => setOpRenglon((x) => ({ ...x, [it.id]: Number(e.target.value) || null }))}
+                      >
+                        <option value="">Igual que la lista</option>
+                        {ops.disponibles.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </td>
                 <td>{store.presLabel(p, it.presentacionId)}</td>
                 <td className={cx(s.num, s.mono)}>

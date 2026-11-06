@@ -1071,8 +1071,9 @@ const aplicarConteo = (id) => _mutate(() => httpClient.post(`/conteos/${id}/apli
 const editarItemTransferencia = (id, itemId, o) => _mutate(() => httpClient.patch(`/transferencias/${id}/items/${itemId}`, o));
 const agregarItemTransferencia = (id, o) => _mutate(() => httpClient.post(`/transferencias/${id}/items`, o));
 const quitarItemTransferencia = (id, itemId) => _mutate(() => httpClient.delete(`/transferencias/${id}/items/${itemId}`));
-const confirmarListaTransferencia = (id, tipo, listo, operadorId) => _mutate(() => httpClient.post(`/transferencias/${id}/lista`, {
-  tipo, listo, usuarioId: state.ctx.usuarioId, ...(operadorId ? { operadorId } : {}),
+/** `operadores`: los productos de granel que armó otra persona ([{ itemId, operadorId }]). */
+const confirmarListaTransferencia = (id, tipo, listo, operadorId, operadores = []) => _mutate(() => httpClient.post(`/transferencias/${id}/lista`, {
+  tipo, listo, usuarioId: state.ctx.usuarioId, ...(operadorId ? { operadorId } : {}), ...(operadores.length ? { operadores } : {}),
 }));
 
 /* ---------------- Historial de fraccionamiento y operadores (0102) ----------------
