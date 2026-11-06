@@ -82,6 +82,11 @@ export function ExistenciasPanel() {
   /* LOS DADOS DE BAJA (23/10/2026, pedido del dueño: «no quiero ver los productos que di de baja»): el
    * discontinuado que todavía tiene stock y el archivado con algo suelto quedan afuera; '1' = solo ellos. */
   const [bajaF, setBajaF] = useState('');
+  /* CATEGORÍA y ORDEN POR CANTIDAD (6/11/2026, pedido del dueño). El orden: clic en «Cantidad»
+   * va de mayor a menor, otro clic de menor a mayor y el tercero vuelve al orden de siempre. */
+  const [catF, setCatF] = useState('');
+  const [ordenCant, setOrdenCant] = useState(null);
+  const ordenarCantidad = () => setOrdenCant((o) => (o === null ? 'desc' : o === 'desc' ? 'asc' : null));
   const fp = useFiltroProducto(store);
   const { marca: marcaF, coincideTexto } = fp;
   /* Desde Proveedores › Pedidos («Ver stock», 12/10/2026): `?ordenPedido=ID`
@@ -109,7 +114,7 @@ export function ExistenciasPanel() {
   );
   /* Por producto, una sola vez: tipo, marca y de qué proveedores es (sus formatos de compra). */
   const infoProd = useMemo(() => new Map(productos.map((p) => [p.id, {
-    tipo: p.tipo, marca: p.marca || '', provs: new Set((p.formatosCompra || []).map((e) => e.proveedorId)),
+    tipo: p.tipo, marca: p.marca || '', categoria: p.categoria || '', provs: new Set((p.formatosCompra || []).map((e) => e.proveedorId)),
     baja: p.estado !== 'activo',
   }])), [productos]);
   const conStock = useMemo(() => stock.filter((st) => st.cantidad > 1e-9 && infoProd.has(st.productoId)), [stock, infoProd]);
@@ -167,10 +172,11 @@ export function ExistenciasPanel() {
       ['tipo', (r, i) => !tipoF || i?.tipo === tipoF],
       ['prov', (r, i) => !provIds || (!!i && cruza(i.provs, provIds))],
       ['marca', (r, i) => !marcaF || i?.marca === marcaF],
+      ['cat', (r, i) => !catF || i?.categoria === catF],
       ['texto', (r) => coincideTexto(r.productoId)],
       ['baja', (r, i) => !!i?.baja === (bajaF === '1')],
     ];
-    const op = { stock: { con: 0, sin: 0, neg: 0 }, estado: new Map(), prod: new Set(), prov: new Set(), marca: new Set(), baja: new Set() };
+    const op = { stock: { con: 0, sin: 0, neg: 0 }, estado: new Map(), prod: new Set(), prov: new Set(), marca: new Set(), cat: new Set(), baja: new Set() };
     const salen = [];
     for (const lista of [conStock, faltantes, negativos]) {
       for (const r of lista) {
@@ -190,13 +196,16 @@ export function ExistenciasPanel() {
         if (!falla || falla === 'prod') op.prod.add(r.productoId);
         if (info && (!falla || falla === 'prov')) for (const id of info.provs) op.prov.add(id);
         if (info?.marca && (!falla || falla === 'marca')) op.marca.add(info.marca);
+        if (info?.categoria && (!falla || falla === 'cat')) op.cat.add(info.categoria);
         if (info?.baja && (!falla || falla === 'baja')) op.baja.add(r.productoId);
       }
     }
     /* Producto, sucursal y, dentro, el suelto primero y los paquetes en orden: con y sin stock quedan juntos. */
     salen.sort((a, b) => a.productoId - b.productoId || a.sucursalId - b.sucursalId || (a.presentacionId ?? 0) - (b.presentacionId ?? 0));
-    return { entradas: salen, op, marcas: [...op.marca].sort(alfabetico) };
-  }, [conStock, faltantes, negativos, infoProd, stockF, sucF, prodF, estadoF, tipoF, provIds, marcaF, coincideTexto, bajaF]);
+    /* Por cantidad: el número tal cual se ve en la columna (kg o unidades/paquetes); el empate queda en el orden de arriba. */
+    if (ordenCant) salen.sort((a, b) => (ordenCant === 'desc' ? b.cantidad - a.cantidad : a.cantidad - b.cantidad));
+    return { entradas: salen, op, marcas: [...op.marca].sort(alfabetico), categorias: [...op.cat].sort(alfabetico) };
+  }, [conStock, faltantes, negativos, infoProd, stockF, sucF, prodF, estadoF, tipoF, provIds, marcaF, catF, coincideTexto, bajaF, ordenCant]);
   const { entradas, op } = filtrar;
   const provsVisibles = proveedoresMerc.filter((p) => op.prov.has(p.id) || String(p.id) === provF);
   const cambiarStock = (v) => { setStockF(v); if (v === 'sin' || v === 'neg') setEstadoF(''); };
@@ -212,7 +221,7 @@ export function ExistenciasPanel() {
     setTab('movs');
   };
 
-  const pag = usePaginado(entradas, 'existencias', `${sucF}|${prodF}|${estadoF}|${provF}|${tipoF}|${stockF}|${bajaF}|${fp.clave}`);
+  const pag = usePaginado(entradas, 'existencias', `${sucF}|${prodF}|${estadoF}|${provF}|${tipoF}|${stockF}|${bajaF}|${catF}|${ordenCant}|${fp.clave}`);
 
   const idsPagina = [...new Set(pag.visibles.map((st) => st.productoId))];
   const idsFiltro = useMemo(() => [...new Set(entradas.map((st) => st.productoId))], [entradas]);
@@ -285,6 +294,10 @@ export function ExistenciasPanel() {
         <>
           <div className={s.toolbar}>
             <FiltroProductoControles f={fp} id="exist" marcas={filtrar.marcas} />
+            <select id="exist-categoria" className={s['select-inline']} value={catF} onChange={(e) => setCatF(e.target.value)} aria-label="Categoría">
+              <option value="">Todas las categorías</option>
+              {(catF && !filtrar.categorias.includes(catF) ? [catF, ...filtrar.categorias] : filtrar.categorias).map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
             <select id="exist-proveedor" className={s['select-inline']} value={provF} onChange={(e) => setProvF(e.target.value)} aria-label="Proveedor">
               <option value="">Todos los proveedores</option>
               <OpcionLocales proveedores={provsVisibles} />
@@ -332,7 +345,21 @@ export function ExistenciasPanel() {
             cols={[
               ...(puedeLote ? [{ h: <CasillaTodos sel={sel} ids={idsPagina} alternar={alternar} /> }] : []),
               { h: 'Producto' }, { h: 'Sucursal' }, { h: 'Present.' },
-              { h: 'Estado' }, { h: 'Cantidad', num: true }, { h: 'Valor', num: true },
+              { h: 'Estado' },
+              {
+                h: (
+                  <button
+                    type="button" onClick={ordenarCantidad}
+                    title={ordenCant === 'desc' ? 'De mayor a menor · clic: de menor a mayor' : ordenCant === 'asc' ? 'De menor a mayor · clic: orden de siempre' : 'Ordenar de mayor a menor'}
+                    aria-label={`Cantidad${ordenCant === 'desc' ? ', de mayor a menor' : ordenCant === 'asc' ? ', de menor a mayor' : ''}`}
+                    style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', font: 'inherit', textTransform: 'inherit', letterSpacing: 'inherit', color: ordenCant ? 'var(--crm-color-primary)' : 'inherit', whiteSpace: 'nowrap' }}
+                  >
+                    Cantidad {ordenCant === 'desc' ? '▼' : ordenCant === 'asc' ? '▲' : '↕'}
+                  </button>
+                ),
+                num: true,
+              },
+              { h: 'Valor', num: true },
               { h: '', cls: 'actions-col' },
             ]}
             empty={stockF === 'sin' ? 'Ningún producto sin stock con esos filtros.' : stockF === 'neg' ? 'Ningún producto en negativo con esos filtros.' : 'Sin existencias con esos filtros.'}
