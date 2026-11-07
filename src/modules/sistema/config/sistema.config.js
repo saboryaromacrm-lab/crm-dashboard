@@ -10,6 +10,7 @@ import PrintIcon from '@mui/icons-material/Print';
 import BackupIcon from '@mui/icons-material/Backup';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import EventIcon from '@mui/icons-material/Event';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 
 export const SISTEMA_SECCIONES = [
   { id: 'empresa', label: 'Empresa', icon: BusinessIcon, permiso: 'sistema.empresa' },
@@ -21,4 +22,6 @@ export const SISTEMA_SECCIONES = [
   },
   /* 0182: los feriados de Formosa y qué hace cada sucursal; administración (también recibe el aviso). */
   { id: 'feriados', label: 'Feriados', icon: EventIcon, permiso: 'sistema.feriados' },
+  /* 7/11/2026: los locales y sus horarios, mudados de Tienda online › General; misma llave que Feriados. */
+  { id: 'horarios', label: 'Horarios', icon: ScheduleIcon, permiso: 'sistema.feriados' },
 ];

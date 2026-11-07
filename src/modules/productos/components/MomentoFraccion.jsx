@@ -10,9 +10,9 @@
  */
 import { useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
+import { TURNO_TARDE_DESDE } from '@shared/utils/turnos.js';
 import { s } from './ui.jsx';
 
-export const TURNO_TARDE_DESDE = 14;
 export const DIAS_ASENTAR_ATRAS = 30;
 export const TURNOS = { manana: 'Mañana', tarde: 'Tarde' };
 const pad2 = (n) => String(n).padStart(2, '0');

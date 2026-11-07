@@ -68,7 +68,7 @@ function Interruptor({ label, hint, checked, onChange }) {
   );
 }
 
-/** Los días como los guardan los locales (General › Locales). */
+/** Los días como los guardan los locales (Sistema › Horarios). */
 const DIAS_LOCAL = [['lun', 'Lun'], ['mar', 'Mar'], ['mie', 'Mié'], ['jue', 'Jue'], ['vie', 'Vie'], ['sab', 'Sáb'], ['dom', 'Dom']];
 
 /**
@@ -94,7 +94,7 @@ function LocalEnvios({ value, onChange, disabled }) {
         </select>
       ) : (
         <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>
-          Todavía no hay locales con horario: cargalo en <strong>General › Locales y horarios</strong>. Mientras tanto el cliente
+          Todavía no hay locales con horario: cargalo en <strong>Sistema › Horarios</strong>. Mientras tanto el cliente
           solo puede pedir «lo antes posible» (sin saber si está abierto) o coordinarlo por WhatsApp.
         </div>
       )}

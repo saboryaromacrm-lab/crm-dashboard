@@ -2,7 +2,9 @@
  * SISTEMA › FERIADOS (0182, 19/10/2026, pedido del dueño)
  * ============================================================================
  * Los feriados y días no laborables de Formosa Capital del año elegido, y qué
- * hace cada sucursal ese día (abre o no, horario, nota). Desde acá se agregan,
+ * hace cada sucursal ese día (abre o no, horario, nota). 7/11/2026: abre todo
+ * el día, solo a la mañana o solo a la tarde, con su horario de siempre (el de
+ * su local en Sistema › Horarios), u otro horario a mano. Desde acá se agregan,
  * se editan y se borran; «Traer feriados de AAAA» suma los nacionales del año
  * (ArgentinaDatos) y los de Formosa sin pisar lo que ya está. El aviso de toda
  * la app (FeriadosBanner) lee lo mismo. Ver crm-api/src/feriados.
@@ -12,7 +14,7 @@ import { httpClient } from '@core/services/httpClient.js';
 import { useResource } from '@modules/ventas/hooks/useResource.js';
 import { errorMsg } from '@modules/ventas/services/ventas.api.js';
 import { cx } from '@shared/utils/classNames.js';
-import { ALCANCE_FERIADO, EVENTO_FERIADOS, TIPO_FERIADO, cuantoFalta, diaYFecha, diasHasta, queHace } from '@shared/utils/feriados.js';
+import { ALCANCE_FERIADO, EVENTO_FERIADOS, TIPO_FERIADO, cuantoFalta, diaYFecha, diasHasta, opcionDe, queHace, turnosDelDia } from '@shared/utils/feriados.js';
 import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 import { ModalShell } from '@modules/productos/components/Modal.jsx';
 
@@ -127,17 +129,21 @@ export function FeriadosPanel({ onAviso }) {
 /**
  * Alta o cambio de un feriado, con lo que hace cada sucursal (se guarda todo
  * junto). Borrar pide un segundo clic. Con candado (`useRef`).
+ * Se guarda la opción, y el horario sale al guardar: los turnos dependen del
+ * día de la semana, y la fecha se puede cambiar en la misma ventana.
  */
 function FeriadoModal({ feriado, sucursales, onCerrar, onHecho }) {
   const [f, setF] = useState(() => ({ ...feriado }));
-  /* sucursalId → '' (sin definir) | 'si' | 'no', con horario y nota. */
-  const [porSuc, setPorSuc] = useState(() => Object.fromEntries(feriado.sucursales.map((x) => [x.sucursalId, { abre: x.abre ? 'si' : 'no', horario: x.horario, nota: x.nota }])));
+  const turnosDe = (id, fecha) => turnosDelDia(sucursales.find((su) => su.id === id)?.semana, fecha);
+  /* sucursalId → la opción (ver `opcionDe`), el horario a mano de «Otro horario» y la nota. */
+  const [porSuc, setPorSuc] = useState(() => Object.fromEntries(feriado.sucursales.map((x) => [x.sucursalId,
+    { opcion: opcionDe(x, turnosDe(x.sucursalId, feriado.fecha)), horario: x.horario, nota: x.nota }])));
   const [borrando, setBorrando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
   const candado = useRef(false);
   const campo = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
-  const suc = (id, k, v) => setPorSuc((x) => ({ ...x, [id]: { abre: '', horario: '', nota: '', ...x[id], [k]: v } }));
+  const suc = (id, k, v) => setPorSuc((x) => ({ ...x, [id]: { opcion: '', horario: '', nota: '', ...x[id], [k]: v } }));
 
   const ejecutar = async (fn, texto) => {
     if (candado.current) return;
@@ -145,10 +151,16 @@ function FeriadoModal({ feriado, sucursales, onCerrar, onHecho }) {
     try { await fn(); onHecho(texto); } catch (e) { setError(errorMsg(e)); } finally { candado.current = false; setEnviando(false); }
   };
   const guardar = () => {
+    const definidas = Object.entries(porSuc).filter(([, x]) => x.opcion);
+    const sinTurno = definidas.find(([id, x]) => (x.opcion === 'manana' || x.opcion === 'tarde') && !turnosDe(Number(id), f.fecha));
+    if (sinTurno) {
+      setError(`${sucursales.find((su) => su.id === Number(sinTurno[0]))?.nombre} no tiene mañana y tarde ese día: elegí otra opción.`);
+      return;
+    }
+    const horarioDe = (id, x) => (x.opcion === 'otro' ? x.horario : turnosDe(id, f.fecha)?.[x.opcion] ?? '');
     const cuerpo = {
       fecha: f.fecha, nombre: f.nombre, tipo: f.tipo, alcance: f.alcance, observaciones: f.observaciones,
-      sucursales: Object.entries(porSuc).filter(([, x]) => x.abre)
-        .map(([id, x]) => ({ sucursalId: Number(id), abre: x.abre === 'si', horario: x.abre === 'si' ? x.horario : '', nota: x.nota })),
+      sucursales: definidas.map(([id, x]) => ({ sucursalId: Number(id), abre: x.opcion !== 'no', horario: horarioDe(Number(id), x), nota: x.nota })),
     };
     ejecutar(() => (feriado.id ? httpClient.put(`/feriados/${feriado.id}`, cuerpo) : httpClient.post('/feriados', cuerpo)), `«${f.nombre.trim()}» guardado.`);
   };
@@ -186,25 +198,35 @@ function FeriadoModal({ feriado, sucursales, onCerrar, onHecho }) {
       <div className={s['section-title']} style={{ margin: '8px 0 0' }}>Qué hace cada sucursal</div>
       <div style={{ display: 'grid', gap: 8 }}>
         {sucursales.map((su) => {
-          const x = porSuc[su.id] ?? { abre: '', horario: '', nota: '' };
+          const x = porSuc[su.id] ?? { opcion: '', horario: '', nota: '' };
+          const turnos = turnosDe(su.id, f.fecha);
           return (
             <div key={su.id} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <strong style={{ flex: '0 0 130px' }}>{su.nombre}</strong>
-              <select value={x.abre} onChange={(e) => suc(su.id, 'abre', e.target.value)} aria-label={`¿Abre ${su.nombre}?`} style={{ width: 'auto' }}>
+              <select value={x.opcion} onChange={(e) => suc(su.id, 'opcion', e.target.value)} aria-label={`¿Abre ${su.nombre}?`} style={{ width: 'auto' }}>
                 <option value="">Sin definir</option>
-                <option value="si">Abre</option>
+                <option value="todo">Abre todo el día</option>
+                {(turnos || x.opcion === 'manana') && <option value="manana">Solo a la mañana{turnos ? ` (${turnos.manana})` : ''}</option>}
+                {(turnos || x.opcion === 'tarde') && <option value="tarde">Solo a la tarde{turnos ? ` (${turnos.tarde})` : ''}</option>}
+                <option value="otro">Otro horario</option>
                 <option value="no">No abre</option>
               </select>
-              {x.abre === 'si' && (
+              {x.opcion === 'otro' && (
                 <input value={x.horario} maxLength={60} onChange={(e) => suc(su.id, 'horario', e.target.value)} placeholder="Horario: 9 a 13" aria-label={`Horario de ${su.nombre}`} style={{ width: 130 }} />
               )}
-              {x.abre && (
+              {x.opcion && (
                 <input value={x.nota} maxLength={200} onChange={(e) => suc(su.id, 'nota', e.target.value)} placeholder="Nota (quién atiende, cómo fue…)" aria-label={`Nota de ${su.nombre}`} style={{ flex: '1 1 160px' }} />
               )}
             </div>
           );
         })}
       </div>
+      {sucursales.some((su) => !su.semana) && (
+        <div className={s.hint} style={{ margin: 0 }}>
+          «Solo a la mañana / a la tarde» sale del horario de cada local en Sistema › Horarios.
+          Sin horario cargado ahí: {sucursales.filter((su) => !su.semana).map((su) => su.nombre).join(', ')}.
+        </div>
+      )}
       {borrando && <div className={cx(s.callout, s.warn)}>Se borra el feriado y lo que se anotó de cada sucursal. Tocá «Sí, borrarlo» para confirmar.</div>}
       {error && <div className={cx(s.callout, s.warn)}>{error}</div>}
     </ModalShell>

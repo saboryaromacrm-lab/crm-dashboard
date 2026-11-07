@@ -1,15 +1,18 @@
 /**
- * LOS LOCALES Y SUS HORARIOS (20/10/2026, pedido del dueño): dirección,
- * teléfono y el horario de cada día. Salen en el pie de la tienda y en la
- * ficha de comercio que lee Google («abierto ahora», el mapa). Se guarda con
- * su propio botón, como el cartel de bienvenida.
+ * SISTEMA › HORARIOS: LOS LOCALES Y SUS HORARIOS (20/10/2026, pedido del
+ * dueño): dirección, teléfono y el horario de cada día. Salen en el pie de la
+ * tienda y en la ficha de comercio que lee Google («abierto ahora», el mapa);
+ * la agenda de envíos y los turnos de un feriado («solo a la mañana / a la
+ * tarde») salen de acá. 7/11/2026: se mudó de Tienda online › General a
+ * Sistema (pedido del dueño), con la llave de Feriados. Siguen guardados en la
+ * config web (`locales`), que es donde los lee la tienda.
  *
  * En la config cada día es un texto «08:00-13:00, 17:00-21:00» (vacío =
  * cerrado); acá se edita con relojes: abierto o no, y uno o dos turnos.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
-import { Btn, s } from '@modules/productos/components/ui.jsx';
+import { PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 
 /* Las claves del servidor (DIAS_SEMANA en configuracion.module.ts). */
 const DIAS = [['lun', 'Lunes'], ['mar', 'Martes'], ['mie', 'Miércoles'], ['jue', 'Jueves'], ['vie', 'Viernes'], ['sab', 'Sábado'], ['dom', 'Domingo']];
@@ -72,11 +75,15 @@ function problemaDe(local, n) {
   return null;
 }
 
-export function LocalesEditor({ web, setWeb, avisar }) {
+export function HorariosPanel({ onAviso }) {
+  const [locales, setLocales] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const enVuelo = useRef(false);
-  const locales = web.locales ?? [];
-  const setLocales = (l) => setWeb((w) => ({ ...w, locales: l }));
+  const avisar = (tipo, texto) => onAviso({ tipo, texto });
+  useEffect(() => {
+    httpClient.get('/configuracion/web').then((w) => setLocales(w.locales ?? []))
+      .catch((e) => { setLocales([]); onAviso({ tipo: 'err', texto: e?.data?.message || 'No se pudieron traer los locales.' }); });
+  }, [onAviso]);
   const setCampo = (i, k) => (v) => setLocales(locales.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
   const copiarLunes = (i) => setLocales(locales.map((l, j) => (j === i ? { ...l, ...Object.fromEntries(HABILES.map((d) => [d, l.lun])) } : l)));
 
@@ -88,7 +95,7 @@ export function LocalesEditor({ web, setWeb, avisar }) {
     try {
       const r = await httpClient.put('/configuracion/web', { locales });
       if (r && typeof r === 'object') setLocales(r.locales);
-      avisar('ok', locales.length ? 'Locales y horarios guardados: se ven al recargar la tienda.' : 'Sin locales: la tienda ya no muestra direcciones ni horarios.');
+      avisar('ok', locales.length ? 'Horarios guardados: la tienda los muestra al recargarla.' : 'Sin locales: la tienda ya no muestra direcciones ni horarios.');
     } catch (e) {
       avisar('err', e?.data?.message || 'No se pudieron guardar los locales.');
     } finally {
@@ -103,13 +110,14 @@ export function LocalesEditor({ web, setWeb, avisar }) {
     </div>
   );
 
+  if (!locales) return <div className={s.hint}>Cargando…</div>;
+
   return (
-    <>
-      <div className={s['section-title']}>Locales y horarios</div>
-      <div className={s.hint} style={{ margin: 0 }}>
-        Los locales donde se puede retirar o comprar, con su horario. Aparecen en el pie de la tienda y Google los usa para mostrar
-        la dirección, el mapa y si está abierto. Sin locales cargados, no se muestra nada.
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <PanelHead
+        title="Horarios"
+        desc="Los locales con su dirección y su horario de cada día. Aparecen en el pie de la tienda y Google los usa para mostrar el mapa y si está abierto; los envíos de la tienda y los turnos de un feriado (solo a la mañana o a la tarde) salen de acá."
+      />
       {locales.map((l, i) => (
         <div key={i} className={s.card} style={{ padding: '12px 14px', display: 'grid', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -135,8 +143,8 @@ export function LocalesEditor({ web, setWeb, avisar }) {
       ))}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {locales.length < MAX_LOCALES && <Btn small onClick={() => setLocales([...locales, { ...LOCAL_NUEVO }])}>+ Agregar local</Btn>}
-        <Btn variant="btn-primary" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar locales y horarios'}</Btn>
+        <Btn variant="btn-primary" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar horarios'}</Btn>
       </div>
-    </>
+    </div>
   );
 }

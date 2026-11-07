@@ -26,6 +26,7 @@ import { SISTEMA_SECCIONES } from '../config/sistema.config.js';
 import { EsteEquipoPanel } from './EsteEquipoPanel.jsx';
 import { RespaldosPanel } from './RespaldosPanel.jsx';
 import { FeriadosPanel } from './FeriadosPanel.jsx';
+import { HorariosPanel } from './HorariosPanel.jsx';
 
 /**
  * Los documentos configurables. `etiqueta: true` marca los que van a la
@@ -523,6 +524,7 @@ export function SistemaPage() {
               así que no espera esa carga. */}
           {seccionActiva === 'respaldos' && <RespaldosPanel onAviso={setAviso} />}
           {seccionActiva === 'feriados' && <FeriadosPanel onAviso={setAviso} />}
+          {seccionActiva === 'horarios' && <HorariosPanel onAviso={setAviso} />}
         </div>
       </div>
     </div>
