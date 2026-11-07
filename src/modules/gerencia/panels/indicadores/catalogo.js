@@ -38,7 +38,7 @@ export const INDICADORES = [
   {
     id: 'crecimiento', bloque: 'ventas', nombre: 'Crecimiento de las ventas', formato: 'variacion',
     sentido: 'mayor', objetivo: 2, tolerancia: 2, contra: 'contra el período anterior',
-    que: 'Cuánto más (o menos) se vendió que en el período anterior del mismo largo.',
+    que: 'Cuánto más (o menos) se vendió que en el período con que se compara: el anterior del mismo largo, o el mismo período del mes anterior, según lo elegido arriba.',
     paraQue: 'Es el pulso del negocio. Con inflación, vender lo mismo en pesos es vender menos mercadería: por eso el objetivo tiene que ser, como mínimo, la inflación del período (para un mes, la mensual del INDEC).',
     accion: 'Mirá abajo qué sucursal perdió participación, si faltó mercadería (Stock › por agotarse) y si hubo días cerrados o feriados en el período.',
   },

@@ -9,6 +9,8 @@
  * Cada tarjeta: el valor, contra antes, el objetivo con su semáforo (con ícono
  * y palabra, no solo color) y «¿Qué es y para qué sirve?» desplegable. Los
  * objetivos los cambia solo el superadmin, desde «Editar objetivos».
+ * 7/11/2026: «Contra el mismo período del mes anterior» (del 2 al 7 de noviembre
+ * contra del 2 al 7 de octubre), con cualquier período de arriba.
  */
 import { useMemo, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
@@ -21,6 +23,11 @@ import { Barras, Columnas } from '../metricas/graficos.jsx';
 import { DIAS_SEMANA, MEDIOS, PRESETS, fechaLarga, pctTxt, puntosTxt, rangoDe } from '../metricas/formato.js';
 import { Aviso, Bloque, Cargando, Grilla } from '../metricas/piezas.jsx';
 import { BLOQUES, INDICADORES, semaforo } from './catalogo.js';
+
+/** Contra qué se compara (7/11/2026): los días justo antes, o los mismos días del mes anterior. */
+const COMPARAR = { anterior: 'el período anterior', mes: 'el mismo período del mes anterior' };
+const CONTRA_ANTERIOR = 'contra el período anterior';
+const contraDe = (ind, d) => (ind.contra === CONTRA_ANTERIOR ? `contra ${COMPARAR[d.comparar] ?? COMPARAR.anterior}` : ind.contra);
 
 const varTxt = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${num(v, 1)}%`);
 const pctFmt = (v) => `${num(v, 1)}%`;
@@ -64,9 +71,9 @@ function Tarjeta({ ind, d, objetivo, editando, borrador, setBorrador }) {
       </div>
       <div className={s.hint} style={{ margin: 0 }}>
         {sinAnio ? 'No hay ventas registradas de hace un año para comparar.'
-          : ind.contra ? ind.contra
+          : ind.contra ? contraDe(ind, d)
           : previo != null ? <>Antes: {pctTxt(previo)} · {puntosTxt(valor != null ? valor - previo : null)}</>
-          : ind.previo ? 'Sin datos del período anterior para comparar.' : null}
+          : ind.previo ? `Sin datos de ${COMPARAR[d.comparar] ?? COMPARAR.anterior} para comparar.` : null}
       </div>
       {ind.id === 'granel' && (
         <div className={s.hint} style={{ margin: 0 }}>
@@ -108,7 +115,7 @@ function Repartos({ bloque, d }) {
     return (
       <>
         <Grilla>
-          <Bloque titulo="Participación de cada sucursal" sub="Qué parte de la venta total hace cada local, y cuántos puntos ganó o perdió contra el período anterior">
+          <Bloque titulo="Participación de cada sucursal" sub={`Qué parte de la venta total hace cada local, y cuántos puntos ganó o perdió contra ${COMPARAR[d.comparar] ?? COMPARAR.anterior}`}>
             <Barras datos={d.sucursales.map((x) => ({ clave: x.id, etiqueta: x.nombre, valor: x.pct ?? 0, p: x.puntos }))} formato={pctFmt} sufijo={(x) => (x.p == null ? '' : `· ${puntosTxt(x.p)}`)} />
           </Bloque>
           <Bloque titulo="Medios de pago" sub="Qué parte de lo cobrado entró por cada medio">
@@ -158,7 +165,8 @@ export function IndicadoresPanel() {
   const [manual, setManual] = useState(() => rangoDe('mes-pasado'));
   const [desde, hasta] = preset === 'otro' ? manual : rangoDe(preset);
   const [sucursalId, setSucursalId] = useState('');
-  const qs = `desde=${desde}&hasta=${hasta}${sucursalId ? `&sucursalId=${sucursalId}` : ''}`;
+  const [comparar, setComparar] = useState('anterior');
+  const qs = `desde=${desde}&hasta=${hasta}${sucursalId ? `&sucursalId=${sucursalId}` : ''}${comparar === 'mes' ? '&comparar=mes' : ''}`;
 
   const sucs = useResource('indicadores:sucursales', () => httpClient.get('/indicadores/sucursales'));
   const objs = useResource('indicadores:objetivos', () => httpClient.get('/indicadores/objetivos'));
@@ -232,6 +240,9 @@ export function IndicadoresPanel() {
           <option value="">Todas las sucursales</option>
           {(sucs.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
         </select>
+        <select className={s['select-inline']} value={comparar} onChange={(ev) => setComparar(ev.target.value)} aria-label="Comparar con">
+          {Object.entries(COMPARAR).map(([k, l]) => <option key={k} value={k}>Contra {l}</option>)}
+        </select>
         <span className={s.hint} style={{ margin: 0 }}>{fechaLarga(desde)} → {fechaLarga(hasta)}</span>
       </div>
 
@@ -240,7 +251,7 @@ export function IndicadoresPanel() {
       {d && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-5, 20px)', opacity: loading ? 0.6 : 1 }}>
           <div className={s.hint} style={{ margin: 0 }}>
-            «Contra el período anterior» compara con {fechaLarga(d.anterior.desde)} → {fechaLarga(d.anterior.hasta)}.
+            «Contra {COMPARAR[d.comparar] ?? COMPARAR.anterior}» compara con {fechaLarga(d.anterior.desde)} → {fechaLarga(d.anterior.hasta)}.
             Las ventas son sin IVA y las notas de crédito restan. Los cálculos de stock son con la mercadería de hoy.
           </div>
           {BLOQUES.map((b) => (
