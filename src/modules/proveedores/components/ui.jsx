@@ -8,7 +8,7 @@ export { money, num, fmtFecha, fmtFechaHora } from '@modules/productos/domain/fo
 export { Di, Saldo } from '@modules/gastos/components/ui.jsx';
 
 import { Pill as PillBase, s } from '@modules/productos/components/ui.jsx';
-import { money } from '@modules/productos/domain/format.js';
+import { fmtFecha, money } from '@modules/productos/domain/format.js';
 
 /* Las clases de pill son las del sistema: est-pendiente (ámbar),
  * est-recibida (verde), est-cancelada (rojo), null = neutra. */
@@ -73,4 +73,69 @@ export function EstadoCuentaPill({ estado }) {
   };
   const [pill, label] = map[estado] || [null, estado];
   return <PillBase pill={pill} label={label} />;
+}
+
+/**
+ * Una fila que se tilda (factura, gasto, flete): botón y no checkbox — el CSS
+ * global de formularios le pone ancho completo a todo `input` y un tilde nativo
+ * suelto se estira a 240 px. A la derecha va el importe.
+ */
+export function FilaTilde({ marcado, onClick, disabled = false, valor, children }) {
+  return (
+    <button
+      type="button" onClick={onClick} disabled={disabled}
+      style={{
+        all: 'unset', boxSizing: 'border-box', display: 'flex', alignItems: 'center',
+        gap: 10, width: '100%', padding: '7px 10px', cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        font: 'inherit', fontSize: 13, lineHeight: 1.3, textAlign: 'left',
+        borderBottom: '1px solid var(--crm-color-border)',
+        background: marcado ? 'var(--crm-color-primary-soft)' : 'transparent',
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 16, height: 16, flex: 'none', borderRadius: 4,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 11, fontWeight: 700,
+          border: marcado ? '1.5px solid var(--crm-color-primary)' : '1.5px solid var(--crm-color-border)',
+          background: marcado ? 'var(--crm-color-primary)' : 'transparent',
+          color: 'var(--crm-color-primary-contrast)',
+        }}
+      >
+        {marcado ? '✓' : ''}
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>{children}</span>
+      <span style={{ flex: 'none', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{valor}</span>
+    </button>
+  );
+}
+
+/** La caja con borde y scroll donde van las `FilaTilde`. */
+export const cajaTildes = (alto) => ({
+  maxHeight: alto, overflowY: 'auto', overflowX: 'hidden',
+  border: '1px solid var(--crm-color-border)', borderRadius: 8, marginBottom: 8,
+});
+
+/** Lo que el echeq pendiente cubre de una factura vs. lo ya cubierto por echeqs hechos (7/11/2026). */
+export const echeqsDeFactura = (d) => {
+  const xs = d.echeqs ?? [];
+  const hechos = xs.filter((e) => e.estado !== 'pendiente');
+  const pendientes = xs.filter((e) => e.estado === 'pendiente');
+  const suma = (l) => Math.round(l.reduce((a, e) => a + e.cubre, 0) * 100) / 100;
+  return { hechos, pendientes, cubreHechos: suma(hechos), cubrePendientes: suma(pendientes) };
+};
+
+/** «echeq N° 123 · $X · debita 12/11» o «echeq pendiente de hacer · $X», debajo de la factura. */
+export function EcheqsDeFactura({ d }) {
+  const xs = d.echeqs ?? [];
+  if (!xs.length) return null;
+  return (
+    <span style={{ display: 'block', fontSize: 12, color: 'var(--crm-color-warning)' }}>
+      {xs.map((e) => (e.estado === 'pendiente'
+        ? `echeq pendiente de hacer · ${money(e.cubre)}`
+        : `ya la cubre el echeq N° ${e.numero || e.id} · ${money(e.cubre)} · debita ${fmtFecha(e.fechaVenc)}`)).join(' — ')}
+    </span>
+  );
 }

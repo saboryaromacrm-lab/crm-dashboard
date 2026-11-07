@@ -3,7 +3,10 @@ import { cx } from '@shared/utils/classNames.js';
 import { useProveedores } from '../../context/ProveedoresContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { provApi, MEDIOS_PAGO_REAL } from '../../services/proveedores.api.js';
-import { Btn, ModalShell, money, fmtFecha, s } from '../ui.jsx';
+import {
+  Btn, EcheqsDeFactura, FilaTilde, ModalShell, cajaTildes, echeqsDeFactura, money, fmtFecha, s,
+} from '../ui.jsx';
+import { DatosParaElBanco } from './EcheqsModals.jsx';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '@modules/gastos/components/segundaConfirmacion.jsx';
 import { CuentaPropiaSelect, cuentaDelPago, nombreCuentaElegida, useCuentasPropias } from '@shared/components/CuentaPropiaSelect.jsx';
 
@@ -45,10 +48,18 @@ const CAMBIO = 'cambio';
  *
  * CON UN ECHEQ (28/10/2026, pedido del dueño): no sale plata hoy —el banco la
  * debita en la fecha de cobro—, así que no es un pago. Se abre el echeq con lo
- * tildado y nace cubriendo esas facturas; el pago se registra al cobrarlo.
+ * tildado y nace cubriendo esas facturas; el pago se registra al cobrarlo. Al
+ * elegirlo se ven el CUIT y el correo del proveedor que pide el home banking.
+ *
+ * LA FACTURA QUE YA TIENE ECHEQ (7/11/2026, pedido del dueño: «le pago por
+ * echeq a dos días, no llego a generarlo y le transfiero»). Cada factura dice
+ * si tiene uno. El PENDIENTE de hacer no frena nada: pagarla por otro medio lo
+ * da de baja solo (en parte, queda por lo que falte). El HECHO es un papel en
+ * el banco: pagarla igual es pagar dos veces —cuando se debite, esa plata queda
+ * a cuenta—, y se avisa antes.
  */
 export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], saldo = null, onChange }) {
-  const { ctx, act, closeModal, openModal, toast } = useProveedores();
+  const { ctx, proveedores, act, closeModal, openModal, toast } = useProveedores();
   const [tildados, setTildados] = useState(
     () => Object.fromEntries((preseleccion ?? []).map((k) => [k, true])),
   );
@@ -95,6 +106,9 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
     [docs],
   );
   const sumaElegidos = r2(elegidos.reduce((a, d) => a + d.saldo, 0));
+  /* Las tildadas con echeq: el pendiente se cae solo al pagarlas; el hecho sería pagar dos veces. */
+  const conEcheqPendiente = elegidos.filter((d) => echeqsDeFactura(d).pendientes.length);
+  const conEcheqHecho = elegidos.filter((d) => echeqsDeFactura(d).hechos.length);
   const fletesElegidos = useMemo(() => fletes.filter((f) => fletesTildados[f.id]), [fletes, fletesTildados]);
   const sumaFletes = r2(fletesElegidos.reduce((a, f) => a + f.saldo, 0));
 
@@ -185,11 +199,12 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
   const hacerEcheq = () => {
     if (elegidos.some((d) => d.tipo === 'gasto')) { toast('Un echeq cubre facturas de mercadería: los gastos se pagan con otro medio.', 'err'); return; }
     if (fletesElegidos.length) { toast('Los fletes se descuentan con un pago: destildalos para pagar con echeq.', 'err'); return; }
-    if (!(importe > 0)) { toast(elegidos.length ? 'Los documentos tildados no suman nada.' : 'Poné el importe del echeq.', 'err'); return; }
     openModal('echeq', {
       pagoDe: {
-        proveedorId: proveedor.id, importe,
-        facturas: elegidos.map((d) => ({ comprobanteId: d.docId, etiqueta: d.etiqueta, saldo: d.saldo })),
+        proveedorId: proveedor.id,
+        comprobanteIds: elegidos.map((d) => d.docId),
+        /* Sin facturas tildadas, lo escrito acá (va a cuenta). */
+        ...(elegidos.length ? {} : { importe: r2(importeLibre) }),
       },
       onChange,
     });
@@ -319,54 +334,34 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
       <div className={s['section-title']}>¿Qué se le paga?</div>
       {docs.length ? (
         <>
-          {/* Filas-botón, no checkboxes: el CSS global de formularios le pone
-              ancho completo a todo `input` y un tilde nativo suelto se estira a
-              240 px (misma trampa que la lista de Solicitar pedidos). */}
-          <div
-            style={{
-              maxHeight: 210, overflowY: 'auto', overflowX: 'hidden',
-              border: '1px solid var(--crm-color-border)', borderRadius: 8, marginBottom: 8,
-            }}
-          >
+          <div style={cajaTildes(210)}>
             {docsVista.map((d) => {
               const marcado = !!tildados[claveDoc(d)];
               return (
-                <button
-                  key={claveDoc(d)}
-                  type="button"
-                  onClick={() => alternar(d)}
-                  style={{
-                    all: 'unset', boxSizing: 'border-box', display: 'flex', alignItems: 'center',
-                    gap: 10, width: '100%', padding: '7px 10px', cursor: 'pointer',
-                    font: 'inherit', fontSize: 13, lineHeight: 1.3, textAlign: 'left',
-                    borderBottom: '1px solid var(--crm-color-border)',
-                    background: marcado ? 'var(--crm-color-primary-soft)' : 'transparent',
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    style={{
-                      width: 16, height: 16, flex: 'none', borderRadius: 4,
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 11, fontWeight: 700,
-                      border: marcado ? '1.5px solid var(--crm-color-primary)' : '1.5px solid var(--crm-color-border)',
-                      background: marcado ? 'var(--crm-color-primary)' : 'transparent',
-                      color: 'var(--crm-color-primary-contrast)',
-                    }}
-                  >
-                    {marcado ? '✓' : ''}
-                  </span>
-                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <FilaTilde key={claveDoc(d)} marcado={marcado} onClick={() => alternar(d)} valor={money(d.saldo)}>
+                  <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     <span style={{ fontWeight: marcado ? 600 : 400 }}>{d.etiqueta}</span>
                     <span style={{ opacity: 0.65 }}>{' · '}{fmtFecha(d.fecha)}</span>
                   </span>
-                  <span style={{ flex: 'none', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
-                    {money(d.saldo)}
-                  </span>
-                </button>
+                  <EcheqsDeFactura d={d} />
+                </FilaTilde>
               );
             })}
           </div>
+          {!conEcheq && conEcheqPendiente.length > 0 && (
+            <div className={s.callout}>
+              {conEcheqPendiente.map((d) => d.etiqueta).join(', ')} {conEcheqPendiente.length === 1 ? 'tiene' : 'tienen'} un
+              {' '}<strong>echeq pendiente de hacer</strong>. Si la pagás así, ese echeq <strong>se da de baja solo</strong> y no
+              hay que hacerlo (si la pagás en parte, queda por lo que falte).
+            </div>
+          )}
+          {conEcheqHecho.length > 0 && (
+            <div className={cx(s.callout, s.warn)}>
+              <strong>Ojo, pagarías dos veces:</strong> {conEcheqHecho.map((d) => `${d.etiqueta} ya la cubre ${echeqsDeFactura(d).hechos.map((e) => `el echeq N° ${e.numero || e.id} por ${money(e.cubre)}`).join(' y ')}`).join('; ')}.
+              {' '}{conEcheq ? 'Este echeq cubre solo lo que le falte.'
+                : 'Si igual la pagás, cuando el banco debite ese echeq la plata queda a cuenta del proveedor. Si no lo vas a usar, anulalo en el banco y en Proveedores › Echeqs.'}
+            </div>
+          )}
           {mezcla && (
             <div className={cx(s.callout, s.warn)}>
               Tildaste una <strong>factura de mercadería</strong> y un <strong>gasto</strong> a la vez.
@@ -388,44 +383,15 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
             Plata que la cajera le adelantó al fletero <strong>por cuenta de este proveedor</strong>.
             Tildalos para restarlos de lo que hay que transferir: la factura igual queda saldada.
           </div>
-          <div
-            style={{
-              maxHeight: 150, overflowY: 'auto', overflowX: 'hidden',
-              border: '1px solid var(--crm-color-border)', borderRadius: 8, marginBottom: 8,
-            }}
-          >
+          <div style={cajaTildes(150)}>
             {fletes.map((f) => {
               const marcado = !!fletesTildados[f.id];
               return (
-                <button
-                  key={f.id}
-                  type="button"
+                <FilaTilde
+                  key={f.id} marcado={marcado} disabled={!elegidos.length} valor={`− ${money(f.saldo)}`}
                   onClick={() => setFletesTildados((m) => ({ ...m, [f.id]: !m[f.id] }))}
-                  disabled={!elegidos.length}
-                  style={{
-                    all: 'unset', boxSizing: 'border-box', display: 'flex', alignItems: 'center',
-                    gap: 10, width: '100%', padding: '7px 10px',
-                    cursor: elegidos.length ? 'pointer' : 'not-allowed',
-                    opacity: elegidos.length ? 1 : 0.5,
-                    font: 'inherit', fontSize: 13, lineHeight: 1.3, textAlign: 'left',
-                    borderBottom: '1px solid var(--crm-color-border)',
-                    background: marcado ? 'var(--crm-color-primary-soft)' : 'transparent',
-                  }}
                 >
-                  <span
-                    aria-hidden
-                    style={{
-                      width: 16, height: 16, flex: 'none', borderRadius: 4,
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 11, fontWeight: 700,
-                      border: marcado ? '1.5px solid var(--crm-color-primary)' : '1.5px solid var(--crm-color-border)',
-                      background: marcado ? 'var(--crm-color-primary)' : 'transparent',
-                      color: 'var(--crm-color-primary-contrast)',
-                    }}
-                  >
-                    {marcado ? '✓' : ''}
-                  </span>
-                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     <span style={{ fontWeight: marcado ? 600 : 400 }}>Flete</span>
                     <span style={{ opacity: 0.65 }}>
                       {' · '}{fmtFecha(f.fecha)}
@@ -433,10 +399,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
                       {f.sucursalNombre ? ` · ${f.sucursalNombre}` : ''}
                     </span>
                   </span>
-                  <span style={{ flex: 'none', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
-                    − {money(f.saldo)}
-                  </span>
-                </button>
+                </FilaTilde>
               );
             })}
           </div>
@@ -508,10 +471,12 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
             <option value="echeq">Con un echeq (se debita después)</option>
           </select>
           {conEcheq && (
-            <div className={s.hint} style={{ margin: '6px 0 0' }}>
-              Hoy no sale plata: se hace el echeq por {money(importe)}
-              {elegidos.length ? ', cubriendo lo tildado,' : ' (a cuenta),'} y el pago se registra cuando el banco lo debita.
-            </div>
+            <>
+              <div className={s.hint} style={{ margin: '6px 0 0' }}>
+                Hoy no sale plata: se hace el echeq{elegidos.length ? ' cubriendo lo tildado' : ' (a cuenta)'} y el pago se registra cuando el banco lo debita.
+              </div>
+              <DatosParaElBanco prov={proveedores.find((p) => p.id === proveedor.id) ?? proveedor} />
+            </>
           )}
         </div>
         {modo === 'simple' && (

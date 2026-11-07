@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { errorMsg, provApi } from '../services/proveedores.api.js';
@@ -103,11 +103,14 @@ function ComprometidoPorMes({ porMes = [] }) {
 
 /**
  * ECHEQS — la cartera propia. Nacen con la factura del proveedor que cobra
- * así o a mano. El de la factura espera PENDIENTE DE CONFIRMAR (0204): se
- * confirma con los datos del papel, o «No lo hice» y la deuda vuelve a
- * Cuentas corrientes. «Facturas» lo imputa a una o varias (0205). "Cobrar" es
- * EL momento contable: crea el pago real, lo aplica a sus facturas y lo que
- * sobra queda a cuenta.
+ * así o con «Pagar con echeq» (proveedor y facturas en el mismo paso). El de
+ * la factura espera PENDIENTE DE CONFIRMAR (0204), con tres salidas
+ * (7/11/2026, pedido del dueño): «Hacer el echeq» (con el CUIT y el correo
+ * para el home banking, y sus datos), «Pagar de otra forma» (el pago de
+ * siempre con su factura tildada: al pagarla, el pendiente se da de baja solo)
+ * o «No lo hice» (la deuda vuelve a Cuentas corrientes). «Facturas» imputa uno
+ * hecho a una o varias (0205). "Cobrar" es EL momento contable: crea el pago
+ * real, lo aplica a sus facturas y lo que sobra queda a cuenta.
  */
 export function EcheqsPanel() {
   const { openModal, toast, recargarContadores } = useProveedores();
@@ -121,6 +124,19 @@ export function EcheqsPanel() {
   const { data: stats, reload: reloadStats } = useResource('echeqs-stats', provApi.statsEcheqs);
 
   const refrescar = () => { reload(); reloadStats(); recargarContadores(); };
+  const abriendoPago = useRef(false);
+  /* «Pagar de otra forma»: «Pagarle» con las facturas del pendiente ya tildadas. */
+  const pagarDeOtraForma = async (e) => {
+    if (abriendoPago.current) return;
+    abriendoPago.current = true;
+    try {
+      const d = await provApi.edocProveedor(e.proveedorId);
+      const preseleccion = e.facturas.map((x) => `comprobante-${x.comprobanteId}`);
+      openModal('pagoProveedor', { proveedor: d.proveedor, docs: d.docsPendientes ?? [], preseleccion, saldo: d.saldo, onChange: refrescar });
+    } catch (err) {
+      toast(errorMsg(err), 'err');
+    } finally { abriendoPago.current = false; }
+  };
   const cambiarEstado = async (e, estado, aviso) => {
     if (estado === 'cobrado') {
       if (!window.confirm(`¿El banco debitó el echeq ${e.numero}? Esto registra el pago real al proveedor.`)) return;
@@ -148,8 +164,8 @@ export function EcheqsPanel() {
     <div>
       <PanelHead
         title="Echeqs propios"
-        desc="La cartera de echeqs propios. El que nace de una factura queda pendiente hasta que lo confirmes con sus datos reales. Con «Facturas» uno hecho cubre una o varias. Cobrarlo registra el pago de verdad, imputado a sus facturas; lo que sobra queda a cuenta."
-        actions={<Btn variant="btn-primary" onClick={() => openModal('echeq', { onChange: refrescar })}>+ Echeq</Btn>}
+        desc="La cartera de echeqs propios. El que nace de una factura queda pendiente hasta que lo hagas (o la pagues de otra forma). Con «Facturas» uno hecho cubre una o varias. Cobrarlo registra el pago de verdad, imputado a sus facturas; lo que sobra queda a cuenta."
+        actions={<Btn variant="btn-primary" onClick={() => openModal('echeq', { onChange: refrescar })}>+ Pagar con echeq</Btn>}
       />
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -191,7 +207,7 @@ export function EcheqsPanel() {
                 {e.aNombreDe}
                 {!e.proveedorId && <div className={s.hint} style={{ margin: 0 }}>no es proveedor</div>}
               </td>
-              <td>{fmtFecha(e.fechaVenc)} {activo && <VencePill dias={e.diasRest} />}<Plazo e={e} /></td>
+              <td>{fmtFecha(e.fechaVenc)} {(activo || pendiente) && <VencePill dias={e.diasRest} />}<Plazo e={e} /></td>
               <td className={s.num}>{money(e.importe)}</td>
               <td><EcheqCubre e={e} /></td>
               <td><EstadoEcheqPill estado={e.estado} dias={e.diasRest} /></td>
@@ -199,8 +215,13 @@ export function EcheqsPanel() {
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                   {pendiente && (
                     <>
-                      <Btn small variant="btn-primary" onClick={() => openModal('confirmarEcheq', { echeq: e, onChange: refrescar })}>Confirmar</Btn>
-                      <Btn small onClick={() => noSeHizo(e)}>No lo hice</Btn>
+                      <Btn small variant="btn-primary" onClick={() => openModal('confirmarEcheq', { echeq: e, onChange: refrescar })}>Hacer el echeq</Btn>
+                      {e.proveedorId && e.facturas.length > 0 && (
+                        <Btn small onClick={() => pagarDeOtraForma(e)} title="Transferencia u otro medio: al pagar la factura, este pendiente se da de baja solo">
+                          Pagar de otra forma
+                        </Btn>
+                      )}
+                      <Btn small onClick={() => noSeHizo(e)} title="La deuda vuelve a Cuentas corrientes">No lo hice</Btn>
                     </>
                   )}
                   {activo && (
