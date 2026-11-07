@@ -40,7 +40,7 @@ export const mesActual = (d = new Date()) => `${d.getFullYear()}-${String(d.getM
 
 /* ------------------------------ sumar ------------------------------ */
 
-const GRUPOS = ['variables', 'fijos', 'financieros', 'sueldosPor'];
+const GRUPOS = ['variables', 'fijos', 'financieros', 'sueldosPor', 'descuentosPor'];
 /** Todos los números de una columna, en cero: un local sin nada en el mes da cero, no «vacío». */
 const CEROS = Object.fromEntries([
   'ventasLista', 'descuentos', 'notasCredito', 'cargos', 'cmv', 'mermas', 'ajustesStock', 'iibb', 'municipalidad',
@@ -51,7 +51,7 @@ const CEROS = Object.fromEntries([
 
 /** Suma objetos de hechos/cascada: los números campo a campo y los rubros por id. */
 export function sumar(lista) {
-  const out = { variables: {}, fijos: {}, financieros: {}, sueldosPor: {} };
+  const out = { variables: {}, fijos: {}, financieros: {}, sueldosPor: {}, descuentosPor: {} };
   for (const x of lista) {
     if (!x) continue;
     for (const [k, v] of Object.entries(x)) {
@@ -90,7 +90,7 @@ export function columna(datos, meses, balde = null) {
  */
 export const RENGLONES = [
   { id: 'ventasLista', texto: 'Ventas a precio de lista', valor: (v) => N(v.ventasLista), siempre: true },
-  { id: 'descuentos', texto: 'Descuentos y ofertas', valor: (v) => -N(v.descuentos) },
+  { id: 'descuentos', texto: 'Descuentos y ofertas', valor: (v) => -N(v.descuentos), grupo: 'descuentosPor' },
   { id: 'notasCredito', texto: 'Devoluciones y notas de crédito', valor: (v) => -N(v.notasCredito) },
   { id: 'cargos', texto: 'Envíos y otros cargos cobrados', valor: (v) => N(v.cargos) },
   /* 5/11/2026: el IVA de lo vendido sin factura no se paga: es parte del precio que queda en la casa. */
@@ -149,6 +149,24 @@ export function notaEmpleado(e, sucursales = []) {
 const sumaGrupo = (o) => Object.values(o ?? {}).reduce((a, x) => a + N(x), 0);
 
 /**
+ * CADA DESCUENTO CON SU NOMBRE (7/11/2026, pedido del dueño): las claves con
+ * que la API abre «Descuentos y ofertas» (ver crm-api resultados/datos.ts),
+ * como [texto, nota].
+ */
+const FIJOS_DESCUENTO = {
+  pisado: ['Precio cambiado a mano', 'cobrado distinto del precio de lista'],
+  mano: ['Del cliente o puesto a mano', 'el % del cliente o el que tipeó el vendedor'],
+  redondeo: ['Redondeos', ''],
+};
+const TIPOS_DESCUENTO = { nombre: 'descuento con nombre', oferta: 'oferta', cupon: 'cupón de la tienda' };
+export function nombreDescuento(clave) {
+  if (FIJOS_DESCUENTO[clave]) return FIJOS_DESCUENTO[clave];
+  const i = clave.indexOf(':');
+  const tipo = clave.slice(0, i);
+  return [`${tipo === 'cupon' ? 'Cupón ' : ''}${clave.slice(i + 1)}`, TIPOS_DESCUENTO[tipo] ?? ''];
+}
+
+/**
  * Los renglones a mostrar para unas columnas: sin los que dan cero en todas
  * (salvo `siempre` y los subtotales), con el detalle por rubro de los grupos
  * abiertos, y sin Ganancias/neto si ninguna columna es la empresa entera.
@@ -159,11 +177,15 @@ export function renglones(columnas, rubros = [], abiertos = new Set(), { emplead
   /* Sueldos se abren por empleado (`e<id>`) o, sin planilla, por rubro de Gastos (`r<id>`) (4/11/2026). */
   const empleado = (id) => empleados.find((e) => `e${e.id}` === id);
   const nombreDe = (grupo, id) => {
+    if (grupo === 'descuentosPor') return nombreDescuento(id)[0];
     if (grupo !== 'sueldosPor') return nombreRubro(id);
     if (id.startsWith('r')) return nombreRubro(id.slice(1));
     return empleado(id)?.nombre ?? `Empleado ${id.slice(1)}`;
   };
-  const notaDe = (grupo, id) => (grupo === 'sueldosPor' && empleado(id) ? notaEmpleado(empleado(id), sucursales) : '');
+  const notaDe = (grupo, id) => {
+    if (grupo === 'descuentosPor') return nombreDescuento(id)[1];
+    return grupo === 'sueldosPor' && empleado(id) ? notaEmpleado(empleado(id), sucursales) : '';
+  };
   const out = [];
   for (const def of RENGLONES) {
     if (def.soloEmpresa && !empresa) continue;

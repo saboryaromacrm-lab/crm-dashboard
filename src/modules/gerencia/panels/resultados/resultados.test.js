@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  armarColumnas, baldesDe, columna, cumplimiento, indicadores, mesesEntre, nombreMes, objetivoDe, origenDe, renglones, sobreVentas,
+  armarColumnas, baldesDe, columna, cumplimiento, indicadores, mesesEntre, nombreDescuento, nombreMes, objetivoDe, origenDe, renglones, sobreVentas,
   sumarMeses, textoOrigen, variacion,
 } from './resultados.js';
 
@@ -132,4 +132,22 @@ test('el IVA de lo vendido sin factura es un renglón de las ventas, antes de la
   assert.deepEqual(fila.valores, [84]);
   assert.ok(ids.indexOf('ivaSinFactura') < ids.indexOf('ventasNetas'));
   assert.equal(renglones([{ ventasLista: 1000, ventasNetas: 1000 }]).some((x) => x.id === 'ivaSinFactura'), false, 'en cero no se muestra');
+});
+
+test('descuentos: el renglón se abre con cada uno por su nombre, el mayor primero', () => {
+  const col = {
+    ventasLista: 1000, descuentos: 180, ventasNetas: 820,
+    descuentosPor: { 'oferta:3x2 galletitas': 100, 'nombre:Empleados': 50, mano: 20, 'cupon:BIENVENIDA': 12, pisado: -2 },
+  };
+  const r = renglones([col], [], new Set(['descuentos']));
+  const i = r.findIndex((x) => x.id === 'descuentos');
+  assert.ok(r[i].abrible);
+  assert.deepEqual(r.slice(i + 1, i + 6).map((x) => [x.texto, x.nota, x.valores[0]]), [
+    ['3x2 galletitas', 'oferta', -100],
+    ['Empleados', 'descuento con nombre', -50],
+    ['Del cliente o puesto a mano', 'el % del cliente o el que tipeó el vendedor', -20],
+    ['Cupón BIENVENIDA', 'cupón de la tienda', -12],
+    ['Precio cambiado a mano', 'cobrado distinto del precio de lista', 2],
+  ]);
+  assert.deepEqual(nombreDescuento('nombre:Promo: 10%'), ['Promo: 10%', 'descuento con nombre'], 'el nombre puede tener dos puntos');
 });
