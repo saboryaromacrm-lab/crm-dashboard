@@ -352,7 +352,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
             <div className={s.callout}>
               {conEcheqPendiente.map((d) => d.etiqueta).join(', ')} {conEcheqPendiente.length === 1 ? 'tiene' : 'tienen'} un
               {' '}<strong>echeq pendiente de hacer</strong>. Si la pagás así, ese echeq <strong>se da de baja solo</strong> y no
-              hay que hacerlo (si la pagás en parte, queda por lo que falte).
+              hay que hacerlo. Si la pagás en parte, baja a lo que falte (con varias cuotas, se descuenta primero del que vence antes).
             </div>
           )}
           {conEcheqHecho.length > 0 && (

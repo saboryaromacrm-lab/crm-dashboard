@@ -113,10 +113,12 @@ export function EcheqModal({ echeq, pagoDe, onChange }) {
     setImporteAMano(false);
   };
 
-  const { data: docs } = useResource(`facturas-impagas:${prov?.id}`, () => provApi.facturasImpagas(prov.id), { enabled: !!prov });
+  const { data, loading, error } = useResource(`facturas-impagas:${prov?.id}`, () => provApi.facturasImpagas(prov.id), { enabled: !!prov });
+  /* Mientras carga las de otro proveedor no se muestran las del anterior: se tildarían facturas ajenas. */
+  const docs = loading ? null : data;
   /* Lo que el echeq todavía puede cubrir de cada una: lo que debe menos lo que ya cubren echeqs hechos. */
   const facturas = (docs ?? []).filter((d) => d.tipo === 'comprobante')
-    .map((d) => ({ ...d, libre: r2(d.saldo - echeqsDeFactura(d).cubreHechos) }));
+    .map((d) => ({ ...d, libre: Math.max(0, r2(d.saldo - echeqsDeFactura(d).cubreHechos)) }));
   const elegidas = facturas.filter((d) => tildadas.has(d.docId));
   const sumaLibre = r2(elegidas.reduce((a, d) => a + d.libre, 0));
   const importe = editando || importeAMano ? r2(f.importe) : sumaLibre;
@@ -187,10 +189,17 @@ export function EcheqModal({ echeq, pagoDe, onChange }) {
           <DatosParaElBanco prov={prov} />
         </div>
       )}
+      {!aProveedor && (
+        <div className={s.field}>
+          <label>A nombre de</label>
+          <input value={f.destinatario} onChange={set('destinatario')} maxLength={120} placeholder="Ej.: Juan Pérez (alquiler)" autoFocus />
+        </div>
+      )}
       {prov && (
         <div className={s.field}>
           <label>¿Qué facturas paga?</label>
-          {!docs ? <div className={s.hint} style={{ margin: 0 }}>Cargando sus facturas…</div>
+          {error ? <div className={s.hint} style={{ margin: 0 }}>No se pudieron traer sus facturas: {error}</div>
+            : !docs ? <div className={s.hint} style={{ margin: 0 }}>Cargando sus facturas…</div>
             : !facturas.length ? <div className={s.hint} style={{ margin: 0 }}>No le debés ninguna factura: el echeq queda a cuenta y se imputa después con «Facturas».</div>
               : (
                 <div style={cajaTildes(220)}>
