@@ -57,7 +57,7 @@ export const GERENCIA_SECCIONES = [
     /* 5/11/2026: sale de Resultados › Configuración a su propio botón (pedido
      * del dueño). Misma llave que Resultados: solo el superadmin. */
     id: 'gastosfijos', label: 'Gastos fijos y sueldos', icon: RequestQuoteIcon, permiso: 'gerencia.resultados',
-    desc: 'Lo fijo de cada local, cuánto tiene que vender para cubrirlo, y la carga de gastos fijos, sueldos y bienes de uso.',
+    desc: 'Lo fijo de cada local, cuánto tiene que vender para cubrirlo, y la carga de gastos fijos, sueldos y bienes de uso, y los adelantos de sueldo.',
   },
   {
     /* 4/10/2026 (0133): la caja central de efectivo físico del dueño — los
