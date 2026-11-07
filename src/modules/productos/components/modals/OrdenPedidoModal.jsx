@@ -236,8 +236,10 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
 
   /*
    * ANOTAR EN PROVEEDORES › PEDIDOS, una vez por orden: la primera copia o
-   * envío crea la tarjeta; las siguientes, si el pedido cambió, le actualizan
-   * la nota. En fila, para que dos clics seguidos no creen dos tarjetas.
+   * envío anota el pedido; las siguientes, si cambió, le actualizan la nota.
+   * En fila, para que dos clics seguidos no anoten dos veces. Si el proveedor
+   * ya tenía su tarjeta (en Solicitado, por ejemplo), es esa (0223): pasa a
+   * Pedido y lo que ya decía queda arriba (`antes`), también al actualizar.
    */
   const anotar = (aviso) => {
     if (!puedeAnotar || !proveedor) { toast(aviso, 'ok'); return; }
@@ -246,11 +248,14 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
     cola.current = cola.current.then(async () => {
       const previo = anotado.current?.provId === pid ? anotado.current : null;
       if (previo?.notas === texto) { toast(aviso, 'ok'); return; }
-      const r = await store.anotarPedidoProveedor(previo?.id ?? null, pid, texto);
+      const r = await store.anotarPedidoProveedor(previo?.id ?? null, pid, (previo?.antes ?? '') + texto);
       if (!r.ok) { toast(`${aviso} Pero no quedó anotado en Proveedores › Pedidos: ${r.error}`, 'err'); return; }
-      anotado.current = { id: r.data?.id ?? previo?.id, provId: pid, notas: texto };
+      const final = r.data?.notas ?? texto;
+      const antes = final.endsWith(texto) ? final.slice(0, final.length - texto.length) : '';
+      anotado.current = { id: r.data?.id ?? previo?.id, provId: pid, notas: texto, antes };
       setAnotadoVisto(true);
-      toast(`${aviso} ${previo ? 'Se actualizó' : 'Quedó anotado'} en Proveedores › Pedidos.`, 'ok');
+      const donde = previo ? 'Se actualizó' : r.data?.yaEstaba ? 'Se sumó a la tarjeta que ya tenía' : 'Quedó anotado';
+      toast(`${aviso} ${donde} en Proveedores › Pedidos.`, 'ok');
     });
   };
 

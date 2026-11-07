@@ -73,14 +73,14 @@ export function ProveedoresProvider({ children, panels = [], defaultPanel }) {
   const toast = useCallback((msg, kind = 'ok') => setToastState({ open: true, msg, kind }), []);
   const closeToast = useCallback(() => setToastState((t) => ({ ...t, open: false })), []);
 
-  /** Mutación + feedback unificado (mismo contrato que el resto del sistema). */
+  /** Mutación + feedback unificado (mismo contrato que el resto del sistema). `okMsg` puede ser una función de la respuesta. */
   const act = useCallback(
     async (promesa, okMsg, { recargar = false, alConflicto = null } = {}) => {
       try {
         const res = await promesa;
         if (recargar) await cargar();
         else await cargarContadores();
-        toast(okMsg || 'Listo.', 'ok');
+        toast((typeof okMsg === 'function' ? okMsg(res) : okMsg) || 'Listo.', 'ok');
         closeModal();
         return res ?? true;
       } catch (e) {

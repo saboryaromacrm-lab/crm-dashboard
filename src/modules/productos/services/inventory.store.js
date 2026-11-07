@@ -1106,7 +1106,8 @@ const resolverIncidencia = (id, resolucion, contado) => _mutate(() => httpClient
   contado === undefined ? { resolucion } : { resolucion, contado }));
 /**
  * La orden de pedido queda anotada en Proveedores › Pedidos (12/10/2026): la
- * primera vez nace la tarjeta en «Pedido»; después se le actualiza la nota.
+ * primera vez nace la tarjeta en «Pedido» (o pasa ahí la que el proveedor ya
+ * tenía, 0223); después se le actualiza la nota.
  */
 const anotarPedidoProveedor = async (pedidoId, proveedorId, notas) => {
   const r = await _directo(() => (pedidoId

@@ -29,9 +29,12 @@ export function SolicitarPedidosModal({ onChange, directo = false }) {
   const guardar = async () => {
     if (!ids.length) { toast('Tildá al menos un proveedor.', 'err'); return; }
     if (directo && ids.length !== 1) { toast('El pedido ya hecho es de UN proveedor.', 'err'); return; }
+    /* Una sola tarjeta abierta por proveedor (0223): el que ya está en el tablero usa la suya. */
     const res = directo
-      ? await act(provApi.pedidoDirecto({ proveedorId: ids[0], notas: notas.trim() }), 'Pedido registrado en la columna Pedido.')
-      : await act(provApi.solicitarPedidos({ proveedorIds: ids, notas: notas.trim() }), `${ids.length} tarjeta(s) en Solicitado.`);
+      ? await act(provApi.pedidoDirecto({ proveedorId: ids[0], notas: notas.trim() }),
+        (r) => (r?.yaEstaba ? 'Ya tenía su tarjeta en el tablero: pasó a Pedido con la nota sumada.' : 'Pedido registrado en la columna Pedido.'))
+      : await act(provApi.solicitarPedidos({ proveedorIds: ids, notas: notas.trim() }),
+        (r) => [r?.creados ? `${r.creados} tarjeta(s) en Solicitado.` : '', r?.yaEstaban ? `${r.yaEstaban} ya estaba(n) en el tablero.` : ''].filter(Boolean).join(' '));
     if (res) onChange?.();
   };
 
