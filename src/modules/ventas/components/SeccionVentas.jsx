@@ -1,6 +1,7 @@
 import { cx } from '@shared/utils/classNames.js';
 import { VentasProvider, useVentas } from '../context/VentasContext.jsx';
 import { AvisoVentas } from './AvisoVentas.jsx';
+import { ModalHost } from './ModalHost.jsx';
 import { s } from './ui.jsx';
 
 function Contenido({ children }) {
@@ -10,6 +11,7 @@ function Contenido({ children }) {
   return (
     <>
       {children}
+      <ModalHost />
       <AvisoVentas />
     </>
   );
@@ -19,7 +21,9 @@ function Contenido({ children }) {
  * UNA SECCIÓN DE VENTAS EN OTRO MÓDULO (25/10/2026): los pedidos y los
  * presupuestos de la tienda viven en Tienda online, pero son de Ventas —
  * clientes, usuarios, configuración y avisos salen de su contexto—. Esto les
- * da ese contexto y su aviso, sin el menú de Ventas.
+ * da ese contexto, sus ventanas y su aviso, sin el menú de Ventas.
+ * 7/11/2026: con sus ventanas — sin el ModalHost, tocar una venta de la tienda
+ * no abría el detalle («que acá pueda abrir la venta así veo qué compraron»).
  */
 export function SeccionVentas({ children }) {
   return (
