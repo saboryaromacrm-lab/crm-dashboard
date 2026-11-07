@@ -5,6 +5,7 @@ import { errorMsg, provApi } from '../services/proveedores.api.js';
 import {
   Btn, EcheqCubre, EstadoEcheqPill, PanelHead, Stat, Table, VencePill, fmtFecha, money, s,
 } from '../components/ui.jsx';
+import { isoDate } from '@modules/productos/domain/format.js';
 
 const FILTROS = [
   ['activos', 'Activos'], ['pendientes', 'Pendientes de confirmar'], ['vencidos', 'Vencidos'], ['semana', 'Esta semana'],
@@ -19,6 +20,24 @@ const nombreMes = (mes) => {
   return t.charAt(0).toUpperCase() + t.slice(1);
 };
 const cuantos = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+/** Días de calendario de una fecha a otra (a mediodía: sin corrimientos de huso). */
+const diasEntre = (a, b) => Math.round((Date.parse(`${isoDate(b)}T12:00:00`) - Date.parse(`${isoDate(a)}T12:00:00`)) / 86_400_000);
+
+/**
+ * DE QUÉ FECHA A QUÉ FECHA (7/11/2026, pedido del dueño): desde la emisión
+ * —en el pendiente, la fecha de la factura que lo creó— hasta que debita, y
+ * cuántos días son.
+ */
+function Plazo({ e }) {
+  if (!e.fechaEmision) return null;
+  const dias = diasEntre(e.fechaEmision, e.fechaVenc);
+  return (
+    <div className={s.hint} style={{ margin: 0 }} title={e.estado === 'pendiente' ? 'Desde la fecha de la factura' : 'Desde la fecha de emisión'}>
+      {e.estado === 'pendiente' ? 'Factura del' : 'Del'} {fmtFecha(e.fechaEmision)} al {fmtFecha(e.fechaVenc)}
+      {dias >= 0 && ` · ${cuantos(dias, 'día', 'días')}`}
+    </div>
+  );
+}
 
 /**
  * COMPROMETIDO POR MES (28/10/2026, pedido del dueño): lo que va a debitar cada
@@ -172,7 +191,7 @@ export function EcheqsPanel() {
                 {e.aNombreDe}
                 {!e.proveedorId && <div className={s.hint} style={{ margin: 0 }}>no es proveedor</div>}
               </td>
-              <td>{fmtFecha(e.fechaVenc)} {activo && <VencePill dias={e.diasRest} />}</td>
+              <td>{fmtFecha(e.fechaVenc)} {activo && <VencePill dias={e.diasRest} />}<Plazo e={e} /></td>
               <td className={s.num}>{money(e.importe)}</td>
               <td><EcheqCubre e={e} /></td>
               <td><EstadoEcheqPill estado={e.estado} dias={e.diasRest} /></td>
