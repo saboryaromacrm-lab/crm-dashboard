@@ -10,7 +10,7 @@ import { GastosFijosEmbebido } from '@modules/gastos/pages/FijosEmbebido.jsx';
  * un botón solo en el side de gerencia»). Antes era la primera parte de
  * Resultados › Configuración; es la misma pantalla, mudada: arriba lo fijo de
  * cada local con su venta necesaria y abajo gastos fijos, sueldos y bienes de
- * uso. Misma llave que Resultados (solo el superadmin).
+ * uso. Misma llave que Resultados.
  *
  * 6/11/2026: pestaña «Adelantos» con los adelantos de sueldo del período.
  */

@@ -2,7 +2,7 @@
  * GERENCIA › MÉTRICAS (0122, 29/9/2026)
  * ============================================================================
  * El tablero del dueño: ventas en el tiempo, rentabilidad de lo vendido,
- * proveedores y listas, y stock que rota o está parado. Solo el superadmin.
+ * proveedores y listas, y stock que rota o está parado. Llave `gerencia.metricas`.
  *
  * La pantalla no calcula nada pesado: la API lee tablas resumen que se
  * mantienen solas cada 10 minutos (ver `crm-api/src/metricas`). Arriba se ve

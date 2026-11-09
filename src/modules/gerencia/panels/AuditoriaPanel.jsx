@@ -4,7 +4,7 @@
  * «Quién hizo qué»: ventas anuladas, notas de crédito, precios y descuentos a
  * mano, ajustes de stock, diferencias de caja, otras anulaciones y los cambios
  * en el sistema (usuarios, roles, permisos, sucursales…), por persona y con
- * tres llamados de atención con reglas a la vista. Solo el superadmin.
+ * tres llamados de atención con reglas a la vista. Llave `gerencia.auditoria`.
  *
  * Todo lo arma la API en una sola lectura (`GET /auditoria/gerencia`, ver
  * crm-api/src/auditoria/gerencia.ts): período, local, persona y tipo van al

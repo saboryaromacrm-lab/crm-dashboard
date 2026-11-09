@@ -5,7 +5,7 @@
  * control a mitad de turno en Ventas › Caja— el dueño ve la diferencia y, si
  * le parece mucha, tilda «Mandar a Cajas a controlar». Si no tilda nada, quedó
  * todo bien. Con la diferencia por encima de su límite el tilde viene puesto
- * (lo puede sacar). Solo el superadmin: la llave del Cash Flow.
+ * (lo puede sacar). Va con la llave del Cash Flow.
  *
  * Acá viven el tilde (`TildeControlar`, con su estado en `tildeControlar.js`)
  * y la lista con «Resolver» (`CajasAControlar`). La lógica del servidor está

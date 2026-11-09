@@ -8,7 +8,7 @@ import { resultadosApi } from './resultados.api.js';
 import { mesActual, nombreMes, pct, pesos, r2 } from './resultados.js';
 
 /**
- * IMPUESTOS, RUBROS Y GANANCIAS (0152, solo superadmin): las reglas con que se
+ * IMPUESTOS, RUBROS Y GANANCIAS (0152, llave de Resultados): las reglas con que se
  * arma el estado de resultados. Cada tasa con «vigente desde» (un cambio no
  * reescribe los meses viejos). Todo lo que se cambia queda en Auditoría.
  *

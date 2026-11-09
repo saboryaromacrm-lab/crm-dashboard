@@ -3,8 +3,9 @@
  * ============================================================================
  * `permiso` es la clave de SECCIÓN: el manifiesto deriva de acá qué claves
  * hacen visible el módulo, y la página filtra el sub-menú con las mismas.
- * Métricas, Resultados, Cash Flow, Asesor y Auditoría usan llaves que no están en el catálogo de
- * permisos, así que no se asignan a ningún rol: solo el superadmin.
+ * 9/11/2026: todas las llaves están en el catálogo de permisos (antes Métricas,
+ * Resultados, Cash Flow, Asesor y Auditoría eran solo del superadmin).
+ * Resultados y Gastos fijos y sueldos comparten la llave.
  *
  * 8/10/2026 (0144): salieron «Reportes de ventas», «Valorización de stock» y
  * «Configuración», que nunca se construyeron porque Métricas, Almacén › Sin
@@ -24,8 +25,8 @@ import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
 export const GERENCIA_SECCIONES = [
   {
     /* 5/11/2026 (pedido del dueño): los números que hay que mirar, explicados,
-     * por mes o por semana. Misma llave que Resultados: solo el superadmin. */
-    id: 'vista', label: 'Vista profesional', icon: SpaceDashboardIcon, permiso: 'gerencia.resultados',
+     * por mes o por semana. Llave propia desde el 9/11/2026. */
+    id: 'vista', label: 'Vista profesional', icon: SpaceDashboardIcon, permiso: 'gerencia.vista',
     desc: 'Cómo le va al negocio y dónde está la plata, por mes o por semana, con gráficos y explicado.',
   },
   { id: 'usuarios', label: 'Usuarios y roles', icon: GroupIcon, permiso: 'gerencia.usuarios' },
@@ -55,7 +56,7 @@ export const GERENCIA_SECCIONES = [
   },
   {
     /* 5/11/2026: sale de Resultados › Configuración a su propio botón (pedido
-     * del dueño). Misma llave que Resultados: solo el superadmin. */
+     * del dueño). Misma llave que Resultados. */
     id: 'gastosfijos', label: 'Gastos fijos y sueldos', icon: RequestQuoteIcon, permiso: 'gerencia.resultados',
     desc: 'Lo fijo de cada local, cuánto tiene que vender para cubrirlo, y la carga de gastos fijos, sueldos y bienes de uso, y los adelantos de sueldo.',
   },
@@ -66,7 +67,7 @@ export const GERENCIA_SECCIONES = [
     desc: 'El efectivo en mano: los sobres de los locales, controlados uno por uno, y cada peso que sale.',
   },
   {
-    /* 21/10/2026 (0193): la IA que lee los números del negocio y aconseja. Solo superadmin. */
+    /* 21/10/2026 (0193): la IA que lee los números del negocio y aconseja. */
     id: 'asesor', label: 'Asesor', icon: AutoAwesomeIcon, permiso: 'gerencia.asesor',
     desc: 'Una IA que lee tus números (rentabilidad, granel y fraccionado, stock, cajas, gastos), te dice qué le parece raro y qué harías. También le podés preguntar.',
   },
