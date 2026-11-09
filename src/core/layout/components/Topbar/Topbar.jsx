@@ -45,15 +45,16 @@ export function Topbar() {
   const closeMenu = () => setAnchorEl(null);
 
   /**
-   * Admin y superadmin pueden pararse en otra sucursal para supervisarla. Vive
-   * acá, junto al dato de la sesión, en vez de repetir una barra en cada
-   * pantalla. Las sucursales se piden al abrir el menú, no al cargar la app.
+   * Los roles «Libre» (0224; Administrador y Superadmin de fábrica) pueden
+   * pararse en otra sucursal. Vive acá, junto al dato de la sesión, en vez de
+   * repetir una barra en cada pantalla. Las sucursales se piden al abrir el
+   * menú, no al cargar la app.
    */
-  const esJefe = (user?.roles ?? []).some((r) => r === 'admin' || r === 'superadmin');
+  const cruza = !!user?.cruzaSucursales;
   useEffect(() => {
-    if (!anchorEl || !esJefe || sucursales.length) return;
+    if (!anchorEl || !cruza || sucursales.length) return;
     httpClient.get('/sucursales').then(setSucursales).catch(() => setSucursales([]));
-  }, [anchorEl, esJefe, sucursales.length]);
+  }, [anchorEl, cruza, sucursales.length]);
 
   const cambiarSucursal = async (suc) => {
     // Se reescribe la sesión y el contexto de los módulos DE ESTA PESTAÑA y se
@@ -151,7 +152,7 @@ export function Topbar() {
             </Typography>
           </div>
           <Divider />
-          {esJefe && sucursales.length > 1 && (
+          {cruza && sucursales.length > 1 && (
             <>
               <Typography variant="caption" color="text.secondary" sx={{ px: 2, py: 0.5, display: 'block' }}>
                 Cambiar de sucursal

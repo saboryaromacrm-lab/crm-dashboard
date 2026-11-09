@@ -209,7 +209,8 @@ function UsuarioModal({ usuario, roles, sucursales = [], onGuardar, onCerrar }) 
   /* EN QUÉ SUCURSALES ENTRA (0105). Ninguna tildada = todas, lo de siempre. */
   const [sucs, setSucs] = useState(() => new Set(usuario?.sucursales ?? []));
   const rolElegido = roles.find((r) => r.id === Number(rolId));
-  const cruza = rolElegido?.clave === 'admin' || rolElegido?.clave === 'superadmin' || (rolElegido?.permisos ?? []).includes('*');
+  /* Cómo entra lo dice el rol (0224): solo «Las de cada usuario» usa las tildadas. */
+  const modoRol = (rolElegido?.permisos ?? []).includes('*') ? 'libre' : (rolElegido?.modoSucursal ?? 'usuario');
   const tildar = (id) => setSucs((prev) => {
     const n = new Set(prev);
     if (n.has(id)) n.delete(id); else n.add(id);
@@ -270,12 +271,15 @@ function UsuarioModal({ usuario, roles, sucursales = [], onGuardar, onCerrar }) 
       )}
 
       {/* EN QUÉ SUCURSALES PUEDE ENTRAR (0105): al entrar solo se le ofrecen esas
-          y el servidor rechaza las demás. La administración cruza igual. */}
+          y el servidor rechaza las demás. Si el rol es «Libre» o no trabaja en una
+          sucursal (0224), la lista no corre. */}
       <div className={s.field} style={{ marginTop: 12 }}>
         <label>Sucursales donde trabaja</label>
-        {cruza ? (
+        {modoRol !== 'usuario' ? (
           <div className={s.hint} style={{ margin: 0 }}>
-            La administración entra a todas y cambia de sucursal desde el encabezado.
+            {modoRol === 'libre'
+              ? 'Su rol es «Libre»: entra en cualquier sucursal y la cambia desde el encabezado.'
+              : 'Su rol no trabaja en una sucursal: no se le pide al entrar.'}
           </div>
         ) : (
           <>
@@ -422,10 +426,23 @@ function ListaPermisos({ titulo, items, permisos, toggle }) {
  * ACCIONES (qué operaciones puede hacer dentro de lo que ve). El checkbox del
  * título marca/desmarca el módulo completo.
  */
-function RolModal({ rol, catalogo, onGuardar, onCerrar }) {
+/**
+ * CÓMO ENTRA A LAS SUCURSALES (0224, pedido del dueño): va en el rol. «Libre»
+ * solo dice dónde puede pararse; lo que ve sigue siendo lo tildado. Quien no
+ * entra en cualquier sucursal no puede dar «Libre» (la API también lo exige).
+ */
+const MODOS_SUCURSAL = [
+  ['usuario', 'Las de cada usuario', 'Entra en las sucursales tildadas en su usuario (ninguna tildada: elige cualquiera al entrar) y se queda en esa.'],
+  ['libre', 'Libre', 'Entra en cualquier sucursal y la cambia desde el encabezado, como el administrador. Solo ve lo que tenga tildado abajo.'],
+  ['ninguna', 'No trabaja en una sucursal', 'No se le pide sucursal al entrar (como Coffit): lo que carga dice a qué sucursal va.'],
+];
+const nombreModo = (modo) => MODOS_SUCURSAL.find(([k]) => k === modo)?.[1] ?? '';
+
+function RolModal({ rol, catalogo, puedeLibre, onGuardar, onCerrar }) {
   const esAlta = !rol;
   const [nombre, setNombre] = useState(rol?.nombre ?? '');
   const [descripcion, setDescripcion] = useState(rol?.descripcion ?? '');
+  const [modoSucursal, setModoSucursal] = useState(rol?.modoSucursal ?? 'usuario');
   const [permisos, setPermisos] = useState(() => new Set(rol?.permisos ?? []));
   const [guardando, setGuardando] = useState(false);
 
@@ -448,7 +465,7 @@ function RolModal({ rol, catalogo, onGuardar, onCerrar }) {
 
   const guardar = async () => {
     setGuardando(true);
-    const ok = await onGuardar({ nombre, descripcion, permisos: [...permisos] });
+    const ok = await onGuardar({ nombre, descripcion, modoSucursal, permisos: [...permisos] });
     setGuardando(false);
     if (ok) onCerrar();
   };
@@ -471,6 +488,18 @@ function RolModal({ rol, catalogo, onGuardar, onCerrar }) {
         <div className={s.field}>
           <label>Descripción</label>
           <input value={descripcion} placeholder="Qué hace este rol en el día a día" onChange={(e) => setDescripcion(e.target.value)} />
+        </div>
+        <div className={s.field}>
+          <label htmlFor="rol-modo-sucursal">Sucursal</label>
+          <select id="rol-modo-sucursal" value={modoSucursal} onChange={(e) => setModoSucursal(e.target.value)}>
+            {MODOS_SUCURSAL.map(([k, texto]) => (
+              <option key={k} value={k} disabled={k === 'libre' && !puedeLibre && rol?.modoSucursal !== 'libre'}>{texto}</option>
+            ))}
+          </select>
+          <div className={s.hint} style={{ margin: '4px 0 0' }}>
+            {MODOS_SUCURSAL.find(([k]) => k === modoSucursal)?.[2]}
+            {!puedeLibre && ' «Libre» lo da solo quien entra en cualquier sucursal.'}
+          </div>
         </div>
       </div>
 
@@ -689,6 +718,7 @@ export function GerenciaPage() {
         >
           {pagUsuarios.visibles.map((u) => {
             const esSuper = u.rolClave === 'superadmin';
+            const modo = roles.find((r) => r.id === u.rolId)?.modoSucursal;
             return (
               <tr key={u.id} style={u.activo ? undefined : { opacity: 0.55 }}>
                 <td>
@@ -697,9 +727,10 @@ export function GerenciaPage() {
                 </td>
                 <td>{nombreRol.get(u.rolId) ?? u.rolNombre}</td>
                 <td>
-                  {u.sucursales?.length && !['admin', 'superadmin'].includes(u.rolClave)
-                    ? u.sucursales.map((id) => sucursales.find((x) => x.id === id)?.nombre ?? `#${id}`).join(', ')
-                    : <span className={s.muted}>Todas</span>}
+                  {u.cruzaSucursales ? <span className={s.muted}>Todas (libre)</span>
+                    : modo === 'ninguna' ? <span className={s.muted}>Ninguna</span>
+                      : u.sucursales?.length ? u.sucursales.map((id) => sucursales.find((x) => x.id === id)?.nombre ?? `#${id}`).join(', ')
+                        : <span className={s.muted}>Todas</span>}
                 </td>
                 <td>{u.descuentoManualMax > 0 || sinTope(u.permisos) ? textoDescuento(u) : <span className={s.muted}>No</span>}</td>
                 <td>
@@ -748,6 +779,7 @@ export function GerenciaPage() {
                   {r.permisos.includes('*')
                     ? <strong style={{ color: 'var(--crm-color-primary)' }}>Todos los permisos</strong>
                     : `${r.permisos.length} permiso(s)`}
+                  {!esSuper && <span className={s.muted}> · Sucursal: {nombreModo(r.modoSucursal)}</span>}
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
                   {esSuper ? (
@@ -1004,6 +1036,7 @@ export function GerenciaPage() {
         <RolModal
           rol={modal.datos}
           catalogo={catalogo}
+          puedeLibre={!!user?.cruzaSucursales}
           onCerrar={() => setModal(null)}
           onGuardar={(payload) => (modal.datos
             ? mutar(() => httpClient.patch(`/roles/${modal.datos.id}`, payload), 'Permisos actualizados.')

@@ -25,6 +25,8 @@ function aUsuarioSesion(s) {
     roles: [s.usuario.rolClave],
     permissions: s.usuario.permisos ?? [],
     rolNombre: s.usuario.rolNombre,
+    /* Entra en cualquier sucursal y la cambia desde el encabezado (0224: «Libre» en el rol). */
+    cruzaSucursales: !!s.usuario.cruzaSucursales,
     /* PUEDE NO HABER SUCURSAL (0098): hay puestos que trabajan fuera de los
      * locales —la cafetería— y el servidor devuelve `sucursal: null` para que
      * el encabezado no muestre una que nadie eligió. */
