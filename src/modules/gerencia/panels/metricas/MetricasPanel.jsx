@@ -28,6 +28,8 @@ import { PestanaIva } from './PestanaIva.jsx';
 import { PestanaOfertas } from './PestanaOfertas.jsx';
 import { PestanaAnterior } from './PestanaAnterior.jsx';
 import { PestanaSucursales } from './PestanaSucursales.jsx';
+import { DiasAbiertos } from '../DiasAbiertos.jsx';
+import { textoDiasContra } from '../actividad.js';
 
 /* ============================================================================
  * EL PANEL
@@ -180,9 +182,13 @@ function PestanaVentas({ qs, paso, version }) {
         <Tile label="Venta neta (sin IVA)" valor={money(t.ventaNeta)} variacion={t.variacionVenta} detalle={`Anterior: ${money(d.anterior.ventaNeta)}`} />
         <Tile label="Tickets" valor={num(t.tickets, 0)} variacion={t.variacionTickets} detalle={t.notas ? `${num(t.notas, 0)} nota(s) de crédito o devoluciones` : undefined} />
         <Tile label="Ticket promedio" valor={money(t.ticketPromedio)} detalle={`Anterior: ${money(d.anterior.ticketPromedio)}`} />
-        <Tile label="Promedio por día con venta" valor={money(t.promedioPorDia)} detalle={`${num(t.diasConVenta, 0)} día(s) con ventas`} />
+        <Tile
+          label="Venta por día abierto" valor={money(t.promedioPorDia)} variacion={t.variacionPorDia}
+          detalle={[`Anterior: ${money(d.anterior.promedioPorDia)}`, textoDiasContra(t.actividad.abiertos, d.anterior.actividad.abiertos)].filter(Boolean).join(' · ')}
+        />
         <Tile label="Total cobrado (con IVA)" valor={money(t.total)} />
       </Tiles>
+      <DiasAbiertos a={t.actividad} />
       <div className={s.hint} style={{ margin: 0 }}>
         Se compara con {fechaLarga(d.anterior.desde)} → {fechaLarga(d.anterior.hasta)}, el período anterior del mismo largo.
         Las notas de crédito y devoluciones restan; las anuladas y los borradores no cuentan.
@@ -198,7 +204,7 @@ function PestanaVentas({ qs, paso, version }) {
           </Bloque>
           <Grilla>
             <Bloque titulo="Por sucursal" sub="Venta neta y participación">
-              <Barras datos={d.porSucursal.map((x) => ({ clave: x.sucursalId, etiqueta: x.nombre, valor: x.ventaNeta, detalle: `${num(x.tickets, 0)} tickets · promedio ${money(x.ticketPromedio)}`, p: x.participacion }))} formato={compacto} sufijo={(x) => `· ${pctTxt(x.p)}`} />
+              <Barras datos={d.porSucursal.map((x) => ({ clave: x.sucursalId, etiqueta: x.nombre, valor: x.ventaNeta, detalle: `${num(x.tickets, 0)} tickets · promedio ${money(x.ticketPromedio)}${x.diasAbiertos ? ` · abrió ${x.diasAbiertos} días` : ''}`, p: x.participacion }))} formato={compacto} sufijo={(x) => `· ${pctTxt(x.p)}`} />
             </Bloque>
             <Bloque titulo="Cómo se cobra" sub="Por medio de pago">
               <Barras datos={d.porMedio.map((x) => ({ clave: x.medio, etiqueta: MEDIOS[x.medio] ?? x.medio, valor: x.importe, p: parte(x.importe, totalMedios), detalle: `${num(x.cantidad, 0)} cobros` }))} formato={compacto} sufijo={(x) => `· ${pctTxt(x.p)}`} />

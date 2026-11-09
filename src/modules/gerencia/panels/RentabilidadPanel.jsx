@@ -17,6 +17,10 @@
  * locales; elegido uno, todo lo de las ventas es de ese local. Las compras, el
  * crédito fiscal y el stock sin factura son del negocio entero (un CUIT, un
  * depósito): con un local elegido no se muestran, para no mezclarlos con lo suyo.
+ *
+ * DÍAS ABIERTOS (9/11/2026): cuántos días abrió y cuántos turnos hubo, y la
+ * venta por día abierto (del negocio y de cada local), para que un período con
+ * feriados no parezca flojo.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
@@ -25,6 +29,7 @@ import { useResource } from '@modules/ventas/hooks/useResource.js';
 import { cx } from '@shared/utils/classNames.js';
 import { money, num } from '@modules/productos/domain/format.js';
 import { Table, PanelHead, Btn, usePaginado, Paginador, s } from '@modules/productos/components/ui.jsx';
+import { DiasAbiertos } from './DiasAbiertos.jsx';
 
 /** Primer día del mes y hoy, en 'AAAA-MM-DD' LOCAL (toISOString corre el día). */
 const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -137,6 +142,7 @@ export function RentabilidadPanel() {
 
       {data && (
         <>
+          <DiasAbiertos a={data.actividad} />
           {/*
            * LA COBERTURA VA PRIMERA: si la mitad de los renglones no tiene costo
            * congelado (son de antes de la 0072), los totales hablan solo de la
@@ -153,6 +159,10 @@ export function RentabilidadPanel() {
           {/* ---- Los cuatro números del período ---- */}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <Stat label="Venta neta" valor={money(t.ventaNeta)} detalle="Sin IVA ni cargos extra. Anuladas afuera." />
+            <Stat
+              label="Venta por día abierto" valor={data.actividad.ventaPorDia != null ? money(data.actividad.ventaPorDia) : '—'}
+              detalle={`La venta neta repartida en los ${data.actividad.abiertos} días que abrió: así un período con feriados no parece flojo.`}
+            />
             <Stat
               label="Margen real" valor={money(t.margenReal)} tono={t.margenReal >= 0 ? 'ok' : 'err'}
               detalle={t.ventaCosteada > 0 ? `${num((t.margenReal / t.ventaCosteada) * 100, 1)}% sobre la venta costeada` : 'Sin renglones con costo'}
@@ -335,10 +345,11 @@ function PorSucursal({ filas, onElegir }) {
     <div>
       <div className={s['section-title']}>Por sucursal</div>
       <div className={s.hint} style={{ marginTop: 0 }}>
-        El margen es de lo vendido (venta − costo congelado), antes de los gastos del local. Tocá un local para ver su detalle.
+        El margen es de lo vendido (venta − costo congelado), antes de los gastos del local. «Días» son los que abrió (vendió en el mostrador). Tocá un local para ver su detalle.
       </div>
       <Table cols={[
-        { h: 'Sucursal' }, { h: 'Venta neta', num: true }, { h: '% de la venta', num: true }, { h: 'Costo real', num: true },
+        { h: 'Sucursal' }, { h: 'Venta neta', num: true }, { h: '% de la venta', num: true }, { h: 'Días', num: true },
+        { h: 'Por día abierto', num: true }, { h: 'Costo real', num: true },
         { h: 'Margen real', num: true }, { h: '%', num: true }, { h: 'IVA absorbido', num: true },
       ]}>
         {filas.map((x) => (
@@ -351,6 +362,8 @@ function PorSucursal({ filas, onElegir }) {
             </td>
             <td className={s.num}>{money(x.ventaNeta)}</td>
             <td className={s.num}>{num(x.participacion, 1)}%</td>
+            <td className={s.num} title={`${x.turnos} turno(s) de caja`}>{x.diasAbiertos || <span className={s.muted}>—</span>}</td>
+            <td className={s.num}>{x.ventaPorDia != null ? money(x.ventaPorDia) : <span className={s.muted}>—</span>}</td>
             <td className={s.num}>{x.costo != null ? money(x.costo) : <span className={s.muted}>—</span>}</td>
             <td className={s.num}>
               {x.margenReal != null

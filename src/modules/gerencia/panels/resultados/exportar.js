@@ -5,7 +5,7 @@
  */
 import { csvNum, descargarCsv } from '@shared/utils/csv.js';
 import { esc, imprimirDocumento } from '@core/services/imprimir.js';
-import { pct, pesos, renglones, sobreVentas } from './resultados.js';
+import { diasAbiertosTxt, pct, pesos, renglones, sobreVentas, ventaPorDiaDe } from './resultados.js';
 
 const TODO_ABIERTO = new Set(['otrosVariables', 'sueldos', 'otrosFijos', 'financieros']);
 const extras = (datos) => ({ empleados: datos?.empleados, sucursales: datos?.sucursales });
@@ -23,6 +23,9 @@ export function exportarCsv(nombre, datos, columnas) {
   if (columnas.some((c) => Math.abs(c.col.retiros) > 0.004)) {
     cuerpo.push(['Retiros de los socios (aparte, a costo)', ...columnas.flatMap((c) => [csvNum(c.col.retiros), ''])]);
   }
+  cuerpo.push(['Días abiertos', ...columnas.flatMap((c) => [diasAbiertosTxt(c.col), ''])]);
+  cuerpo.push(['Turnos de caja', ...columnas.flatMap((c) => [String(c.col.actividad.turnos), ''])]);
+  cuerpo.push(['Ventas netas por día abierto', ...columnas.flatMap((c) => { const v = ventaPorDiaDe(c.col); return [v == null ? '' : csvNum(v), '']; })]);
   descargarCsv(nombre, cab, cuerpo);
 }
 
@@ -43,13 +46,15 @@ export function imprimirEstado({ titulo, subtitulo, datos, columnas, avisos = []
   const retiros = columnas.some((c) => Math.abs(c.col.retiros) > 0.004)
     ? `<tr style="color:#555">${td('Retiros de los socios (aparte, mercadería a costo)')}${columnas.map((c) => td(esc(pesos(c.col.retiros)), num)).join('')}</tr>`
     : '';
+  const dias = `<tr style="border-top:2px solid #333">${td('Días abiertos (turnos de caja)')}${columnas.map((c) => td(esc(`${diasAbiertosTxt(c.col)} (${c.col.actividad.turnos})`), num)).join('')}</tr>`
+    + `<tr>${td('Ventas netas por día abierto')}${columnas.map((c) => td(esc(pesos(ventaPorDiaDe(c.col))), num)).join('')}</tr>`;
   const notas = avisos.length
     ? `<div style="margin-top:10px;font-size:11px;color:#444">${avisos.map((a) => `· ${esc(a.texto)}`).join('<br>')}</div>`
     : '';
   const html = `
     <h2 style="margin:0 0 2px">${esc(titulo)}</h2>
     ${subtitulo ? `<div style="font-size:12px;margin-bottom:8px">${esc(subtitulo)}</div>` : ''}
-    <table style="width:100%;border-collapse:collapse;font-size:11px"><thead>${cab}</thead><tbody>${cuerpo}${retiros}</tbody></table>
+    <table style="width:100%;border-collapse:collapse;font-size:11px"><thead>${cab}</thead><tbody>${cuerpo}${retiros}${dias}</tbody></table>
     <div style="margin-top:8px;font-size:11px">Todo en neto (sin IVA). El IVA es un resultado aparte. Ganancias: estimado, por lo acumulado del año.</div>
     ${notas}`;
   return imprimirDocumento('resultados', { titulo, cuerpo: html });

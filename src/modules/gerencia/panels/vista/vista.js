@@ -6,7 +6,12 @@
  * Por qué el último completo y no el en curso: comparar 5 días de noviembre
  * contra octubre entero da una caída que no existe. El en curso se muestra
  * aparte, con su proyección («a este ritmo cerrás en…»).
+ *
+ * DÍAS ABIERTOS (9/11/2026): cada período trae los días que abrió y los turnos
+ * de caja (crm-api/src/metricas/actividad.ts); la venta se compara también por
+ * día abierto, para que un mes con feriados no parezca flojo.
  */
+import { porDiaAbierto, textoSinAbrir } from '../actividad.js';
 const N = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const r1 = (n) => Math.round(n * 10) / 10;
 
@@ -28,12 +33,16 @@ function medir(p, sucursalId) {
   const tickets = N(x.tickets);
   const margen = ventas - costo;
   const res = x.resultado ?? null;
+  const abiertos = N(x.diasAbiertos);
+  const porDia = porDiaAbierto(ventas, abiertos);
   return {
     clave: p.clave, etiqueta: p.etiqueta, titulo: p.titulo, enCurso: p.enCurso, dias: p.dias, transcurridos: p.transcurridos,
     ventas, costo, margen,
     margenPct: pct(margen, ventas),
     tickets,
     ticketProm: tickets > 0 ? Math.round(ventas / tickets) : null,
+    abiertos, turnos: N(x.turnos), sinAbrir: x.sinAbrir ?? [],
+    ventaPorDia: porDia == null ? null : Math.round(porDia),
     sinCosto: N(x.sinCosto), ivaSinFactura: N(x.ivaSinFactura), facturado: N(x.facturado),
     totalConIva: N(x.total), ctaCte: N(x.ctaCte),
     medios: x.medios ?? {},
@@ -79,6 +88,7 @@ export function armarVista(datos, { sucursalId = null } = {}) {
     ventas: actual.ventas, ventasVar: vs('ventas'),
     margenPct: actual.margenPct,
     margenPts: actual.margenPct != null && anterior?.margenPct != null && anterior.hayDatos ? r1(actual.margenPct - anterior.margenPct) : null,
+    ventaPorDia: actual.ventaPorDia, ventaPorDiaVar: vs('ventaPorDia'),
     tickets: actual.tickets, ticketsVar: vs('tickets'),
     ticketProm: actual.ticketProm, ticketPromVar: vs('ticketProm'),
     resultado: actual.resultado, resultadoVar: vs('resultado'),
@@ -120,6 +130,12 @@ export function lecturas({ actual, anterior, kpis, proyeccion, foto, unidad, suc
         : ` Lo explica sobre todo cuánto gastó cada cliente (ticket promedio ${gasto >= 0 ? '+' : '−'}${pctTxt(gasto)}).`;
     }
     out.push({ tono: sube ? 'ok' : 'warn', texto: `En ${en(actual)} vendiste ${plata(actual.ventas)}, un ${pctTxt(kpis.ventasVar)} ${sube ? 'más' : 'menos'} que en ${en(anterior)}.${porque}` });
+    /* Con distinta cantidad de días abiertos, el total engaña: se dice qué pasó por día. */
+    if (kpis.ventaPorDiaVar != null && actual.abiertos !== anterior.abiertos) {
+      const subeDia = kpis.ventaPorDiaVar >= 0;
+      const feriados = textoSinAbrir(actual.sinAbrir);
+      out.push({ tono: subeDia ? 'ok' : 'warn', texto: `Abriste ${actual.abiertos} días contra ${anterior.abiertos}: por día abierto vendiste ${plata(actual.ventaPorDia)}, un ${pctTxt(kpis.ventaPorDiaVar)} ${subeDia ? 'más' : 'menos'}.${feriados ? ` ${feriados}.` : ''}` });
+    }
   }
 
   if (kpis.margenPts != null && Math.abs(kpis.margenPts) >= 1) {

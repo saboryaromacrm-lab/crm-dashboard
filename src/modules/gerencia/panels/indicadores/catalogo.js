@@ -40,7 +40,14 @@ export const INDICADORES = [
     sentido: 'mayor', objetivo: 2, tolerancia: 2, contra: 'contra el período anterior',
     que: 'Cuánto más (o menos) se vendió que en el período con que se compara: el anterior del mismo largo, o el mismo período del mes anterior, según lo elegido arriba.',
     paraQue: 'Es el pulso del negocio. Con inflación, vender lo mismo en pesos es vender menos mercadería: por eso el objetivo tiene que ser, como mínimo, la inflación del período (para un mes, la mensual del INDEC).',
-    accion: 'Mirá abajo qué sucursal perdió participación, si faltó mercadería (Stock › por agotarse) y si hubo días cerrados o feriados en el período.',
+    accion: 'Mirá el crecimiento por día abierto: si ese sube, la baja fue por feriados o días cerrados. Si no, mirá qué sucursal perdió participación y si faltó mercadería (Stock › por agotarse).',
+  },
+  {
+    id: 'crecimientoPorDia', bloque: 'ventas', nombre: 'Crecimiento por día abierto', formato: 'variacion',
+    sentido: 'mayor', objetivo: 2, tolerancia: 2, contra: 'contra el período anterior',
+    que: 'Lo mismo que el crecimiento, pero con lo vendido en promedio en cada día que se abrió (un día abierto es un día con venta en el mostrador).',
+    paraQue: 'Separa el calendario de la venta: un mes con feriados o días cerrados vende menos en total sin que se haya vendido peor. Si las ventas bajan pero por día abierto suben, hubo menos días, no menos clientes.',
+    accion: 'Si baja también por día abierto, la caída es real: mirá la cantidad de tickets, el ticket promedio y los faltantes.',
   },
   {
     id: 'crecimientoAnual', bloque: 'ventas', nombre: 'Contra el año pasado', formato: 'variacion',

@@ -23,6 +23,7 @@ import { Barras, Columnas } from '../metricas/graficos.jsx';
 import { DIAS_SEMANA, MEDIOS, PRESETS, fechaLarga, pctTxt, puntosTxt, rangoDe } from '../metricas/formato.js';
 import { Aviso, Bloque, Cargando, Grilla } from '../metricas/piezas.jsx';
 import { BLOQUES, INDICADORES, semaforo } from './catalogo.js';
+import { DiasAbiertos } from '../DiasAbiertos.jsx';
 
 /** Contra qué se compara (7/11/2026): los días justo antes, o los mismos días del mes anterior. */
 const COMPARAR = { anterior: 'el período anterior', mes: 'el mismo período del mes anterior' };
@@ -81,6 +82,11 @@ function Tarjeta({ ind, d, objetivo, editando, borrador, setBorrador }) {
         </div>
       )}
       {ind.id === 'cierresDiferencia' && <div className={s.hint} style={{ margin: 0 }}>Sobre {num(d.detalle.cierres, 0)} cierre(s) en el período.</div>}
+      {ind.id === 'crecimientoPorDia' && (
+        <div className={s.hint} style={{ margin: 0 }}>
+          Abrió <strong>{d.detalle.actividad.abiertos}</strong> días contra {d.detalle.actividadAnterior.abiertos} del período con que se compara.
+        </div>
+      )}
       {editando ? (
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
           Objetivo ({ind.sentido === 'menor' ? 'máximo' : 'mínimo'}) %
@@ -254,6 +260,7 @@ export function IndicadoresPanel() {
             «Contra {COMPARAR[d.comparar] ?? COMPARAR.anterior}» compara con {fechaLarga(d.anterior.desde)} → {fechaLarga(d.anterior.hasta)}.
             Las ventas son sin IVA y las notas de crédito restan. Los cálculos de stock son con la mercadería de hoy.
           </div>
+          <DiasAbiertos a={d.detalle.actividad} />
           {BLOQUES.map((b) => (
             <section key={b.id} aria-labelledby={`bloque-${b.id}`} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>

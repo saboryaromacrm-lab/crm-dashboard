@@ -21,6 +21,7 @@ import {
   COLOR_A, COLOR_B, CONTRA, DIAS_SEMANA, MEDIOS, diasDe, etiquetaPeriodo, fechaLarga, nombrePaso, parte, pctTxt, puntosTxt, rangoContra, tituloPeriodo,
 } from './formato.js';
 import { Aviso, Bloque, Cargando, ConParte, Grilla, Tile, Tiles } from './piezas.jsx';
+import { DiasAbiertos } from '../DiasAbiertos.jsx';
 
 const Chip = ({ color, letra }) => (
   <span aria-hidden="true" style={{ display: 'inline-grid', placeItems: 'center', width: 18, height: 18, borderRadius: 4, background: color, color: '#fff', fontSize: 11, fontWeight: 700, marginRight: 6, flex: 'none' }}>{letra}</span>
@@ -71,7 +72,7 @@ export function PestanaComparar({ desde, hasta, sucursalId, paso, version }) {
         </div>
         {nA !== nB && (
           <div className={s.hint} style={{ margin: 0 }}>
-            Los períodos no tienen la misma cantidad de días: para comparar parejo, mirá el <strong>promedio por día</strong> más que los totales.
+            Los períodos no tienen la misma cantidad de días: para comparar parejo, mirá la <strong>venta por día abierto</strong> más que los totales.
           </div>
         )}
       </div>
@@ -96,8 +97,12 @@ function Resultado({ d, paso }) {
         <Tile label="Venta neta" valor={money(a.ventaNeta)} variacion={df.ventaNeta.variacion} contra={contra} detalle={<>B: {money(b.ventaNeta)} · <Dif valor={df.ventaNeta.diferencia} /></>} />
         <Tile label="Tickets" valor={num(a.tickets, 0)} variacion={df.tickets.variacion} contra={contra} detalle={`B: ${num(b.tickets, 0)}`} />
         <Tile label="Ticket promedio" valor={money(a.ticketPromedio)} variacion={df.ticketPromedio.variacion} contra={contra} detalle={`B: ${money(b.ticketPromedio)}`} />
-        <Tile label="Promedio por día con venta" valor={money(a.promedioPorDia)} variacion={df.promedioPorDia.variacion} contra={contra} detalle={`B: ${money(b.promedioPorDia)} · ${num(a.diasConVenta, 0)} y ${num(b.diasConVenta, 0)} días`} />
+        <Tile label="Venta por día abierto" valor={money(a.promedioPorDia)} variacion={df.promedioPorDia.variacion} contra={contra} detalle={`B: ${money(b.promedioPorDia)} · abrió ${num(a.actividad.abiertos, 0)} y ${num(b.actividad.abiertos, 0)} días`} />
       </Tiles>
+      <div style={{ display: 'grid', gap: 2 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><strong className={s.hint} style={{ margin: 0 }}>A:</strong><DiasAbiertos a={a.actividad} /></div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}><strong className={s.hint} style={{ margin: 0 }}>B:</strong><DiasAbiertos a={b.actividad} /></div>
+      </div>
       <Tiles>
         <Tile label="Margen (ganancia bruta)" valor={money(a.margen)} variacion={df.margen.variacion} contra={contra} detalle={`B: ${money(b.margen)}`} />
         <Tile label="Margen %" valor={pctTxt(a.margenPct)} detalle={<>B: {pctTxt(b.margenPct)} · {puntosTxt(df.margenPctPuntos)}</>} />

@@ -9,6 +9,7 @@
  *
  * Sin alias de importación: lo prueba `node --test`.
  */
+import { porDiaAbierto } from '../actividad.js';
 
 export const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const N = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -78,8 +79,33 @@ export function columna(datos, meses, balde = null) {
   v.ganancias = empresa ? r2(elegidos.reduce((a, m) => a + N(m.ganancias?.impuesto), 0)) : null;
   v.neto = empresa ? r2(N(v.antesGanancias) - v.ganancias) : null;
   v.meses = elegidos.length;
+  v.actividad = actividadDe(elegidos, balde);
   return v;
 }
+
+/**
+ * DÍAS ABIERTOS Y TURNOS de una columna (9/11/2026): los manda la API por mes
+ * (`m.actividad`, ver crm-api/src/metricas/actividad.ts). De la empresa, los
+ * días en que abrió algún local; de un local, los suyos. «Sin local» y
+ * «Administración» no abren: `abiertos` 0.
+ */
+function actividadDe(meses, balde) {
+  const out = { dias: 0, abiertos: 0, turnos: 0, sinAbrir: balde == null ? [] : null };
+  for (const m of meses) {
+    const a = m.actividad;
+    if (!a) continue;
+    out.dias += a.dias;
+    const x = balde == null ? a : a.porSucursal?.[balde];
+    out.abiertos += N(balde == null ? x?.abiertos : x?.dias);
+    out.turnos += N(x?.turnos);
+    if (balde == null) out.sinAbrir.push(...a.sinAbrir);
+  }
+  return out;
+}
+
+/** «24 de 30» días abiertos de la columna (o «—»), y sus ventas netas por día abierto. */
+export const diasAbiertosTxt = (col) => (col.actividad.abiertos ? `${col.actividad.abiertos} de ${col.actividad.dias}` : '—');
+export const ventaPorDiaDe = (col) => porDiaAbierto(col.ventasNetas, col.actividad.abiertos);
 
 /* ------------------------------ los renglones ------------------------------ */
 

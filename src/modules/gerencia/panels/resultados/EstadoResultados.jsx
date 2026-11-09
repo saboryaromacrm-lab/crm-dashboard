@@ -1,8 +1,10 @@
 import { cx } from '@shared/utils/classNames.js';
 import { s } from '@modules/productos/components/ui.jsx';
 import { Tile, Tiles } from '../metricas/piezas.jsx';
+import { textoSinAbrir } from '../actividad.js';
 import {
-  BASES, PRORRATEADOS, cumplimiento, indicadores, origenDe, pct, pesos, pesosRedondo, renglones, sobreVentas, textoEnCurso, textoOrigen, variacion,
+  BASES, PRORRATEADOS, cumplimiento, diasAbiertosTxt, indicadores, origenDe, pct, pesos, pesosRedondo, renglones, sobreVentas, textoEnCurso, textoOrigen,
+  variacion, ventaPorDiaDe,
 } from './resultados.js';
 
 /**
@@ -73,6 +75,23 @@ export function TablaEstado({ datos, columnas, mesesOrigen, abiertos, alternar }
               </tr>
             );
           })}
+          {/* Días abiertos y venta por día (9/11/2026): para que un mes con feriados no parezca flojo. */}
+          <tr style={{ borderTop: '2px solid var(--crm-color-border)' }}>
+            <td style={primera}>
+              Días abiertos
+              <div className={s.hint} style={{ margin: 0 }}>Con venta en el mostrador · abajo, los turnos de caja</div>
+            </td>
+            {columnas.map((c) => (
+              <td key={c.key} style={celda}>
+                <div style={{ fontVariantNumeric: 'tabular-nums' }}>{diasAbiertosTxt(c.col)}</div>
+                {c.col.actividad.turnos > 0 && <div className={s.hint} style={{ margin: 0 }}>{c.col.actividad.turnos} turno{c.col.actividad.turnos === 1 ? '' : 's'}</div>}
+              </td>
+            ))}
+          </tr>
+          <tr>
+            <td style={primera}>Ventas netas por día abierto</td>
+            {columnas.map((c) => <td key={c.key} style={{ ...celda, fontVariantNumeric: 'tabular-nums' }}>{pesos(ventaPorDiaDe(c.col))}</td>)}
+          </tr>
           {hayRetiros && (
             <tr>
               <td style={{ ...primera, color: 'var(--crm-color-text-secondary)' }}>
@@ -100,12 +119,22 @@ export function TarjetasEstado({ col, contra, contraTxt, objetivo, esEmpresa }) 
   const resultadoContra = contra ? (esEmpresa ? contra.neto : contra.antesGanancias) : null;
   const cumpleVenta = cumplimiento(col.ventasNetas, objetivo?.ventaNeta);
   const cumpleRes = cumplimiento(col.antesGanancias, objetivo?.resultado);
+  const a = col.actividad;
+  const porDia = ventaPorDiaDe(col);
+  const porDiaContra = contra ? ventaPorDiaDe(contra) : null;
   return (
     <Tiles>
       <Tile
         label="Ventas netas" valor={pesosRedondo(col.ventasNetas)}
         variacion={contra ? variacion(col.ventasNetas, contra.ventasNetas) : null} contra={contraTxt}
         detalle={cumpleVenta != null ? `${pct(cumpleVenta, 0)} del objetivo (${pesosRedondo(objetivo.ventaNeta)})` : undefined}
+      />
+      <Tile
+        label="Venta por día abierto" valor={porDia == null ? '—' : pesosRedondo(porDia)}
+        variacion={porDia != null && porDiaContra != null ? variacion(porDia, porDiaContra) : null} contra={contraTxt}
+        detalle={a.abiertos
+          ? [`Abrió ${a.abiertos} de ${a.dias} días · ${a.turnos} turno${a.turnos === 1 ? '' : 's'}`, contra ? `antes ${contra.actividad.abiertos}` : '', textoSinAbrir(a.sinAbrir ?? [])].filter(Boolean).join(' · ')
+          : 'Sin días con venta en el mostrador.'}
       />
       <Tile
         label="Margen bruto" valor={pct(ind.margenBrutoPct)}

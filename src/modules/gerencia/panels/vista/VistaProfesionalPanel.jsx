@@ -100,6 +100,10 @@ export function VistaProfesionalPanel() {
               <Tiles>
                 <Tile label="Ventas netas" valor={pesos(v.kpis.ventas)} variacion={v.kpis.ventasVar} contra={contra} />
                 <Tile
+                  label="Venta por día abierto" valor={v.kpis.ventaPorDia == null ? '—' : pesos(v.kpis.ventaPorDia)} variacion={v.kpis.ventaPorDiaVar} contra={contra}
+                  detalle={`abrió ${v.actual.abiertos} de ${v.actual.dias} días${v.anterior ? ` (antes ${v.anterior.abiertos})` : ''} · ${v.actual.turnos} turnos de caja`}
+                />
+                <Tile
                   label="Margen comercial" valor={pctTxt(v.kpis.margenPct)}
                   detalle={`${v.kpis.margenPts != null ? `${ptsTxt(v.kpis.margenPts)} ${contra} · ` : ''}de cada $100, lo que queda después de la mercadería`}
                   alerta={v.kpis.margenPts != null && v.kpis.margenPts <= -1}
@@ -123,6 +127,7 @@ export function VistaProfesionalPanel() {
             ) : <div className={s.hint}>Todavía no hay un período completo con ventas.</div>}
             <QueEs>
               <p style={{ margin: '0 0 6px' }}><strong>Margen comercial</strong>: ventas menos lo que costó la mercadería vendida (al costo de cuando se vendió). No incluye gastos: es lo que queda para pagarlos.</p>
+              <p style={{ margin: '0 0 6px' }}><strong>Venta por día abierto</strong>: las ventas repartidas en los días que se abrió (un día abierto es un día con venta en el mostrador). Un mes con feriados vende menos en total sin haber vendido peor: este número lo muestra parejo.</p>
               <p style={{ margin: '0 0 6px' }}><strong>Ticket promedio</strong>: cuánto gasta cada cliente por compra. Las ventas suben por dos caminos: más clientes (tickets) o clientes que gastan más (ticket promedio). Conviene saber cuál de los dos se movió.</p>
               <p style={{ margin: 0 }}><strong>Punto de equilibrio</strong>: lo que hay que vender en el mes para cubrir los gastos fijos (sueldos, alquileres, servicios) con el margen que se tuvo. Por encima, se gana; por debajo, se pierde.</p>
             </QueEs>
@@ -144,7 +149,10 @@ export function VistaProfesionalPanel() {
           {/* 3 · ¿Hacia dónde va? */}
           <Grilla>
             <Bloque titulo="Ventas netas" sub={`Por ${mensual ? 'mes' : 'semana'}. La última columna es la del período en curso: todavía no terminó.`}>
-              <Columnas datos={serie((p) => p.ventas, { detalle: (p) => `${p.tickets.toLocaleString('es-AR')} tickets` })} formato={pesos} titulo="Ventas netas por período" />
+              <Columnas datos={serie((p) => p.ventas, { detalle: (p) => `${p.tickets.toLocaleString('es-AR')} tickets · abrió ${p.abiertos} días` })} formato={pesos} titulo="Ventas netas por período" />
+            </Bloque>
+            <Bloque titulo="Venta por día abierto" sub="Las ventas divididas por los días que se abrió: así los feriados y los días cerrados no hunden el período.">
+              <Linea datos={serie((p) => p.ventaPorDia, { detalle: (p) => `abrió ${p.abiertos} de ${p.enCurso ? p.transcurridos : p.dias} días · ${p.turnos} turnos` })} formato={pesos} eje={compacto} titulo="Venta por día abierto por período" />
             </Bloque>
             <Bloque titulo="Margen comercial" sub="De cada $100 vendidos, lo que queda después de la mercadería. Si baja, mirá precios, costos y descuentos.">
               <Linea datos={serie((p) => p.margenPct)} formato={pctTxt} eje={(x) => `${x} %`} titulo="Margen comercial por período" />
