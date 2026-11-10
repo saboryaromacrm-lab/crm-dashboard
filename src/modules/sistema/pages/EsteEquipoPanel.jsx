@@ -54,7 +54,8 @@ function InstalarApp() {
       <div>
         <strong>Instalar el ERP como app en este equipo.</strong> Queda un ícono en el escritorio (o en la pantalla
         del celular) y se abre en su propia ventana, sin la barra del navegador. Es el mismo ERP: la misma sesión,
-        el mismo registro de este equipo y siempre la última versión.
+        el mismo registro de este equipo y siempre la última versión. Entrando desde la app, la contraseña se pide
+        cada 15 días (en una caja registrada, siempre).
       </div>
       {enSslip && (
         <div>

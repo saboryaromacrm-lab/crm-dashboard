@@ -64,7 +64,7 @@ export const authService = {
        * recarga del cliente HTTP y quedaría en un bucle.
        */
       const yo = await httpClient.get('/auth/yo', { sinRedirigir: true });
-      const sesion = { ...s, usuario: yo.usuario, sucursal: yo.sucursal };
+      const sesion = { ...s, usuario: yo.usuario, sucursal: yo.sucursal, recordadaHasta: yo.recordadaHasta ?? null };
       actualizarSesion(sesion);
       return aUsuarioSesion(sesion);
     } catch (e) {
@@ -93,14 +93,14 @@ export const authService = {
       ...credentials,
       terminalToken: leerTokenTerminal() || undefined,
       /* SESIÓN RECORDADA (0210): desde la app instalada se pide; el servidor la
-       * concede solo al superadmin y nunca en una terminal registrada. */
+       * concede por 15 días a cualquier rol, nunca en una terminal registrada. */
       recordar: esAppInstalada() || undefined,
     });
     // EL TOKEN ES LA SESIÓN. Sin él, guardar usuario y sucursal solo alcanzaría
     // para pintar el menú: la API no contestaría ni una llamada.
     const sesion = {
       token: res.token, usuario: res.usuario, sucursal: res.sucursal, terminal: res.terminal ?? null,
-      recordada: res.recordada === true,
+      recordadaHasta: res.recordadaHasta ?? null,
     };
     guardarSesion(sesion);
     httpClient.reiniciarAvisoDeSesion();

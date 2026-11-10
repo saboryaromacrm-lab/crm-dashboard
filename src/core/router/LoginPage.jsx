@@ -140,6 +140,10 @@ export function LoginPage() {
    * ese endpoint público suma: no dice qué rol es ni qué puede hacer. Y es una
    * comodidad de la pantalla, no el candado — el servidor decide igual por el
    * rol, así que mandar una sucursal a mano desde afuera no cambia nada.
+   *
+   * ESA PERSONA ENTRA DIRECTO (10/11/2026, pedido del dueño): sin cuadro de
+   * sucursal y sin el paso de confirmar, que solo existe para mirar la
+   * sucursal antes de entrar. Usuario, contraseña, Enter.
    */
   const noVaSucursal = usuario ? usuario.pideSucursal === false : false;
   const sinSucursal = !noVaSucursal && !terminal && !sucursalId;
@@ -177,7 +181,8 @@ export function LoginPage() {
     /* La sucursal vacía NO corta acá: sigue viaje sin sucursal y el servidor
      * decide (superadmin sí, el resto no). El corte del lado de la pantalla
      * mentiría para el único que puede entrar así. */
-    setConfirmando(true);
+    if (noVaSucursal) entrar();
+    else setConfirmando(true);
   };
 
   const entrar = async () => {
@@ -231,7 +236,7 @@ export function LoginPage() {
           {!confirmando ? (
             <>
               <Typography color="text.secondary" sx={{ mb: 3 }}>
-                Ingresá con tu usuario y elegí la sucursal donde vas a trabajar.
+                {noVaSucursal ? 'Ingresá con tu usuario.' : 'Ingresá con tu usuario y elegí la sucursal donde vas a trabajar.'}
               </Typography>
               <form onSubmit={continuar}>
                 <Stack spacing={2}>
@@ -283,22 +288,8 @@ export function LoginPage() {
                     eso lo hace un jefe desde Sistema › Este equipo, y así el
                     cambio queda registrado en vez de pasar en el aire.
                   */}
-                  {noVaSucursal ? (
-                    /* Ni desplegable ni cartel de equipo: este puesto trabaja
-                       fuera de las sucursales y la pregunta no aplica. */
-                    <Stack
-                      direction="row" spacing={1.5} alignItems="center"
-                      sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}
-                    >
-                      <StorefrontIcon color="primary" />
-                      <div>
-                        <Typography variant="subtitle2">No trabajás en una sucursal</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          La sucursal la elegís en cada envío y en cada pedido
-                        </Typography>
-                      </div>
-                    </Stack>
-                  ) : terminal ? (
+                  {/* Este puesto trabaja fuera de las sucursales: no hay nada que mostrar. */}
+                  {noVaSucursal ? null : terminal ? (
                     <Stack
                       direction="row" spacing={1.5} alignItems="center"
                       sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}
@@ -329,7 +320,9 @@ export function LoginPage() {
                     </TextField>
                   )}
                   {error && <Alert severity="error">{error}</Alert>}
-                  <Button type="submit" variant="contained" size="large">Continuar</Button>
+                  <Button type="submit" variant="contained" size="large" disabled={entrando}>
+                    {noVaSucursal ? (entrando ? 'Entrando…' : 'Entrar') : 'Continuar'}
+                  </Button>
                 </Stack>
               </form>
             </>
@@ -371,21 +364,17 @@ export function LoginPage() {
                 <Stack direction="row" spacing={1.5} alignItems="center">
                   <StorefrontIcon color="primary" />
                   <div>
-                    <Typography variant="subtitle2">
-                      {noVaSucursal ? 'Sin sucursal' : sucursal?.nombre}
-                    </Typography>
+                    <Typography variant="subtitle2">{sucursal?.nombre}</Typography>
                     <Typography variant="caption" color="text.secondary">
                       {/* Vacío llega acá también la cajera que se olvidó de
                           elegir: el texto tiene que servirle a los dos — al
                           superadmin le cuenta qué pasa, a ella la manda de
                           vuelta al campo antes de que el servidor la rechace. */}
-                      {noVaSucursal
-                        ? 'Este puesto trabaja fuera de las sucursales'
-                        : terminal
-                          ? `Sucursal de este equipo (${terminal.nombre})`
-                          : sinSucursal
-                            ? 'Así entra solo el superadmin (parado en la central); si no lo sos, volvé y elegí la sucursal'
-                            : 'Sucursal de trabajo de esta sesión'}
+                      {terminal
+                        ? `Sucursal de este equipo (${terminal.nombre})`
+                        : sinSucursal
+                          ? 'Así entra solo el superadmin (parado en la central); si no lo sos, volvé y elegí la sucursal'
+                          : 'Sucursal de trabajo de esta sesión'}
                     </Typography>
                   </div>
                 </Stack>

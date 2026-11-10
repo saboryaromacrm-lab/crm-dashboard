@@ -40,12 +40,12 @@ export const CTX_KEYS = ['crm_inv_ctx', 'crm_ventas_ctx'];
 const HEREDABLE_MS = 10 * 60 * 60 * 1000; // 10 horas: un turno largo
 
 /**
- * LA SESIÓN RECORDADA DEL SUPERADMIN (0210): si el servidor la concedió
- * (`recordada`, solo superadmin desde la app instalada y fuera de las
- * terminales), la copia se hereda 30 días: cerrar la app y volver a abrirla no
- * pide login. Cada carga la vuelve a estirar, igual que el servidor.
+ * LA SESIÓN RECORDADA (0210): si el servidor la concedió (app instalada, fuera
+ * de las cajas registradas), manda `recordadaHasta` y la copia se hereda hasta
+ * ese momento: cerrar la app y volver a abrirla no pide login. El plazo es el
+ * del servidor (15 días fijos) y no se estira acá.
  */
-const RECORDADA_MS = 30 * 24 * 60 * 60 * 1000;
+const hastaDe = (sesion) => Date.parse(sesion?.recordadaHasta ?? '') || Date.now() + HEREDABLE_MS;
 
 function parse(raw) {
   try { return raw ? JSON.parse(raw) : null; } catch { return null; }
@@ -95,15 +95,15 @@ export function leerClave(k) {
 }
 
 /** Escribe una clave de ESTA pestaña. `compartir` también la deja como copia
- *  compartida (solo el login usa eso sin condiciones), con su vencimiento.
- *  `recordada` estira ese vencimiento a 30 días (ver RECORDADA_MS). */
-export function escribirClave(k, valor, { compartir = false, recordada = false } = {}) {
+ *  compartida (solo el login usa eso sin condiciones), heredable `hasta` ese
+ *  momento (ver `hastaDe`). */
+export function escribirClave(k, valor, { compartir = false, hasta = Date.now() + HEREDABLE_MS } = {}) {
   const raw = JSON.stringify(valor);
   try { sessionStorage.setItem(k, raw); } catch { /* modo privado */ }
   if (compartir) {
     try {
       localStorage.setItem(k, raw);
-      localStorage.setItem(claveVence(k), String(Date.now() + (recordada ? RECORDADA_MS : HEREDABLE_MS)));
+      localStorage.setItem(claveVence(k), String(hasta));
     } catch { /* modo privado */ }
   }
 }
@@ -120,7 +120,7 @@ export function leerSesion() {
 
 /** Login: la sesión es de esta pestaña Y queda como "último login" heredable. */
 export function guardarSesion(sesion) {
-  escribirClave(SESION_KEY, sesion, { compartir: true, recordada: sesion?.recordada === true });
+  escribirClave(SESION_KEY, sesion, { compartir: true, hasta: hastaDe(sesion) });
 }
 
 /**
@@ -131,7 +131,7 @@ export function guardarSesion(sesion) {
 export function actualizarSesion(sesion) {
   escribirClave(SESION_KEY, sesion, {
     compartir: esDuenaDeLaCompartida(sesion?.usuario?.id),
-    recordada: sesion?.recordada === true,
+    hasta: hastaDe(sesion),
   });
 }
 
@@ -139,8 +139,8 @@ export function actualizarSesion(sesion) {
  *  el mismo plazo: si no, la sesión recordada volvería sin su sucursal). */
 export function actualizarCtx(ctx, usuarioId) {
   const compartir = esDuenaDeLaCompartida(usuarioId);
-  const recordada = leerSesion()?.recordada === true;
-  for (const k of CTX_KEYS) escribirClave(k, ctx, { compartir, recordada });
+  const hasta = hastaDe(leerSesion());
+  for (const k of CTX_KEYS) escribirClave(k, ctx, { compartir, hasta });
 }
 
 /** Cierra la sesión de ESTA pestaña; la copia compartida solo si era suya. */
