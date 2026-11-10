@@ -121,6 +121,8 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   /** El orden por stock: null = el de la góndola, 'desc' = de mayor a menor, 'asc' = de menor a mayor. */
   const [ordenStock, setOrdenStock] = useState(null);
   const [q, setQ] = useState('');
+  /* Los que toman el costo de OTRO proveedor (2.ª o 3.ª opción) no se ven salvo que se pida (10/11/2026, pedido del dueño). */
+  const [conOtros, setConOtros] = useState(false);
   /** productoId → lo tecleado; `orden`: los productos en el orden en que se cargaron (así sale el mensaje). */
   const [cant, setCant] = useState(() => Object.fromEntries(Object.entries(sugeridos ?? {}).map(([id, n]) => [id, String(n)])));
   const [orden, setOrden] = useState(() => Object.keys(sugeridos ?? {}).map(Number));
@@ -160,19 +162,28 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   const delElegido = anterior?.provId === provId ? anterior : null;
   const pedidoAnterior = delElegido?.pedido ?? null;
 
-  /* Los productos activos del proveedor, con su bulto y en el orden de la góndola (marca → nombre). */
+  /* Los productos activos del proveedor, con su bulto y en el orden de la góndola (marca → nombre).
+   * `costoDe`: el proveedor cuyo costo arma el precio, si no es este (null = es este). */
   const delProveedor = useMemo(() => {
     if (!provId) return [];
     const marca = new Map((catalogos?.marcas ?? []).map((m) => [m.id, m.nombre]));
     return productos
       .filter((p) => p.estado === 'activo' && (p.formatosCompra || []).some((e) => String(e.proveedorId) === provId))
-      .map((p) => ({ p, id: p.id, nombre: p.nombre, marca: marca.get(p.marcaId) ?? '', bulto: bultoDelProveedor(p, provId) }))
+      .map((p) => {
+        const activo = store.formatoActivo(p)?.proveedorId;
+        return {
+          p, id: p.id, nombre: p.nombre, marca: marca.get(p.marcaId) ?? '', bulto: bultoDelProveedor(p, provId),
+          costoDe: String(activo) === provId ? null : (store.getProveedor(activo)?.nombre ?? 'otro proveedor'),
+        };
+      })
       .sort(compararFilasPorMarca);
-  }, [productos, catalogos, provId]);
+  }, [productos, catalogos, provId, store]);
   const porId = useMemo(() => new Map(delProveedor.map((x) => [x.id, x])), [delProveedor]);
+  const cuantosOtros = useMemo(() => delProveedor.filter((x) => x.costoDe).length, [delProveedor]);
+  const visibles = useMemo(() => (conOtros ? delProveedor : delProveedor.filter((x) => !x.costoDe)), [delProveedor, conOtros]);
   const categorias = useMemo(
-    () => [...new Set(delProveedor.map((x) => x.p.categoria).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
-    [delProveedor],
+    () => [...new Set(visibles.map((x) => x.p.categoria).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
+    [visibles],
   );
 
   const tope = aNumero(umbral);
@@ -180,13 +191,13 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
     const t = norm(q.trim());
     const lista = delProveedor
       .map((x) => ({ ...x, stock: disponible(x.id, Number(sucId)) }))
-      /* Lo que ya tiene cantidad cargada se queda a la vista aunque cambie el «menor a». */
-      .filter((x) => ((tope > 0 ? x.stock < tope : true) || aNumero(cant[x.id]) > 0)
+      /* Lo que ya tiene cantidad cargada se queda a la vista aunque cambie el «menor a» o se oculten los de otro costo. */
+      .filter((x) => (((tope > 0 ? x.stock < tope : true) && (conOtros || !x.costoDe)) || aNumero(cant[x.id]) > 0)
         && (!categoria || x.p.categoria === categoria)
         && (!t || norm(`${x.nombre} ${x.marca}`).includes(t)));
     /* Tocar «Stock» ordena de mayor a menor, otra vez de menor a mayor, y otra vuelve al orden de la góndola. */
     return ordenStock ? lista.sort((a, b) => (a.stock - b.stock) * (ordenStock === 'asc' ? 1 : -1)) : lista;
-  }, [delProveedor, disponible, sucId, tope, categoria, q, cant, ordenStock]);
+  }, [delProveedor, disponible, sucId, tope, categoria, q, cant, ordenStock, conOtros]);
 
   const conBulto = (x) => [x.nombre, bultoTexto(x.p, x.bulto)].filter(Boolean).join(' ');
   /** Cuánto haría falta para llegar al «menor a»: en bultos (o en la unidad, sin bulto). */
@@ -309,6 +320,15 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
             {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <input id="orden-buscar" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto o marca…" style={{ minWidth: 200 }} />
+          {cuantosOtros > 0 && (
+            <label
+              className={s.hint} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}
+              title="Productos que también le comprás, pero cuyo precio sale del costo de otro proveedor"
+            >
+              <input id="orden-con-otros" type="checkbox" checked={conOtros} onChange={(e) => setConOtros(e.target.checked)} />
+              Ver también los {cuantosOtros} con el costo de otro proveedor
+            </label>
+          )}
         </div>
 
         {proveedor && delElegido && (
@@ -354,6 +374,7 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                             <span>{x.bulto > 1 ? (x.p.tipo === 'granel' ? `Bolsa de ${x.bulto} kg` : `Bulto de ${x.bulto} u.`) : 'Sin bulto: por unidad'}</span>
                             <Btn small onClick={() => copiar(conBulto(x)).then((ok) => ok && toast(`Copiado: ${conBulto(x)}`, 'ok'))} title="Copiar nombre y bulto">📋</Btn>
                           </div>
+                          {x.costoDe && <div className={s.hint} style={{ margin: 0 }}>El precio sale del costo de {x.costoDe}</div>}
                         </td>
                         <td className={s.num} style={{ whiteSpace: 'nowrap' }}>
                           <input
@@ -384,6 +405,8 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                     <tr><td colSpan={4} className={s.hint}>
                       {!delProveedor.length
                         ? `${proveedor.nombre} no tiene productos activos cargados.`
+                        : !visibles.length
+                          ? `Todos los productos de ${proveedor.nombre} toman el costo de otro proveedor: tildá «Ver también…» para verlos.`
                         : tope > 0
                           ? `Ningún producto de ${proveedor.nombre} con esos filtros tiene menos de ${umbral} en ${sucursal?.nombre ?? 'esa sucursal'}.`
                           : 'Ningún producto con esos filtros.'}
