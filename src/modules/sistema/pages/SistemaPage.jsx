@@ -27,6 +27,8 @@ import { EsteEquipoPanel } from './EsteEquipoPanel.jsx';
 import { RespaldosPanel } from './RespaldosPanel.jsx';
 import { FeriadosPanel } from './FeriadosPanel.jsx';
 import { HorariosPanel } from './HorariosPanel.jsx';
+import { UsuariosRolesPanel } from './UsuariosRolesPanel.jsx';
+import { SucursalesPanel } from './SucursalesPanel.jsx';
 
 /**
  * Los documentos configurables. `etiqueta: true` marca los que van a la
@@ -282,6 +284,16 @@ export function SistemaPage() {
     return () => { vivo = false; };
   }, [empresa, impresion, previewDoc]);
 
+  /*
+   * Los hooks van ANTES de la salida temprana (regla de los hooks): sin
+   * secciones, `seccionActiva` queda en undefined y los dos hooks no hacen nada.
+   * Si el permiso de la sección activa se fue (rol editado), cae a la primera visible.
+   */
+  const seccionActiva = secciones.some((x) => x.id === seccion) ? seccion : secciones[0]?.id;
+  const subnavRef = useRef(null);
+  useSeccionEnUrl(seccionActiva, setSeccion, secciones.map((x) => x.id), 'seccion');
+  useSubnavALaVista(subnavRef, seccionActiva);
+
   if (!secciones.length) {
     return (
       <div style={{ padding: 'var(--crm-pagina-pad, var(--crm-space-6))' }}>
@@ -294,11 +306,6 @@ export function SistemaPage() {
   }
 
   const cargando = !empresa || !impresion;
-  // Si el permiso de la sección activa se fue (rol editado), cae a la primera visible.
-  const seccionActiva = secciones.some((x) => x.id === seccion) ? seccion : secciones[0].id;
-  const subnavRef = useRef(null);
-  useSeccionEnUrl(seccionActiva, setSeccion, secciones.map((x) => x.id), 'seccion');
-  useSubnavALaVista(subnavRef, seccionActiva);
 
   return (
     <div style={{ padding: 'var(--crm-pagina-pad, var(--crm-space-6))', display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
@@ -525,6 +532,9 @@ export function SistemaPage() {
           {seccionActiva === 'respaldos' && <RespaldosPanel onAviso={setAviso} />}
           {seccionActiva === 'feriados' && <FeriadosPanel onAviso={setAviso} />}
           {seccionActiva === 'horarios' && <HorariosPanel onAviso={setAviso} />}
+          {/* 9/11/2026 (0225): mudadas de Gerencia; tampoco esperan empresa/impresión. */}
+          {seccionActiva === 'usuarios' && <UsuariosRolesPanel onAviso={setAviso} />}
+          {seccionActiva === 'sucursales' && <SucursalesPanel onAviso={setAviso} />}
         </div>
       </div>
     </div>

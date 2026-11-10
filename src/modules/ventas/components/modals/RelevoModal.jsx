@@ -13,7 +13,7 @@ import { ModalShell, s } from '../ui.jsx';
  * esto, todo quedaba firmado por Karen y "quién cerró mal esta venta" no se
  * podía contestar.
  *
- * Acá Juan elige su nombre y tipea SU PIN (definido en Gerencia › Usuarios).
+ * Acá Juan elige su nombre y tipea SU PIN (definido en Sistema › Usuarios y roles).
  * El PIN es lo que hace que la firma pese: un selector sin PIN deja elegir
  * cualquier nombre y la respuesta vuelve a no valer nada. La sesión no cambia
  * — permisos, caja y pantalla siguen siendo los de Karen; lo que cambia es
@@ -84,7 +84,7 @@ export function RelevoModal({ cajaSesionId }) {
       {relevos !== null && relevos.length === 0 ? (
         <div className={cx(s.callout, s.info)}>
           No hay usuarios habilitados como relevo. Se habilitan en{' '}
-          <strong>Gerencia › Usuarios y roles</strong>: tilde “Puede relevar en caja” + su PIN.
+          <strong>Sistema › Usuarios y roles</strong>: tilde “Puede relevar en caja” + su PIN.
         </div>
       ) : (
         <>

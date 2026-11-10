@@ -28,7 +28,7 @@ const norm = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/\p{D
  * el monto: confirma que están o los cuenta billete por billete, y lo que
  * falte queda avisado al administrador. El jefe abre con el monto propuesto
  * (lo puede cambiar para ese turno; el fondo fijo lo cambia el superadmin en
- * Gerencia › Sucursales). Sin fondo cargado, la primera apertura lo fija.
+ * Sistema › Sucursales). Sin fondo cargado, la primera apertura lo fija.
  */
 export function AbrirCajaModal({ onChange }) {
   const { ctx, sucursales, usuarios, act, closeModal, toast, esJefe } = useVentas();
@@ -179,7 +179,7 @@ export function AbrirCajaModal({ onChange }) {
           <div className={s.hint} style={{ margin: '6px 0 0' }}>
             {ap?.fondoFijo == null
               ? <>Este monto queda como <strong>fondo fijo</strong> de la caja de {sucursal?.nombre || 'esta sucursal'}: las próximas aperturas arrancan con él.</>
-              : <>Propuesto: {ap.dejadoEnCaja != null ? 'lo que quedó de cambio en el último cierre' : 'el fondo fijo'} ({money(fondo)}). Podés abrir este turno con otro monto; el fondo fijo lo cambia el superadmin en Gerencia › Sucursales.</>}
+              : <>Propuesto: {ap.dejadoEnCaja != null ? 'lo que quedó de cambio en el último cierre' : 'el fondo fijo'} ({money(fondo)}). Podés abrir este turno con otro monto; el fondo fijo lo cambia el superadmin en Sistema › Sucursales.</>}
           </div>
         </div>
       )}

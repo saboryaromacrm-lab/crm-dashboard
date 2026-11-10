@@ -245,7 +245,7 @@ export const ETIQUETA_RESOLUCION = {
 // Los roles son DINÁMICOS: viven en la base (tabla roles) con su lista de
 // permisos, y viajan resueltos en cada usuario del bootstrap (rolClave,
 // rolNombre, permisos). El catálogo de claves lo sirve GET /roles/permisos y
-// se administra desde Gerencia › Usuarios y roles.
+// se administra desde Sistema › Usuarios y roles.
 
 /**
  * Alícuotas legales de IVA. Lista cerrada y espejo de `ALICUOTAS_IVA` del

@@ -7,11 +7,12 @@
  * Resultados, Cash Flow, Asesor y Auditoría eran solo del superadmin).
  * Resultados y Gastos fijos y sueldos comparten la llave.
  *
+ * 9/11/2026 (0225): Usuarios y roles se mudó a Sistema (con Sucursales).
+ *
  * 8/10/2026 (0144): salieron «Reportes de ventas», «Valorización de stock» y
  * «Configuración», que nunca se construyeron porque Métricas, Almacén › Sin
  * movimiento y Sistema ya hacen ese trabajo.
  */
-import GroupIcon from '@mui/icons-material/Group';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import InsightsIcon from '@mui/icons-material/Insights';
@@ -29,7 +30,6 @@ export const GERENCIA_SECCIONES = [
     id: 'vista', label: 'Vista profesional', icon: SpaceDashboardIcon, permiso: 'gerencia.vista',
     desc: 'Cómo le va al negocio y dónde está la plata, por mes o por semana, con gráficos y explicado.',
   },
-  { id: 'usuarios', label: 'Usuarios y roles', icon: GroupIcon, permiso: 'gerencia.usuarios' },
   {
     /* Construida el 19/8/2026 (0072): margen real vs aparente, IVA absorbido
      * por la mercadería sin factura, posición fiscal y control por proveedor. */

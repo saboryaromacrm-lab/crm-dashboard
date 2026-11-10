@@ -1,5 +1,5 @@
 /**
- * GERENCIA › USUARIOS › EMPLEADOS (0221, 6/11/2026, pedido del dueño).
+ * SISTEMA › USUARIOS Y ROLES › EMPLEADOS (0221, 6/11/2026, pedido del dueño; en Sistema desde el 9/11).
  *
  * Quiénes aparecen para elegir al sacar un ADELANTO DE SUELDO (caja central y
  * caja de los locales): los usuarios del ERP marcados como empleados y los que

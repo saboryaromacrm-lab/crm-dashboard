@@ -100,7 +100,7 @@ export function MercadoPagoPanel() {
           })}
         </Table>
         <div className={s.hint}>
-          La primera caja de cada sucursal da de alta también la sucursal en Mercado Pago, con el domicilio de Gerencia › Sucursales.
+          La primera caja de cada sucursal da de alta también la sucursal en Mercado Pago, con el domicilio de Sistema › Sucursales.
         </div>
       </div>
     </div>

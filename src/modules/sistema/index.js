@@ -3,11 +3,11 @@ import { defineModule } from '@core/modules/defineModule.js';
 import { SistemaPage } from './pages/SistemaPage.jsx';
 import { SISTEMA_SECCIONES } from './config/sistema.config.js';
 
-/** SISTEMA — identidad de la empresa, impresión y configuración general. */
+/** SISTEMA — usuarios y roles, sucursales, identidad de la empresa, impresión y configuración general. */
 export const sistemaModule = defineModule({
   id: 'sistema',
   name: 'Sistema',
-  description: 'Empresa, impresoras y configuración general.',
+  description: 'Usuarios y roles, sucursales, empresa, impresoras y configuración general.',
   icon: SettingsSuggestIcon,
   enabled: true,
   basePath: '/sistema',

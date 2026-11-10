@@ -1497,7 +1497,7 @@ export const MANUAL = [
               '**Pegar el `.crt` e instalar** (paso 3 de la pantalla). Antes de guardarlo se controla que sea de esa clave, de ese CUIT y que no esté vencido — los tres errores se manifiestan igual y así se sabe cuál es.',
               '**Probar conexión** hasta que den los **tres ✔**. No emite nada: pregunta si ARCA responde, si el certificado autentica y el último número de cada punto de venta. **Sin los tres en verde no se sigue**, porque cualquier problema posterior va a parecer del código y es un trámite a medias.',
               '**Los datos fiscales, en Sistema › Empresa**: CUIT, **razón social** y domicilio. No es opcional y no lo cubre ARCA: el CAE se pide con `ARCA_CUIT`, así que **una factura sin estos datos sale bien para ARCA y mal en el papel**. Si falta algo, el panel avisa.',
-              '**Un punto de venta por sucursal**, en Gerencia › Sucursales. Cada uno se declara ante ARCA contra un domicilio y lleva su numeración aparte. Son de **cinco dígitos**.',
+              '**Un punto de venta por sucursal**, en Sistema › Sucursales. Cada uno se declara ante ARCA contra un domicilio y lleva su numeración aparte. Son de **cinco dígitos**.',
             ],
           },
           {
@@ -1547,7 +1547,7 @@ export const MANUAL = [
               '**La clave no está en ningún respaldo** — `backup.sh` hace `pg_dump` y el resto vive en git; el par `.key`/`.crt` no está en ninguno de los dos, a propósito. Perderla no se restaura: se da de baja el certificado y se tramita otro. Las facturas ya emitidas no se pierden (el CAE vive en la venta).',
             ],
           },
-          { t: 'ruta', texto: 'Ventas › Configuración (permiso ventas.configuracion) · Sistema › Empresa · Gerencia › Sucursales' },
+          { t: 'ruta', texto: 'Ventas › Configuración (permiso ventas.configuracion) · Sistema › Empresa · Sistema › Sucursales' },
         ],
       },
       {
@@ -1569,7 +1569,7 @@ export const MANUAL = [
               ['**Probar conexión**', 'Las tres preguntas del protocolo, **en orden y cortando en la primera que falla**. El corte ES el diagnóstico: ¿ARCA responde? → ¿el certificado autentica? → ¿el punto de venta está autorizado?'],
               ['**Último número de ARCA**', 'Cuando la conexión anda: el correlativo de cada comprobante **según ARCA**, que es quien lleva la numeración fiscal. El próximo sale con el siguiente'],
               ['**El trámite del certificado**', 'Tres pasos: **generar la clave y el pedido**, subir el pedido a ARCA, y **pegar el `.crt`** que devuelven. La clave privada se genera EN EL SERVIDOR y nunca pasa por la pantalla; nunca se pisa una que ya exista. Al instalar se controla que sea de tu clave, de tu CUIT y que esté vigente'],
-              ['**Los cinco puntos de venta**', 'Una fila por local con su número, su domicilio y su último número autorizado. Se cargan en **Gerencia › Usuarios y roles › Sucursales**; acá se ve si ARCA los reconoce'],
+              ['**Los cinco puntos de venta**', 'Una fila por local con su número, su domicilio y su último número autorizado. Se cargan en **Sistema › Sucursales**; acá se ve si ARCA los reconoce'],
               ['**Las ventas trabadas**', 'Las que salieron como ticket provisorio, con su motivo y su botón de **Facturar**, de la más vieja primero. La que lleva tres días es la urgente'],
             ],
           },
@@ -2771,7 +2771,7 @@ export const MANUAL = [
             cols: ['Rol', 'Qué ve / qué hace'],
             filas: [
               ['**Superadmin** (Lucas)', 'Maneja todo (`*`): crea roles, permisos y usuarios con sus contraseñas. No se edita ni se borra, y siempre queda al menos uno activo'],
-              ['Administrador', 'Todas las secciones salvo Gerencia › Usuarios y roles, con todas las acciones operativas'],
+              ['Administrador', 'Todas las secciones salvo Sistema › Usuarios y roles y Sistema › Sucursales, con todas las acciones operativas'],
               ['Fraccionador', 'Solo Almacén › Fraccionamiento y Transferencias (su lista de Fraccionados) + Info de sistema'],
               ['Cajero', 'Ventas › POS, Clientes y Caja; Almacén › Transferencias e Incidencias; Dashboard e Info'],
             ],
@@ -2797,7 +2797,7 @@ export const MANUAL = [
               '**La sesión es POR VENTANA/PESTAÑA**: se pueden tener dos ventanas del mismo navegador logueadas con usuarios y sucursales distintos (Marta en Express 3 y Carla en Express 2 a la vez) sin que se pisen — cada una ve SU caja y opera en SU sucursal. Una pestaña nueva hereda el último login hecho en ese navegador; loguearse en una ventana no afecta a las que ya estaban trabajando.',
             ],
           },
-          { t: 'ruta', texto: 'Gerencia › Usuarios y roles (permiso gerencia.usuarios — de fábrica, solo el superadmin)' },
+          { t: 'ruta', texto: 'Sistema › Usuarios y roles (permiso sistema.usuarios) y Sistema › Sucursales (permiso sistema.sucursales) — de fábrica, solo el superadmin' },
         ],
       },
     ],
@@ -2877,11 +2877,11 @@ export const MANUAL = [
           {
             t: 'nota',
             tono: 'warn',
-            texto: '**El usuario "Coffit" ya existe** (rol cafeteria, creado por la migración 0048) con contraseña inicial **1234 — cambiala en Gerencia › Usuarios y roles** antes de dársela al café. El candado de visibilidad es del sistema de permisos (pantalla): como todo el ERP, la API misma sigue abierta en la red local hasta que llegue la autenticación — el bloqueante conocido del deploy.',
+            texto: '**El usuario "Coffit" ya existe** (rol cafeteria, creado por la migración 0048) con contraseña inicial **1234 — cambiala en Sistema › Usuarios y roles** antes de dársela al café. El candado de visibilidad es del sistema de permisos (pantalla): como todo el ERP, la API misma sigue abierta en la red local hasta que llegue la autenticación — el bloqueante conocido del deploy.',
           },
           {
             t: 'nota',
-            texto: 'La clave `almacen.cafeteria-pedidos` **sigue en el catálogo** de Gerencia › Usuarios y roles, listada como "SOLO para el rol Coffit": es la que arma ese rol, y el editor muestra el catálogo completo aunque quien edita no tenga la sección. Deja de venir otorgada, no de existir.',
+            texto: 'La clave `almacen.cafeteria-pedidos` **sigue en el catálogo** de Sistema › Usuarios y roles, listada como "SOLO para el rol Coffit": es la que arma ese rol, y el editor muestra el catálogo completo aunque quien edita no tenga la sección. Deja de venir otorgada, no de existir.',
           },
           { t: 'ruta', texto: 'Rol Coffit → Almacén › Sabor y Aroma › Mis pedidos (+ Nuevo pedido) · Admin → Almacén › Coffit › pestaña Pedidos (+ aviso flotante) y "+ Nuevo envío" · migraciones 0048 y 0049' },
         ],
@@ -3243,6 +3243,7 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**9/11/2026**', '**USUARIOS Y ROLES Y SUCURSALES PASAN A SISTEMA** (pedido del dueño). **Sistema › Usuarios y roles** tiene las pestañas Usuarios, Empleados y Roles y permisos, y **Sistema › Sucursales** es una sección propia (punto de venta, factura electrónica, mayorista, fondo y días de cierre de caja, desactivar un local). Gerencia queda para los números del negocio. En el rol, las dos se tildan en el grupo **Sistema**: «Usuarios y roles» y «Sucursales» son llaves separadas, así se puede dar una sin la otra. Cada rol que tenía Usuarios y roles recibió las dos (migración 0225): nadie pierde ni gana acceso.'],
               ['**9/11/2026**', '**EL ROL DICE CÓMO ENTRA A LAS SUCURSALES** (pedido del dueño). En **Gerencia › Usuarios y roles › Roles y permisos**, al editar un rol hay un campo **Sucursal** con tres opciones: **Las de cada usuario** (entra en las sucursales tildadas en su usuario; ninguna tildada, elige cualquiera al entrar, y se queda en esa), **Libre** (entra en cualquier sucursal y la cambia desde el encabezado, como el administrador) y **No trabaja en una sucursal** (no se le pide al entrar, como Coffit). «Libre» solo dice dónde puede pararse: lo que ve y hace sigue siendo lo tildado en el rol. Administrador y Superadmin quedaron en «Libre», Coffit en «No trabaja en una sucursal» y el resto en «Las de cada usuario», como venían. Quien no entra en cualquier sucursal no puede dar «Libre» (ni crear, ni cambiar, ni asignar un rol así), y cada cambio queda en la auditoría.'],
               ['**9/11/2026**', '**DÍAS ABIERTOS Y TURNOS EN LOS NÚMEROS DEL NEGOCIO** (pedido del dueño). Un mes con feriados vende menos en total sin haber vendido peor. Ahora **Rentabilidad**, **Resultados**, **Métricas** (Ventas y Comparar fechas), **Indicadores** y la **Vista profesional** dicen cuántos días abrió el negocio en el período, cuántos turnos de caja hubo y qué días no abrió («Abrió 22 de 31 días · 85 turnos de caja · No abrió: dom 4/10…»), y miden la venta **por día abierto**. **Un local abrió un día si ese día vendió en el mostrador** (los pedidos de la tienda no cuentan: entran aunque el local esté cerrado). Los turnos van aparte porque hay locales que cierran la caja cada tantos días. Con todas las sucursales, la venta por día abierto es la del negocio (días en que abrió algún local); cada local tiene sus días. En Resultados, abajo de la tabla, van los días abiertos y las ventas netas por día abierto de cada columna (también en el Excel y el PDF); los gastos fijos y los sueldos **no** se reparten por día: se pagan igual con feriados. Métricas › Ventas cambió «Promedio por día con venta» por **Venta por día abierto**, e Indicadores suma **Crecimiento por día abierto**: si las ventas bajan pero por día abierto suben, fueron los feriados.'],
               ['**9/11/2026**', '**ANOTACIONES: PARA QUIÉN ES EL RECORDATORIO Y CAMBIARLO** (pedido del dueño). En las anotaciones del Dashboard, cada recordatorio muestra en su propio renglón **Para:** a quién le sale el aviso y en qué está cada uno: «todavía no se le mostró», «sin ver» o «✓ visto» con el día y la hora. Quien escribió la anotación (y nadie más, ni el superadmin) tiene **Editar recordatorio**: cambia el día y la hora, a quién avisarle, o lo saca. En una anotación sin recordatorio aparece **Agregar recordatorio**. Si se cambia el día y la hora, el aviso **les vuelve a salir a todos**, también a los que ya lo habían visto; si solo se cambia a quién, los que ya lo vieron siguen como vistos. El texto de la anotación no se edita.'],

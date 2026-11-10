@@ -6,14 +6,14 @@ import { httpClient } from '@core/services/httpClient.js';
  *
  * Va en todo egreso con concepto de adelanto (el concepto trae `esAdelanto`):
  * Cash Flow, caja del local y el asentado después del cierre. Elegir es
- * obligatorio (el servidor lo exige). La lista se carga en Gerencia › Usuarios
+ * obligatorio (el servidor lo exige). La lista se carga en Sistema › Usuarios y roles
  * › Empleados. `value` es el id como texto ('' = sin elegir).
  */
 export function EmpleadoAdelanto({ value, onChange, id = 'empleado-adelanto' }) {
   const [lista, setLista] = useState(null);
   useEffect(() => { httpClient.get('/personal/adelantos').then(setLista).catch(() => setLista([])); }, []);
   if (lista && !lista.length) {
-    return <div style={{ fontSize: 13, color: 'var(--crm-color-danger)' }}>No hay empleados cargados: el dueño los carga en Gerencia › Usuarios › Empleados.</div>;
+    return <div style={{ fontSize: 13, color: 'var(--crm-color-danger)' }}>No hay empleados cargados: el dueño los carga en Sistema › Usuarios y roles › Empleados.</div>;
   }
   const grupo = (usaSistema, label) => {
     const de = (lista ?? []).filter((e) => (e.usuarioId != null) === usaSistema);

@@ -5,6 +5,8 @@
  * deriva de acá qué claves hacen visible el módulo, y la página filtra el
  * sub-menú con las mismas.
  */
+import GroupIcon from '@mui/icons-material/Group';
+import StorefrontIcon from '@mui/icons-material/Storefront';
 import BusinessIcon from '@mui/icons-material/Business';
 import PrintIcon from '@mui/icons-material/Print';
 import BackupIcon from '@mui/icons-material/Backup';
@@ -13,6 +15,9 @@ import EventIcon from '@mui/icons-material/Event';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 
 export const SISTEMA_SECCIONES = [
+  /* 9/11/2026 (0225, pedido del dueño): mudadas de Gerencia, cada una con su llave. */
+  { id: 'usuarios', label: 'Usuarios y roles', icon: GroupIcon, permiso: 'sistema.usuarios' },
+  { id: 'sucursales', label: 'Sucursales', icon: StorefrontIcon, permiso: 'sistema.sucursales' },
   { id: 'empresa', label: 'Empresa', icon: BusinessIcon, permiso: 'sistema.empresa' },
   { id: 'impresion', label: 'Impresión', icon: PrintIcon, permiso: 'sistema.impresion' },
   { id: 'terminales', label: 'Este equipo', icon: PointOfSaleIcon, permiso: 'sistema.terminales' },

@@ -130,7 +130,7 @@ export function PanelArca({ habilitado }) {
         <div className={s.hint} style={{ marginBottom: 6 }}>
           ARCA declara cada punto de venta contra un <strong>domicilio</strong> y cada uno lleva
           su numeración correlativa aparte. Cada local factura <strong>solo con el suyo</strong> y se
-          enciende de a uno en <strong>Gerencia › Sucursales</strong>; el que no está encendido emite
+          enciende de a uno en <strong>Sistema › Sucursales</strong>; el que no está encendido emite
           comprobantes internos, sin CAE. «Probar conexión» prueba también los puntos de venta
           cargados que todavía no están encendidos: así se comprueba uno nuevo antes de prenderlo.
         </div>
@@ -183,7 +183,7 @@ export function PanelArca({ habilitado }) {
           <div className={s.hint} style={{ marginTop: 8 }}>
             {est.sinPuntoVenta === 1 ? '1 local no tiene' : `${est.sinPuntoVenta} locales no tienen`} punto de venta
             propio todavía: {est.sinPuntoVenta === 1 ? 'emite' : 'emiten'} solo comprobantes internos, sin CAE,
-            hasta que se {est.sinPuntoVenta === 1 ? 'le cargue' : 'les cargue'} y se encienda en Gerencia › Sucursales.
+            hasta que se {est.sinPuntoVenta === 1 ? 'le cargue' : 'les cargue'} y se encienda en Sistema › Sucursales.
           </div>
         )}
       </div>
