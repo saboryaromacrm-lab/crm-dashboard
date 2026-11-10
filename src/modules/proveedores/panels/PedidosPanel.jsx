@@ -85,8 +85,20 @@ export function PedidosPanel() {
     const revisadoHace = t.revisadoAt ? diasCalendario(t.revisadoAt) : null;
     const anotadaHace = t.fechaAlta ? diasCalendario(t.fechaAlta) : null;
     const abierta = abiertas.has(t.id);
+    /* Enviado (10/11/2026, pedido del dueño): la tarjeta entera en verde, para verlo sin abrirla. */
+    const enviada = t.estado === 'solicitado' && t.pedidoEnviado;
     return (
-      <div className={s.card} style={{ padding: abierta ? 10 : '6px 10px', marginBottom: abierta ? 8 : 6 }}>
+      <div
+        className={s.card}
+        style={{
+          padding: abierta ? 10 : '6px 10px', marginBottom: abierta ? 8 : 6,
+          ...(enviada && {
+            background: 'color-mix(in srgb, var(--crm-color-success) 22%, var(--crm-color-surface))',
+            borderColor: 'var(--crm-color-success)',
+          }),
+        }}
+        title={enviada ? 'Pedido enviado: esperando que el proveedor lo confirme' : undefined}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
           <div style={{ minWidth: 0, display: 'flex' }}>
             <ProveedorMenu proveedorId={t.proveedorId} nombre={t.proveedorNombre} unaLinea={!abierta} />

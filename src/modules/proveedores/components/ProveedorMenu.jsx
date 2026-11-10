@@ -56,7 +56,8 @@ export function ProveedorMenu({ proveedorId, nombre, enPadron = false, unaLinea 
         aria-expanded={!!anchor}
         title={`${unaLinea ? `${nombre} · ` : ''}${enPadron ? 'Orden de pedido, estado de cuenta y WhatsApp' : 'Ver stock, estado de cuenta e ingresos'}`}
         style={{
-          all: 'unset', cursor: 'pointer', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 2,
+          /* El color del tema, no el heredado: en modo oscuro la tarjeta hereda tinta oscura y el nombre no se leía. */
+          all: 'unset', color: 'var(--crm-color-text)', cursor: 'pointer', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 2,
           /* Más alto para el dedo sin mover nada: lo que suma el relleno lo devuelve el margen. */
           padding: '8px 0', margin: '-8px 0',
           textDecoration: 'underline', textDecorationColor: 'var(--crm-color-border, #ccc)', textUnderlineOffset: 3,
