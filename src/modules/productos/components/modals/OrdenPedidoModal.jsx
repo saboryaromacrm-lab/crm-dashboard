@@ -6,7 +6,7 @@ import { telefonoWa } from '@modules/ventas/domain/constants.js';
 import { abrirWhatsApp } from '@shared/utils/whatsapp.js';
 import { useBreakpoint } from '@core/hooks/useBreakpoint.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
-import { bultoDelProveedor, bultoTexto, estimarPedido, indiceDisponible, totalesPedido, unidadPedido } from '../../domain/bulto.js';
+import { bultoDelProveedor, bultoTexto, estimarPedido, formatoDelProveedor, indiceDisponible, totalesPedido, unidadPedido } from '../../domain/bulto.js';
 import { money } from '../../domain/format.js';
 import { norm } from '../CatalogoPicker.jsx';
 import { ModalShell } from '../Modal.jsx';
@@ -41,6 +41,8 @@ const TH_FIJO = { position: 'sticky', top: 0, zIndex: 1 };
 /* Cómo se presenta el pedido y cómo cierra (12/10/2026, pedido del dueño): quién pide —nombre y CUIT— y la fecha. */
 const QUIEN_PIDE = 'Lorenzo Lucas - 23356782429';
 const CIERRE = 'Por favor confirmar recibido.';
+/** Va en el título solo si algún renglón lleva el código del proveedor (10/11/2026). */
+const AVISO_CODIGO = '(N°) es el código interno de ustedes';
 
 const fechaHora = (v) => new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -173,6 +175,8 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
         const activo = store.formatoActivo(p)?.proveedorId;
         return {
           p, id: p.id, nombre: p.nombre, marca: marca.get(p.marcaId) ?? '', bulto: bultoDelProveedor(p, provId),
+          /* El código con que ESE proveedor conoce el producto (su formato de compra): va en el pedido. */
+          codigo: String(formatoDelProveedor(p, provId)?.codigoProveedor ?? '').trim(),
           costoDe: String(activo) === provId ? null : (store.getProveedor(activo)?.nombre ?? 'otro proveedor'),
         };
       })
@@ -208,12 +212,13 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   };
 
   const pedidos = orden.map((id) => porId.get(id)).filter(Boolean).map((x) => ({ x, n: aNumero(cant[x.id]) }));
-  const lineas = pedidos.map(({ x, n }) => `${conBulto(x)} — ${fmtN(n)} ${unidadPedido(x.p, x.bulto, n)}`);
+  const lineas = pedidos.map(({ x, n }) => `${conBulto(x)}${x.codigo ? ` (${x.codigo})` : ''} — ${fmtN(n)} ${unidadPedido(x.p, x.bulto, n)}`);
+  const titulo = [`Pedido - ${QUIEN_PIDE} - ${hoy()}`, ...(pedidos.some(({ x }) => x.codigo) ? [AVISO_CODIGO] : [])].join(' - ');
   const renglones = pedidos.map(({ x, n }) => ({ p: x.p, bulto: x.bulto, cantidad: n }));
   /* Cuánto suma, a costo (13/10/2026): solo para mirar, no va en el mensaje. Solo quien ve costos. */
   const estimado = verCostos && proveedor ? estimarPedido(renglones, proveedor.id, store.costosFormato) : null;
   /* Al final, cuántos bultos y unidades en total (22/10/2026). */
-  const armado = lineas.length ? [`Pedido - ${QUIEN_PIDE} - ${hoy()}`, '', ...lineas, '', totalesPedido(renglones), '', CIERRE].join('\n') : '';
+  const armado = lineas.length ? [titulo, '', ...lineas, '', totalesPedido(renglones), '', CIERRE].join('\n') : '';
   /** Lo que se ve, se copia, se manda y se anota. */
   const mensaje = editado ? editado.texto : armado;
   const listaCambio = !!editado && editado.base !== armado;
@@ -372,6 +377,7 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                           <div className={s.hint} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                             {x.marca && <span>{x.marca} ·</span>}
                             <span>{x.bulto > 1 ? (x.p.tipo === 'granel' ? `Bolsa de ${x.bulto} kg` : `Bulto de ${x.bulto} u.`) : 'Sin bulto: por unidad'}</span>
+                            {x.codigo && <span>· Cód. {x.codigo}</span>}
                             <Btn small onClick={() => copiar(conBulto(x)).then((ok) => ok && toast(`Copiado: ${conBulto(x)}`, 'ok'))} title="Copiar nombre y bulto">📋</Btn>
                           </div>
                           {x.costoDe && <div className={s.hint} style={{ margin: 0 }}>El precio sale del costo de {x.costoDe}</div>}
