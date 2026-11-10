@@ -24,8 +24,9 @@ import { Btn, s } from '../ui.jsx';
  * teléfono de la ficha del proveedor. El mensaje se puede retocar a mano (13/10):
  * desde ahí manda lo escrito y la lista ya no lo pisa. Lo copiado o mandado
  * queda como «pedido anterior» de ese proveedor (uno solo, 0165) para verlo la
- * próxima vez. Al copiar o enviar queda anotado en
- * Proveedores › Pedidos (la tarjeta nace en «Pedido» y después se actualiza).
+ * próxima vez. Al cerrar (o al cambiar de proveedor) pregunta si se anota en
+ * Proveedores › Pedidos (10/11/2026, pedido del dueño): la tarjeta queda en
+ * «Solicitado» con «Pedido enviado»; a «Pedido» se pasa a mano cuando confirma.
  *
  * RECORDATORIOS DEL PROVEEDOR (0181, 19/10/2026, pedido del dueño): una nota
  * por proveedor («mínimo 3 bultos», «no manda los martes») arriba de todo,
@@ -113,7 +114,7 @@ function Recordatorios({ proveedor, nota, onGuardada }) {
 export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: sucInicial = null, sugeridos = null, volverA = '' }) {
   const { store, closeModal, toast, sucOperativa } = useProductos();
   const navigate = useNavigate();
-  const cerrar = () => { closeModal(); if (volverA) navigate(volverA); };
+  const salir = () => { closeModal(); if (volverA) navigate(volverA); };
   const { isDesktop } = useBreakpoint();
   const [provId, setProvId] = useState(provInicial ? String(provInicial) : '');
   const [sucId, setSucId] = useState(String(sucInicial || sucOperativa() || ''));
@@ -133,10 +134,10 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   /** Al elegir el proveedor: su pedido anterior como estaba al abrir (lo de esta vez se ve la próxima) y sus recordatorios: { provId, pedido, nota }. */
   const [anterior, setAnterior] = useState(null);
   const [verAnterior, setVerAnterior] = useState(false);
-  /** La tarjeta de Proveedores › Pedidos de esta orden: { id, provId, notas }. */
-  const anotado = useRef(null);
-  const [anotadoVisto, setAnotadoVisto] = useState(false);
-  const cola = useRef(Promise.resolve());
+  /** «¿Lo anotás en Proveedores › Pedidos?» antes de cerrar o cambiar de proveedor: `{ luego }` = qué hacer después, o null. */
+  const [pregunta, setPregunta] = useState(null);
+  const anotando = useRef(false);
+  const [ocupado, setOcupado] = useState(false);
   /** Lo último que se guardó como «pedido anterior» en esta ventana: copiar dos veces lo mismo no repite el envío. */
   const guardado = useRef('');
   const inputs = useRef({});
@@ -223,7 +224,7 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   const mensaje = editado ? editado.texto : armado;
   const listaCambio = !!editado && editado.base !== armado;
 
-  const cambiarProveedor = (v) => { setProvId(v); setCant({}); setOrden([]); setQ(''); setCategoria(''); setEditado(null); };
+  const limpiarPara = (v) => { setProvId(v); setCant({}); setOrden([]); setQ(''); setCategoria(''); setEditado(null); };
   const editar = (texto) => setEditado((e) => ({ texto, base: e?.base ?? armado }));
   /** Enteros (bultos, unidades, bolsas); kg con coma solo en el granel sin bolsa. */
   const cargar = (x, texto) => {
@@ -251,28 +252,34 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   };
 
   /*
-   * ANOTAR EN PROVEEDORES › PEDIDOS, una vez por orden: la primera copia o
-   * envío anota el pedido; las siguientes, si cambió, le actualizan la nota.
-   * En fila, para que dos clics seguidos no anoten dos veces. Si el proveedor
-   * ya tenía su tarjeta (en Solicitado, por ejemplo), es esa (0223): pasa a
-   * Pedido y lo que ya decía queda arriba (`antes`), también al actualizar.
+   * ANOTAR EN PROVEEDORES › PEDIDOS (10/11/2026, pedido del dueño): ya no al
+   * copiar o enviar, sino al cerrar o cambiar de proveedor, y preguntando. Con
+   * «Sí», la tarjeta del proveedor queda en Solicitado con «Pedido enviado»
+   * (si ya tenía una, es esa, con la nota sumada; si ya estaba en Pedido, ahí
+   * sigue). Con candado (`useRef`): dos clics no anotan dos veces.
    */
-  const anotar = (aviso) => {
-    if (!puedeAnotar || !proveedor) { toast(aviso, 'ok'); return; }
-    const texto = mensaje;
-    const pid = proveedor.id;
-    cola.current = cola.current.then(async () => {
-      const previo = anotado.current?.provId === pid ? anotado.current : null;
-      if (previo?.notas === texto) { toast(aviso, 'ok'); return; }
-      const r = await store.anotarPedidoProveedor(previo?.id ?? null, pid, (previo?.antes ?? '') + texto);
-      if (!r.ok) { toast(`${aviso} Pero no quedó anotado en Proveedores › Pedidos: ${r.error}`, 'err'); return; }
-      const final = r.data?.notas ?? texto;
-      const antes = final.endsWith(texto) ? final.slice(0, final.length - texto.length) : '';
-      anotado.current = { id: r.data?.id ?? previo?.id, provId: pid, notas: texto, antes };
-      setAnotadoVisto(true);
-      const donde = previo ? 'Se actualizó' : r.data?.yaEstaba ? 'Se sumó a la tarjeta que ya tenía' : 'Quedó anotado';
-      toast(`${aviso} ${donde} en Proveedores › Pedidos.`, 'ok');
-    });
+  const conPregunta = (luego) => {
+    if (puedeAnotar && proveedor && mensaje.trim()) setPregunta({ luego });
+    else luego();
+  };
+  const cerrar = () => { if (!pregunta) conPregunta(salir); };
+  const cambiarProveedor = (v) => conPregunta(() => limpiarPara(v));
+  const responder = async (anotar) => {
+    const { luego } = pregunta;
+    if (anotar) {
+      if (anotando.current) return;
+      anotando.current = true;
+      setOcupado(true);
+      const r = await store.anotarPedidoProveedor(proveedor.id, mensaje);
+      anotando.current = false;
+      setOcupado(false);
+      if (!r.ok) { toast(`No quedó anotado en Proveedores › Pedidos: ${r.error}`, 'err'); return; }
+      toast(r.data?.yaEstaba === 'pedido'
+        ? `Se sumó a la tarjeta de ${proveedor.nombre}, que ya estaba en Pedido.`
+        : `Anotado en Proveedores › Pedidos › Solicitado, con «Pedido enviado»${r.data?.yaEstaba ? ' (en la tarjeta que ya tenía)' : ''}.`, 'ok');
+    }
+    setPregunta(null);
+    luego();
   };
 
   /** Lo copiado o mandado pasa a ser el «pedido anterior» de este proveedor (pisa al que había). */
@@ -287,12 +294,11 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
     });
   };
   const copiarPedido = async () => {
-    if (await copiar(mensaje, 'el pedido')) { guardarComoUltimo(); anotar('Pedido copiado.'); }
+    if (await copiar(mensaje, 'el pedido')) { guardarComoUltimo(); toast('Pedido copiado.', 'ok'); }
   };
   const enviarWhatsApp = () => {
     abrirWhatsApp(telefono, mensaje);
     guardarComoUltimo();
-    anotar('WhatsApp abierto con el pedido.');
   };
 
   return (
@@ -301,8 +307,22 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
       subtitle="Los productos del proveedor (o los que tienen menos stock que el número elegido), en el bulto en que se le compran"
       size="xl"
       onClose={cerrar}
-      footer={[{ texto: volverA ? 'Cerrar y volver' : 'Cerrar', clase: 'btn-ghost', onClick: cerrar }]}
+      footer={pregunta ? [] : [{ texto: volverA ? 'Cerrar y volver' : 'Cerrar', clase: 'btn-ghost', onClick: cerrar }]}
     >
+      {pregunta && proveedor && (
+        <div
+          ref={(el) => el?.scrollIntoView({ block: 'nearest' })}
+          className={cx(s.callout, s.info)} role="alertdialog" aria-label="Anotar el pedido"
+          style={{ margin: 16, marginBottom: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
+        >
+          <span style={{ flex: 1, minWidth: 240 }}>
+            <strong>¿Anotás el pedido a {proveedor.nombre} en Proveedores › Pedidos?</strong> Queda en Solicitado, con «Pedido enviado».
+          </span>
+          <Btn onClick={() => setPregunta(null)} disabled={ocupado}>Volver al pedido</Btn>
+          <Btn onClick={() => responder(false)} disabled={ocupado}>No anotar</Btn>
+          <Btn variant="btn-primary" onClick={() => responder(true)} disabled={ocupado}>{ocupado ? 'Anotando…' : 'Sí, anotar'}</Btn>
+        </div>
+      )}
       {/* En pantalla grande la lista scrollea sola y el pedido queda al costado; en una chica va todo junto, uno abajo del otro. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 16, flex: 1, minHeight: 0, overflow: isDesktop ? 'hidden' : 'auto' }}>
         <div className={s.toolbar}>
@@ -481,11 +501,9 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                 </div>
               )}
               <div className={s.hint} style={{ margin: 0 }}>
-                {!puedeAnotar
-                  ? 'Tu rol no tiene Proveedores › Pedidos: el pedido no queda anotado ahí.'
-                  : anotadoVisto
-                    ? '✓ Anotado en Proveedores › Pedidos. Si lo cambiás y lo volvés a copiar o enviar, se actualiza.'
-                    : 'Al copiar o enviar, queda anotado en Proveedores › Pedidos (columna Pedido).'}
+                {puedeAnotar
+                  ? 'Al cerrar te pregunta si lo anotás en Proveedores › Pedidos (Solicitado, con «Pedido enviado»).'
+                  : 'Tu rol no tiene Proveedores › Pedidos: el pedido no queda anotado ahí.'}
               </div>
             </div>
           </div>
