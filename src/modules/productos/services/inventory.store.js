@@ -1395,6 +1395,8 @@ const _qsPagos = (filtros = {}) => {
 };
 const pagosSucursal = (filtros) => httpClient.get('/pagos-proveedor' + _qsPagos({ destino: 'mercaderia', ...filtros }));
 const pagoSucursal = (id) => httpClient.get('/pagos-proveedor/' + id);
+/** Compras › Pagos realizados: todos los pagos a proveedores, de mercadería y de gastos. */
+const pagosRealizados = (filtros) => httpClient.get('/pagos-proveedor' + _qsPagos(filtros));
 const pagosDisponibles = (proveedorId) => httpClient.get(`/pagos-proveedor/disponibles/${proveedorId}?destino=mercaderia`);
 /** Turno abierto de una sucursal, o null. Lo usa el pago al contado del comprobante. */
 const cajaAbierta = (sucursalId) => httpClient.get(`/caja/actual/${sucursalId}`);
@@ -1645,7 +1647,7 @@ export const inventoryStore = {
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
   papelFactura, iaFacturas, iaConfigFacturas, leerFacturasConIa, propuestaIa, elegirConIa, espacioFacturas, liberarFacturas,
-  pagosSucursal, pagoSucursal, pagosDisponibles, pagosDocsPendientes, echeqsDisponibles, cajaAbierta,
+  pagosSucursal, pagoSucursal, pagosRealizados, pagosDisponibles, pagosDocsPendientes, echeqsDisponibles, cajaAbierta,
   enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria, costosEntradaCafeteria, depositoCafeteria,
   comprasCafeteria, gastosCafeteria,
   cuentaCoffit, movimientoCoffit, anularMovimientoCoffit, cerrarCuentaCoffit, reabrirCierreCoffit, cierreCoffit,

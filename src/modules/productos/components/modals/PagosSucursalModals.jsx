@@ -15,7 +15,8 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useProductos } from '../../context/ProductosContext.jsx';
-import { money, fmtFecha, fmtFechaHora } from '../../domain/format.js';
+import { money, fmtFecha, fmtFechaHora, MEDIOS_PAGO_PROVEEDOR, partesDelPago } from '../../domain/format.js';
+import { desdeCuentas } from '@shared/components/CuentaPropiaSelect.jsx';
 import { deOtraSucursal, esJefeSesion, pagoSeOfrece } from '../../domain/pagosACuenta.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { ModalShell } from '../Modal.jsx';
@@ -219,10 +220,12 @@ export function PagoSucursalDetalleModal({ pagoId, onChange }) {
     if (ok) { onChange?.(); }
   };
 
+  /* Desde Compras › Pagos realizados llegan también los de gastos: se mueve a la otra bandeja. */
+  const otraBandeja = pago?.destino === 'gastos' ? 'mercaderia' : 'gastos';
   const mover = async () => {
     const ok = await act(
-      store.moverDestinoPago(pagoId, 'gastos'),
-      'Pago movido a Gastos › Pagos en sucursal.',
+      store.moverDestinoPago(pagoId, otraBandeja),
+      otraBandeja === 'gastos' ? 'Pago movido a Gastos › Pagos en sucursal.' : 'Pago movido a Compras › Facturación › Pagos en sucursal.',
     );
     if (ok) onChange?.();
   };
@@ -235,7 +238,7 @@ export function PagoSucursalDetalleModal({ pagoId, onChange }) {
 
   const footer = [{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }];
   if (!pago) {
-    return <ModalShell title="Pago en sucursal" onClose={closeModal} footer={footer}>
+    return <ModalShell title="Pago" onClose={closeModal} footer={footer}>
       <div className={s['empty-state']}>Cargando…</div>
     </ModalShell>;
   }
@@ -255,10 +258,17 @@ export function PagoSucursalDetalleModal({ pagoId, onChange }) {
         <Di label="Sucursal">{pago.sucursalNombre || '—'}</Di>
         <Di label="Caja">{pago.cajaSesionId ? `Turno #${pago.cajaSesionId} · ${pago.usuarioNombre}` : 'No salió de caja'}</Di>
         <Di label="Importe"><strong>{money(pago.importe)}</strong></Di>
+        <Di label="Medio">
+          {partesDelPago(pago).map((x, i) => (
+            <div key={i}>{MEDIOS_PAGO_PROVEEDOR[x.medio] ?? x.medio}{pago.formas?.length > 1 ? ` · ${money(x.importe)}` : ''}</div>
+          ))}
+          {pago.cambioPor && <div className={s.hint} style={{ margin: 0 }}>Efectivo por transferencia ({pago.cambioPor})</div>}
+          {desdeCuentas(pago) && <div className={s.hint} style={{ margin: 0 }}>{desdeCuentas(pago)}</div>}
+        </Di>
         <Di label="Sin aplicar">{money(pago.saldo)}</Di>
         <Di label="Referencia">{pago.referencia || '—'}</Di>
         <Di label="Bandeja">
-          Compras (mercadería)
+          {pago.destino === 'gastos' ? 'Gastos' : 'Compras (mercadería)'}
           {pago.esFlete && <div className={s.hint} style={{ margin: 0 }}>Flete que el proveedor descuenta</div>}
         </Di>
       </div>
@@ -321,9 +331,10 @@ export function PagoSucursalDetalleModal({ pagoId, onChange }) {
           <div className={s.callout}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ flex: 1, minWidth: 220 }}>
-                ¿La cajera eligió mal el tipo? Este pago era de un proveedor de <strong>gastos</strong>:
+                ¿La cajera eligió mal el tipo? Este pago era de un proveedor de{' '}
+                <strong>{otraBandeja === 'gastos' ? 'gastos' : 'mercadería'}</strong>:
               </span>
-              <Btn small onClick={mover}>Mover a Gastos</Btn>
+              <Btn small onClick={mover}>{otraBandeja === 'gastos' ? 'Mover a Gastos' : 'Mover a Compras'}</Btn>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
               <input

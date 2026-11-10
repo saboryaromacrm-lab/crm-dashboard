@@ -18,6 +18,7 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
 import HistoryIcon from '@mui/icons-material/History';
+import PaymentsIcon from '@mui/icons-material/Payments';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import LocalCafeIcon from '@mui/icons-material/LocalCafe';
@@ -64,6 +65,9 @@ export const COMPRAS_PANELS = [
   { id: 'proveedores',    label: 'Costos y percepciones', icon: LocalShippingIcon, permiso: 'compras.proveedores' },
   { id: 'lecturas',       label: 'Procesamiento de facturas', icon: DocumentScannerIcon, permiso: 'compras.lecturas', badge: 'lecturas' },
   { id: 'facturacion',    label: 'Facturación',    icon: ReceiptLongIcon,    permiso: 'compras.facturacion' },
+  /* PAGOS REALIZADOS (9/11/2026, pedido del dueño): todo lo pagado a proveedores, con filtros. Mismo
+   * permiso que «Pagos en sucursal» de Facturación: quien ve esa plata, ve esta. */
+  { id: 'pagos',          label: 'Pagos realizados', icon: PaymentsIcon,     permiso: 'compras.pagos' },
   { id: 'historial',      label: 'Historial',      icon: HistoryIcon,        permiso: 'compras.historial' },
 ];
 

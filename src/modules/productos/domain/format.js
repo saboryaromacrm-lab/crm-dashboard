@@ -43,6 +43,27 @@ export function money(n) {
     })
   );
 }
+/* ---- Pagos a proveedores ---- */
+/** Los medios con que se le paga a un proveedor (las claves del enum `medio_pago` que admite el pago). */
+export const MEDIOS_PAGO_PROVEEDOR = {
+  efectivo: 'Efectivo',
+  transferencia: 'Transferencia',
+  deposito: 'Depósito',
+  echeq: 'Echeq',
+  cheque: 'Cheque',
+  tarjeta_debito: 'Débito',
+  tarjeta_credito: 'Crédito',
+  qr: 'QR',
+  otro: 'Otro',
+};
+
+/** Cómo se pagó, parte por parte: las formas de un pago mixto, o el medio único de la cabecera. */
+export function partesDelPago(p) {
+  return p.formas?.length
+    ? p.formas.map((f) => ({ medio: f.medio, importe: f.importe }))
+    : [{ medio: p.medio, importe: p.importe }];
+}
+
 export function num(n, dec) {
   return Number(n || 0).toLocaleString('es-AR', {
     minimumFractionDigits: 0,
