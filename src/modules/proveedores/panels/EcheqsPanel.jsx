@@ -14,6 +14,7 @@ const FILTROS = [
 
 const COLOR_HECHOS = 'var(--crm-color-primary)';
 const COLOR_PENDIENTES = 'var(--crm-color-warning)';
+const COLOR_COBRADOS = 'var(--crm-color-text-muted)';
 const mesDe = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 const nombreMes = (mes) => {
   const t = new Date(`${mes}-01T12:00:00`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
@@ -39,6 +40,51 @@ function Plazo({ e }) {
   );
 }
 
+const puntito = (color) => (
+  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: color, marginRight: 4, flex: 'none' }} />
+);
+
+/** Cuándo, contado desde hoy: «hoy», «en 3 días» o lo atrasado, según la clase del renglón. */
+function cuandoDebita({ dia, clase }) {
+  if (clase === 'cobrado') return 'ya debitado';
+  const d = diasEntre(new Date(), `${dia}T12:00:00`);
+  if (d > 1) return `en ${d} días`;
+  if (d === 1) return 'mañana';
+  if (d === 0) return 'hoy';
+  return `venció hace ${cuantos(-d, 'día', 'días')}${clase === 'pendiente' ? ', sin confirmar' : ', sin marcar cobrado'}`;
+}
+
+/**
+ * EL MES DÍA POR DÍA (10/11/2026, pedido del dueño: «en cuántos días se cobraría
+ * ese monto, como un resumen del mes, así veo cuáles faltan pagar»): cada día
+ * de débito con cuánto sale, en cuántos días, y lo que ya se debitó este mes.
+ */
+function DiasDelMes({ dias }) {
+  if (!dias?.length) return null;
+  const color = { hecho: COLOR_HECHOS, pendiente: COLOR_PENDIENTES, cobrado: COLOR_COBRADOS };
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', columnGap: 12, rowGap: 2, fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+      {dias.map((d) => {
+        const atrasado = d.clase !== 'cobrado' && diasEntre(new Date(), `${d.dia}T12:00:00`) < 0;
+        const tono = d.clase === 'cobrado' ? { color: COLOR_COBRADOS } : atrasado ? { color: 'var(--crm-color-danger)' } : undefined;
+        return (
+          <div key={`${d.dia}-${d.clase}`} style={{ display: 'contents' }}>
+            <span style={{ display: 'flex', alignItems: 'center', ...tono }}>
+              {puntito(color[d.clase])}
+              {new Date(`${d.dia}T12:00:00`).toLocaleDateString('es-AR', { weekday: 'short' })} {d.dia.slice(8)}/{d.dia.slice(5, 7)}
+            </span>
+            <span style={tono}>{cuandoDebita(d)}</span>
+            <span className={s.hint} style={{ margin: 0 }}>
+              {cuantos(d.n, d.clase === 'pendiente' ? 'pendiente' : 'echeq', d.clase === 'pendiente' ? 'pendientes' : 'echeqs')}
+            </span>
+            <span style={{ textAlign: 'right', ...tono, ...(d.clase === 'cobrado' && { textDecoration: 'line-through' }) }}>{money(d.monto)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * COMPROMETIDO POR MES (28/10/2026, pedido del dueño): lo que va a debitar cada
  * mes, con una barra que separa los hechos de los pendientes de confirmar. El
@@ -49,7 +95,7 @@ function ComprometidoPorMes({ porMes = [] }) {
   const hoy = new Date();
   const actual = mesDe(hoy);
   const siguiente = mesDe(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 1));
-  const vacio = (mes) => ({ mes, hechos: { n: 0, monto: 0 }, pendientes: { n: 0, monto: 0 }, atrasados: 0 });
+  const vacio = (mes) => ({ mes, hechos: { n: 0, monto: 0 }, pendientes: { n: 0, monto: 0 }, cobrados: { n: 0, monto: 0 }, atrasados: 0, dias: [] });
   const fijos = [actual, siguiente].map((m) => porMes.find((x) => x.mes === m) ?? vacio(m));
   const despues = porMes.filter((x) => x.mes > siguiente);
   const tope = Math.max(1, ...porMes.map((x) => x.hechos.monto + x.pendientes.monto));
@@ -74,7 +120,9 @@ function ComprometidoPorMes({ porMes = [] }) {
             ].filter(Boolean).join(' — ')
             : 'Nada para debitar.'}
           {x.atrasados > 0 && ` — incluye ${cuantos(x.atrasados, 'echeq', 'echeqs')} de meses anteriores sin cobrar`}
+          {x.cobrados?.n > 0 && ` — ya se ${x.cobrados.n === 1 ? 'debitó 1' : `debitaron ${x.cobrados.n}`} · ${money(x.cobrados.monto)}`}
         </div>
+        <DiasDelMes dias={x.dias} />
       </div>
     );
   };
@@ -84,8 +132,9 @@ function ComprometidoPorMes({ porMes = [] }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span className={s['mini-label']} style={{ margin: 0 }}>Comprometido por mes</span>
         <span className={s.hint} style={{ margin: 0, display: 'flex', gap: 12 }}>
-          <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: COLOR_HECHOS, marginRight: 4 }} />Hechos</span>
-          <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: COLOR_PENDIENTES, marginRight: 4 }} />Pendientes de confirmar</span>
+          <span>{puntito(COLOR_HECHOS)}Hechos</span>
+          <span>{puntito(COLOR_PENDIENTES)}Pendientes de confirmar</span>
+          <span>{puntito(COLOR_COBRADOS)}Ya debitados</span>
         </span>
       </div>
       {fijos.map(fila)}
