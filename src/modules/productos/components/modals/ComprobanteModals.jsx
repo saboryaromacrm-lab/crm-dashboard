@@ -3531,7 +3531,8 @@ export function MezclaCompraModal({ mezcla: m }) {
   );
 }
 
-export function ComprobanteDetalleModal({ id }) {
+/** `soloLectura` (11/11/2026): abierto desde el estado de cuenta del proveedor, solo para mirarlo — sin anular, facturar ni tomar pagos. */
+export function ComprobanteDetalleModal({ id, soloLectura = false }) {
   const { store, closeModal, openModal, can } = useProductos();
   const c = store.getComprobante(id);
   if (!c) return null;
@@ -3543,10 +3544,11 @@ export function ComprobanteDetalleModal({ id }) {
    * deuda de la mitad no facturada no tenía botón Pagar en ningún lado. */
   const puedePagar = c.estado === 'confirmado'
     && (c.tipo === 'factura' || c.tipo === 'liquidacion' || c.tipo === 'nota_debito');
+  const puedeTomarPago = puedePagar && !soloLectura;
   /** Un remito confirmado espera SU factura (26/8): el botón vive acá. */
-  const puedeFacturar = can('compras.facturacion') && c.tipo === 'remito' && c.estado === 'confirmado';
+  const puedeFacturar = !soloLectura && can('compras.facturacion') && c.tipo === 'remito' && c.estado === 'confirmado';
   /** Anular (0106): lo que no esté anulado, con la llave de Facturación. */
-  const puedeAnular = c.estado !== 'anulado' && can('compras.facturacion');
+  const puedeAnular = !soloLectura && c.estado !== 'anulado' && can('compras.facturacion');
 
   const Di = ({ label, children }) => <div className={s.di}><div className={s.l}>{label}</div><div className={s.v}>{children}</div></div>;
 
@@ -3673,7 +3675,7 @@ export function ComprobanteDetalleModal({ id }) {
                 pago llegó después. Aplicar SIEMPRE se hace desde el documento —
                 acá o en el alta—, nunca desde la bandeja de pagos.
               */}
-              {puedePagar && (
+              {puedeTomarPago && (
                 <Btn
                   variant="btn-primary"
                   small

@@ -453,6 +453,16 @@ function valorEntry(s) {
 
 /* ---------------- Comprobantes / cuenta corriente ---------------- */
 function getComprobante(id) { return state.comprobantes.find((c) => c.id === id); }
+/**
+ * Trae UN comprobante si no está en memoria (11/11/2026): la sección carga solo
+ * los últimos 300, y desde afuera de Compras (el estado de cuenta del
+ * proveedor) se puede abrir una factura más vieja.
+ */
+async function asegurarComprobante(id) {
+  if (getComprobante(id)) return;
+  const c = await httpClient.get(`/comprobantes/${id}`);
+  if (!getComprobante(id)) { state.comprobantes = [...state.comprobantes, c]; emit(); }
+}
 function comprobantesDe(proveedorId) { return state.comprobantes.filter((c) => c.proveedorId === proveedorId).sort((a, b) => b.id - a.id); }
 /**
  * SALDO DEL PROVEEDOR — LO CALCULA LA API, NO ESTA PANTALLA.
@@ -1641,7 +1651,7 @@ export const inventoryStore = {
   proyectarPrecios, filaPiso, precioGondola, escalaPaquete, costoPrecioPaquete,
   costoNeto, costoNetoEntry, costoPrecio, costoPrecioEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPaquete,
   precioFinal, redondearPrecio,
-  crearComprobante, facturarRemito, anulacionComprobante, anularComprobante, getComprobante, comprobantesDe, cuentaProveedor, saldoTotalProveedores,
+  crearComprobante, facturarRemito, anulacionComprobante, anularComprobante, getComprobante, asegurarComprobante, comprobantesDe, cuentaProveedor, saldoTotalProveedores,
   facturasReferenciables,
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,

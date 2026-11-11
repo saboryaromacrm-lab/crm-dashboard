@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
+import { ModalDesdeAfuera } from '@modules/productos/components/ModalDesdeAfuera.jsx';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { provApi, CONDICIONES_COMPRA, MEDIOS_HABITUALES, MEDIOS_PAGO_REAL } from '../services/proveedores.api.js';
@@ -165,6 +167,15 @@ const pasaFiltroTipo = (m, f) => {
  */
 export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
   const { act, openModal, esJefe } = useProveedores();
+  const { can } = usePermissions();
+  /* VER LA FACTURA ENTERA (11/11/2026, pedido del dueño): clic en una factura,
+   * liquidación, ND o NC abre su detalle de Compras, solo para mirar. Con la
+   * misma llave que lo deja ver allá; la liquidación pide además la suya. */
+  const [verComp, setVerComp] = useState(null);
+  const cerrarComp = useCallback(() => setVerComp(null), []);
+  const traerComp = useCallback((store) => store.asegurarComprobante(verComp), [verComp]);
+  const seAbre = (m) => (m.kind === 'comprobante' || m.kind === 'nc') && can('compras.facturacion')
+    && (m.tipoDoc !== 'liquidacion' || can('liquidaciones'));
   const { data: d, loading, error, reload } = useResource(
     `edoc:${proveedorId}`,
     () => provApi.edocProveedor(proveedorId),
@@ -426,7 +437,10 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
           const esAjuste = m.kind === 'ajuste_debe' || m.kind === 'ajuste_haber';
           const [tag, resto] = partirEtiqueta(m.etiqueta);
           return (
-            <tr key={`${m.kind}-${m.id}`}>
+            <tr
+              key={`${m.kind}-${m.id}`}
+              {...(seAbre(m) && { className: s.clickable, title: 'Ver el comprobante', onClick: () => setVerComp(m.id) })}
+            >
               {/* Solo el día, también en los pagos: el formulario manda la FECHA
                   y la API la guarda a medianoche, así que la hora sería un
                   "12:00 a. m." que no pasó. */}
@@ -564,6 +578,13 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
             vencimiento; el pago que se registre acá igual los cierra si deja la factura saldada.
           </div>
         </>
+      )}
+
+      {verComp != null && (
+        <ModalDesdeAfuera
+          tipo="comprobanteDetalle" props={{ id: verComp, soloLectura: true }}
+          preparar={traerComp} onCerrar={cerrarComp}
+        />
       )}
 
       {(d.cuentas?.length ?? 0) > 0 && (

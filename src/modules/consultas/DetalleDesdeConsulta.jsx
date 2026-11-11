@@ -12,24 +12,9 @@
  * pantalla habría significado mantener dos versiones que se van separando sola
  * una de la otra.
  *
- * POR QUÉ HACE FALTA ESTE ARCHIVO. La ficha vive dentro del módulo de
- * productos y necesita su contexto (el motor de inventario, los permisos, el
- * manejo de modales). La consulta rápida, en cambio, se monta en el layout
- * porque se abre desde cualquier pantalla del sistema. Este componente es el
- * puente entre los dos: arma el contexto del módulo alrededor de la ficha,
- * solo en el momento en que alguien hace clic.
- *
- * SE MONTA RECIÉN AL HACER CLIC, y esa es la decisión de diseño central: el
- * motor de inventario baja el catálogo entero, y tenerlo cargado en todas las
- * pantallas del sistema —para una consulta que la mayoría de las veces se abre
- * solo para mirar un stock— sería pagar esa carga siempre para usarla casi
- * nunca. Si el usuario ya venía de Compras o Almacén, el motor ya está en
- * memoria y no se vuelve a pedir nada.
+ * El contexto del módulo lo arma `ModalDesdeAfuera`, recién al hacer clic.
  */
-import { useEffect, useRef } from 'react';
-import { ProductosProvider, useProductos } from '@modules/productos/context/ProductosContext.jsx';
-import { ModalHost } from '@modules/productos/components/ModalHost.jsx';
-import { ModalShell } from '@modules/productos/components/Modal.jsx';
+import { ModalDesdeAfuera } from '@modules/productos/components/ModalDesdeAfuera.jsx';
 
 /**
  * EL PERMISO QUE HABILITA LA FICHA.
@@ -46,63 +31,12 @@ import { ModalShell } from '@modules/productos/components/Modal.jsx';
 export const PERMISO_FICHA = 'compras.productos';
 
 /**
- * Abre la ficha y avisa cuando se cerró.
- *
- * El contexto del módulo maneja los modales con un solo estado: `openModal`
- * pone uno, `closeModal` lo saca, y `ModalHost` dibuja el que esté puesto. Acá
- * se aprovecha esa maquinaria tal cual —la ficha ya sabe cerrarse sola con su
- * propio botón— y lo único que se agrega es enterarse de que se cerró, para
- * que la consulta que quedó abajo se entere también.
- */
-function Puente({ prodId, onCerrar }) {
-  const { store, openModal, modal } = useProductos();
-  const seAbrio = useRef(false);
-
-  useEffect(() => {
-    // Mientras el motor no terminó de cargar no hay producto que mostrar: la
-    // ficha se abre recién cuando el dato existe.
-    if (store.loaded) openModal('detalleProducto', { prodId });
-  }, [prodId, store.loaded, openModal]);
-
-  useEffect(() => {
-    if (modal) seAbrio.current = true;
-    else if (seAbrio.current) onCerrar();
-  }, [modal, onCerrar]);
-
-  /*
-   * La espera y el error son de ESTE componente y no de la ficha, porque la
-   * ficha necesita el producto ya cargado para existir. Sin esto, el clic no
-   * haría nada visible durante los segundos que tarda la primera carga y
-   * parecería que el sistema lo ignoró.
-   */
-  if (store.loadError) {
-    return (
-      <ModalShell title="No se pudo abrir la ficha" onClose={onCerrar} footer={[{ texto: 'Cerrar', clase: 'btn-ghost', onClick: onCerrar }]}>
-        <p>{store.loadError}</p>
-        <p>Puede ser un corte momentáneo de conexión. Cerrá y probá de nuevo.</p>
-      </ModalShell>
-    );
-  }
-  if (!store.loaded) {
-    return (
-      <ModalShell title="Abriendo la ficha…" onClose={onCerrar} footer={[{ texto: 'Cancelar', clase: 'btn-ghost', onClick: onCerrar }]}>
-        <p>Buscando el detalle del producto.</p>
-      </ModalShell>
-    );
-  }
-  return null;
-}
-
-/**
  * La ficha de un producto, abierta desde fuera del módulo de productos.
  * `prodId` null = no hay nada abierto y no se monta nada.
  */
 export function DetalleDesdeConsulta({ prodId, onCerrar }) {
   if (prodId == null) return null;
   return (
-    <ProductosProvider>
-      <Puente prodId={prodId} onCerrar={onCerrar} />
-      <ModalHost />
-    </ProductosProvider>
+    <ModalDesdeAfuera tipo="detalleProducto" props={{ prodId }} onCerrar={onCerrar} />
   );
 }
