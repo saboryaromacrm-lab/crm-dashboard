@@ -130,7 +130,14 @@ export function EdocPanel() {
             <td className={s.num}><Saldo valor={f.saldo}>{money(f.saldo)}</Saldo></td>
             <td className={s.num}>{f.compromisosPendientes > 0 ? money(f.compromisosPendientes) : '—'}</td>
             <td className={s.num}>{money(f.saldoProyectado)}</td>
-            <td><EstadoCuentaPill estado={f.estado} /></td>
+            <td>
+              <EstadoCuentaPill estado={f.estado} />
+              {f.diasVencido > 0 && (
+                <div className={s.hint} style={{ margin: '2px 0 0', color: 'var(--crm-color-danger)' }}>
+                  hace {f.diasVencido === 1 ? '1 día' : `${f.diasVencido} días`}
+                </div>
+              )}
+            </td>
             <td>{f.ultimoPago ? fmtFecha(f.ultimoPago) : <span className={s.muted}>—</span>}</td>
             <td>{f.conciliadoHasta ? fmtFecha(f.conciliadoHasta) : <span className={s.muted}>—</span>}</td>
             <td><Btn small onClick={(e) => { e.stopPropagation(); setVerId(f.id); }}>Ver cuenta</Btn></td>
