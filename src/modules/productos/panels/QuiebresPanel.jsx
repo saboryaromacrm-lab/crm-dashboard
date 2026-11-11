@@ -10,6 +10,7 @@
  * La cuenta la hace la API (`metricas/quiebres.ts`, ruta `/quiebres-stock`,
  * llave `almacen.quiebres`): acá se elige el período y se filtra y agrupa.
  */
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { useMemo, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
 import { useResource } from '@modules/ventas/hooks/useResource.js';
@@ -189,10 +190,12 @@ function Reporte({ qs }) {
             <option value="">Todos los locales</option>
             {d.sucursales.map((x) => <option key={x.sucursalId} value={x.sucursalId}>{x.nombre}</option>)}
           </select>
-          <select className={s['select-inline']} value={proveedor} onChange={(e) => setProveedor(e.target.value)} aria-label="Proveedor">
-            <option value="">Todos los proveedores</option>
-            {proveedores.map((x) => <option key={x.proveedorId ?? 0} value={String(x.proveedorId ?? 0)}>{x.nombre}</option>)}
-          </select>
+          <BuscadorOpcion
+            ariaLabel="Proveedor" className={s['select-inline']}
+            opciones={proveedores.map((x) => ({ id: String(x.proveedorId ?? 0), nombre: x.nombre }))}
+            value={proveedor} onChange={setProveedor}
+            todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+          />
           <span className={s.hint} style={{ margin: 0 }}>{num(visibles.length, 0)} artículo(s)</span>
         </div>
         <Table

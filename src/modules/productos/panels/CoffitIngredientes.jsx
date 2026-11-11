@@ -11,6 +11,7 @@
  * nombre que tiene ahí cada ingrediente; solos cuando cambia alguno, o con
  * «Enviar ahora». El recuadro de arriba dice cómo salió el último envío.
  */
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { httpClient } from '@core/services/httpClient.js';
@@ -230,11 +231,13 @@ export function CoffitIngredientes() {
       <EstadoCoffitcost version={version} toast={toast} />
       <div className={s.toolbar} style={{ margin: 0 }}>
         <input type="search" placeholder="Buscar ingrediente…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar ingrediente" />
-        <select className={s['select-inline']} value={prov} onChange={(e) => setProv(e.target.value)} aria-label="Proveedor de la última compra">
-          <option value="">Todos los proveedores</option>
-          {proveedores.lista.map(([x, n]) => <option key={x} value={x}>{x} ({n})</option>)}
-          {(proveedores.sinCompra > 0 || prov === SIN_COMPRA) && <option value={SIN_COMPRA}>Sin compra todavía ({proveedores.sinCompra})</option>}
-        </select>
+        <BuscadorOpcion
+          ariaLabel="Proveedor" className={s['select-inline']}
+          extras={(proveedores.sinCompra > 0 || prov === SIN_COMPRA) ? [{ id: SIN_COMPRA, nombre: `Sin compra todavía (${proveedores.sinCompra})` }] : []}
+          opciones={proveedores.lista.map(([x, n]) => ({ id: x, nombre: `${x} (${n})` }))}
+          value={prov} onChange={setProv}
+          todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+        />
         {conAviso > 0 && <span className={s.hint} style={{ margin: 0, color: 'var(--crm-color-warning)', fontWeight: 600 }}>{conAviso} con aviso</span>}
         <div style={{ marginLeft: 'auto' }}>
           {!form && <Btn variant="btn-primary" small onClick={() => setForm('nuevo')}>+ Agregar ingrediente</Btn>}

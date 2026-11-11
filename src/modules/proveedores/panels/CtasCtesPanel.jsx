@@ -1,3 +1,4 @@
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { useRef, useState } from 'react';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
@@ -164,10 +165,12 @@ export function CtasCtesPanel() {
         {FILTROS.map(([k, v]) => (
           <Btn key={k} small variant={filtro === k ? 'btn-primary' : undefined} onClick={() => setFiltro(k)}>{v}</Btn>
         ))}
-        <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)} style={{ marginLeft: 'auto' }}>
-          <option value="">Todos los proveedores</option>
-          {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        <BuscadorOpcion
+          ariaLabel="Proveedor" style={{ marginLeft: 'auto' }}
+          opciones={proveedores}
+          value={proveedorId} onChange={setProveedorId}
+          todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+        />
       </div>
 
       <Table cols={[

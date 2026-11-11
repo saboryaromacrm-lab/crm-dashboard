@@ -5,6 +5,12 @@
  */
 export const SOLO_LOCALES = 'locales';
 
+/** Esa opción para el buscador de proveedor (BuscadorOpcion, prop `extras`). */
+export const opcionLocales = (proveedores) => ({
+  id: SOLO_LOCALES,
+  nombre: `Solo proveedores locales (${proveedores.filter((p) => p.esLocal).length})`,
+});
+
 /**
  * Los ids de proveedor que deja pasar el valor de un desplegable de proveedor:
  * `null` = todos (sin filtro); «locales» = los marcados; un id = ese solo.

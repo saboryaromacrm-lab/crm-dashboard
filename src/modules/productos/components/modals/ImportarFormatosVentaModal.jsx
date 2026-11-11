@@ -12,6 +12,7 @@
  * modo, el archivo y adónde va cada lista, y se muestra todo antes de tocar
  * nada. Con miles de renglones, las tablas van paginadas.
  */
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
@@ -389,10 +390,12 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
               <Btn key={id} small variant={filtro === id ? 'btn-primary' : 'btn-ghost'} onClick={() => setFiltro(id)}>{texto}</Btn>
             ))}
             {varios && (
-              <select id="fv-filtro-prov" aria-label="Filtrar por proveedor" value={filtroProv} onChange={(e) => setFiltroProv(e.target.value)}>
-                <option value="">Todos los proveedores</option>
-                {porProveedor.filter((p) => !excluidos.has(p.id)).map((p) => <option key={p.id} value={String(p.id)}>{p.nombre}</option>)}
-              </select>
+              <BuscadorOpcion
+                ariaLabel="Proveedor" id="fv-filtro-prov"
+                opciones={porProveedor.filter((p) => !excluidos.has(p.id))}
+                value={filtroProv} onChange={setFiltroProv}
+                todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+              />
             )}
           </div>
           <div className={s.hint} style={{ marginTop: 0 }}>

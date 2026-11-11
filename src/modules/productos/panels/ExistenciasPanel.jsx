@@ -1,9 +1,9 @@
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, Tab } from '@mui/material';
-import { proveedoresDelFiltro, SOLO_LOCALES } from '@shared/utils/proveedorLocal.js';
-import { OpcionLocales } from '@shared/components/OpcionLocales.jsx';
+import { opcionLocales, proveedoresDelFiltro, SOLO_LOCALES } from '@shared/utils/proveedorLocal.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money } from '../domain/format.js';
 import { ESTADOS_PRODUCTO, ESTADOS_STOCK } from '../domain/constants.js';
@@ -298,11 +298,13 @@ export function ExistenciasPanel() {
               <option value="">Todas las categorías</option>
               {(catF && !filtrar.categorias.includes(catF) ? [catF, ...filtrar.categorias] : filtrar.categorias).map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            <select id="exist-proveedor" className={s['select-inline']} value={provF} onChange={(e) => setProvF(e.target.value)} aria-label="Proveedor">
-              <option value="">Todos los proveedores</option>
-              <OpcionLocales proveedores={provsVisibles} />
-              {provsVisibles.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-            </select>
+            <BuscadorOpcion
+              ariaLabel="Proveedor" className={s['select-inline']} id="exist-proveedor"
+              extras={[opcionLocales(provsVisibles)]}
+              opciones={provsVisibles}
+              value={provF} onChange={setProvF}
+              todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+            />
             <select className={s['select-inline']} value={sucF} onChange={(e) => setSucF(e.target.value)}>
               <option value="">Todas las sucursales</option>
               {sucursalOptions(store, false)}

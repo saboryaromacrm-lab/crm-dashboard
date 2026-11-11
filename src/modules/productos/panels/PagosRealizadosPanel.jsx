@@ -1,3 +1,4 @@
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money, fmtFechaHora, MEDIOS_PAGO_PROVEEDOR, partesDelPago } from '../domain/format.js';
@@ -144,10 +145,12 @@ export function PagosRealizadosPanel() {
           style={{ minWidth: 220 }}
           aria-label="Buscar en los pagos"
         />
-        <select className={s['select-inline']} value={proveedorId} onChange={(e) => setProveedorId(e.target.value)} aria-label="Proveedor">
-          <option value="">Todos los proveedores</option>
-          {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        <BuscadorOpcion
+          ariaLabel="Proveedor" className={s['select-inline']}
+          opciones={proveedores}
+          value={proveedorId} onChange={setProveedorId}
+          todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+        />
         <select className={s['select-inline']} value={medio} onChange={(e) => setMedio(e.target.value)} aria-label="Medio de pago">
           <option value="">Todos los medios</option>
           {Object.entries(MEDIOS_PAGO_PROVEEDOR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

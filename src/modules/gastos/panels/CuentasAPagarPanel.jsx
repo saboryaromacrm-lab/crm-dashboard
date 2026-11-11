@@ -1,3 +1,4 @@
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useGastos } from '../context/GastosContext.jsx';
@@ -92,10 +93,12 @@ export function CuentasAPagarPanel() {
       </div>
 
       <div className={s.toolbar}>
-        <select className={s['select-inline']} value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-          <option value="">Todos los proveedores</option>
-          {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        <BuscadorOpcion
+          ariaLabel="Proveedor" className={s['select-inline']}
+          opciones={proveedores}
+          value={proveedorId} onChange={setProveedorId}
+          todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+        />
         <select className={s['select-inline']} value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
           <option value="">Todas las sucursales</option>
           {sucursales.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}

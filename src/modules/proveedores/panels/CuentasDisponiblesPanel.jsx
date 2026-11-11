@@ -1,3 +1,4 @@
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { rangoDe } from '@modules/gerencia/panels/metricas/formato.js';
@@ -93,10 +94,12 @@ function VistaCuentas({ tick }) {
         {ESTADOS.map(([k, v]) => (
           <Btn key={k} small variant={estado === k ? 'btn-primary' : undefined} onClick={() => setEstado(k)}>{v}</Btn>
         ))}
-        <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)} style={{ marginLeft: 'auto' }}>
-          <option value="">Todos los proveedores</option>
-          {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        <BuscadorOpcion
+          ariaLabel="Proveedor" style={{ marginLeft: 'auto' }}
+          opciones={proveedores}
+          value={proveedorId} onChange={setProveedorId}
+          todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+        />
         <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} title="Desde" />
         <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} title="Hasta" />
         {(proveedorId || desde || hasta) && (
@@ -196,10 +199,12 @@ function VistaPagos() {
         tuyas o de un tercero, del botón «Pagar» de cada cuenta (dicen «Pago propio» o «Tercero: nombre» y se anulan desde acá).
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
-        <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-          <option value="">Todos los proveedores</option>
-          {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        <BuscadorOpcion
+          ariaLabel="Proveedor"
+          opciones={proveedores}
+          value={proveedorId} onChange={setProveedorId}
+          todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+        />
         <Fechas desde={desde} hasta={hasta} onChange={(d, h) => setFechas([d, h])} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <input type="checkbox" checked={anulados} onChange={(e) => setAnulados(e.target.checked)} /> Ver anuladas
@@ -257,10 +262,12 @@ function VistaReporte() {
   return (
     <>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-          <option value="">Todos los proveedores</option>
-          {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        <BuscadorOpcion
+          ariaLabel="Proveedor"
+          opciones={proveedores}
+          value={proveedorId} onChange={setProveedorId}
+          todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+        />
         <Fechas desde={desde} hasta={hasta} onChange={(d, h) => setFechas([d, h])} />
       </div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>

@@ -1,3 +1,4 @@
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
@@ -274,10 +275,12 @@ function Ingresos() {
           <option value="mes">Este mes</option>
           <option value="mes_ant">Mes anterior</option>
         </select>
-        <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-          <option value="">Todos los proveedores</option>
-          {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        <BuscadorOpcion
+          ariaLabel="Proveedor"
+          opciones={proveedores}
+          value={proveedorId} onChange={setProveedorId}
+          todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+        />
         <input
           type="search" placeholder="Buscar en notas o proveedor…"
           value={buscar} onChange={(e) => setBuscar(e.target.value)}

@@ -25,6 +25,7 @@
  * una consulta, y cambiar un filtro tampoco. Lo único que se cuida es no
  * dibujar miles de filas de una — para eso está el paginado de siempre.
  */
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { deSaborYAroma } from '../domain/exclusivoCoffit.js';
 import { useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
@@ -258,12 +259,12 @@ export function MargenesPanel() {
           <option value="">Todas las marcas</option>
           {opciones.marcas.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
-        <select className={s['select-inline']} value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-          <option value="">Todos los proveedores</option>
-          {store.state.proveedores
-            .filter((p) => p.proveeMercaderia !== false)
-            .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        <BuscadorOpcion
+          ariaLabel="Proveedor" className={s['select-inline']}
+          opciones={store.state.proveedores.filter((p) => p.proveeMercaderia !== false)}
+          value={proveedorId} onChange={setProveedorId}
+          todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+        />
         <select className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)}>
           <option value="vigentes">En juego (activos + discontinuados)</option>
           <option value="activo">Solo activos</option>

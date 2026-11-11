@@ -1,9 +1,9 @@
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
-import { proveedoresDelFiltro } from '@shared/utils/proveedorLocal.js';
-import { OpcionLocales } from '@shared/components/OpcionLocales.jsx';
+import { opcionLocales, proveedoresDelFiltro } from '@shared/utils/proveedorLocal.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { FormatosPorProveedorPanel } from './FormatosPorProveedorPanel.jsx';
 import { ActualizarImportarPanel } from './ActualizarImportarPanel.jsx';
@@ -389,13 +389,13 @@ function CatalogoProductos() {
           {opciones.categorias.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <FiltroVarios opciones={opciones.marcas} elegidas={marcas} onChange={setMarcas} todas="Todas las marcas" plural="marcas" />
-        <select className={s['select-inline']} value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-          <option value="">Todos los proveedores</option>
-          <OpcionLocales proveedores={store.state.proveedores.filter((p) => p.proveeMercaderia !== false)} />
-          {store.state.proveedores
-            .filter((p) => p.proveeMercaderia !== false)
-            .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        <BuscadorOpcion
+          ariaLabel="Proveedor" className={s['select-inline']}
+          extras={[opcionLocales(store.state.proveedores.filter((p) => p.proveeMercaderia !== false))]}
+          opciones={store.state.proveedores.filter((p) => p.proveeMercaderia !== false)}
+          value={proveedorId} onChange={setProveedorId}
+          todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+        />
         {/* El estado: por defecto lo que está en juego. Acá se llega a los
             archivados, que es el camino para reactivar uno. */}
         <select className={s['select-inline']} value={estadoF} onChange={(e) => setEstadoF(e.target.value)}>

@@ -1,3 +1,4 @@
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
@@ -186,10 +187,12 @@ export function GastosPanel() {
       {/* El proveedor manda sobre las dos pestañas: va afuera, arriba de todo. */}
       {verPagos && (
         <div className={s.toolbar}>
-          <select className={s['select-inline']} value={provF} onChange={(e) => setProvF(e.target.value)}>
-            <option value="">Todos los proveedores</option>
-            {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          <BuscadorOpcion
+            ariaLabel="Proveedor" className={s['select-inline']}
+            opciones={proveedores}
+            value={provF} onChange={setProvF}
+            todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+          />
           <span className={s.hint} style={{ margin: 0 }}>
             Filtra las dos pestañas: los gastos de ese proveedor y los pagos que se le hicieron.
           </span>
@@ -238,10 +241,12 @@ export function GastosPanel() {
               {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
             {!verPagos && (
-              <select className={s['select-inline']} value={provF} onChange={(e) => setProvF(e.target.value)}>
-                <option value="">Todos los proveedores</option>
-                {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </select>
+              <BuscadorOpcion
+                ariaLabel="Proveedor" className={s['select-inline']}
+                opciones={proveedores}
+                value={provF} onChange={setProvF}
+                todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+              />
             )}
             <select className={s['select-inline']} value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
               <option value="">Todas las sucursales</option>

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
@@ -86,6 +87,13 @@ export function FacturacionPanel() {
   const [estadoF, setEstadoF] = useState('');
 
   const verPagos = can('compras.pagos');
+  const proveedoresMerca = useMemo(
+    () => store.state.proveedores
+      .filter((p) => p.proveeMercaderia !== false)
+      .slice()
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+    [store.state.proveedores],
+  );
 
   /*
    * SIN EL PERMISO `liquidaciones`, la mitad sin factura NO SE LISTA.
@@ -170,12 +178,14 @@ export function FacturacionPanel() {
 
       {/* El proveedor manda sobre las dos pestañas: va afuera, arriba de todo. */}
       <div className={s.toolbar}>
-        <select className={s['select-inline']} value={provF} onChange={(e) => setProvF(e.target.value)}>
-          <option value="">Todos los proveedores</option>
-          {store.state.proveedores
-            .filter((p) => p.proveeMercaderia !== false)
-            .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        {/* Buscador donde se escribe (11/11/2026): con muchos proveedores, el desplegable no servía. */}
+        <BuscadorOpcion
+          id="facturacion-proveedor" ariaLabel="Proveedor"
+          className={s['select-inline']}
+          opciones={proveedoresMerca}
+          value={provF} onChange={setProvF}
+          todos="Todos los proveedores" placeholder="Escribí el proveedor…"
+        />
         <span className={s.hint} style={{ margin: 0 }}>
           Filtra las dos pestañas: las facturas de ese proveedor y los pagos que se le hicieron.
         </span>
