@@ -171,6 +171,8 @@
 
 /* ---------------- Stock ---------------- */
 
+/* Las cantidades van a la izquierda, debajo del nombre de la sucursal (12/11/2026, pedido del dueño). */
+.cant { text-align: left; }
 .cero { opacity: .28; }
 .total { font-weight: 700; }
 .totalCol { background: color-mix(in srgb, var(--crm-color-text) 4%, transparent); }
@@ -206,7 +208,7 @@
 .sinDetalle {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 1px;
   margin-top: 2px;
   font-family: var(--crm-font-sans, inherit);

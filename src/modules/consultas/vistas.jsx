@@ -582,10 +582,10 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
             columnas={[
               { h: 'Código' }, { h: 'Producto' },
               ...sucursales.map((su, i) => ({
-                h: su.nombre, num: true, grupo: i === 0,
+                h: su.nombre, grupo: i === 0,
                 onClick: () => ordenarPor(su.id), orden: ordenDe(su.id), titulo: `Ordenar por el stock de ${su.nombre}`,
               })),
-              { h: 'Total', num: true, cls: 'totalCol', onClick: () => ordenarPor('total'), orden: ordenDe('total'), titulo: 'Ordenar por el stock total' },
+              { h: 'Total', cls: 'totalCol', onClick: () => ordenarPor('total'), orden: ordenDe('total'), titulo: 'Ordenar por el stock total' },
               { h: 'Mostrador', num: true, grupo: true }, { h: 'Otras listas' },
             ]}
           />
@@ -629,7 +629,7 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
                       // El cero se atenúa: lo que HAY tiene que saltar a la vista.
                       <td
                         key={su.id}
-                        className={cx(c.num, c.mono, idx === 0 && c.grupo, orden.col === su.id && c.colActiva, faltaEn === su.id && c.colFalta)}
+                        className={cx(c.cant, c.mono, idx === 0 && c.grupo, orden.col === su.id && c.colActiva, faltaEn === su.id && c.colFalta)}
                       >
                         <span className={cx(falta && c.cero)}>{num(q)}{i.unidad === 'kg' ? ' kg' : ''}</span>
                         {/* Debajo del 0: desde cuándo y, en un express, si lo pidieron (29/10/2026). */}
@@ -647,7 +647,7 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
                       </td>
                     );
                   })}
-                  <td className={cx(c.num, c.mono, c.total, c.totalCol, total <= 0 && c.cero, orden.col === 'total' && c.colActiva)}>
+                  <td className={cx(c.cant, c.mono, c.total, c.totalCol, total <= 0 && c.cero, orden.col === 'total' && c.colActiva)}>
                     {num(total)}{i.unidad === 'kg' ? ' kg' : ''}
                   </td>
                   {/* PRECIO FINAL, con el IVA adentro (19/8/2026, decisión del
