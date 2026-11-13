@@ -56,7 +56,7 @@ import {
   AnularModal, Arranque, ConteoModal, MovimientoModal, PagoProveedorModal, SobreModal, SobreVer,
 } from './CashFlowPanel.jsx';
 import {
-  ANULABLES, DONDE, DONDE_A_CAMPOS, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, donde, esConceptoCambio, ORIGEN, textoDonde, ORIGENES_REPORTE, diasDesde, diaSemana, etiquetaPeriodo, fechaCorta, fechaHora, fechaHoraSinDia, fechaIso,
+  ANULABLES, DONDE, DONDE_A_CAMPOS, FILTROS_REPORTE_VACIOS, conSigno, aplicableAProveedor, donde, esConceptoCambio, medioAlProveedor, ORIGEN, textoDonde, ORIGENES_REPORTE, diasDesde, diaSemana, etiquetaPeriodo, fechaCorta, fechaHora, fechaHoraSinDia, fechaIso,
   hayFiltrosReporte, horaCorta, hoy, primerDiaMes, qsFiltrosReporte, queEs, textoAnular, textoFiltrosReporte, tituloPeriodo,
 } from './formato.js';
 import { CajasAControlar } from './CajasAControlar.jsx';
@@ -440,14 +440,14 @@ function Movimientos({ f, setF, version, abrir }) {
   );
 }
 
-/** El detalle de un movimiento, con «Anular» si se puede y, en un depósito suelto, «Aplicar a proveedor» (16/10/2026). */
+/** El detalle de un movimiento, con «Anular» si se puede y, en un egreso suelto que se aplica a un proveedor, «Aplicar a proveedor» (16/10/2026, 0226). */
 function DetalleMovimiento({ m, onCerrar, onAnular, onAplicar }) {
   const anulable = !m.anuladoEn && ANULABLES.includes(m.origen);
   return (
     <ModalShell title={queEs(m)} subtitle={fechaHora(m.fecha)} onClose={onCerrar} footer={[
       { texto: 'Cerrar', onClick: onCerrar },
       ...(anulable ? [{ texto: 'Anular', clase: 'btn-delete', onClick: onAnular }] : []),
-      ...(depositoAplicable(m) ? [{ texto: 'Aplicar a proveedor', clase: 'btn-primary', onClick: onAplicar }] : []),
+      ...(aplicableAProveedor(m) ? [{ texto: 'Aplicar a proveedor', clase: 'btn-primary', onClick: onAplicar }] : []),
     ]}>
       <dl className={c.detalle}>
         <dt>Importe</dt>
@@ -777,7 +777,7 @@ function Conceptos({ conceptos, abrir, cambiarActivo, ocupado }) {
                   <button type="button" className={c.filaTexto} style={{ border: 0, background: 'none', padding: 0, font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer' }} onClick={() => abrir({ tipo: 'concepto', concepto: x })}>
                     <strong>{x.nombre}</strong>
                     <small>{x.clase === 'gasto' ? `Gasto · ${x.gastoCategoria || 'sin rubro'}` : t === 'egreso' ? 'Movimiento de plata' : 'Ingreso'} · {plural(x.usos, 'uso', 'usos')}{Number(x.usosCaja) > 0 ? ` + ${x.usosCaja} en cajas` : ''}</small>
-                    <small>{textoDonde(x)}{x.pideDetalle ? ' · pide descripción' : ''}</small>
+                    <small>{textoDonde(x)}{x.pideDetalle ? ' · pide descripción' : ''}{x.aplicaProveedor ? ' · a un proveedor' : ''}</small>
                   </button>
                   <button type="button" role="switch" aria-checked={x.activo} aria-label={`${x.nombre}: ${x.activo ? 'activo' : 'desactivado'}`}
                     className={c.switch} disabled={ocupado === x.id} onClick={() => cambiarActivo(x)} />
@@ -803,10 +803,13 @@ function ConceptoForm({ concepto, onCerrar, onHecho, avisar }) {
   const soloCashflow = esConceptoCambio(nombre);
   const [dondeSel, setDondeSel] = useState(concepto ? donde(concepto) : 'ambos');
   const [pide, setPide] = useState(!!concepto?.pideDetalle);
+  /* 0226: el egreso se puede aplicar a un proveedor (solo un movimiento de plata; el cambio tiene su propio camino). */
+  const [aProv, setAProv] = useState(!!concepto?.aplicaProveedor);
   const [error, setError] = useState('');
   const enVuelo = useRef(false);
   const [guardando, setGuardando] = useState(false);
   const esGasto = tipo === 'egreso' && clase === 'gasto';
+  const puedeAProv = tipo === 'egreso' && clase === 'movimiento' && !soloCashflow;
   const guardar = async () => {
     if (enVuelo.current) return;
     setError('');
@@ -817,7 +820,7 @@ function ConceptoForm({ concepto, onCerrar, onHecho, avisar }) {
       if (nuevo) {
         await httpClient.post('/cashflow/conceptos', {
           nombre: nombre.trim(), tipo, clase: esGasto ? 'gasto' : 'movimiento', gastoCategoriaId: esGasto ? Number(rubro) : null,
-          ...DONDE_A_CAMPOS(soloCashflow ? 'cashflow' : dondeSel), pideDetalle: pide,
+          ...DONDE_A_CAMPOS(soloCashflow ? 'cashflow' : dondeSel), pideDetalle: pide, aplicaProveedor: puedeAProv && aProv,
         });
         avisar('ok', `Concepto «${nombre.trim()}» creado.`);
       } else {
@@ -827,6 +830,7 @@ function ConceptoForm({ concepto, onCerrar, onHecho, avisar }) {
         const campos = DONDE_A_CAMPOS(soloCashflow ? 'cashflow' : dondeSel);
         if (campos.enCashflow !== (concepto.enCashflow !== false) || campos.enCaja !== (concepto.enCaja !== false)) Object.assign(cambios, campos);
         if (pide !== !!concepto.pideDetalle) cambios.pideDetalle = pide;
+        if (puedeAProv && aProv !== !!concepto.aplicaProveedor) cambios.aplicaProveedor = aProv;
         if (Object.keys(cambios).length) await httpClient.patch(`/cashflow/conceptos/${concepto.id}`, cambios);
         avisar('ok', 'Concepto guardado.');
       }
@@ -877,6 +881,12 @@ function ConceptoForm({ concepto, onCerrar, onHecho, avisar }) {
           <input type="checkbox" checked={pide} onChange={(e) => setPide(e.target.checked)} style={{ width: 22, height: 22 }} />
           <span>La descripción es obligatoria</span>
         </label>
+        {puedeAProv && (
+          <label className={c.campo} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <input type="checkbox" checked={aProv} onChange={(e) => setAProv(e.target.checked)} style={{ width: 22, height: 22 }} />
+            <span>Se aplica a un proveedor (al sacar plata se ofrece pasarla a su cuenta)</span>
+          </label>
+        )}
         {error && <Aviso tono="error">{error}</Aviso>}
       </div>
     </ModalShell>
@@ -1206,7 +1216,7 @@ export function CashFlowMovil() {
         )}
         {modal?.tipo === 'aplicar' && (
           <PagoProveedorModal
-            deposito={{ movimientoId: modal.m.id, importe: modal.m.importe, fecha: iso(new Date(modal.m.fecha)), detalle: '' }}
+            egreso={{ movimientoId: modal.m.id, importe: modal.m.importe, fecha: iso(new Date(modal.m.fecha)), detalle: '', medio: medioAlProveedor(modal.m.concepto) }}
             saldo={saldo} onCerrar={cerrar} onHecho={hecho} avisar={avisar}
           />
         )}

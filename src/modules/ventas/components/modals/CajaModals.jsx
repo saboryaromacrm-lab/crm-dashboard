@@ -204,6 +204,8 @@ export function AbrirCajaModal({ onChange }) {
  *   · Pago a proveedor — la plata queda A CUENTA de un proveedor del padrón,
  *     esperando la factura. Es el caso "llegó el pedido y le pagué al
  *     repartidor": la cajera no carga factura, solo registra el pago.
+ *   · Un concepto que «se aplica a un proveedor» (0226) ofrece lo mismo: se
+ *     tilda y pide el proveedor; el pago lleva el nombre del concepto.
  */
 export function MovimientoCajaModal({ cajaSesionId, onChange }) {
   const { ctx, act, closeModal, toast, operadorId } = useVentas();
@@ -218,7 +220,6 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
   const [referencia, setReferencia] = useState('');
   const [esFlete, setEsFlete] = useState(false);
 
-  const esPagoProveedor = tipo === 'egreso' && destino === 'proveedor';
 
   /*
    * SIEMPRE UN CONCEPTO (0192, pedido del dueño): la misma lista del Cash Flow
@@ -232,6 +233,11 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
   const conceptos = (conceptosData ?? []).filter((c) => c.tipo === tipo);
   const concepto = conceptos.find((c) => c.id === Number(conceptoId));
   const cambiarTipo = (v) => { setTipo(v); setConceptoId(''); };
+  /* Concepto que se aplica a un proveedor (0226): tildado, es un pago a ese proveedor con el nombre del concepto. */
+  const [alProveedor, setAlProveedor] = useState(false);
+  const conConcepto = !(tipo === 'egreso' && destino === 'proveedor');
+  const conceptoAlProveedor = conConcepto && tipo === 'egreso' && !!concepto?.aplicaProveedor;
+  const esPagoProveedor = tipo === 'egreso' && (destino === 'proveedor' || (conceptoAlProveedor && alProveedor));
   /* Adelanto de sueldo (0221): a qué empleado, obligatorio. */
   const [personalId, setPersonalId] = useState('');
   const esAdelanto = !esPagoProveedor && !!concepto?.esAdelanto;
@@ -297,19 +303,19 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
    * pago igual al mismo proveedor; el siguiente "Sí" lo confirma a propósito. */
   const [gemelo, setGemelo] = useState(null);
   const enviando = useRef(false);
-  const firma = [tipo, destino, importe, motivo, conceptoId, tipoProveedor, proveedorId, referencia, esFlete, personalId].join('|');
+  const firma = [tipo, destino, importe, motivo, conceptoId, alProveedor, tipoProveedor, proveedorId, referencia, esFlete, personalId].join('|');
   const firmaConfirmada = useRef('');
   if (confirmando && firmaConfirmada.current !== firma) { setConfirmando(false); setGemelo(null); }
 
   const validar = () => {
     if (!(Number(importe) > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return false; }
+    if (conConcepto && concepto?.pideDetalle && !motivo.trim()) { toast(`Escribí la descripción: «${concepto.nombre}» la pide.`, 'err'); return false; }
     if (esPagoProveedor) {
       if (!tipoProveedor) { toast('Elegí el tipo de proveedor: mercadería o gastos.', 'err'); return false; }
       if (!proveedorId) { toast('Elegí a qué proveedor se le pagó.', 'err'); return false; }
     } else {
       if (!concepto) { toast('Elegí el concepto.', 'err'); return false; }
       if (esAdelanto && !personalId) { toast('Elegí a qué empleado se le dio el adelanto.', 'err'); return false; }
-      if (concepto.pideDetalle && !motivo.trim()) { toast(`Escribí la descripción: «${concepto.nombre}» la pide.`, 'err'); return false; }
     }
     return true;
   };
@@ -330,6 +336,9 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
     }
   };
 
+  /* El texto del pago: el concepto (si vino por uno) y la descripción. */
+  const textoPago = (conConcepto && concepto ? [concepto.nombre, motivo.trim()].filter(Boolean).join(' · ') : motivo.trim()).slice(0, 300);
+
   const guardar = async () => {
     if (esPagoProveedor) {
       const ok = await act(
@@ -342,7 +351,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
           usuarioId: ctx.usuarioId ?? undefined,
           // El relevo (0088): el pago lo firma quien está en la caja.
           operadorId: operadorId ?? undefined,
-          concepto: motivo.trim(),
+          concepto: textoPago,
           referencia: referencia.trim(),
           esFlete: esFlete || undefined,
           confirmarDuplicado: gemelo != null || undefined,
@@ -395,7 +404,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
           </div>
           <div>
             {esPagoProveedor
-              ? <>{esFlete ? 'Flete' : 'Pago'} en efectivo a <strong>{elegido?.nombre ?? 'el proveedor'}</strong>{motivo.trim() ? <> · {motivo.trim()}</> : null}</>
+              ? <>{esFlete ? 'Flete' : 'Pago'} en efectivo a <strong>{elegido?.nombre ?? 'el proveedor'}</strong>{textoPago ? <> · {textoPago}</> : null}</>
               : <>
                 Concepto: <strong>{concepto?.nombre}</strong>{motivo.trim() ? <> · {motivo.trim()}</> : null}
                 {concepto?.clase === 'gasto' && <> · se carga también como <strong>gasto pagado</strong> en Gastos ({concepto.gastoCategoria})</>}
@@ -435,6 +444,32 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
           </div>
         )}
       </div>
+
+      {conConcepto && (
+        <div className={s.field}>
+          <label>Concepto <span className={s.req}>*</span></label>
+          <select value={conceptoId} onChange={(e) => setConceptoId(e.target.value)} disabled={cargandoConceptos && !conceptosData}>
+            <option value="">{cargandoConceptos && !conceptosData ? 'Cargando…' : 'Elegí el concepto'}</option>
+            {conceptos.map((c) => (
+              <option key={c.id} value={c.id}>{c.nombre}{c.clase === 'gasto' ? ` (gasto · ${c.gastoCategoria})` : ''}</option>
+            ))}
+          </select>
+          {conceptosData && !conceptos.length && (
+            <div className={cx(s.callout, s.warn)} style={{ margin: '6px 0 0' }}>
+              No hay conceptos de {tipo} para la caja. Los arma el dueño en Gerencia › Cash Flow › Configuración › Conceptos.
+            </div>
+          )}
+          {concepto?.clase === 'gasto' && (
+            <div className={s.hint} style={{ margin: '6px 0 0' }}>
+              Es un gasto: se carga también en <strong>Gastos</strong> ({concepto.gastoCategoria}), pagado con el efectivo de este turno.
+            </div>
+          )}
+          {conceptoAlProveedor && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, margin: '8px 0 0' }}>
+              <input type="checkbox" checked={alProveedor} onChange={(e) => setAlProveedor(e.target.checked)} />
+              Es un pago a un proveedor: queda a su cuenta
+            </label>
+          )}
 
       {esPagoProveedor && (
         <>
@@ -500,25 +535,6 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
         </>
       )}
 
-      {!esPagoProveedor && (
-        <div className={s.field}>
-          <label>Concepto <span className={s.req}>*</span></label>
-          <select value={conceptoId} onChange={(e) => setConceptoId(e.target.value)} disabled={cargandoConceptos && !conceptosData}>
-            <option value="">{cargandoConceptos && !conceptosData ? 'Cargando…' : 'Elegí el concepto'}</option>
-            {conceptos.map((c) => (
-              <option key={c.id} value={c.id}>{c.nombre}{c.clase === 'gasto' ? ` (gasto · ${c.gastoCategoria})` : ''}</option>
-            ))}
-          </select>
-          {conceptosData && !conceptos.length && (
-            <div className={cx(s.callout, s.warn)} style={{ margin: '6px 0 0' }}>
-              No hay conceptos de {tipo} para la caja. Los arma el dueño en Gerencia › Cash Flow › Configuración › Conceptos.
-            </div>
-          )}
-          {concepto?.clase === 'gasto' && (
-            <div className={s.hint} style={{ margin: '6px 0 0' }}>
-              Es un gasto: se carga también en <strong>Gastos</strong> ({concepto.gastoCategoria}), pagado con el efectivo de este turno.
-            </div>
-          )}
         </div>
       )}
 
@@ -547,7 +563,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
       )}
 
       <div className={s.field}>
-        <label>{esPagoProveedor ? 'Detalle' : 'Descripción'} {!esPagoProveedor && concepto?.pideDetalle && <span className={s.req}>*</span>}</label>
+        <label>{esPagoProveedor ? 'Detalle' : 'Descripción'} {conConcepto && concepto?.pideDetalle && <span className={s.req}>*</span>}</label>
         <input
           value={motivo}
           maxLength={300}

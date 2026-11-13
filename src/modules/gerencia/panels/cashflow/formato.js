@@ -59,8 +59,10 @@ export const textoFiltrosReporte = (f, conceptos = [], sucursales = []) => [
 
 /** Un concepto de depósito (16/10/2026): se reconoce por el nombre, igual que en el servidor (`esConceptoDeposito`). */
 export const esDeposito = (nombre) => String(nombre ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes('deposito');
-/** Un depósito cargado como egreso suelto: todavía se puede aplicar a un proveedor. */
-export const depositoAplicable = (m) => !m.anuladoEn && m.origen === 'concepto' && m.tipo === 'egreso' && esDeposito(m.concepto);
+/** Con qué le llega al proveedor un egreso de concepto aplicado a su cuenta (igual que `medioAlProveedor` del servidor). */
+export const medioAlProveedor = (nombre) => (esDeposito(nombre) ? 'deposito' : 'efectivo');
+/** Un egreso suelto cuyo concepto se aplica a un proveedor (0226): todavía se puede pasar a su cuenta. */
+export const aplicableAProveedor = (m) => !m.anuladoEn && m.origen === 'concepto' && m.tipo === 'egreso' && !!m.aplicaProveedor;
 /** Lo que se anula desde Movimientos (el sobre se deshace desde Sobres; el saldo inicial, desde el arranque). */
 export const ANULABLES = ['concepto', 'pago_proveedor', 'gasto', 'conteo'];
 /** Días desde el cierre de un sobre (calendario local): «hoy», «1 día», «4 días». */

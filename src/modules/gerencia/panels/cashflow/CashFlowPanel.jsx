@@ -38,7 +38,7 @@ import { diasDelTurno, textoCajaVencida } from '@shared/utils/plazoCaja.js';
 import { MisCuentas } from './MisCuentas.jsx';
 import { EmpleadoAdelanto } from '@shared/components/EmpleadoAdelanto.jsx';
 import { useTildeControlar, useUmbralControlar } from './tildeControlar.js';
-import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, depositoAplicable, DONDE, DONDE_A_CAMPOS, donde, esConceptoCambio, esDeposito, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaHoraSinDia, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
+import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, aplicableAProveedor, DONDE, DONDE_A_CAMPOS, donde, esConceptoCambio, esDeposito, medioAlProveedor, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaHoraSinDia, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
 
 export { Diferencia } from './Diferencia.jsx';
 const Campo = ({ label, hint, children }) => (
@@ -656,7 +656,7 @@ function TablaMovimientos({ filas, compacta, onAnular, onAplicar }) {
             {onAnular && (
               <td className={s['actions-col']}>
                 <div className={s['row-actions']}>
-                  {onAplicar && depositoAplicable(m) && <Btn small onClick={() => onAplicar(m)} title="Pasar este depósito a la cuenta de un proveedor">Aplicar a proveedor</Btn>}
+                  {onAplicar && aplicableAProveedor(m) && <Btn small onClick={() => onAplicar(m)} title="Pasar este egreso a la cuenta de un proveedor">Aplicar a proveedor</Btn>}
                   {!anulado && ANULABLES.includes(m.origen) && <Btn small variant="btn-delete" onClick={() => onAnular(m)}>Anular</Btn>}
                 </div>
               </td>
@@ -710,7 +710,7 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
   /* Adelanto de sueldo (0221): a qué empleado, obligatorio. */
   const [personalId, setPersonalId] = useState('');
   const [error, setError] = useState('');
-  /* Un depósito (o un cambio) se puede aplicar a un proveedor: el paso siguiente es el pago, con este importe. */
+  /* Un concepto que se aplica a un proveedor (0226; antes solo el depósito) o un cambio: el paso siguiente es el pago, con este importe. */
   const [aProveedor, setAProveedor] = useState(false);
   const [alProveedor, setAlProveedor] = useState(false);
   /* Efectivo por transferencia (0191). */
@@ -721,9 +721,9 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
   const lista = conceptosDe(como);
   const n = Number(importe);
   const concepto = lista.find((c) => c.id === Number(conceptoId));
-  const esDep = tipo === 'egreso' && !esCambio && esDeposito(concepto?.nombre);
+  const aplicable = tipo === 'egreso' && !esCambio && !!concepto?.aplicaProveedor;
   /* Un cambio que va a un proveedor no lleva concepto: es un pago a proveedor, a su cuenta. */
-  const aProv = (esDep || esCambio) && aProveedor;
+  const aProv = (aplicable || esCambio) && aProveedor;
   const cambioAProv = esCambio && aProveedor;
   /* Al pasar a cambio se propone «Cambio a mi cuenta»; al volver a efectivo, el primero que corresponde. */
   const cambiarComo = (v) => {
@@ -766,7 +766,7 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
       <PagoProveedorModal
         {...(esCambio
           ? { cambio: { importe: n, fecha, detalle: detalle.trim(), cambioPor: cambioPor.trim() } }
-          : { deposito: { importe: n, fecha, detalle: detalle.trim(), conceptoId: concepto.id } })}
+          : { egreso: { importe: n, fecha, detalle: detalle.trim(), conceptoId: concepto.id, medio: medioAlProveedor(concepto.nombre) } })}
         saldo={saldo} onCerrar={onCerrar} onHecho={onHecho} onVolver={() => setAlProveedor(false)} avisar={avisar}
       />
     );
@@ -823,11 +823,11 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
         <Campo label="Fecha"><input type="date" value={fecha} max={hoy()} onChange={(e) => setFecha(e.target.value)} /></Campo>
         <Campo label={!cambioAProv && concepto?.pideDetalle ? 'Detalle *' : 'Detalle'}><input maxLength={300} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder={!cambioAProv && concepto?.pideDetalle ? 'Obligatorio: qué fue' : 'Opcional: para qué, a quién'} /></Campo>
       </div>
-      {esDep && (
+      {aplicable && (
         <div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             <input type="checkbox" checked={aProveedor} onChange={(e) => setAProveedor(e.target.checked)} />
-            Aplicar este depósito a un proveedor
+            {esDeposito(concepto.nombre) ? 'Aplicar este depósito a un proveedor' : 'Es un pago a un proveedor: aplicarlo a su cuenta'}
           </label>
           <div className={s.hint} style={{ margin: '4px 0 0 26px' }}>Queda en su cuenta: en el paso siguiente tildás qué facturas paga y el resto queda a cuenta.</div>
         </div>
@@ -848,23 +848,25 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
  * las facturas (o los gastos cargados) que se pagan y con qué (efectivo o
  * depósito). Es el mismo pago de siempre: queda en la cuenta del proveedor.
  *
- * CON `deposito` (16/10/2026, pedido del dueño): un depósito que se aplica a un
- * proveedor, el importe es FIJO (el del depósito) y lo que no se tilda queda a
- * cuenta. Recién cargado desde «Sacar plata» (`conceptoId`) sale de la caja acá;
- * ya cargado (`movimientoId`) la plata ya salió y solo se pasa a la cuenta.
+ * CON `egreso` (16/10/2026 el depósito; desde 0226 todo concepto que se aplica
+ * a un proveedor): el importe es FIJO (el del egreso) y lo que no se tilda
+ * queda a cuenta; `medio` dice si le llega como depósito o en efectivo. Recién
+ * cargado desde «Sacar plata» (`conceptoId`) sale de la caja acá; ya cargado
+ * (`movimientoId`) la plata ya salió y solo se pasa a la cuenta.
  *
  * CON `cambio` (21/10/2026): el efectivo por transferencia cargado desde «Sacar
  * plata» que fue a un proveedor. Igual que el depósito recién cargado: importe
  * fijo, sale de la caja acá, y queda pagado por transferencia con quién la hizo.
  */
-export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar, deposito = null, cambio = null }) {
+export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar, egreso = null, cambio = null }) {
   const { movil } = useModalModo();
   const { data: provs } = useResource('cashflow:proveedores', () => httpClient.get('/cashflow/proveedores'));
-  /* Lo que viene de «Sacar plata» (o un depósito ya cargado): el importe es fijo. */
-  const fijo = deposito ?? cambio;
+  /* Lo que viene de «Sacar plata» (o un egreso ya cargado): el importe es fijo. */
+  const fijo = egreso ?? cambio;
+  const esDep = egreso?.medio === 'deposito';
   const [proveedorId, setProveedorId] = useState('');
   const [destino, setDestino] = useState('mercaderia');
-  const [medio, setMedio] = useState(deposito ? 'deposito' : cambio ? 'cambio' : 'efectivo');
+  const [medio, setMedio] = useState(egreso ? egreso.medio : cambio ? 'cambio' : 'efectivo');
   const [referencia, setReferencia] = useState('');
   const [cambioPor, setCambioPor] = useState(cambio?.cambioPor ?? '');
   const [fecha, setFecha] = useState(fijo?.fecha ?? hoy());
@@ -885,7 +887,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
     return n;
   });
   const sc = useSegundaConfirmacion(`${proveedorId}|${destino}|${medio}|${cambioPor}|${referencia}|${fecha}|${detalle}|${aCuenta}|${JSON.stringify(tildes)}`);
-  const yaSalio = !!deposito?.movimientoId;
+  const yaSalio = !!egreso?.movimientoId;
   const confirmar = () => sc.clic(
     () => {
       setError('');
@@ -895,7 +897,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
         const v = Number(tildes[d.docId]);
         if (tildes[d.docId] != null && (!(v > 0) || v > d.saldo + 0.009)) { setError(`En ${d.etiqueta} el importe tiene que ser mayor a 0 y hasta ${money(d.saldo)}.`); return false; }
       }
-      if (extra < -0.009) { setError(`Lo tildado (${money(aplicado)}) supera ${deposito ? 'el depósito' : 'lo que transfirió'} (${money(total)}).`); return false; }
+      if (extra < -0.009) { setError(`Lo tildado (${money(aplicado)}) supera ${egreso ? (esDep ? 'el depósito' : 'el egreso') : 'lo que transfirió'} (${money(total)}).`); return false; }
       if (medio === 'cambio' && !cambioPor.trim()) { setError('Escribí quién hizo la transferencia (a quién le diste el efectivo).'); return false; }
       if (medio === 'deposito' && !referencia.trim()) { setError('Para un depósito escribí la referencia (número de depósito o comprobante del banco).'); return false; }
       if (!yaSalio && fecha === hoy() && total > saldo + 0.009) { setError(`No alcanza: tenés ${money(saldo)} en mano.`); return false; }
@@ -906,14 +908,14 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
         const imputaciones = (docs ?? []).filter((d) => tildes[d.docId] != null).map((d) => ({ [d.tipo === 'gasto' ? 'gastoId' : 'comprobanteId']: d.docId, importe: Number(tildes[d.docId]) }));
         const base = { proveedorId: prov.id, destino, imputaciones, referencia: referencia.trim(), detalle: detalle.trim(), confirmado: true };
         const r = yaSalio
-          ? await httpClient.post(`/cashflow/movimientos/${deposito.movimientoId}/aplicar-proveedor`, base)
+          ? await httpClient.post(`/cashflow/movimientos/${egreso.movimientoId}/aplicar-proveedor`, base)
           : await httpClient.post('/cashflow/pagos', {
             ...base, importe: total, fecha,
             ...(medio === 'cambio' ? { medio: 'transferencia', cambioPor: cambioPor.trim() } : { medio }),
-            ...(deposito ? { conceptoId: deposito.conceptoId } : {}),
+            ...(egreso ? { conceptoId: egreso.conceptoId } : {}),
           });
         avisar('ok', yaSalio
-          ? `Depósito de ${money(total)} aplicado a ${prov.nombre}: quedó en su cuenta.`
+          ? `${esDep ? 'Depósito' : 'Egreso'} de ${money(total)} aplicado a ${prov.nombre}: quedó en su cuenta.`
           : `Pago a ${prov.nombre} por ${money(total)} registrado. Efectivo en mano: ${money(r.saldo)}.`);
         onHecho();
       } catch (e) { setError(errorMsg(e)); }
@@ -921,15 +923,15 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
   );
   return (
     <ModalShell
-      title={deposito ? 'Aplicar el depósito a un proveedor' : cambio ? 'Pagar a un proveedor con efectivo por transferencia' : 'Pagar a un proveedor desde tu caja'}
-      subtitle={deposito
-        ? `Depósito de ${money(total)} del ${fechaIso(fecha)}: queda en la cuenta del proveedor, aplicado a lo que tildes y el resto a cuenta.`
+      title={egreso ? (esDep ? 'Aplicar el depósito a un proveedor' : 'Aplicar el pago a un proveedor') : cambio ? 'Pagar a un proveedor con efectivo por transferencia' : 'Pagar a un proveedor desde tu caja'}
+      subtitle={egreso
+        ? `${esDep ? 'Depósito' : 'Pago en efectivo'} de ${money(total)} del ${fechaIso(fecha)}: queda en la cuenta del proveedor, aplicado a lo que tildes y el resto a cuenta.`
         : cambio
           ? `${money(total)} del ${fechaIso(fecha)} que le transfirió ${cambioPor.trim() || '—'}: queda en la cuenta del proveedor, aplicado a lo que tildes y el resto a cuenta.`
           : 'Queda en la cuenta del proveedor, aplicado a lo que tildes.'}
       wide onClose={onCerrar} footer={[
         onVolver ? { texto: 'Volver', onClick: onVolver } : { texto: 'Cancelar', onClick: onCerrar },
-        { texto: textoBoton(sc, deposito ? `Aplicar ${money(total)}` : `Pagar ${money(total)}`, 'Sí, confirmar'), clase: 'btn-primary', onClick: confirmar, disabled: !prov },
+        { texto: textoBoton(sc, egreso ? `Aplicar ${money(total)}` : `Pagar ${money(total)}`, 'Sí, confirmar'), clase: 'btn-primary', onClick: confirmar, disabled: !prov },
       ]}
     >
       <div className={s['form-grid']}>
@@ -1033,7 +1035,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
           </Campo>
         )}
         <div>
-          <div className={s['mini-label']}>{deposito ? 'El depósito' : cambio ? 'Lo que transfirió' : 'Total del pago'}</div>
+          <div className={s['mini-label']}>{egreso ? (esDep ? 'El depósito' : 'El pago') : cambio ? 'Lo que transfirió' : 'Total del pago'}</div>
           <div style={{ fontSize: 22, fontWeight: 800 }}>{money(total)}</div>
           <div className={s.hint} style={{ margin: 0, color: extra < -0.009 ? 'var(--crm-color-danger)' : undefined }}>aplicado {money(aplicado)} · a cuenta {money(extra)}</div>
         </div>
@@ -1149,7 +1151,7 @@ function Movimientos({ version, bump, avisar, conceptos, saldo }) {
       {loading && !data ? <Cargando /> : <TablaMovimientos filas={filas} onAnular={(m) => setModal({ tipo: 'anular', m })} onAplicar={(m) => setModal({ tipo: 'aplicar', m })} />}
       {modal?.tipo === 'aplicar' && (
         <PagoProveedorModal
-          deposito={{ movimientoId: modal.m.id, importe: modal.m.importe, fecha: iso(new Date(modal.m.fecha)), detalle: '' }}
+          egreso={{ movimientoId: modal.m.id, importe: modal.m.importe, fecha: iso(new Date(modal.m.fecha)), detalle: '', medio: medioAlProveedor(modal.m.concepto) }}
           saldo={saldo} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); bump(); }} avisar={avisar}
         />
       )}
@@ -1178,6 +1180,8 @@ function Conceptos({ conceptos, bump, avisar }) {
   /* 0192: dónde se usa (la misma lista sirve a la caja de los locales) y si pide descripción. */
   const [dondeNuevo, setDondeNuevo] = useState('ambos');
   const [pide, setPide] = useState(false);
+  /* 0226: el egreso se puede aplicar a un proveedor (solo un movimiento de plata). */
+  const [aProv, setAProv] = useState(false);
   const [editando, setEditando] = useState(null); // { id, nombre }
   const [error, setError] = useState('');
   const guardar = async (fn, ok) => {
@@ -1190,13 +1194,13 @@ function Conceptos({ conceptos, bump, avisar }) {
     if (esGasto && !rubro) { setError('Elegí el rubro de Gastos al que va este concepto.'); return; }
     guardar(() => httpClient.post('/cashflow/conceptos', {
       nombre: nombre.trim(), tipo, clase: esGasto ? 'gasto' : 'movimiento', gastoCategoriaId: esGasto ? Number(rubro) : null,
-      ...DONDE_A_CAMPOS(dondeNuevo), pideDetalle: pide,
-    }), `Concepto «${nombre.trim()}» creado.`).then(() => { setNombre(''); setPide(false); });
+      ...DONDE_A_CAMPOS(dondeNuevo), pideDetalle: pide, aplicaProveedor: tipo === 'egreso' && !esGasto && aProv,
+    }), `Concepto «${nombre.trim()}» creado.`).then(() => { setNombre(''); setPide(false); setAProv(false); });
   };
   const grupos = [['egreso', 'Egresos (plata que sacás)'], ['ingreso', 'Ingresos (plata que entra, aparte de los sobres)']];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <Bloque titulo="Nuevo concepto" sub="Un concepto es el motivo del movimiento. Es la MISMA lista para tu Cash Flow y para los ingresos y egresos de la caja de los locales: elegí dónde se usa cada uno. «Movimiento de plata» (retiro, depósito en el banco) no es un gasto del negocio; «Gasto» se carga también en Gastos, en su rubro, y entra en la rentabilidad (desde la caja de un local, pagado con el efectivo de ese turno).">
+      <Bloque titulo="Nuevo concepto" sub="Un concepto es el motivo del movimiento. Es la MISMA lista para tu Cash Flow y para los ingresos y egresos de la caja de los locales: elegí dónde se usa cada uno. «Movimiento de plata» (retiro, depósito en el banco) no es un gasto del negocio; «Gasto» se carga también en Gastos, en su rubro, y entra en la rentabilidad (desde la caja de un local, pagado con el efectivo de ese turno). «Se aplica a un proveedor» (un depósito en su cuenta, el proveedor que pasa a cobrar por el local): al sacar plata con ese concepto se ofrece pasarla a la cuenta de un proveedor.">
         <div className={s.toolbar}>
           <input value={nombre} maxLength={60} placeholder="Nombre del concepto" onChange={(e) => setNombre(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && crear()} />
           <select className={s['select-inline']} value={tipo} onChange={(e) => setTipo(e.target.value)}><option value="egreso">Egreso</option><option value="ingreso">Ingreso</option></select>
@@ -1218,6 +1222,11 @@ function Conceptos({ conceptos, bump, avisar }) {
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
             <input type="checkbox" checked={pide} onChange={(e) => setPide(e.target.checked)} /> Pide descripción
           </label>
+          {tipo === 'egreso' && clase === 'movimiento' && (
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }} title="Al sacar plata con este concepto se ofrece aplicarla a la cuenta de un proveedor">
+              <input type="checkbox" checked={aProv} onChange={(e) => setAProv(e.target.checked)} /> Se aplica a un proveedor
+            </label>
+          )}
           <Btn variant="btn-primary" small onClick={crear}>Agregar</Btn>
         </div>
         {error && <Aviso tono="warn">{error}</Aviso>}
@@ -1245,7 +1254,18 @@ function Conceptos({ conceptos, bump, avisar }) {
                         {(rubros ?? []).map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
                       </select>
                     </span>
-                  ) : c.tipo === 'egreso' ? 'Movimiento de plata' : 'Ingreso'}
+                  ) : c.tipo === 'egreso' ? (
+                    <>
+                      Movimiento de plata
+                      {!esConceptoCambio(c.nombre) && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginTop: 4 }} title="Al sacar plata con este concepto se ofrece aplicarla a la cuenta de un proveedor">
+                          <input type="checkbox" checked={!!c.aplicaProveedor}
+                            onChange={(e) => guardar(() => httpClient.patch(`/cashflow/conceptos/${c.id}`, { aplicaProveedor: e.target.checked }), e.target.checked ? 'Listo: se puede aplicar a un proveedor.' : 'Ya no se ofrece aplicarlo a un proveedor.')} />
+                          Se aplica a un proveedor
+                        </label>
+                      )}
+                    </>
+                  ) : 'Ingreso'}
                 </td>
                 <td>
                   {/* El cambio por transferencia es solo del Cash Flow (pide quién y a qué cuenta). */}
