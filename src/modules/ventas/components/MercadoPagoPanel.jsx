@@ -13,10 +13,13 @@ import { cx } from '@shared/utils/classNames.js';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi } from '../services/ventas.api.js';
 import { useVentas } from '../context/VentasContext.jsx';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { Btn, Table, s } from './ui.jsx';
+import { DiagnosticoCuentaMp } from './DiagnosticoCuentaMp.jsx';
 
 export function MercadoPagoPanel() {
   const { toast } = useVentas();
+  const { can } = usePermissions();
   const { data: est, loading, error, reload } = useResource('mp-estado', ventasApi.mpEstado);
   const [creando, setCreando] = useState(null);
   const [confirmar, setConfirmar] = useState(null);
@@ -103,6 +106,8 @@ export function MercadoPagoPanel() {
           La primera caja de cada sucursal da de alta también la sucursal en Mercado Pago, con el domicilio de Sistema › Sucursales.
         </div>
       </div>
+      {/* Solo el superadmin (13/11/2026): paso previo a «Mi Mercado Pago». */}
+      {can('gerencia.mercadopago') && est.configurado && !est.error && <DiagnosticoCuentaMp />}
     </div>
   );
 }
