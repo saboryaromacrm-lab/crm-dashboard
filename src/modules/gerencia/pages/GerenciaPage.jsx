@@ -20,6 +20,7 @@ import { AuditoriaPanel } from '../panels/AuditoriaPanel.jsx';
 import { ResultadosPanel } from '../panels/resultados/ResultadosPanel.jsx';
 import { GastosFijosPanel } from '../panels/resultados/GastosFijosPanel.jsx';
 import { AsesorPanel } from '../panels/asesor/AsesorPanel.jsx';
+import { DiagnosticoCuentaMp } from '../panels/pagos/DiagnosticoCuentaMp.jsx';
 
 const PANELES = {
   vista: VistaProfesionalPanel,
@@ -29,6 +30,7 @@ const PANELES = {
   resultados: ResultadosPanel,
   gastosfijos: GastosFijosPanel,
   cashflow: CashFlowPanel,
+  pagos: DiagnosticoCuentaMp,
   asesor: AsesorPanel,
   auditoria: AuditoriaPanel,
 };

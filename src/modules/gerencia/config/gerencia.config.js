@@ -22,6 +22,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import PercentIcon from '@mui/icons-material/Percent';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
+import CreditCardIcon from '@mui/icons-material/CreditCard';
 
 export const GERENCIA_SECCIONES = [
   {
@@ -65,6 +66,12 @@ export const GERENCIA_SECCIONES = [
      * sobres de cada cierre de caja, controlados uno por uno, y lo que se saca. */
     id: 'cashflow', label: 'Cash Flow', icon: PaymentsIcon, permiso: 'gerencia.cashflow',
     desc: 'El efectivo en mano: los sobres de los locales, controlados uno por uno, y cada peso que sale.',
+  },
+  {
+    /* 13/11/2026 (pedido del dueño): la plata que entra por Mercado Pago (QR,
+     * posnet y transferencias). Arranca con el diagnóstico de la cuenta. */
+    id: 'pagos', label: 'Pagos electrónicos', icon: CreditCardIcon, permiso: 'gerencia.pagos_electronicos',
+    desc: 'Lo que entra por Mercado Pago (QR, posnet y transferencias): cobros por medio, comisiones, lo que falta liberar y por qué caja entró.',
   },
   {
     /* 21/10/2026 (0193): la IA que lee los números del negocio y aconseja. */

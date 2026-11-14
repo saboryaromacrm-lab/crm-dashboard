@@ -7,15 +7,17 @@
  * cuánto entró por cada caja— y el reporte de liberaciones (retiros,
  * transferencias que mandás, devoluciones). No guarda ni mueve nada.
  *
- * Lo ve solo el superadmin (`gerencia.mercadopago`, fuera del catálogo).
+ * Vive en Gerencia › Pagos electrónicos (llave `gerencia.pagos_electronicos`),
+ * donde va a ir todo lo de la plata que entra por Mercado Pago. Las cajas y el
+ * QR de cada computadora siguen en Ventas › Configuración › Mercado Pago.
  * «Pedir reporte» es lo único que crea algo: un archivo de reporte en tu
  * cuenta de Mercado Pago, el mismo que se pide desde su web.
  */
 import { useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { httpClient } from '@core/services/httpClient.js';
-import { fmtFechaVenc } from '@modules/productos/domain/format.js';
-import { Btn, Table, money, fmtFechaHora, fmtFecha, s } from './ui.jsx';
+import { fmtFecha, fmtFechaHora, fmtFechaVenc, money } from '@modules/productos/domain/format.js';
+import { Btn, Table, s } from '@modules/productos/components/ui.jsx';
 
 /* Nombres legibles de lo que contesta Mercado Pago (lo desconocido se muestra tal cual). */
 const TIPO = { account_money: 'Dinero en cuenta', credit_card: 'Tarjeta de crédito', debit_card: 'Tarjeta de débito', prepaid_card: 'Tarjeta prepaga', bank_transfer: 'Transferencia', ticket: 'Efectivo (cupón)', atm: 'Cajero', digital_currency: 'Crédito de Mercado Pago', digital_wallet: 'Billetera digital' };
