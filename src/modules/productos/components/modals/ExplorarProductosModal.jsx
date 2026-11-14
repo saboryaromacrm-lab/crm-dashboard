@@ -41,6 +41,15 @@ export function ExplorarProductosModal({ grupo, origenId, destinoId, yaEnPedido,
   const [categoria, setCategoria] = useState('');
   const [marca, setMarca] = useState('');
   const [soloConStock, setSoloConStock] = useState(false);
+  /*
+   * ORDENAR POR EL STOCK DE UNA DE LAS DOS SUCURSALES (14/11/2026, pedido del
+   * dueño: «como en Alt+F3»): clic en el título = de mayor a menor; otro clic =
+   * de menor a mayor; el tercero vuelve al orden de siempre. La columna elegida
+   * queda resaltada.
+   */
+  const [orden, setOrden] = useState({ col: null, dir: 'desc' });
+  const ordenarPor = (col) => setOrden((o) => (o.col !== col ? { col, dir: 'desc' } : o.dir === 'desc' ? { col, dir: 'asc' } : { col: null, dir: 'desc' }));
+  const ordenDe = (col) => (orden.col === col ? orden.dir : null);
 
   const origen = store.getSucursal(origenId);
   const destino = store.getSucursal(destinoId);
@@ -106,15 +115,25 @@ export function ExplorarProductosModal({ grupo, origenId, destinoId, yaEnPedido,
       }
       for (const pr of tamanos) out.push({ clave: `f${pr.id}`, p, pres: pr });
     }
-    return out;
+    if (!orden.col) return out;
+    /* Las mismas cuentas que muestran las celdas: el origen lo que puede
+       mandar, el destino lo que tiene en esa forma. Empates: por nombre. */
+    const valor = orden.col === 'origen'
+      ? ({ p }) => puedeMandar(store, p, origenId)
+      : ({ p, pres }) => (destinoId ? store.cant(p.id, destinoId, pres ? pres.id : null, 'disponible') : 0);
+    const signo = orden.dir === 'desc' ? -1 : 1;
+    return out
+      .map((f) => ({ f, v: valor(f) }))
+      .sort((a, b) => (a.v - b.v) * signo || a.f.p.nombre.localeCompare(b.f.p.nombre, 'es'))
+      .map((x) => x.f);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.state.productos, store.state.stock, grupo, q, proveedorId, categoria, marca, soloConStock, origenId]);
+  }, [store.state.productos, store.state.stock, grupo, q, proveedorId, categoria, marca, soloConStock, origenId, destinoId, orden]);
 
   const hayFiltro = !!(q || proveedorId || categoria || marca || soloConStock);
   const limpiar = () => {
     setQ(''); setProveedorId(''); setCategoria(''); setMarca(''); setSoloConStock(false);
   };
-  const pag = usePaginado(filas, 'explorarPedido', `${grupo}|${q}|${proveedorId}|${categoria}|${marca}|${soloConStock}`);
+  const pag = usePaginado(filas, 'explorarPedido', `${grupo}|${q}|${proveedorId}|${categoria}|${marca}|${soloConStock}|${orden.col}|${orden.dir}`);
 
   return (
     <ModalShell
@@ -189,8 +208,14 @@ export function ExplorarProductosModal({ grupo, origenId, destinoId, yaEnPedido,
             ]}
             cols={[
               { h: 'Código' }, { h: 'Producto' },
-              { h: `En ${origen?.nombre ?? 'origen'}`, num: true },
-              { h: `En ${destino?.nombre ?? 'destino'}`, num: true },
+              {
+                h: `En ${origen?.nombre ?? 'origen'}`, num: true,
+                onOrden: () => ordenarPor('origen'), orden: ordenDe('origen'), titulo: `Ordenar por el stock de ${origen?.nombre ?? 'el origen'}`,
+              },
+              {
+                h: `En ${destino?.nombre ?? 'destino'}`, num: true,
+                onOrden: () => ordenarPor('destino'), orden: ordenDe('destino'), titulo: `Ordenar por el stock de ${destino?.nombre ?? 'el destino'}`,
+              },
               { h: '', cls: 'actions-col' },
             ]}
             empty={hayFiltro
@@ -222,10 +247,10 @@ export function ExplorarProductosModal({ grupo, origenId, destinoId, yaEnPedido,
                       {store.presLabel(p, pres ? pres.id : null)} · {p.marca || 'Sin marca'}
                     </div>
                   </td>
-                  <td className={cx(s.num, s.mono)} style={enOrigen > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}>
+                  <td className={cx(s.num, s.mono, orden.col === 'origen' && s.tdActiva)} style={enOrigen > 0 ? undefined : { color: 'var(--crm-color-accent-2)', fontWeight: 700 }}>
                     {store.fmtCant(p, null, enOrigen)}
                   </td>
-                  <td className={cx(s.num, s.mono)} style={aca > 0 ? undefined : { color: 'var(--crm-color-text-secondary)' }}>
+                  <td className={cx(s.num, s.mono, orden.col === 'destino' && s.tdActiva)} style={aca > 0 ? undefined : { color: 'var(--crm-color-text-secondary)' }}>
                     {store.fmtCant(p, pres ? pres.id : null, aca)}
                     {sueltoDestino > 1e-9 && (
                       <div className={c.suelto}>(hay {store.fmtCant(p, null, sueltoDestino)} a granel)</div>

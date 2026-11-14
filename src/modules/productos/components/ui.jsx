@@ -223,8 +223,16 @@ export function Table({ cols, children, empty = 'Sin datos.', pag, grupos, movil
           )}
           <tr>
             {cols.map((c, i) => (
-              <th key={i} className={cx(c.num && styles.num, c.cls && styles[c.cls])}>
-                {c.h}
+              <th
+                key={i}
+                className={cx(c.num && styles.num, c.cls && styles[c.cls], c.orden && styles.thActiva)}
+                aria-sort={c.onOrden ? (c.orden === 'desc' ? 'descending' : c.orden === 'asc' ? 'ascending' : 'none') : undefined}
+              >
+                {c.onOrden ? (
+                  <button type="button" className={styles.thOrden} onClick={c.onOrden} title={c.titulo}>
+                    {c.h}{c.orden === 'desc' ? ' ▼' : c.orden === 'asc' ? ' ▲' : ''}
+                  </button>
+                ) : c.h}
               </th>
             ))}
           </tr>

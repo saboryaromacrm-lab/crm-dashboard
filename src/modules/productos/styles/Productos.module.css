@@ -269,6 +269,30 @@
 /* El título de una columna numérica va alineado con sus números: `.table thead th`
    pesa más que `.num` y lo dejaba a la izquierda, lejos de su columna. */
 .table thead th.num, .table thead th.actions-col { text-align: right; }
+/*
+ * COLUMNA ORDENABLE (14/11/2026): el título es un botón; clic = de mayor a
+ * menor, otro = de menor a mayor, el tercero vuelve al orden de siempre. La
+ * columna elegida queda resaltada, cabecera y celdas, como en Existencias (Alt+F3).
+ */
+.thOrden {
+  all: unset;
+  cursor: pointer;
+  user-select: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+.thOrden:hover { color: var(--crm-color-primary); }
+.thOrden:focus-visible { outline: 2px solid var(--crm-color-primary); outline-offset: 2px; border-radius: 2px; }
+.table thead th.thActiva {
+  color: var(--crm-color-primary);
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--crm-color-primary) 10%, transparent), color-mix(in srgb, var(--crm-color-primary) 22%, transparent));
+  box-shadow: inset 0 -2px var(--crm-color-primary);
+}
+.table tbody td.tdActiva {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--crm-color-primary) 6%, transparent), color-mix(in srgb, var(--crm-color-primary) 14%, transparent));
+  font-weight: 700;
+}
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
 .empty-state { padding: 40px 20px; text-align: center; color: var(--crm-color-text-secondary); font-size: var(--crm-font-size-sm); }
 .muted { color: var(--crm-color-text-secondary); }
