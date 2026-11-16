@@ -66,7 +66,10 @@ export function CoffitCuenta({ desde, hasta, setDesde, setHasta }) {
     () => (datos?.lineas ?? []).filter((l) => !tipos || tipos.includes(l.tipo)),
     [datos, tipos],
   );
-  const pag = usePaginado(lineas, 'coffit-cuenta', `${desde}|${hasta}|${filtro}`);
+  // La API los manda del más viejo al más nuevo (así arma el saldo acumulado); en pantalla van del más
+  // nuevo al más viejo, cada uno con el saldo que quedó después de él. El CSV sigue en orden de fecha.
+  const lineasPantalla = useMemo(() => [...lineas].reverse(), [lineas]);
+  const pag = usePaginado(lineasPantalla, 'coffit-cuenta', `${desde}|${hasta}|${filtro}`);
   const cierre = datos?.ultimoCierre ?? null;
   const cerrado = (fecha) => cierre && new Date(fecha).getTime() <= new Date(`${cierre.hasta}T23:59:59.999`).getTime();
 
