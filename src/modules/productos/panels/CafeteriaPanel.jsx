@@ -38,8 +38,13 @@ const inicioDeMes = () => {
 
 /* Los rótulos salen del diccionario de voz: la misma pestaña se llama distinto
  * según de qué lado del puente esté el que mira. Ver `domain/cafeteria.voz.js`. */
+/* 16/11/2026 (pedido del dueño): arranca con Compras, después Pedidos y la Cuenta corriente.
+ * Quien no ve las métricas no tiene Compras ni la cuenta: para él sigue arrancando en Pedidos. */
 const pestanasDe = (v) => [
+  { id: 'compras', label: 'Compras de mercadería', metricas: true },
   { id: 'pedidos', label: v.tabPedidos },
+  /* LA CUENTA ENTRE LOS DOS NEGOCIOS (0120): quién le debe a quién, hoy. */
+  { id: 'cuenta', label: 'Cuenta corriente', metricas: true },
   { id: 'deposito', label: v.tabDeposito },
   /* Su propio Bajos en stock (22/10/2026, pedido del dueño): el de Sabor y Aroma ya no cuenta lo de Coffit. */
   { id: 'bajos', label: 'Bajos en stock', opera: true },
@@ -52,9 +57,6 @@ const pestanasDe = (v) => [
   { id: 'ingredientes', label: 'Ingredientes', opera: true },
   /* La plata de Coffit, separada en sus dos orígenes (29/9/2026, pedido del
    * dueño): lo comprado a proveedores y los gastos. Solo con las métricas. */
-  /* LA CUENTA ENTRE LOS DOS NEGOCIOS (0120): quién le debe a quién, hoy. */
-  { id: 'cuenta', label: 'Cuenta corriente', metricas: true },
-  { id: 'compras', label: 'Compras de mercadería', metricas: true },
   /* Sus proveedores, también los compartidos, y lo que les pagó ella (16/11/2026). */
   { id: 'proveedores', label: 'Proveedores', metricas: true },
   { id: 'gastos', label: 'Gastos', metricas: true },
@@ -99,7 +101,7 @@ export function CafeteriaPanel() {
    * que hacer, que es la peor forma de esconder una función.
    */
   const soloCafe = puedeCargarEntradas && !puedeOperar;
-  const [pestana, setPestana] = useState(soloCafe ? 'recibidos' : 'pedidos');
+  const [pestana, setPestana] = useState(soloCafe ? 'recibidos' : verMetricas ? 'compras' : 'pedidos');
   const [desde, setDesde] = useState(inicioDeMes());
   const [hasta, setHasta] = useState(isoDate(new Date()));
 

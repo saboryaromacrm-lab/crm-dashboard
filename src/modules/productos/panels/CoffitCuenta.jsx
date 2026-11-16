@@ -10,7 +10,7 @@
  * acumulado que ya viene hecho y ofrece lo que se carga a mano: pagos,
  * compensaciones, ajustes, saldo inicial y el cierre del mes.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { useProductos } from '../context/ProductosContext.jsx';
@@ -33,6 +33,19 @@ const CONCEPTO = {
   marca_exclusivo: 'Stock pasado a Coffit',
   pago_proveedor: 'Factura que pagó Coffit',
 };
+/** «hoy», «ayer», «hace 5 días»: lo mismo que la tarjeta de conciliado de los proveedores. */
+const haceCuanto = (v) => {
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '';
+  const h = new Date();
+  const dias = Math.round((new Date(h.getFullYear(), h.getMonth(), h.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
+  if (dias <= 0) return 'hoy';
+  if (dias === 1) return 'ayer';
+  if (dias < 60) return `hace ${dias} días`;
+  return `hace ${Math.floor(dias / 30)} meses`;
+};
+const inicioDelDia = (v) => { const d = new Date(v); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+
 const MANUALES = new Set(['pago', 'compensacion', 'ajuste', 'saldo_inicial', 'marca_exclusivo']);
 const FILTROS = [
   { id: '', label: 'Todo' },
@@ -72,7 +85,25 @@ export function CoffitCuenta({ desde, hasta, setDesde, setHasta }) {
   const lineasPantalla = useMemo(() => [...lineas].reverse(), [lineas]);
   const pag = usePaginado(lineasPantalla, 'coffit-cuenta', `${desde}|${hasta}|${filtro}`);
   const cierre = datos?.ultimoCierre ?? null;
-  const cerrado = (fecha) => cierre && new Date(fecha).getTime() <= new Date(`${cierre.hasta}T23:59:59.999`).getTime();
+  /* Lo congelado: el último cierre o la marca de conciliación, lo más nuevo (la API manda el corte). */
+  const corte = datos?.corte ?? null;
+  const cerrado = (fecha) => corte && new Date(fecha).getTime() <= new Date(`${corte.hasta}T23:59:59.999`).getTime();
+  /*
+   * LA MARCA DE CONCILIACIÓN (16/11/2026, pedido del dueño), igual que en los
+   * proveedores: «Concilié con Coffit» congela lo de antes de ese día. En la
+   * lista se ve una raya verde donde termina lo conciliado.
+   */
+  const conciliado = datos?.conciliado ?? null;
+  const diaConciliado = conciliado ? inicioDelDia(conciliado.at) : null;
+  const conciliar = () => store.conciliarCoffit()
+    .then(() => { toast('Conciliado: lo de antes de hoy queda congelado.', 'ok'); recargar(); })
+    .catch((e) => toast(e?.data?.message || 'No se pudo marcar la conciliación.', 'err'));
+  const desconciliar = () => store.desconciliarCoffit()
+    .then(() => { toast('Marca de conciliación quitada.', 'ok'); recargar(); })
+    .catch((e) => toast(e?.data?.message || 'No se pudo quitar la conciliación.', 'err'));
+  /* Dónde va la raya: antes del primer renglón (del más nuevo al más viejo) anterior al día conciliado. */
+  const primeroConciliado = diaConciliado == null ? -1
+    : lineasPantalla.findIndex((l) => new Date(l.fecha).getTime() < diaConciliado);
 
   const abrirRenglon = (l) => {
     if (l.tipo === 'compra') openModal('comprobanteDetalle', { id: l.ref });
@@ -122,11 +153,19 @@ export function CoffitCuenta({ desde, hasta, setDesde, setHasta }) {
               Cerrada hasta el {fmtFechaVenc(cierre.hasta)} ({textoSaldo(cierre.saldoFinal).toLowerCase()} a esa fecha).
             </div>
           )}
+          <div className={s.hint} style={{ margin: 0 }}>
+            {conciliado
+              ? <>Conciliada el <strong>{fmtFecha(conciliado.at)}</strong> ({haceCuanto(conciliado.at)}{conciliado.usuario ? `, ${conciliado.usuario}` : ''}): lo de antes de ese día no se toca.</>
+              : 'Sin conciliar.'}
+          </div>
         </div>
         <Btn variant="btn-primary" onClick={() => openModal('movimientoCoffit', { tipoInicial: 'pago', onHecho: recargar })}>
           Registrar pago
         </Btn>
         <Btn onClick={() => openModal('movimientoCoffit', { tipoInicial: 'ajuste', onHecho: recargar })}>Ajuste / compensación</Btn>
+        {conciliado
+          ? <Btn onClick={desconciliar}>Quitar conciliación</Btn>
+          : <Btn onClick={conciliar}>Concilié con Coffit</Btn>}
         <Btn onClick={() => openModal('cierreCoffit', { ultimoCierre: cierre, onHecho: recargar })}>Cerrar el mes…</Btn>
       </div>
 
@@ -152,6 +191,13 @@ export function CoffitCuenta({ desde, hasta, setDesde, setHasta }) {
           <Stat label="Gastos de Coffit (neto)" value={money(t.gastos)} />
           <Stat label="Pagos y ajustes" value={money(t.manuales)} />
           <Stat label={`Saldo al ${fmtFechaVenc(datos.hasta)}`} value={money(datos.saldoFinal)} accent="accent-amber" />
+          <Stat
+            label="Conciliado hasta"
+            value={conciliado
+              ? <>{fmtFecha(conciliado.at)} <span style={{ fontSize: 14, fontWeight: 500 }}>· {haceCuanto(conciliado.at)}</span></>
+              : 'Sin conciliar'}
+            accent={conciliado ? 'accent-green' : undefined}
+          />
         </div>
       )}
 
@@ -165,8 +211,17 @@ export function CoffitCuenta({ desde, hasta, setDesde, setHasta }) {
       >
         {pag.visibles.map((l) => {
           const clic = ['compra', 'envio', 'dif_envio', 'entrada', 'dif_entrada'].includes(l.tipo);
+          const raya = primeroConciliado >= 0 && lineasPantalla[primeroConciliado] === l;
           return (
-            <tr key={`${l.tipo}-${l.ref}`} className={clic ? s.clickable : undefined} onClick={clic ? () => abrirRenglon(l) : undefined}>
+            <Fragment key={`${l.tipo}-${l.ref}`}>
+            {raya && (
+              <tr>
+                <td colSpan={8} style={{ borderTop: '2px solid var(--crm-color-success)', color: 'var(--crm-color-success)', fontWeight: 600, fontSize: 12.5, padding: '6px 10px' }}>
+                  ✓ Conciliado hasta acá — el {fmtFecha(conciliado.at)}{conciliado.usuario ? ` por ${conciliado.usuario}` : ''}. Lo de abajo no se toca.
+                </td>
+              </tr>
+            )}
+            <tr className={clic ? s.clickable : undefined} onClick={clic ? () => abrirRenglon(l) : undefined}>
               <td>{fmtFecha(l.fecha)}</td>
               <td>{CONCEPTO[l.tipo] || l.tipo}</td>
               <td className={s.mono} style={{ fontSize: 12 }}>{l.documento || '—'}</td>
@@ -180,6 +235,7 @@ export function CoffitCuenta({ desde, hasta, setDesde, setHasta }) {
                 )}
               </td>
             </tr>
+            </Fragment>
           );
         })}
       </Table>

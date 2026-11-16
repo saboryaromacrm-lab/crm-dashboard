@@ -23,10 +23,41 @@ import { useProductos } from '../context/ProductosContext.jsx';
 import { money, num, fmtFecha } from '../domain/format.js';
 import { TIPOS_COMPROBANTE } from '../domain/constants.js';
 import { Table, Stat, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
+import { PagoDeCoffitBarra } from './CoffitPagoBarra.jsx';
 
 const norm = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 const nroDoc = (d) => `${d.letra} ${d.puntoVenta}-${String(d.numero || d.id).padStart(8, '0')}`;
 const decimalesDe = (unidad) => (unidad === 'kg' ? 3 : 0);
+const EPS = 0.009;
+
+/*
+ * LO QUE SE LE DEBE AL PROVEEDOR POR CADA FACTURA (16/11/2026, pedido del
+ * dueño: «que desde compras también pueda tildar las cosas que pagó
+ * directamente Coffit»). Sale de la misma lista que Coffit › Proveedores
+ * (`cafeteria/proveedores`, desde siempre): saldo, si es compartida y cuánto
+ * pagó ya Coffit, por id de factura.
+ */
+function usePagosDeFacturas() {
+  const { store, toast } = useProductos();
+  const [porDoc, setPorDoc] = useState(() => new Map());
+  const [vuelta, setVuelta] = useState(0);
+  const version = store.getVersion?.() ?? 0;
+  useEffect(() => {
+    let vivo = true;
+    store.proveedoresCoffit({})
+      .then((d) => {
+        if (!vivo) return;
+        const m = new Map();
+        for (const p of d?.proveedores ?? []) {
+          for (const doc of p.docs) m.set(doc.id, { ...doc, proveedorId: p.id, proveedorNombre: p.nombre });
+        }
+        setPorDoc(m);
+      })
+      .catch(() => { if (vivo) toast('No se pudo leer qué facturas están pagadas.', 'err'); });
+    return () => { vivo = false; };
+  }, [store, version, vuelta, toast]);
+  return [porDoc, () => setVuelta((v) => v + 1)];
+}
 
 /** El período de arriba, compartido con el resto de la sección. */
 function Periodo({ desde, hasta, setDesde, setHasta, children }) {
@@ -85,6 +116,16 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
   const [vista, setVista] = useState('factura');
   const [q, setQ] = useState('');
   const [abiertos, alternar] = useAbiertos();
+  const [porDoc, recargarPagos] = usePagosDeFacturas();
+  const [tildadas, setTildadas] = useState({});
+  const elegidas = useMemo(
+    () => [...porDoc.values()].filter((d) => tildadas[d.id] && d.saldo > EPS),
+    [porDoc, tildadas],
+  );
+  const quitar = (ids) => setTildadas((m) => { const n = { ...m }; ids.forEach((id) => { delete n[id]; }); return n; });
+  const tildar = (id) => setTildadas((m) => ({ ...m, [id]: !m[id] }));
+  /* Lo tildado es de lo que se ve: al cambiar el período se arranca de cero. */
+  useEffect(() => { setTildadas({}); }, [desde, hasta]);
 
   const documentos = useMemo(() => {
     const ql = norm(q.trim());
@@ -148,10 +189,20 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
         <div className={cx(s.callout, s.warn)}>Hay más de 2.000 comprobantes en el período: acortá las fechas para verlos todos.</div>
       )}
 
+      {vista === 'factura' && (
+        <div className={s.callout} style={{ display: 'grid', gap: 8 }}>
+          <div className={s.hint} style={{ margin: 0 }}>
+            <strong>¿La pagó Coffit con su plata?</strong> Tildala en la columna «Pago» y registrala acá: queda pagada en la
+            cuenta del proveedor, no sale plata de la empresa y en la cuenta con Coffit entra a su favor.
+          </div>
+          <PagoDeCoffitBarra elegidas={elegidas} onHechas={quitar} onPagado={recargarPagos} />
+        </div>
+      )}
+
       {vista === 'factura' ? (
         <Table
           cols={[
-            { h: 'Fecha' }, { h: 'Comprobante' }, { h: 'Proveedor' }, { h: 'Sucursal' },
+            { h: 'Pago' }, { h: 'Fecha' }, { h: 'Comprobante' }, { h: 'Proveedor' }, { h: 'Sucursal' },
             { h: 'Qué es de Coffit' }, { h: 'Sin IVA', num: true }, { h: 'A su cuenta (precio final)', num: true },
           ]}
           empty={cargando ? 'Cargando…' : 'Ninguna compra para Coffit en el período.'}
@@ -159,8 +210,20 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
         >
           {pagDocs.visibles.map((d) => {
             const abierto = abiertos.has(d.id);
+            const pago = porDoc.get(d.id);
+            const debe = pago && pago.saldo > EPS;
             return [
               <tr key={d.id} className={s.clickable} onClick={() => alternar(d.id)} aria-expanded={abierto}>
+                <td onClick={debe ? (e) => { e.stopPropagation(); tildar(d.id); } : undefined} style={{ whiteSpace: 'nowrap' }}>
+                  {debe ? (
+                    <label className={s.hint} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                      <input type="checkbox" readOnly checked={!!tildadas[d.id]} aria-label={`Lo pagó Coffit: ${nroDoc(d)}`} />
+                      debe {money(pago.saldo)}
+                    </label>
+                  ) : pago?.pagadoCoffit > EPS
+                    ? <Pill pill="est-recibida" label="Lo pagó Coffit" />
+                    : pago ? <span className={s.muted}>Pagada</span> : <span className={s.muted}>—</span>}
+                </td>
                 <td>{flecha(abierto)} {fmtFecha(d.fecha)}</td>
                 <td>
                   {TIPOS_COMPROBANTE[d.tipo]?.label || d.tipo}{' '}
@@ -178,7 +241,7 @@ export function CoffitCompras({ desde, hasta, setDesde, setHasta }) {
               </tr>,
               abierto && (
                 <tr key={`${d.id}-det`}>
-                  <td colSpan={7} style={{ background: 'var(--crm-color-surface-2, rgba(0,0,0,.03))' }}>
+                  <td colSpan={8} style={{ background: 'var(--crm-color-surface-2, rgba(0,0,0,.03))' }}>
                     <table style={{ width: '100%', fontSize: 13 }}>
                       <thead>
                         <tr>

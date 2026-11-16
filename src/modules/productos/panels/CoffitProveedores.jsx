@@ -18,15 +18,13 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
-import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@modules/gastos/components/segundaConfirmacion.jsx';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { money, num, fmtFecha } from '../domain/format.js';
 import { Table, Stat, Btn, Pill, s } from '../components/ui.jsx';
+import { PagoDeCoffitBarra } from './CoffitPagoBarra.jsx';
 
 const EPS = 0.009;
-const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const norm = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
-const hoy = () => new Date().toLocaleDateString('sv-SE');
 
 export function CoffitProveedores() {
   const { store, toast } = useProductos();
@@ -147,38 +145,11 @@ export function CoffitProveedores() {
 
 /** Las facturas de un proveedor con parte de Coffit, y el pago «Lo pagó Coffit». */
 function FacturasDelProveedor({ prov, onPagado }) {
-  const { store, toast } = useProductos();
   const [tildadas, setTildadas] = useState({});
-  const [fecha, setFecha] = useState(hoy());
-  const [referencia, setReferencia] = useState('');
   const impagas = prov.docs.filter((d) => d.saldo > EPS);
-  const elegidas = impagas.filter((d) => tildadas[d.id]);
-  const importe = r2(elegidas.reduce((a, d) => a + d.saldo, 0));
-  const compartidaElegida = elegidas.some((d) => d.compartida);
-  const conf = useSegundaConfirmacion(JSON.stringify([Object.keys(tildadas).filter((k) => tildadas[k]), fecha, referencia]));
-
-  const validar = () => {
-    if (!elegidas.length) { toast('Tildá las facturas que pagó Coffit.', 'err'); return false; }
-    if (!fecha) { toast('Poné la fecha en que pagó Coffit.', 'err'); return false; }
-    return true;
-  };
-  const registrar = (confirmarDuplicado) => store.pagoDeCoffit({
-    proveedorId: prov.id,
-    importe,
-    fecha,
-    concepto: `Lo pagó Coffit · ${elegidas.map((d) => d.documento).join(' · ')}`.slice(0, 300),
-    referencia: referencia.trim() || undefined,
-    imputaciones: elegidas.map((d) => ({ comprobanteId: d.id, importe: d.saldo })),
-    ...(confirmarDuplicado ? { confirmarDuplicado: true } : {}),
-  }).then(() => {
-    toast(`Listo: ${money(importe)} pagados por Coffit. Las facturas quedan pagadas y en su cuenta entra a su favor.`, 'ok');
-    setTildadas({});
-    setReferencia('');
-    onPagado();
-  }).catch((e) => {
-    if (e?.status === 409) { conf.alConflicto(e.data ?? {}); return; }
-    toast(e?.data?.message || 'No se pudo registrar el pago de Coffit.', 'err');
-  });
+  const elegidas = impagas.filter((d) => tildadas[d.id])
+    .map((d) => ({ ...d, proveedorId: prov.id, proveedorNombre: prov.nombre }));
+  const quitar = (ids) => setTildadas((m) => { const n = { ...m }; ids.forEach((id) => { delete n[id]; }); return n; });
 
   return (
     <div style={{ display: 'grid', gap: 10, padding: '6px 0' }}>
@@ -217,27 +188,7 @@ function FacturasDelProveedor({ prov, onPagado }) {
 
       {impagas.length > 0 && (
         <>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            <label className={s.hint} style={{ margin: 0 }}>
-              Pagó el <input type="date" max={hoy()} value={fecha} onChange={(e) => setFecha(e.target.value)} />
-            </label>
-            <label className={s.hint} style={{ margin: 0 }}>
-              Referencia <input value={referencia} maxLength={200} onChange={(e) => setReferencia(e.target.value)} placeholder="N.º de transferencia (optativo)" />
-            </label>
-            <Btn
-              variant="btn-primary"
-              disabled={!elegidas.length}
-              onClick={() => conf.clic(validar, registrar)}
-            >
-              {textoBoton(conf, elegidas.length ? `Lo pagó Coffit: ${money(importe)}…` : 'Lo pagó Coffit…', `Sí, lo pagó Coffit: ${money(importe)}`)}
-            </Btn>
-          </div>
-          <AvisoSegundaConfirmacion confirmando={conf.confirmando} gemelo={conf.gemelo}>
-            Se registra que <strong>Coffit le pagó {money(importe)}</strong> a <strong>{prov.nombre}</strong> por{' '}
-            {elegidas.length} factura{elegidas.length === 1 ? '' : 's'}: quedan pagadas, no sale plata de la empresa y en la
-            cuenta con Coffit entran <strong>{money(importe)} a su favor</strong>.
-            {compartidaElegida && <> <strong>Ojo:</strong> hay una factura compartida; si Coffit la pagó entera, la parte de Sabor y Aroma le queda a favor a Coffit.</>}
-          </AvisoSegundaConfirmacion>
+          <PagoDeCoffitBarra elegidas={elegidas} onHechas={quitar} onPagado={onPagado} />
           <div className={s.hint} style={{ margin: 0 }}>
             Tildá las facturas que pagó Coffit con su plata: se pagan por lo que deben. Si pagó solo una parte o a cuenta,
             hacelo desde Proveedores › Cuentas corrientes con el medio «Lo pagó Coffit».

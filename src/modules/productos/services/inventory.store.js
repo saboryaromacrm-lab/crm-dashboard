@@ -1435,6 +1435,9 @@ const comprasCafeteria = (filtros) => httpClient.get('/cafeteria/compras' + _qsP
 const gastosCafeteria = (filtros) => httpClient.get('/cafeteria/gastos' + _qsPagos(filtros || {}));
 /* LA CUENTA CORRIENTE CON COFFIT (0120). No tocan el inventario: sin recargarlo. */
 const cuentaCoffit = (filtros) => httpClient.get('/cafeteria/cuenta' + _qsPagos(filtros || {}));
+/** La marca de conciliación de la cuenta con Coffit (16/11/2026): lo de antes de ese día queda congelado. */
+const conciliarCoffit = () => httpClient.post('/cafeteria/cuenta/conciliar', {});
+const desconciliarCoffit = () => httpClient.delete('/cafeteria/cuenta/conciliar');
 const movimientoCoffit = (o) => _sinRecargar(() => httpClient.post('/cafeteria/cuenta/movimientos', o));
 const anularMovimientoCoffit = (id, motivo) => _sinRecargar(() => httpClient.post(`/cafeteria/cuenta/movimientos/${id}/anular`, { motivo }));
 const cerrarCuentaCoffit = (o) => _sinRecargar(() => httpClient.post('/cafeteria/cuenta/cierres', o));
@@ -1665,7 +1668,7 @@ export const inventoryStore = {
   enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria, costosEntradaCafeteria, depositoCafeteria,
   comprasCafeteria, gastosCafeteria,
   cuentaCoffit, movimientoCoffit, anularMovimientoCoffit, cerrarCuentaCoffit, reabrirCierreCoffit, cierreCoffit,
-  proveedoresCoffit, pagoDeCoffit,
+  proveedoresCoffit, pagoDeCoffit, conciliarCoffit, desconciliarCoffit,
   costosSalidaCafeteria,
   productosCafeteria, crearProductoCafeteria, editarProductoCafeteria, precioProductoCafeteria, bajaProductoCafeteria,
   crearEnvioCafeteria, editarEnvioCafeteria, anularEnvioCafeteria, recibirEnvioCafeteria,
