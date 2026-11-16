@@ -11,6 +11,11 @@
  * (RecordatoriosBanner) hasta que toca «Listo»; acá se ve para quién es y
  * quién ya lo vio. El recordatorio lo cambia, agrega o saca solo quien escribió
  * la anotación (`puedeEditar`, 9/11/2026). Ver crm-api/src/anotaciones.
+ *
+ * HASTA CUÁNDO, E IMPORTANTE (0227, 16/11/2026, pedido del dueño): con un
+ * «hasta», el aviso sale todos los días hasta esa fecha («Entendido» lo oculta
+ * solo por ese día); «Importante» lo saca en rojo y primero. «Ahora» y
+ * «Todos» están a mano para el aviso general que tiene que salir ya.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
@@ -18,6 +23,7 @@ import { httpClient } from '@core/services/httpClient.js';
 import { EVENTO_RECORDATORIOS } from '@core/layout/components/RecordatoriosBanner.jsx';
 import { errorMsg } from '@modules/ventas/services/ventas.api.js';
 import { Btn, fmtFechaHora, s } from '@modules/proveedores/components/ui.jsx';
+import { fmtFechaVenc } from '@modules/productos/domain/format.js';
 
 const MAX = 2000;
 /** Una fecha, en el formato del campo de fecha y hora (hora local, sin segundos). */
@@ -39,6 +45,8 @@ export function Anotaciones() {
   const [conRecordatorio, setConRecordatorio] = useState(false);
   const [recordarEn, setRecordarEn] = useState('');
   const [avisarA, setAvisarA] = useState(() => new Set());
+  const [avisoHasta, setAvisoHasta] = useState('');
+  const [importante, setImportante] = useState(false);
   const [usuarios, setUsuarios] = useState(null);
   const [error, setError] = useState('');
   const [aBorrar, setABorrar] = useState(null);
@@ -79,17 +87,22 @@ export function Anotaciones() {
     traerUsuarios();
   };
 
-  const faltaRecordatorio = conRecordatorio && (!recordarEn || !avisarA.size);
+  const hastaMal = conRecordatorio && hastaAntesDeArrancar(avisoHasta, recordarEn);
+  const faltaRecordatorio = conRecordatorio && (!recordarEn || !avisarA.size || hastaMal);
   const anotar = () => conCandado(async () => {
     if (!texto.trim() || faltaRecordatorio) return;
     await httpClient.post('/anotaciones', {
       texto,
-      ...(conRecordatorio ? { recordarEn: new Date(recordarEn).toISOString(), avisarA: [...avisarA] } : {}),
+      ...(conRecordatorio ? {
+        recordarEn: new Date(recordarEn).toISOString(), avisarA: [...avisarA], avisoHasta: avisoHasta || null, importante,
+      } : {}),
     });
     setTexto('');
     setConRecordatorio(false);
     setRecordarEn('');
     setAvisarA(new Set());
+    setAvisoHasta('');
+    setImportante(false);
     /* Si me avisé a mí para ahora, que el banner no espere su próxima vuelta. */
     window.dispatchEvent(new Event(EVENTO_RECORDATORIOS));
     await traer();
@@ -98,7 +111,10 @@ export function Anotaciones() {
   /** Cambiar o sacar el recordatorio (`recordarEn` null = sacarlo). */
   const guardarRecordatorio = (id, cambio) => conCandado(async () => {
     await httpClient.put(`/anotaciones/${id}/recordatorio`, cambio.recordarEn
-      ? { recordarEn: new Date(cambio.recordarEn).toISOString(), avisarA: [...cambio.avisarA] }
+      ? {
+        recordarEn: new Date(cambio.recordarEn).toISOString(), avisarA: [...cambio.avisarA],
+        avisoHasta: cambio.avisoHasta || null, importante: !!cambio.importante,
+      }
       : {});
     setEditando(null);
     window.dispatchEvent(new Event(EVENTO_RECORDATORIOS));
@@ -130,20 +146,22 @@ export function Anotaciones() {
 
       <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '6px 0', cursor: 'pointer', width: 'fit-content' }}>
         <input id="dash-anotacion-rec" type="checkbox" checked={conRecordatorio} onChange={(e) => alternarRecordatorio(e.target.checked)} />
-        Con recordatorio
+        Con recordatorio (aviso arriba de todo el ERP)
       </label>
       {conRecordatorio && (
         <CamposRecordatorio
           idBase="dash-anotacion" usuarios={usuarios}
           recordarEn={recordarEn} onFecha={setRecordarEn}
-          avisarA={avisarA} onUsuario={(id) => setAvisarA((xs) => alternarEn(xs, id))}
+          avisoHasta={avisoHasta} onHasta={setAvisoHasta}
+          importante={importante} onImportante={setImportante}
+          avisarA={avisarA} onUsuario={(id) => setAvisarA((xs) => alternarEn(xs, id))} onUsuarios={setAvisarA}
         />
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '6px 0 12px', flexWrap: 'wrap' }}>
         <Btn variant="btn-primary" onClick={anotar} disabled={ocupado || !texto.trim() || faltaRecordatorio}>Anotar</Btn>
         <span className={s.hint} style={{ margin: 0 }}>
-          {faltaRecordatorio && texto.trim() ? 'Elegí el día y a quién avisarle · ' : ''}Ctrl + Enter también anota · {texto.length}/{MAX}
+          {faltaRecordatorio && texto.trim() ? (hastaMal ? 'El «hasta» es antes del día en que empieza · ' : 'Elegí el día y a quién avisarle · ') : ''}Ctrl + Enter también anota · {texto.length}/{MAX}
         </span>
       </div>
       {error && <div style={{ color: 'var(--crm-color-danger)', marginBottom: 8 }}>{error}</div>}
@@ -196,17 +214,52 @@ export function Anotaciones() {
   );
 }
 
-/** Día y hora + a quién avisarle: lo mismo al anotar y al editar. */
-function CamposRecordatorio({ idBase, usuarios, recordarEn, onFecha, avisarA, onUsuario }) {
+/** El día 'AAAA-MM-DD' de un valor del campo de fecha y hora (es hora local). */
+const diaDe = (local) => (local ? local.slice(0, 10) : '');
+/** El «hasta» no puede ser antes del día en que arranca (no saldría nunca). */
+const hastaAntesDeArrancar = (hasta, desde) => !!hasta && !!desde && hasta < diaDe(desde);
+
+/** Desde cuándo, hasta cuándo, si es importante y a quién: lo mismo al anotar y al editar. */
+function CamposRecordatorio({ idBase, usuarios, recordarEn, onFecha, avisoHasta, onHasta, importante, onImportante, avisarA, onUsuario, onUsuarios }) {
+  const malHasta = hastaAntesDeArrancar(avisoHasta, recordarEn);
   return (
     <div style={{ display: 'grid', gap: 8, padding: 10, marginBottom: 6, border: '1px solid var(--crm-color-border)', borderRadius: 8, minWidth: 0 }}>
-      <label htmlFor={`${idBase}-cuando`} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        Avisar el
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <label htmlFor={`${idBase}-cuando`}>Avisar desde</label>
         <input id={`${idBase}-cuando`} type="datetime-local" value={recordarEn} onChange={(e) => onFecha(e.target.value)} style={{ maxWidth: '100%' }} />
-        <span className={s.hint} style={{ margin: 0 }}>con la hora de ahora, avisa ya</span>
+        <Btn small onClick={() => onFecha(aLocal(new Date()))}>Ahora</Btn>
+        <span className={s.hint} style={{ margin: 0 }}>con la hora de ahora, sale ya</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <label htmlFor={`${idBase}-hasta`}>Hasta el</label>
+        <input
+          id={`${idBase}-hasta`} type="date" value={avisoHasta} min={diaDe(recordarEn) || undefined}
+          onChange={(e) => onHasta(e.target.value)} style={{ maxWidth: '100%' }}
+        />
+        {avisoHasta && <Btn small onClick={() => onHasta('')}>Sin fecha</Btn>}
+        <span className={s.hint} style={{ margin: 0, color: malHasta ? 'var(--crm-color-danger)' : undefined }}>
+          {malHasta
+            ? 'es antes del día en que empieza: no saldría nunca'
+            : avisoHasta
+              ? `sale todos los días hasta el ${fmtFechaVenc(avisoHasta)} incluido; «Entendido» lo oculta solo por ese día`
+              : 'sin fecha: sale hasta que la persona toca «Listo»'}
+        </span>
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', width: 'fit-content' }}>
+        <input id={`${idBase}-importante`} type="checkbox" checked={importante} onChange={(e) => onImportante(e.target.checked)} />
+        <span><strong style={{ color: importante ? 'var(--crm-color-danger)' : undefined }}>Importante</strong>{' '}
+          <span className={s.hint} style={{ margin: 0 }}>· el aviso sale en rojo y primero</span></span>
       </label>
       <div>
-        <div style={{ marginBottom: 4 }}>A quién avisarle {avisarA.size > 0 && <span className={s.hint} style={{ margin: 0 }}>· {avisarA.size} elegido(s)</span>}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+          <span>A quién avisarle {avisarA.size > 0 && <span className={s.hint} style={{ margin: 0 }}>· {avisarA.size} elegido(s)</span>}</span>
+          {usuarios?.length > 0 && (
+            <>
+              <Btn small onClick={() => onUsuarios(new Set(usuarios.map((u) => u.id)))}>Todos</Btn>
+              {avisarA.size > 0 && <Btn small onClick={() => onUsuarios(new Set())}>Ninguno</Btn>}
+            </>
+          )}
+        </div>
         {!usuarios ? <span className={s.hint} style={{ margin: 0 }}>Cargando usuarios…</span> : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 190px), 1fr))', gap: '2px 12px', maxHeight: 180, overflowY: 'auto' }}>
             {usuarios.map((u) => (
@@ -218,9 +271,6 @@ function CamposRecordatorio({ idBase, usuarios, recordarEn, onFecha, avisarA, on
           </div>
         )}
       </div>
-      <span className={s.hint} style={{ margin: 0 }}>
-        Desde esa hora le sale un aviso arriba de todo el ERP hasta que toca «Listo».
-      </span>
     </div>
   );
 }
@@ -229,6 +279,8 @@ function CamposRecordatorio({ idBase, usuarios, recordarEn, onFecha, avisarA, on
 function EditarRecordatorio({ a, usuarios, ocupado, onGuardar, onCancelar }) {
   const [recordarEn, setRecordarEn] = useState(() => aLocal(a.recordarEn ?? new Date()));
   const [avisarA, setAvisarA] = useState(() => new Set(a.avisos.map((u) => u.usuarioId)));
+  const [avisoHasta, setAvisoHasta] = useState(a.avisoHasta ?? '');
+  const [importante, setImportante] = useState(!!a.importante);
   const cambiaElDia = a.recordarEn && recordarEn !== aLocal(a.recordarEn);
   const algunoLoVio = a.avisos.some((u) => u.vistoEn);
   return (
@@ -236,7 +288,9 @@ function EditarRecordatorio({ a, usuarios, ocupado, onGuardar, onCancelar }) {
       <CamposRecordatorio
         idBase={`anot-${a.id}`} usuarios={usuarios}
         recordarEn={recordarEn} onFecha={setRecordarEn}
-        avisarA={avisarA} onUsuario={(id) => setAvisarA((xs) => alternarEn(xs, id))}
+        avisoHasta={avisoHasta} onHasta={setAvisoHasta}
+        importante={importante} onImportante={setImportante}
+        avisarA={avisarA} onUsuario={(id) => setAvisarA((xs) => alternarEn(xs, id))} onUsuarios={setAvisarA}
       />
       {cambiaElDia && algunoLoVio && (
         <div className={s.hint} style={{ margin: '0 0 6px' }}>
@@ -244,7 +298,11 @@ function EditarRecordatorio({ a, usuarios, ocupado, onGuardar, onCancelar }) {
         </div>
       )}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <Btn small variant="btn-primary" disabled={ocupado || !recordarEn || !avisarA.size} onClick={() => onGuardar({ recordarEn, avisarA })}>
+        <Btn
+          small variant="btn-primary"
+          disabled={ocupado || !recordarEn || !avisarA.size || hastaAntesDeArrancar(avisoHasta, recordarEn)}
+          onClick={() => onGuardar({ recordarEn, avisarA, avisoHasta, importante })}
+        >
           Guardar recordatorio
         </Btn>
         {a.recordarEn && <Btn small disabled={ocupado} onClick={() => onGuardar({ recordarEn: null })}>Sacar recordatorio</Btn>}
@@ -262,7 +320,13 @@ function Recordatorio({ a }) {
   const yaAviso = new Date(a.recordarEn) <= new Date();
   return (
     <div className={s.hint} style={{ margin: '4px 0 0', overflowWrap: 'anywhere' }}>
-      <div>⏰ {yaAviso ? 'Avisó' : 'Avisa'} el <strong>{fmtFechaHora(a.recordarEn)}</strong></div>
+      <div>
+        {a.importante && (
+          <strong style={{ color: 'var(--crm-color-danger)', marginRight: 6 }}>⚠ IMPORTANTE</strong>
+        )}
+        ⏰ {a.avisoHasta ? (yaAviso ? 'Avisa desde' : 'Va a avisar desde') : (yaAviso ? 'Avisó' : 'Avisa')} el <strong>{fmtFechaHora(a.recordarEn)}</strong>
+        {a.avisoHasta && <> hasta el <strong>{fmtFechaVenc(a.avisoHasta)}</strong></>}
+      </div>
       <div>
         Para:{' '}
         {a.avisos.map((u, i) => (

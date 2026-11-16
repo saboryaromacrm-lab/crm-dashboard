@@ -9,7 +9,7 @@ import { PreciosAlert } from './components/PreciosAlert.jsx';
 import { AvisoStock } from './components/AvisoStock.jsx';
 import { CajasAbiertasBanner } from './components/CajasAbiertasBanner.jsx';
 import { FeriadosBanner } from './components/FeriadosBanner.jsx';
-import { RecordatoriosBanner } from './components/RecordatoriosBanner.jsx';
+import { ID_AVISOS_IMPORTANTES, RecordatoriosBanner } from './components/RecordatoriosBanner.jsx';
 import { AccesosTiendaBanner } from './components/AccesosTiendaBanner.jsx';
 import { CuentasVencidasBanner } from './components/CuentasVencidasBanner.jsx';
 import { FacturasSinCargarBanner } from './components/FacturasSinCargarBanner.jsx';
@@ -61,6 +61,10 @@ export function MainLayout() {
         <header className={styles.topbar}>
           <Topbar />
         </header>
+        {/* Los avisos IMPORTANTES de una anotación (0227) van acá, FUERA de los
+            plegados: en el teléfono no pueden quedar escondidos en «3 avisos».
+            RecordatoriosBanner los dibuja en este lugar (portal). */}
+        <div id={ID_AVISOS_IMPORTANTES} />
         {/* En el teléfono van plegados en un renglón (AvisosArriba). */}
         <AvisosArriba>
           {/* Los recordatorios de una anotación que le avisaron a ESTE usuario (0219): cualquiera. */}
