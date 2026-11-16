@@ -10,6 +10,7 @@ import { CajaMovimientos } from './CajaMovimientos.jsx';
 import { ATAJOS, diaAtras } from '../domain/diasCaja.js';
 import { CajaVencidaAviso, PlazoCajaDato } from '../components/PlazoCaja.jsx';
 import { diasDelTurno, textoDiasCierre } from '@shared/utils/plazoCaja.js';
+import { cerroOtro } from '../domain/cajeros.js';
 
 /** Diferencia de arqueo con su color: cero es verde, cualquier otra cosa rojo. */
 function Diferencia({ valor, cerrado }) {
@@ -195,7 +196,11 @@ export function CajaPanel() {
             <tr key={t.id} className={s.clickable} onClick={() => openModal('arqueoTurno', { cajaSesionId: t.id, onChange: reload })}>
               <td className={s.mono}>#{t.id}</td>
               <td>{nombreDe(sucursales, t.sucursalId)}</td>
-              <td>{nombreDe(usuarios, t.usuarioId)}</td>
+              <td>
+                {nombreDe(usuarios, t.usuarioId)}
+                {/* Abrió uno y cerró otro (0229): se ven los dos. */}
+                {cerroOtro(t) && <div className={s.hint} style={{ margin: 0 }}>cerró {nombreDe(usuarios, cerroOtro(t))}</div>}
+              </td>
               <td>{fmtFechaHora(t.apertura)}</td>
               <td>
                 {t.cierre ? fmtFechaHora(t.cierre) : <span className={s.muted}>—</span>}

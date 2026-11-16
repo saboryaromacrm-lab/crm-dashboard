@@ -72,7 +72,7 @@ export function AuditoriaPanel() {
   const eventos = useMemo(() => {
     const txt = q.trim().toLowerCase();
     if (!d || !txt) return d?.eventos ?? [];
-    return d.eventos.filter((e) => `${e.titulo} ${e.detalle.join(' ')} ${e.motivo} ${nombreU(d, e.usuarioId)} ${e.otro ? nombreU(d, e.otro.usuarioId) : ''} ${nombreS(d, e.sucursalId)}`
+    return d.eventos.filter((e) => `${e.titulo} ${e.detalle.join(' ')} ${e.motivo} ${nombreU(d, e.usuarioId)} ${e.otro ? nombreU(d, e.otro.usuarioId) : ''} ${e.tambien ? nombreU(d, e.tambien.usuarioId) : ''} ${nombreS(d, e.sucursalId)}`
       .toLowerCase().includes(txt));
   }, [d, q]);
   const pag = usePaginado(eventos, 'gerencia-auditoria', `${qs}|${q}`);
@@ -81,7 +81,8 @@ export function AuditoriaPanel() {
     `auditoria-${desde}-a-${hasta}${tipo ? `-${tipo}` : ''}.csv`,
     ['Fecha y hora', 'Tipo', 'Qué', 'Detalle', 'Motivo', 'Quién', 'Otra persona', 'Local', 'Importe', 'Suma'],
     eventos.map((e) => [fmtFechaHora(e.fecha), etiquetaTipo[e.tipo] ?? e.tipo, e.titulo, e.detalle.join(' | '), e.motivo, nomU(e.usuarioId),
-      e.otro ? `${e.otro.etiqueta}: ${nomU(e.otro.usuarioId)}` : '', nomS(e.sucursalId), e.monto == null ? '' : csvNum(e.monto), e.informativo ? 'no' : 'sí']),
+      [e.otro && `${e.otro.etiqueta}: ${nomU(e.otro.usuarioId)}`, e.tambien && `${e.tambien.etiqueta}: ${nomU(e.tambien.usuarioId)} (también responde)`]
+        .filter(Boolean).join(' · '), nomS(e.sucursalId), e.monto == null ? '' : csvNum(e.monto), e.informativo ? 'no' : 'sí']),
   );
 
   return (
@@ -206,6 +207,8 @@ export function AuditoriaPanel() {
                 <td style={NOWRAP}>
                   {nomU(e.usuarioId)}
                   {e.otro && <div className={s.hint} style={{ margin: 0 }}>{e.otro.etiqueta}: {nomU(e.otro.usuarioId)}</div>}
+                  {/* Abrió uno y cerró otro (0229): la diferencia es de los dos y les suma a los dos. */}
+                  {e.tambien && <div style={{ fontSize: 13 }}>{e.tambien.etiqueta}: <strong>{nomU(e.tambien.usuarioId)}</strong> · también responde</div>}
                 </td>
                 {!pref.sucursalId && <td style={NOWRAP}>{nomS(e.sucursalId)}</td>}
                 <td className={cx(s.num, s.mono)} style={{ ...NOWRAP, color: CON_SIGNO.has(e.tipo) && e.monto < 0 ? 'var(--crm-color-danger)' : undefined }}>

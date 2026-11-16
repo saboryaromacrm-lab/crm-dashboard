@@ -161,7 +161,8 @@ function UsuarioModal({ usuario, roles, sucursales = [], onGuardar, onCerrar }) 
         </label>
         <div className={s.hint} style={{ margin: '4px 0 0' }}>
           Aparece en el POS para tomar la caja de otra sesión con su PIN: las ventas y los
-          movimientos quedan firmados con su nombre. No cambia sus permisos.
+          movimientos quedan firmados con su nombre. No cambia sus permisos. Con el mismo PIN
+          firma el cierre de caja; quien no tiene PIN lo firma con su contraseña.
         </div>
       </div>
       <div className={s.field} style={{ marginTop: 12 }}>
@@ -186,7 +187,7 @@ function UsuarioModal({ usuario, roles, sucursales = [], onGuardar, onCerrar }) 
       </div>
       {relevoCaja && (
         <div className={s.field}>
-          <label>PIN del relevo {usuario?.tienePin ? '' : <span className={s.req}>*</span>}</label>
+          <label>PIN de caja {usuario?.tienePin ? '' : <span className={s.req}>*</span>}</label>
           <input
             type="password" inputMode="numeric" maxLength={6}
             value={pin}

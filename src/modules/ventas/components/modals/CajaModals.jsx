@@ -7,6 +7,7 @@ import { MEDIOS_PAGO } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
 import { imprimirArqueoCaja, imprimirEnvioCaja } from '@core/services/imprimir.js';
 import { separarEnvio } from '../../domain/separarEnvio.js';
+import { textoCajeros } from '../../domain/cajeros.js';
 import { Table, Di, Btn, Pill, ModalShell, money, fmtFechaHora, s } from '../ui.jsx';
 import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@modules/gastos/components/segundaConfirmacion.jsx';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
@@ -1125,6 +1126,30 @@ function Renglon({ label, valor, tenue }) {
  * reconstruye el esperado—. El servidor ya los saca para el que no es jefe
  * (`arqueo.ciego`); el cierre lo fuerza para todos hasta que se declara el conteo.
  */
+/**
+ * QUIÉN ESTUVO EN LA CAJA (0229): el que abrió, cada cambio de cajero (entró en
+ * la PC de la caja con su usuario, o la tomó con su PIN) y quién cerró.
+ */
+const ORIGEN_CAJERO = { apertura: 'abrió', ingreso: 'entró en la caja', relevo: 'tomó la caja con su PIN' };
+function CajerosDelTurno({ arqueo }) {
+  const { usuarios } = useVentas();
+  const cajeros = arqueo.cajeros ?? [];
+  const cerro = arqueo.sesion?.cerradoPor;
+  if (!cajeros.length && !cerro) return null;
+  const nombre = (id) => usuarios?.find((u) => u.id === id)?.nombre || '—';
+  return (
+    <div className={s.hint} style={{ margin: 0, display: 'flex', flexWrap: 'wrap', gap: '2px 6px', alignItems: 'baseline' }}>
+      <span>Quién estuvo en la caja:</span>
+      {cajeros.map((c, i) => (
+        <span key={i}>
+          {i > 0 && '→ '}<strong>{c.nombre || '—'}</strong> {ORIGEN_CAJERO[c.origen] ?? ''} {fmtFechaHora(c.desde)}
+        </span>
+      ))}
+      {cerro && <span>· cerró <strong>{nombre(cerro)}</strong>{arqueo.sesion?.cierre ? ` ${fmtFechaHora(arqueo.sesion.cierre)}` : ''}</span>}
+    </div>
+  );
+}
+
 export function DetalleArqueo({ arqueo, ciego: forzarCiego = false, onAnularPosterior }) {
   const cerrado = arqueo.sesion?.estado === 'cerrada';
   /* El servidor lo manda ciego al que no es jefe SIEMPRE, también cerrado
@@ -1138,6 +1163,7 @@ export function DetalleArqueo({ arqueo, ciego: forzarCiego = false, onAnularPost
 
   return (
     <>
+      <CajerosDelTurno arqueo={arqueo} />
       {/*
         LA CUENTA DEL CAJÓN como una cuenta: renglones en columna, con los
         signos adelante y el resultado abajo separado por una línea. Antes eran
@@ -1344,8 +1370,17 @@ function LoQueTieneQueHaber({ turno, contado, conto }) {
  * y vuelve a exigir que el sobre salga de lo contado y que quede el fondo.
  */
 function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
-  const { ctx, closeModal, toast, setOperador, sucursales, usuarios, operadorId, config } = useVentas();
+  const { ctx, closeModal, toast, setOperador, sucursales, usuarios, config } = useVentas();
   const [billetes, setBilletes] = useState({});
+  /* QUIÉN CIERRA (0229, pedido del dueño): obligatorio, de la lista, con su PIN
+   * (o su contraseña si no tiene PIN). Arranca vacío a propósito: precargado,
+   * se confirmaría sin mirar. */
+  const [quien, setQuien] = useState('');
+  const [firma, setFirma] = useState('');
+  const firmaRef = useRef(null);
+  const { data: cierran } = useResource(`quien-cierra:${cajaSesionId}`, () => ventasApi.cajaQuienCierra(cajaSesionId));
+  const elegido = (cierran ?? []).find((u) => String(u.id) === quien) ?? null;
+  const identificado = !!elegido && !!firma;
   /* Los billetes que QUEDAN en la caja (20/10/2026): los elige quien cierra, o los propone el sistema. */
   const [dejar, setDejar] = useState({});
   const [paso, setPaso] = useState('contar');
@@ -1381,6 +1416,7 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
   const tilde = useTildeControlar(ve && conto ? [r2(contado - (Number(turno.esperadoEfectivo) || 0))] : [], useUmbralControlar(dueno));
 
   const aConfirmar = () => {
+    if (!identificado) { toast('Elegí quién cierra la caja y que ponga su PIN.', 'err'); return; }
     if (!conto) { toast('Contá los billetes del cajón antes de enviar.', 'err'); return; }
     if (quedaPoco) { toast(`Tienen que quedar por lo menos ${money(debeQuedar)} en la caja: elegí más billetes en «Queda en caja».`, 'err'); return; }
     setPaso('confirmar');
@@ -1396,13 +1432,14 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
         billetesEnvio: billetesLimpios(envioB),
         confirmado: true,
         usuarioId: ctx.usuarioId ?? undefined,
-        operadorId: operadorId ?? undefined,
+        cerradoPor: elegido.id,
+        firma,
         aControlar: dueno ? tilde.pedido : undefined,
       });
       const nombreDe = (id) => usuarios?.find((u) => u.id === id)?.nombre || '';
       const salio = await imprimirEnvioCaja(
         { ...r, sesionId: r.sesion?.id, cierre: r.sesion?.cierre, esperadoEfectivo: ve ? r.esperadoEfectivo : null, diferencia: ve ? r.diferencia : null },
-        { moneda: money, fechaHora: fmtFechaHora, sucursal: sucursal?.nombre || '', cajero: nombreDe(r.sesion?.usuarioId) },
+        { moneda: money, fechaHora: fmtFechaHora, sucursal: sucursal?.nombre || '', cajero: textoCajeros(r.sesion, nombreDe) },
       );
       toast(`Caja cerrada. Quedan ${money(r.fondoQueda)} en la caja y va el sobre de ${money(r.envio)}.${dueno && tilde.marcar ? ' Quedó en «Cajas a controlar».' : ''}`, 'ok');
       if (!salio) toast('La caja se cerró, pero el navegador bloqueó la impresión. Reimprimila desde el historial.', 'err');
@@ -1411,6 +1448,8 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
       closeModal();
     } catch (e) {
       toast(errorMsg(e), 'err');
+      /* PIN mal o bloqueado: se vuelve a la primera pantalla a tipearlo de nuevo, con el conteo intacto. */
+      if (e?.status === 403) { setFirma(''); setPaso('contar'); }
     } finally {
       candado.current = false;
       setEnviando(false);
@@ -1462,8 +1501,8 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
         ]}
       >
         <div className={cx(s.callout, s.warn)}>
-          ¿Confirmás? <strong>Dejás {money(queda)} en la caja</strong> y va el <strong>sobre de {money(envio)}</strong>{' '}
-          con los billetes de abajo. <strong>El turno se cierra</strong>: no se puede reabrir.
+          ¿Confirmás? <strong>{elegido?.nombre}</strong> cierra la caja: <strong>deja {money(queda)} en la caja</strong> y va el{' '}
+          <strong>sobre de {money(envio)}</strong> con los billetes de abajo. <strong>El turno se cierra</strong>: no se puede reabrir.
         </div>
         <TablaBilletes titulo={`Dejar en caja · ${money(queda)}`} filas={DENOMINACIONES.map((d) => [d, cantDe(billetes, d) - cantDe(envioB, d)])} />
         <TablaBilletes titulo={`Va en el sobre · ${money(envio)}`} filas={DENOMINACIONES.map((d) => [d, cantDe(envioB, d)])} vacio="El sobre va vacío." />
@@ -1481,9 +1520,36 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
-        { texto: `Continuar: sobre de ${money(envio)}`, clase: 'btn-primary', onClick: aConfirmar, disabled: !conto || quedaPoco },
+        { texto: `Continuar: sobre de ${money(envio)}`, clase: 'btn-primary', onClick: aConfirmar, disabled: !identificado || !conto || quedaPoco },
       ]}
     >
+      <div className={cx(s.callout, s.info)} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div className={s.field} style={{ margin: 0, flex: '1 1 200px' }}>
+          <label htmlFor="cierre-quien">¿Quién cierra la caja?</label>
+          <select
+            id="cierre-quien" value={quien}
+            onChange={(e) => { setQuien(e.target.value); setFirma(''); setTimeout(() => firmaRef.current?.focus(), 0); }}
+          >
+            <option value="" disabled>{cierran ? 'Elegí quién está cerrando…' : 'Cargando…'}</option>
+            {(cierran ?? []).map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+          </select>
+        </div>
+        <div className={s.field} style={{ margin: 0, flex: '1 1 160px' }}>
+          <label htmlFor="cierre-firma">{elegido && !elegido.tienePin ? 'Su contraseña' : 'Su PIN'}</label>
+          <input
+            id="cierre-firma" ref={firmaRef} type="password" autoComplete="off"
+            inputMode={elegido && !elegido.tienePin ? undefined : 'numeric'}
+            maxLength={elegido && !elegido.tienePin ? 100 : 6}
+            disabled={!elegido} value={firma}
+            placeholder={elegido && !elegido.tienePin ? 'La que usa para entrar' : '4 a 6 dígitos'}
+            onChange={(e) => setFirma(elegido?.tienePin ? e.target.value.replace(/\D/g, '') : e.target.value)}
+          />
+        </div>
+        <div className={s.hint} style={{ margin: 0, flexBasis: '100%' }}>
+          Queda firmado por quien cierra: es lo que dice el comprobante y lo que ve el administrador.
+          {elegido && !elegido.tienePin && ' No tiene PIN de caja: firma con la contraseña con la que entra al sistema.'}
+        </div>
+      </div>
       <div className={s.hint}>
         Contá <strong>todo el efectivo del cajón</strong>, billete por billete, y elegí cuáles <strong>quedan en la caja</strong>{' '}
         (el fondo para mañana{fondo ? `: ${money(fondo)}` : ''}). Lo demás va en el sobre.
@@ -1705,7 +1771,7 @@ export function ArqueoTurnoModal({ cajaSesionId, onChange }) {
           faltaFondo: fondoSuc != null ? Math.max(0, fondoSuc - (Number(ses.fondoQueda) || 0)) : 0,
         }, {
           moneda: money, fechaHora: fmtFechaHora, sucursal: suc?.nombre || '',
-          cajero: nombreDe(ses.usuarioId), usuario: nombreDe(ctx?.usuarioId), reimpresion: true,
+          cajero: textoCajeros(ses, nombreDe), usuario: nombreDe(ctx?.usuarioId), reimpresion: true,
         });
         if (!salio) toast('El navegador bloqueó la ventana de impresión.', 'err');
       },
@@ -1747,7 +1813,7 @@ export function ArqueoTurnoModal({ cajaSesionId, onChange }) {
         </div>
         <div>
           <span className={s.l}>Cajero</span>
-          <span className={s.v}>{usuarios.find((u) => u.id === sesion.usuarioId)?.nombre || '—'}</span>
+          <span className={s.v}>{textoCajeros(sesion, (id) => usuarios.find((u) => u.id === id)?.nombre)}</span>
         </div>
         <div>
           <span className={s.l}>Estado</span>

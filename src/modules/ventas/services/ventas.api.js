@@ -206,6 +206,8 @@ export const ventasApi = {
   conteoCierre: (id, data) => httpClient.post(`/caja/${id}/conteo-cierre`, data),
   /** El cierre del cajero (0111): billetes contados, fondo que queda y envío. */
   enviarCierreCaja: (id, data) => httpClient.post(`/caja/${id}/enviar`, data),
+  /** Quiénes pueden cerrar el turno (0229): el «¿Quién cierra la caja?», con `tienePin`. */
+  cajaQuienCierra: (id) => httpClient.get(`/caja/${id}/quien-cierra`),
   movimientoCaja: (id, data) => httpClient.post(`/caja/${id}/movimiento`, data),
   /** 0192: los conceptos de la caja (la lista del Cash Flow que se usa en los locales). */
   conceptosCaja: (todos = false) => httpClient.get(`/caja/conceptos${todos ? '?todos=1' : ''}`),
