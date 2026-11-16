@@ -1372,9 +1372,9 @@ function LoQueTieneQueHaber({ turno, contado, conto }) {
 function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
   const { ctx, closeModal, toast, setOperador, sucursales, usuarios, config } = useVentas();
   const [billetes, setBilletes] = useState({});
-  /* QUIÉN CIERRA (0229, pedido del dueño): obligatorio, de la lista, con su PIN
-   * (o su contraseña si no tiene PIN). Arranca vacío a propósito: precargado,
-   * se confirmaría sin mirar. */
+  /* QUIÉN CIERRA (0229, pedido del dueño): obligatorio, de la lista, y firma con
+   * la contraseña con la que entra al sistema. Arranca vacío a propósito:
+   * precargado, se confirmaría sin mirar. */
   const [quien, setQuien] = useState('');
   const [firma, setFirma] = useState('');
   const firmaRef = useRef(null);
@@ -1416,7 +1416,7 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
   const tilde = useTildeControlar(ve && conto ? [r2(contado - (Number(turno.esperadoEfectivo) || 0))] : [], useUmbralControlar(dueno));
 
   const aConfirmar = () => {
-    if (!identificado) { toast('Elegí quién cierra la caja y que ponga su PIN.', 'err'); return; }
+    if (!identificado) { toast('Elegí quién cierra la caja y que ponga su contraseña.', 'err'); return; }
     if (!conto) { toast('Contá los billetes del cajón antes de enviar.', 'err'); return; }
     if (quedaPoco) { toast(`Tienen que quedar por lo menos ${money(debeQuedar)} en la caja: elegí más billetes en «Queda en caja».`, 'err'); return; }
     setPaso('confirmar');
@@ -1448,7 +1448,7 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
       closeModal();
     } catch (e) {
       toast(errorMsg(e), 'err');
-      /* PIN mal o bloqueado: se vuelve a la primera pantalla a tipearlo de nuevo, con el conteo intacto. */
+      /* Contraseña mal o bloqueada: se vuelve a la primera pantalla a tipearla de nuevo, con el conteo intacto. */
       if (e?.status === 403) { setFirma(''); setPaso('contar'); }
     } finally {
       candado.current = false;
@@ -1535,19 +1535,16 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
           </select>
         </div>
         <div className={s.field} style={{ margin: 0, flex: '1 1 160px' }}>
-          <label htmlFor="cierre-firma">{elegido && !elegido.tienePin ? 'Su contraseña' : 'Su PIN'}</label>
+          <label htmlFor="cierre-firma">Su contraseña</label>
           <input
-            id="cierre-firma" ref={firmaRef} type="password" autoComplete="off"
-            inputMode={elegido && !elegido.tienePin ? undefined : 'numeric'}
-            maxLength={elegido && !elegido.tienePin ? 100 : 6}
-            disabled={!elegido} value={firma}
-            placeholder={elegido && !elegido.tienePin ? 'La que usa para entrar' : '4 a 6 dígitos'}
-            onChange={(e) => setFirma(elegido?.tienePin ? e.target.value.replace(/\D/g, '') : e.target.value)}
+            id="cierre-firma" ref={firmaRef} type="password" autoComplete="off" maxLength={100}
+            disabled={!elegido} value={firma} placeholder="La que usa para entrar al sistema"
+            onChange={(e) => setFirma(e.target.value)}
           />
         </div>
         <div className={s.hint} style={{ margin: 0, flexBasis: '100%' }}>
-          Queda firmado por quien cierra: es lo que dice el comprobante y lo que ve el administrador.
-          {elegido && !elegido.tienePin && ' No tiene PIN de caja: firma con la contraseña con la que entra al sistema.'}
+          Firma quien cierra, con la contraseña con la que entra al sistema: es lo que dice el comprobante y lo que ve
+          el administrador.
         </div>
       </div>
       <div className={s.hint}>
