@@ -5,7 +5,7 @@ import { useResource } from '../../hooks/useResource.js';
 import { errorMsg, gastosApi } from '../../services/gastos.api.js';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '../segundaConfirmacion.jsx';
 import {
-  MEDIOS_PAGO, TIPOS_DOC_GASTO, hoyISO, mesLargo, r2, nombreProveedor,
+  MEDIOS_PAGO, NOMBRE_MEDIO_PAGO, TIPOS_DOC_GASTO, hoyISO, mesLargo, r2, nombreProveedor,
 } from '../../domain/constants.js';
 import {
   Table, Btn, Di, ModalShell, GastoEstadoPill, Saldo, money, fmtFecha, fmtFechaHora, s,
@@ -1103,7 +1103,7 @@ export function DetalleGastoModal({ gastoId, onChange }) {
         {(g.pagos || []).map((p) => (
           <tr key={p.imputacionId}>
             <td>{fmtFechaHora(p.fecha)}</td>
-            <td>{MEDIOS_PAGO[p.medio] || p.medio}</td>
+            <td>{NOMBRE_MEDIO_PAGO[p.medio] || p.medio}</td>
             <td>
               {p.cajaSesionId
                 ? `Caja ${p.sucursalNombre || ''} · turno #${p.cajaSesionId}`

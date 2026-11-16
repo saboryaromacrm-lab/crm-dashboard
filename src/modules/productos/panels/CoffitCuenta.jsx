@@ -31,6 +31,7 @@ const CONCEPTO = {
   ajuste: 'Ajuste',
   saldo_inicial: 'Saldo inicial',
   marca_exclusivo: 'Stock pasado a Coffit',
+  pago_proveedor: 'Factura que pagó Coffit',
 };
 const MANUALES = new Set(['pago', 'compensacion', 'ajuste', 'saldo_inicial', 'marca_exclusivo']);
 const FILTROS = [
@@ -39,7 +40,7 @@ const FILTROS = [
   { id: 'envios', label: 'Envíos', tipos: ['envio', 'dif_envio'] },
   { id: 'entradas', label: 'Lo que mandó Coffit', tipos: ['entrada', 'dif_entrada'] },
   { id: 'gastos', label: 'Gastos', tipos: ['gasto'] },
-  { id: 'manuales', label: 'Pagos y ajustes', tipos: [...MANUALES] },
+  { id: 'manuales', label: 'Pagos y ajustes', tipos: [...MANUALES, 'pago_proveedor'] },
 ];
 
 export function CoffitCuenta({ desde, hasta, setDesde, setHasta }) {
@@ -185,7 +186,8 @@ export function CoffitCuenta({ desde, hasta, setDesde, setHasta }) {
 
       <div className={s.hint}>
         <strong>Debe Coffit</strong> suma a lo que Coffit le debe a Sabor y Aroma; <strong>A favor de Coffit</strong>
-        {' '}lo resta. <strong>Coffit paga precio final</strong> (con IVA y percepciones). Entran solos: la parte de
+        {' '}lo resta. Una factura que <strong>pagó Coffit</strong> directo al proveedor (Proveedores, «Lo pagó Coffit») entra a su
+        favor por lo que pagó, así no se le cobra. <strong>Coffit paga precio final</strong> (con IVA y percepciones). Entran solos: la parte de
         Coffit de cada factura de compra (el total del papel de su parte), lo que se le manda desde el stock al
         <strong> precio final de la última factura</strong> (sin lo que ya había pagado), lo que ella manda a las
         sucursales (al costo que declara), los faltantes al recibir (los pierde el que mandó, en la fecha en que se

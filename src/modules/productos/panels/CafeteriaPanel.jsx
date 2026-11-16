@@ -27,6 +27,7 @@ import { pedidosCafe } from '@core/services/pedidosCafe.js';
 import { CafeteriaProductosPanel } from './CafeteriaProductosPanel.jsx';
 import { CoffitCompras, CoffitGastos } from './CoffitComprasGastos.jsx';
 import { CoffitCuenta } from './CoffitCuenta.jsx';
+import { CoffitProveedores } from './CoffitProveedores.jsx';
 import { CoffitIngredientes } from './CoffitIngredientes.jsx';
 import { BajosStockPanel } from './BajosStockPanel.jsx';
 
@@ -54,6 +55,8 @@ const pestanasDe = (v) => [
   /* LA CUENTA ENTRE LOS DOS NEGOCIOS (0120): quién le debe a quién, hoy. */
   { id: 'cuenta', label: 'Cuenta corriente', metricas: true },
   { id: 'compras', label: 'Compras de mercadería', metricas: true },
+  /* Sus proveedores, también los compartidos, y lo que les pagó ella (16/11/2026). */
+  { id: 'proveedores', label: 'Proveedores', metricas: true },
   { id: 'gastos', label: 'Gastos', metricas: true },
   { id: 'metrica', label: 'Métrica', metricas: true },
 ];
@@ -255,7 +258,7 @@ export function CafeteriaPanel() {
           if (pestana === 'productos' || pestana === 'ingredientes' || pestana === 'bajos') return null;
           /* Compras y gastos se cargan en su lugar (Compras › Facturación y
              Gastos); desde acá solo se miran. */
-          if (pestana === 'compras' || pestana === 'gastos' || pestana === 'cuenta') return null;
+          if (pestana === 'compras' || pestana === 'gastos' || pestana === 'cuenta' || pestana === 'proveedores') return null;
           /* PEDIR VIVE ACÁ (28/9/2026, pedido del dueño): antes era una
              entrada aparte del menú, «Pedido a la distribuidora». Para el café
              es el botón principal de su pestaña de pedidos; el que además
@@ -643,6 +646,7 @@ export function CafeteriaPanel() {
       {pestana === 'compras' && verMetricas && (
         <CoffitCompras desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} />
       )}
+      {pestana === 'proveedores' && verMetricas && <CoffitProveedores />}
       {pestana === 'gastos' && verMetricas && (
         <CoffitGastos desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} />
       )}

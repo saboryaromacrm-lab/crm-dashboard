@@ -1440,6 +1440,11 @@ const anularMovimientoCoffit = (id, motivo) => _sinRecargar(() => httpClient.pos
 const cerrarCuentaCoffit = (o) => _sinRecargar(() => httpClient.post('/cafeteria/cuenta/cierres', o));
 const reabrirCierreCoffit = (id, motivo) => _sinRecargar(() => httpClient.post(`/cafeteria/cuenta/cierres/${id}/reabrir`, { motivo }));
 const cierreCoffit = (id) => httpClient.get(`/cafeteria/cuenta/cierres/${id}`);
+/* LOS PROVEEDORES DE COFFIT y LO QUE PAGÓ ELLA (0228, 16/11/2026). El pago es un
+ * pago a proveedor común con medio «pago_coffit»: salda las facturas y entra a su
+ * favor en la cuenta. No mueve stock: sin recargar el inventario. */
+const proveedoresCoffit = (filtros) => httpClient.get('/cafeteria/proveedores' + _qsPagos(filtros || {}));
+const pagoDeCoffit = (o) => _sinRecargar(() => httpClient.post('/pagos-proveedor', { ...o, medio: 'pago_coffit', destino: 'mercaderia' }));
 /** El costo al que va a salir cada producto hacia Coffit (última factura). */
 const costosSalidaCafeteria = (ids) => httpClient.get('/cafeteria/costos-salida?ids=' + (ids || []).join(','));
 /** Último costo declarado por la cafetería, por `producto-presentación`. Se
@@ -1660,6 +1665,7 @@ export const inventoryStore = {
   enviosCafeteria, envioCafeteria, resumenCafeteria, metricaCafeteria, costosEntradaCafeteria, depositoCafeteria,
   comprasCafeteria, gastosCafeteria,
   cuentaCoffit, movimientoCoffit, anularMovimientoCoffit, cerrarCuentaCoffit, reabrirCierreCoffit, cierreCoffit,
+  proveedoresCoffit, pagoDeCoffit,
   costosSalidaCafeteria,
   productosCafeteria, crearProductoCafeteria, editarProductoCafeteria, precioProductoCafeteria, bajaProductoCafeteria,
   crearEnvioCafeteria, editarEnvioCafeteria, anularEnvioCafeteria, recibirEnvioCafeteria,

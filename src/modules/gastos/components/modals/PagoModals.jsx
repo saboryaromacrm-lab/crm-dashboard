@@ -3,7 +3,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useGastos } from '../../context/GastosContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { gastosApi } from '../../services/gastos.api.js';
-import { MEDIOS_PAGO, hoyISO, r2 } from '../../domain/constants.js';
+import { MEDIOS_PAGO, NOMBRE_MEDIO_PAGO, hoyISO, r2 } from '../../domain/constants.js';
 import {
   Table, Btn, Di, ModalShell, Pill, Saldo, money, fmtFecha, fmtFechaHora, s,
 } from '../ui.jsx';
@@ -232,7 +232,7 @@ export function DetallePagoModal({ pagoId, onChange }) {
               : <Pill pill="est-recibida" label="Aplicado" />}
         </Di>
         <Di label="Fecha y hora">{fmtFechaHora(p.fecha)}</Di>
-        <Di label="Medio">{MEDIOS_PAGO[p.medio] || p.medio}{p.cuentaPropiaNombre ? ` · desde ${p.cuentaPropiaNombre}` : ''}</Di>
+        <Di label="Medio">{NOMBRE_MEDIO_PAGO[p.medio] || p.medio}{p.cuentaPropiaNombre ? ` · desde ${p.cuentaPropiaNombre}` : ''}</Di>
         <Di label="Importe"><strong>{money(p.importe)}</strong></Di>
         <Di label="Aplicado">{money(p.aplicado)}</Di>
         <Di label="Sin aplicar"><Saldo valor={p.saldo}>{money(p.saldo)}</Saldo></Di>

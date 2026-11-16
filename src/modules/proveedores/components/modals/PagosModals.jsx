@@ -322,7 +322,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
           : <>
             Sale un pago de <strong>{money(importe)}</strong> a <strong>{proveedor.nombre}</strong>
             {esCambio ? <> por transferencia que hace <strong>{cambioPor.trim() || '—'}</strong> a cambio de tu efectivo</>
-              : modo === 'simple' ? <> por {medio}{medio === 'transferencia' && nombreCuenta ? <> desde <strong>{nombreCuenta}</strong></> : null}</>
+              : modo === 'simple' ? <> por {medio === 'pago_coffit' ? <strong>Coffit, con su plata</strong> : medio}{medio === 'transferencia' && nombreCuenta ? <> desde <strong>{nombreCuenta}</strong></> : null}</>
                 : <> en {formas.filter((x) => Number(x.importe) > 0).length} partes</>}
             {usaEfectivo && hayTurno && desdeCaja ? <> (el efectivo <strong>sale del cajón</strong>, turno #{caja.id})</> : null}
             {elegidos.length
@@ -486,7 +486,14 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
               <select value={medio} onChange={(e) => setMedio(e.target.value)}>
                 {Object.entries(MEDIOS_PAGO_REAL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 <option value={CAMBIO}>Efectivo por transferencia</option>
+                <option value="pago_coffit">Lo pagó Coffit (con su plata)</option>
               </select>
+              {medio === 'pago_coffit' && (
+                <div className={s.hint} style={{ margin: '6px 0 0' }}>
+                  No sale plata de la empresa: lo tildado queda pagado y en la cuenta con Coffit entra <strong>a su favor</strong> por
+                  este importe, así no se le cobra. Si pagaron entre los dos, registrá un pago para cada uno.
+                </div>
+              )}
             </div>
             {medio === 'transferencia' && (
               <div className={s.field}>

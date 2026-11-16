@@ -39,6 +39,10 @@ export const MEDIOS_PAGO = {
   qr: 'QR',
   otro: 'Otro',
 };
+/** Para MOSTRAR el medio de un pago ya hecho: también los que no se ofrecen al pagar un gasto. */
+export const NOMBRE_MEDIO_PAGO = {
+  ...MEDIOS_PAGO, deposito: 'Depósito', echeq: 'Echeq', pago_coffit: 'Lo pagó Coffit',
+};
 
 /** Redondeo a dos decimales. El sistema trabaja con doubles. */
 export const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;

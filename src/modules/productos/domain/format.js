@@ -55,6 +55,8 @@ export const MEDIOS_PAGO_PROVEEDOR = {
   tarjeta_credito: 'Crédito',
   qr: 'QR',
   otro: 'Otro',
+  /* 0228: la factura la pagó Coffit con su plata (no salió de la empresa). */
+  pago_coffit: 'Lo pagó Coffit',
 };
 
 /** Cómo se pagó, parte por parte: las formas de un pago mixto, o el medio único de la cabecera. */

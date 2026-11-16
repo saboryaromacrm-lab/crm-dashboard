@@ -3,7 +3,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useGastos } from '../context/GastosContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { gastosApi } from '../services/gastos.api.js';
-import { MEDIOS_PAGO, inicioDeMes, hoyISO } from '../domain/constants.js';
+import { NOMBRE_MEDIO_PAGO, inicioDeMes, hoyISO } from '../domain/constants.js';
 import {
   Table, Stat, Btn, Pill, Saldo, usePaginado, money, fmtFechaHora, s,
 } from '../components/ui.jsx';
@@ -75,7 +75,7 @@ export function PagosSucursalTab({ proveedorId, onCambio }) {
           fecha: fmtFechaHora(p.fecha),
           sucursal: p.sucursalNombre,
           proveedor: p.proveedorNombre,
-          medio: MEDIOS_PAGO[p.medio] || p.medio,
+          medio: NOMBRE_MEDIO_PAGO[p.medio] || p.medio,
           referencia: p.referencia,
           total: p.importe,
           observaciones: p.estado === 'anulado' ? 'PAGO ANULADO' : (p.concepto || ''),
@@ -106,7 +106,7 @@ export function PagosSucursalTab({ proveedorId, onCambio }) {
           {p.concepto && <div className={s.hint} style={{ margin: 0 }}>{p.concepto}</div>}
         </td>
         <td>
-          {MEDIOS_PAGO[p.medio] || p.medio}
+          {NOMBRE_MEDIO_PAGO[p.medio] || p.medio}
           {desdeCuentas(p) && <div className={s.hint} style={{ margin: 0 }}>{desdeCuentas(p)}</div>}
         </td>
         <td>
