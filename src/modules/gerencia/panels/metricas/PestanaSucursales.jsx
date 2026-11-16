@@ -94,8 +94,7 @@ export function PestanaSucursales({ qs, version, sucursalId, setSucursalId }) {
         />
       </Tiles>
       <div className={s.hint} style={{ margin: 0 }}>
-        Se compara con {fechaLarga(d.anteriorDesde)} → {fechaLarga(d.anteriorHasta)}, el período anterior del mismo largo.
-        {' '}Mañana es hasta las {d.tardeDesde - 1}:59; tarde, desde las {d.tardeDesde}:00 (la misma regla del resto del ERP).
+        Mañana es hasta las {d.tardeDesde - 1}:59; tarde, desde las {d.tardeDesde}:00 (la misma regla del resto del ERP).
         {filtrado ? (
           <> {' '}<Btn small onClick={() => setSucursalId('')}>Ver todas las sucursales</Btn></>
         ) : varios ? ' Clic en una sucursal para ver solo esa.' : ''}

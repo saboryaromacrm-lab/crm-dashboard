@@ -19,6 +19,8 @@ export const COLOR_GRANEL = 'var(--crm-color-primary)';
 export const COLOR_ENTERO = '#ea580c';
 export const COLOR_A = 'var(--crm-color-primary)';
 export const COLOR_B = '#2563eb';
+/** El período anterior en los gráficos (16/11/2026, pedido del dueño: «una barra naranja»). */
+export const COLOR_ANTERIOR = '#ea580c';
 
 export const pctTxt =(v) => (v == null ? '—' : `${num(v, 1)}%`);
 /** Qué parte del total es `v`, en % (null si no hay total contra qué medir). */
@@ -38,6 +40,14 @@ export const fechaLarga = (p) => `${p.slice(8, 10)}/${p.slice(5, 7)}/${p.slice(0
 /** Suma días a una fecha 'AAAA-MM-DD' (al mediodía: sin saltos por horario de verano). */
 export const sumarDias = (p, n) => { const d = new Date(`${p}T12:00:00`); d.setDate(d.getDate() + n); return iso(d); };
 /** Días entre dos fechas, contando las dos puntas. */
+/**
+ * El período anterior del mismo largo, pegado antes: la MISMA regla que la API
+ * (`periodoAnterior` en crm-api/src/metricas/consultas.ts).
+ */
+export function rangoAnterior(desde, hasta) {
+  const n = diasDe(desde, hasta);
+  return [sumarDias(desde, -n), sumarDias(desde, -1)];
+}
 export const diasDe = (desde, hasta) => Math.round((Date.parse(`${hasta}T12:00:00`) - Date.parse(`${desde}T12:00:00`)) / 86_400_000) + 1;
 
 /** Los períodos que se usan todos los días. */

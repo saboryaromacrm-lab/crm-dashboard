@@ -270,22 +270,53 @@ export function Columnas({ datos, formato = (v) => v, eje = compacto, alto = 220
  * Barras horizontales de UNA serie (sucursales, medios de pago): el nombre a la
  * izquierda, el valor escrito al final de la barra. HTML y no SVG: los nombres
  * largos se cortan con «…» sin romper el dibujo.
+ *
+ * CONTRA EL PERÍODO ANTERIOR (16/11/2026): con `anterior` (`{ nombre, color }`)
+ * cada dato puede traer `d.anterior` (el valor de entonces): va una barra más
+ * finita debajo, en ese color, con la MISMA escala, y al lado la variación.
  */
-export function Barras({ datos, formato = (v) => v, sufijo }) {
-  const max = Math.max(1, ...datos.map((d) => Math.abs(Number(d.valor) || 0)));
+export function Barras({ datos, formato = (v) => v, sufijo, anterior }) {
+  const max = Math.max(1, ...datos.flatMap((d) => [Math.abs(Number(d.valor) || 0), anterior ? Math.abs(Number(d.anterior) || 0) : 0]));
+  const fondo = 'var(--crm-color-surface-2, rgba(0,0,0,.05))';
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: anterior ? 8 : 6 }}>
+      {anterior && (
+        <Leyenda series={[{ nombre: 'Este período', color: COLOR }, anterior]} />
+      )}
       {datos.map((d) => {
         const v = Number(d.valor) || 0;
         const ancho = Math.max(0.5, (Math.abs(v) / max) * 100);
+        const a = anterior && d.anterior != null ? Number(d.anterior) || 0 : null;
+        const var_ = a != null && Math.abs(a) > 0.005 ? ((v - a) / Math.abs(a)) * 100 : null;
         return (
           <div key={d.clave ?? d.etiqueta} title={d.detalle || undefined} style={{ display: 'grid', gridTemplateColumns: 'minmax(70px, 30%) minmax(40px, 1fr) auto', gap: 10, alignItems: 'center' }}>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--crm-color-text)' }}>{d.etiqueta}</span>
-            <span style={{ height: 12, background: 'var(--crm-color-surface-2, rgba(0,0,0,.05))', borderRadius: 4, overflow: 'hidden' }}>
-              <span style={{ display: 'block', height: '100%', width: `${ancho}%`, background: v >= 0 ? COLOR : NEGATIVO, borderRadius: '0 4px 4px 0' }} />
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ height: 12, background: fondo, borderRadius: 4, overflow: 'hidden' }}>
+                <span style={{ display: 'block', height: '100%', width: `${ancho}%`, background: v >= 0 ? COLOR : NEGATIVO, borderRadius: '0 4px 4px 0' }} />
+              </span>
+              {anterior && (
+                <span style={{ height: 6, background: fondo, borderRadius: 3, overflow: 'hidden' }} title={a != null ? `${anterior.nombre}: ${formato(a)}` : undefined}>
+                  {a != null && Math.abs(a) > 0 && (
+                    <span style={{ display: 'block', height: '100%', width: `${Math.max(0.5, (Math.abs(a) / max) * 100)}%`, background: anterior.color, borderRadius: '0 3px 3px 0' }} />
+                  )}
+                </span>
+              )}
             </span>
             <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--crm-color-text)', textAlign: 'right', whiteSpace: 'nowrap' }}>
               {formato(v)}{sufijo ? <span style={{ color: 'var(--crm-color-text-secondary)' }}> {sufijo(d)}</span> : null}
+              {anterior && (
+                <span style={{ display: 'block', fontSize: 11.5, color: 'var(--crm-color-text-secondary)' }}>
+                  {a == null || Math.abs(a) < 0.005 ? 'antes: sin datos' : (
+                    <>
+                      antes {formato(a)}{' '}
+                      <span style={{ color: var_ >= 0 ? 'var(--crm-color-success)' : 'var(--crm-color-danger)' }}>
+                        {var_ >= 0 ? '▲' : '▼'} {Math.abs(var_).toLocaleString('es-AR', { maximumFractionDigits: 1 })}%
+                      </span>
+                    </>
+                  )}
+                </span>
+              )}
             </span>
           </div>
         );

@@ -22,7 +22,7 @@ import { money, num } from '@modules/productos/domain/format.js';
 import { Table, Btn, usePaginado, s } from '@modules/productos/components/ui.jsx';
 import { ColumnasMulti, Reparto } from './graficos.jsx';
 import {
-  COLOR_ENTERO, COLOR_GRANEL, etiquetaPeriodo, fechaLarga, nombrePaso, parte, pctTxt, tituloPeriodo,
+  COLOR_ENTERO, COLOR_GRANEL, etiquetaPeriodo, nombrePaso, parte, pctTxt, tituloPeriodo,
 } from './formato.js';
 import { Aviso, Bloque, Cargando, ConParte, Grilla, Tile, Tiles, Variacion } from './piezas.jsx';
 
@@ -45,7 +45,7 @@ export function PestanaGranel({ qs, paso, version, onVerTodos }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, opacity: loading ? 0.6 : 1 }}>
       <div className={s.hint} style={{ margin: 0 }}>
         <strong>Granel</strong> es lo que se fracciona: en paquetes o suelto al peso. <strong>Enteros</strong>, lo que se vende tal cual entra.
-        Venta neta, sin IVA; las notas de crédito restan. Se compara con {fechaLarga(d.anterior.desde)} → {fechaLarga(d.anterior.hasta)}.
+        Venta neta, sin IVA; las notas de crédito restan.
       </div>
 
       <Tiles>

@@ -196,7 +196,7 @@ function NivelArbol({ d, paso, ir, porMarca }) {
         </div>
       )}
       <div className={s.hint} style={{ margin: 0 }}>
-        Venta neta, sin IVA; las notas de crédito restan. Se compara con {fechaLarga(d.anterior.desde)} → {fechaLarga(d.anterior.hasta)}.
+        Venta neta, sin IVA; las notas de crédito restan.
         Cada producto cuenta en la {porMarca ? 'marca' : 'categoría'} que tiene <strong>hoy</strong>.
       </div>
 
