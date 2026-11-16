@@ -15,7 +15,6 @@ import { ConfiguracionAlmacenPanel } from '../panels/ConfiguracionAlmacenPanel.j
 import { CatalogosPanel } from '../panels/CatalogosPanel.jsx';
 
 import { FacturacionPanel } from '../panels/FacturacionPanel.jsx';
-import { PagosRealizadosPanel } from '../panels/PagosRealizadosPanel.jsx';
 import { ProveedoresPanel } from '../panels/ProveedoresPanel.jsx';
 import { LecturasPanel } from '../panels/LecturasPanel.jsx';
 import { ExistenciasPanel } from '../panels/ExistenciasPanel.jsx';
@@ -47,7 +46,6 @@ const PANEL_COMPONENTS = {
   proveedores: ProveedoresPanel,
   lecturas: LecturasPanel,
   facturacion: FacturacionPanel,
-  pagos: PagosRealizadosPanel,
   existencias: ExistenciasPanel,
   fraccionamiento: FraccionamientoPanel,
   historial: HistorialPanel,

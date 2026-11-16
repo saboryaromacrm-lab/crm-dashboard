@@ -23,6 +23,7 @@ import PercentIcon from '@mui/icons-material/Percent';
 import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
+import ReceiptIcon from '@mui/icons-material/Receipt';
 
 export const GERENCIA_SECCIONES = [
   {
@@ -72,6 +73,12 @@ export const GERENCIA_SECCIONES = [
      * posnet y transferencias). Arranca con el diagnóstico de la cuenta. */
     id: 'pagos', label: 'Pagos electrónicos', icon: CreditCardIcon, permiso: 'gerencia.pagos_electronicos',
     desc: 'Lo que entra por Mercado Pago (QR, posnet y transferencias): cobros por medio, comisiones, lo que falta liberar y por qué caja entró.',
+  },
+  {
+    /* 16/11/2026 (pedido del dueño): se mudó desde Compras. Misma llave que
+     * antes (`compras.pagos`, la de «Pagos en sucursal»): nadie pierde acceso. */
+    id: 'pagos-realizados', label: 'Pagos realizados', icon: ReceiptIcon, permiso: 'compras.pagos',
+    desc: 'Todo lo que se le pagó a los proveedores, de mercadería y de gastos, con filtros y sin las cuentas disponibles.',
   },
   {
     /* 21/10/2026 (0193): la IA que lee los números del negocio y aconseja. */

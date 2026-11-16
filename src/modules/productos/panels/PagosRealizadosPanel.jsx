@@ -39,6 +39,9 @@ const origenTxt = (p) => (p.cajaSesionId
  * El medio y el texto se filtran distinto a propósito: el medio va al servidor
  * (un pago mixto guarda sus medios aparte y solo la base los ve todos); quién lo
  * registró y el buscador filtran lo ya traído, sin otro viaje.
+ *
+ * 16/11/2026: se mudó de Compras a Gerencia (`gerencia/panels/PagosRealizados.jsx`
+ * lo monta con el motor de inventario) y arranca sin las cuentas disponibles.
  */
 export function PagosRealizadosPanel() {
   const { store, openModal, toast } = useProductos();
@@ -49,6 +52,9 @@ export function PagosRealizadosPanel() {
   const [sucursalId, setSucursalId] = useState('');
   const [cuentaPropiaId, setCuentaPropiaId] = useState('');
   const [estado, setEstado] = useState('activo');
+  /* 16/11/2026 (pedido del dueño): arranca SIN las cuentas disponibles, que es
+   * plata de clientes que va directo al proveedor, no lo que pagó el negocio. */
+  const [cuentasDisp, setCuentasDisp] = useState('sin');
   const [usuario, setUsuario] = useState('');
   const [buscar, setBuscar] = useState('');
   const [pagos, setPagos] = useState([]);
@@ -57,8 +63,8 @@ export function PagosRealizadosPanel() {
   const recargar = () => setVersion((v) => v + 1);
 
   const filtros = useMemo(() => ({
-    desde, hasta, proveedorId, medio, destino, sucursalId, cuentaPropiaId, estado, limit: TOPE,
-  }), [desde, hasta, proveedorId, medio, destino, sucursalId, cuentaPropiaId, estado]);
+    desde, hasta, proveedorId, medio, destino, sucursalId, cuentaPropiaId, estado, cuentasDisponibles: cuentasDisp, limit: TOPE,
+  }), [desde, hasta, proveedorId, medio, destino, sucursalId, cuentaPropiaId, estado, cuentasDisp]);
 
   /* La respuesta de un filtro viejo no pisa la del último: cada pedido sabe si sigue vigente. */
   useEffect(() => {
@@ -111,7 +117,8 @@ export function PagosRealizadosPanel() {
     `pagos-realizados${desde ? `-${desde}` : ''}${hasta ? `-${hasta}` : ''}.csv`,
     ['N°', 'Fecha', 'Proveedor', 'Tipo', 'Medio', 'Cuenta', 'Importe', 'Concepto', 'Referencia', 'Sucursal', 'Origen', 'Registró', 'Aplicado a', 'Sin aplicar', 'Estado'],
     visibles.map((p) => [
-      p.id, fmtFechaHora(p.fecha), p.proveedorNombre, DESTINOS[p.destino] ?? p.destino, comoSePago(p),
+      p.id, fmtFechaHora(p.fecha), p.proveedorNombre,
+      `${DESTINOS[p.destino] ?? p.destino}${p.cuentaDisponible ? ' · cuenta disponible' : ''}`, comoSePago(p),
       desdeCuentas(p).replace(/^desde /, ''), csvNum(p.importe), p.concepto, p.referencia, p.sucursalNombre,
       origenTxt(p), p.usuarioNombre, (p.imputadoA ?? []).map((d) => d.etiqueta).join(' · '),
       csvNum(p.estado === 'anulado' ? 0 : p.saldo), p.estado === 'anulado' ? 'Anulado' : 'Activo',
@@ -121,7 +128,7 @@ export function PagosRealizadosPanel() {
   const limpiar = () => {
     setRango(rangoDe('mes'));
     setProveedorId(''); setMedio(''); setDestino(''); setSucursalId('');
-    setCuentaPropiaId(''); setEstado('activo'); setUsuario(''); setBuscar('');
+    setCuentaPropiaId(''); setEstado('activo'); setCuentasDisp('sin'); setUsuario(''); setBuscar('');
   };
 
   return (
@@ -167,6 +174,11 @@ export function PagosRealizadosPanel() {
         <select className={s['select-inline']} value={usuario} onChange={(e) => setUsuario(e.target.value)} aria-label="Quién lo registró">
           <option value="">Lo registró cualquiera</option>
           {usuarios.map((u) => <option key={u} value={u}>{u}</option>)}
+        </select>
+        <select className={s['select-inline']} value={cuentasDisp} onChange={(e) => setCuentasDisp(e.target.value)} aria-label="Cuentas disponibles">
+          <option value="sin">Sin las cuentas disponibles</option>
+          <option value="solo">Solo cuentas disponibles</option>
+          <option value="">Con las cuentas disponibles</option>
         </select>
         <select className={s['select-inline']} value={estado} onChange={(e) => setEstado(e.target.value)} aria-label="Estado">
           <option value="activo">Sin los anulados</option>
@@ -227,6 +239,7 @@ export function PagosRealizadosPanel() {
                 <div>
                   {p.esFlete && <><Pill pill="est-recibida" label="Flete" />{' '}</>}
                   {p.destino === 'gastos' && <><Pill pill="est-pendiente" label="Gasto" />{' '}</>}
+                  {p.cuentaDisponible && <><Pill pill="est-transito" label="Cuenta disponible" />{' '}</>}
                   {p.proveedorNombre}
                 </div>
                 {(p.concepto || p.referencia) && (
@@ -268,7 +281,9 @@ export function PagosRealizadosPanel() {
 
       <div className={s.hint}>
         Un pago con varios medios aparece cuando alguno coincide con el medio elegido, y el total
-        cuenta solo esa parte. Tocá un pago para ver su detalle, completar el papel o anularlo.
+        cuenta solo esa parte. Las <strong>cuentas disponibles</strong> (transferencias de clientes directo
+        al proveedor) no se muestran salvo que las pidas en su filtro. Tocá un pago para ver su detalle,
+        completar el papel o anularlo.
       </div>
     </div>
   );
