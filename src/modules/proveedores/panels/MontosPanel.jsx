@@ -9,7 +9,7 @@ import { Btn, PanelHead, Pill, Stat, Table, money, num, s } from '../components/
 /**
  * PROVEEDORES › MONTOS (14/10/2026, pedido del dueño): la plata en mercadería de
  * cada proveedor, a costo de hoy y sin IVA — la MISMA cuenta que Gerencia ›
- * Métricas › Stock. Cada producto cuenta en el proveedor que fija su precio.
+ * Stock valorizado. Cada producto cuenta en el proveedor que fija su precio.
  * La sucursal y el período de ventas piden de nuevo; el resto de los filtros
  * se recalcula en pantalla (ver `domain/montos.js`).
  */
@@ -59,7 +59,7 @@ export function MontosPanel() {
     <div>
       <PanelHead
         title="Montos"
-        desc={`La plata en mercadería de cada proveedor, a costo de hoy y sin IVA (la misma cuenta que Gerencia › Métricas › Stock), en ${nombreSuc || '…'}. Cada producto cuenta en el proveedor que fija su precio.`}
+        desc={`La plata en mercadería de cada proveedor, a costo de hoy y sin IVA (la misma cuenta que Gerencia › Stock valorizado), en ${nombreSuc || '…'}. Cada producto cuenta en el proveedor que fija su precio.`}
         actions={<Btn onClick={exportar} disabled={!filas.length}>Exportar CSV</Btn>}
       />
 

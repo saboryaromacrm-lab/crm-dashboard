@@ -13,6 +13,7 @@ import { PanelHead, s } from '@modules/productos/components/ui.jsx';
 import { GERENCIA_SECCIONES } from '../config/gerencia.config.js';
 import { RentabilidadPanel } from '../panels/RentabilidadPanel.jsx';
 import { MetricasPanel } from '../panels/metricas/MetricasPanel.jsx';
+import { StockValorizadoPanel } from '../panels/stock/StockValorizadoPanel.jsx';
 import { IndicadoresPanel } from '../panels/indicadores/IndicadoresPanel.jsx';
 import { VistaProfesionalPanel } from '../panels/vista/VistaProfesionalPanel.jsx';
 import { CashFlowPanel } from '../panels/cashflow/CashFlowPanel.jsx';
@@ -27,6 +28,7 @@ const PANELES = {
   vista: VistaProfesionalPanel,
   rentabilidad: RentabilidadPanel,
   metricas: MetricasPanel,
+  stock: StockValorizadoPanel,
   indicadores: IndicadoresPanel,
   resultados: ResultadosPanel,
   gastosfijos: GastosFijosPanel,

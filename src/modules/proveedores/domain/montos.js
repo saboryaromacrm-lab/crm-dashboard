@@ -2,7 +2,7 @@
  * PROVEEDORES › MONTOS (14/10/2026, pedido del dueño) — la cuenta, en un lugar.
  * ============================================================================
  * La API manda una fila por producto con stock, ya valuada con la cuenta de
- * Métricas › Stock y con el proveedor que fija su precio. Acá se filtra y se
+ * Gerencia › Stock valorizado y con el proveedor que fija su precio. Acá se filtra y se
  * agrupa por proveedor al instante (tipo, categoría, marca, locales, nombre):
  * cambiar un filtro no vuelve a pedir nada.
  *

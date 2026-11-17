@@ -2,14 +2,15 @@
  * GERENCIA › MÉTRICAS (0122, 29/9/2026)
  * ============================================================================
  * El tablero del dueño: ventas en el tiempo, rentabilidad de lo vendido,
- * proveedores y listas, y stock que rota o está parado. Llave `gerencia.metricas`.
+ * proveedores y listas. Llave `gerencia.metricas`. El stock valorizado se mudó a su
+ * propia sección de Gerencia el 17/11/2026 (`panels/stock`).
  *
  * La pantalla no calcula nada pesado: la API lee tablas resumen que se
  * mantienen solas cada 10 minutos (ver `crm-api/src/metricas`). Arriba se ve
  * «Actualizado hace X min» y el botón «Sincronizar» para traer lo último en el
  * momento. Por eso abrir esta pantalla no frena a ninguna caja.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
 import { useResource } from '@modules/ventas/hooks/useResource.js';
 import { cx } from '@shared/utils/classNames.js';
@@ -39,7 +40,7 @@ const CON_ANTERIOR = new Set(['ventas', 'sucursales', 'productos', 'marcas', 'gr
 
 const PESTANAS = [
   ['ventas', 'Ventas'], ['sucursales', 'Por días y horas'], ['productos', 'Productos y categorías'], ['marcas', 'Marcas'], ['comparar', 'Comparar fechas'], ['granel', 'Granel y enteros'], ['rentabilidad', 'Rentabilidad'], ['ofertas', 'Ofertas y descuentos'],
-  ['proveedores', 'Proveedores y listas'], ['stock', 'Stock'], ['iva', 'Resultados IVA'], ['anterior', 'Sistema anterior'],
+  ['proveedores', 'Proveedores y listas'], ['iva', 'Resultados IVA'], ['anterior', 'Sistema anterior'],
 ];
 
 export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
@@ -78,8 +79,8 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
   const [, setTick] = useState(0);
   useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 30_000); return () => clearInterval(t); }, []);
 
-  /** Stock es de hoy y Sistema anterior va mes a mes: no usan el período ni el agrupado. */
-  const sinPeriodo = pestana === 'stock' || pestana === 'anterior';
+  /** Sistema anterior va mes a mes: no usa el período ni el agrupado. */
+  const sinPeriodo = pestana === 'anterior';
   const qs = `desde=${desde}&hasta=${hasta}${sucursalId ? `&sucursalId=${sucursalId}` : ''}&paso=${paso}`;
   /* El período anterior del mismo largo: lo que la API usa para las variaciones. */
   const [antDesde, antHasta] = rangoAnterior(desde, hasta);
@@ -90,7 +91,7 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)', minWidth: 0 }}>
       <PanelHead
         title="Métricas"
-        desc="Ventas, por días y horas (locales, turnos y horas), productos y categorías, marcas, comparación de fechas, granel y enteros, rentabilidad, ofertas y descuentos, proveedores, stock y el sistema anterior. Se actualiza solo cada 10 minutos; con «Sincronizar» traés lo último en el momento."
+        desc="Ventas, por días y horas (locales, turnos y horas), productos y categorías, marcas, comparación de fechas, granel y enteros, rentabilidad, ofertas y descuentos, proveedores y el sistema anterior. Se actualiza solo cada 10 minutos; con «Sincronizar» traés lo último en el momento."
         actions={(
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <span className={s.hint} style={{ margin: 0 }} title={e?.ultimaOk ? new Date(e.ultimaOk).toLocaleString('es-AR') : ''}>
@@ -132,7 +133,7 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
             <option value="mes">Por mes</option>
           </select>
         )}
-        <span className={s.hint} style={{ margin: 0 }}>{pestana === 'stock' ? 'Stock de hoy' : pestana === 'anterior' ? 'Mes a mes' : `${fechaLarga(desde)} → ${fechaLarga(hasta)}`}</span>
+        <span className={s.hint} style={{ margin: 0 }}>{pestana === 'anterior' ? 'Mes a mes' : `${fechaLarga(desde)} → ${fechaLarga(hasta)}`}</span>
       </div>
       {/* Contra qué se compara, DEBAJO DE LOS FILTROS (16/11/2026, pedido del dueño): antes iba entre las tarjetas y los gráficos. */}
       {CON_ANTERIOR.has(pestana) && (
@@ -167,7 +168,6 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
       {/* Ofertas y descuentos (0189): del precio de lista a la venta neta, y si cada oferta es rentable. */}
       {pestana === 'ofertas' && <PestanaOfertas qs={qs} version={version} />}
       {pestana === 'proveedores' && <PestanaProveedores qs={qs} version={version} />}
-      {pestana === 'stock' && <PestanaStock sucursalId={sucursalId} version={version} />}
       {/* Resultados IVA (3/10/2026): con y sin factura, y la posición de IVA mes a mes. */}
       {pestana === 'iva' && <PestanaIva qs={qs} version={version} />}
       {/* Sistema anterior (0213): los meses del sistema viejo contra los del ERP, por local. */}
@@ -499,99 +499,6 @@ function PestanaProveedores({ qs, version }) {
       )}
       <Bloque titulo={`Por ${NOMBRE_LENTE[lente].toLowerCase()}`}>
         <TablaMargenes d={d} lente={lente} conCompras={lente === 'proveedor'} clave="metricas-proveedores" />
-      </Bloque>
-    </div>
-  );
-}
-
-/* ============================================================================
- * STOCK QUE ROTA Y STOCK PARADO
- * ========================================================================== */
-const ESTADOS_STOCK = {
-  parado: { label: 'Parado', desc: 'Sin ventas en la ventana elegida', color: 'var(--crm-color-danger)' },
-  por_agotarse: { label: 'Por agotarse', desc: 'Menos de 7 días de stock al ritmo actual', color: 'var(--crm-color-warning, #b45309)' },
-  sobrestock: { label: 'Sobrestock', desc: 'Más de 180 días de stock al ritmo actual', color: 'var(--crm-color-warning, #b45309)' },
-  ok: { label: 'Rota bien', desc: 'Entre 7 y 180 días de stock', color: 'var(--crm-color-success)' },
-};
-
-function PestanaStock({ sucursalId, version }) {
-  const [ventana, setVentana] = useState(60);
-  const [filtro, setFiltro] = useState('');
-  const [q, setQ] = useState('');
-  const qs = `ventana=${ventana}${sucursalId ? `&sucursalId=${sucursalId}` : ''}`;
-  const { data: d, loading, error } = useResource(`metricas:stock:${qs}:${version}`, () => httpClient.get(`/metricas/stock?${qs}`));
-  const filas = useMemo(() => {
-    const txt = q.trim().toLowerCase();
-    return (d?.filas ?? []).filter((x) => (!filtro || x.estado === filtro) && (!txt || x.nombre.toLowerCase().includes(txt) || x.categoria.toLowerCase().includes(txt)));
-  }, [d, filtro, q]);
-  const pag = usePaginado(filas, 'metricas-stock', `${filtro}|${q}|${ventana}|${sucursalId}`);
-  const exportar = useCallback(() => descargarCsv(`stock-rotacion-${d?.hoy}.csv`,
-    ['Producto', 'Categoría', 'Marca', 'Unidad', 'Stock', 'Costo u.', 'Valor', `Vendido ${ventana} días`, 'Por día', 'Días de stock', 'Última venta', 'Estado', 'De Coffit'],
-    filas.map((x) => [x.nombre, x.categoria, x.marca, x.unidad, csvNum(x.stock, 3), csvNum(x.costoUnitario), csvNum(x.valor), csvNum(x.vendido, 3), csvNum(x.promedioPorDia, 3), x.diasDeStock ?? '', x.ultimaVenta ?? '', ESTADOS_STOCK[x.estado]?.label ?? x.estado, x.deCoffit ? 'sí' : ''])), [d, filas, ventana]);
-  if (error) return <Aviso tono="warn">{error}</Aviso>;
-  if (!d) return <Cargando />;
-  const r = d.resumen;
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, opacity: loading ? 0.6 : 1 }}>
-      <Tiles>
-        <Tile label="Plata en mercadería" valor={money(r.valorPropio)} detalle={`${num(r.productosConStock, 0)} artículos con stock · a costo de hoy`} />
-        <Tile label="Parado (sin ventas)" valor={money(r.valorParado)} detalle={`${num(r.productosParados, 0)} artículos · ${pctTxt(r.porcentajeParado)} del total`} alerta={r.valorParado > 0} />
-        <Tile label="En sobrestock" valor={money(r.valorSobrestock)} detalle="Más de 180 días de stock" alerta={r.valorSobrestock > 0} />
-        <Tile label="Por agotarse" valor={num(r.productosPorAgotarse, 0)} detalle="Menos de 7 días de stock" alerta={r.productosPorAgotarse > 0} />
-        {r.valorCoffit > 0 && <Tile label="Guardado de Coffit" valor={money(r.valorCoffit)} detalle="Ya se le cargó a Coffit: no suma arriba" />}
-      </Tiles>
-      <div className={s.hint} style={{ margin: 0 }}>
-        El ritmo de venta sale de los últimos
-        {' '}<select className={s['select-inline']} value={ventana} onChange={(ev) => setVentana(Number(ev.target.value))} aria-label="Ventana de ventas">
-          {[30, 60, 90].map((v) => <option key={v} value={v}>{v} días</option>)}
-        </select>.
-        {' '}Stock y ventas en kg (granel) o unidades; un paquete de 500 g cuenta 0,5 kg. Valuado al costo de hoy, sin IVA.
-      </div>
-      {d.porSucursal.length > 1 && (
-        <Bloque titulo="Plata en mercadería por sucursal">
-          <Barras datos={d.porSucursal.map((x) => ({ clave: x.sucursalId, etiqueta: x.nombre, valor: x.valor, p: parte(x.valor, d.porSucursal.reduce((a, y) => a + (Number(y.valor) || 0), 0)), detalle: `${num(x.productos, 0)} artículos` }))} formato={compacto} sufijo={(x) => `· ${pctTxt(x.p)}`} />
-        </Bloque>
-      )}
-      <Bloque titulo="Artículo por artículo" sub="Ordenados por la plata que tienen parada en stock">
-        <div className={s.toolbar} style={{ margin: 0 }}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <Btn small variant={!filtro ? 'btn-primary' : 'btn-ghost'} onClick={() => setFiltro('')}>Todos</Btn>
-            {Object.entries(ESTADOS_STOCK).map(([k, v]) => (
-              <Btn key={k} small variant={filtro === k ? 'btn-primary' : 'btn-ghost'} onClick={() => setFiltro(k)} title={v.desc}>{v.label}</Btn>
-            ))}
-          </div>
-          <input type="search" placeholder="Buscar producto o categoría…" value={q} onChange={(ev) => setQ(ev.target.value)} style={{ minWidth: 200 }} />
-          <Btn small onClick={exportar} disabled={!filas.length}>Exportar CSV</Btn>
-        </div>
-        <Table
-          cols={[{ h: 'Producto' }, { h: 'Stock', num: true }, { h: 'Valor · %', num: true }, { h: `Vendido ${ventana} d`, num: true }, { h: 'Días de stock', num: true }, { h: 'Última venta' }, { h: 'Estado' }]}
-          empty="Nada con estos filtros."
-          pag={pag}
-        >
-          {pag.visibles.map((x) => (
-            <tr key={x.productoId}>
-              <td>
-                {x.nombre}
-                <div className={s.hint} style={{ margin: 0 }}>{[x.categoria, x.marca].filter(Boolean).join(' · ') || '—'}{x.deCoffit ? ' · de Coffit' : ''}</div>
-              </td>
-              <td className={cx(s.num, s.mono)}>{num(x.stock, x.unidad === 'kg' ? 2 : 0)} {x.unidad}</td>
-              <td className={cx(s.num, s.mono)}>
-                {/* Lo de Coffit no suma a «Plata en mercadería»: su % contra ese total confundiría. */}
-                <ConParte p={x.deCoffit ? null : parte(x.valor, r.valorPropio)} title="Parte de la plata en mercadería">{money(x.valor)}</ConParte>
-              </td>
-              <td className={cx(s.num, s.mono)}>{num(x.vendido, x.unidad === 'kg' ? 2 : 0)}</td>
-              <td className={cx(s.num, s.mono)}>{x.diasDeStock == null ? '—' : num(x.diasDeStock, 0)}</td>
-              <td>{x.ultimaVenta ? fechaLarga(x.ultimaVenta) : <span className={s.muted}>más de 2 años o nunca</span>}</td>
-              <td>
-                <span className={s.badge} title={ESTADOS_STOCK[x.estado]?.desc} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 4, background: ESTADOS_STOCK[x.estado]?.color }} />
-                  {ESTADOS_STOCK[x.estado]?.label ?? x.estado}
-                </span>
-              </td>
-            </tr>
-          ))}
-        </Table>
-        {d.recortado && <div className={s.hint} style={{ margin: 0 }}>Se muestran los 1.000 artículos con más plata en stock.</div>}
       </Bloque>
     </div>
   );

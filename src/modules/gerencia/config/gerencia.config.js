@@ -24,6 +24,7 @@ import SpaceDashboardIcon from '@mui/icons-material/SpaceDashboard';
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
 import ReceiptIcon from '@mui/icons-material/Receipt';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
 
 export const GERENCIA_SECCIONES = [
   {
@@ -39,10 +40,16 @@ export const GERENCIA_SECCIONES = [
     desc: 'Margen real por producto, marca, categoría y proveedor — con el IVA absorbido por la mercadería sin factura a la vista.',
   },
   {
-    /* 29/9/2026 (0122): ventas en el tiempo, rentabilidad, proveedores y listas,
-     * stock que rota. Lee tablas resumen, así no frena las cajas. */
+    /* 29/9/2026 (0122): ventas en el tiempo, rentabilidad, proveedores y listas.
+     * Lee tablas resumen, así no frena las cajas. */
     id: 'metricas', label: 'Métricas', icon: InsightsIcon, permiso: 'gerencia.metricas',
-    desc: 'Ventas, rentabilidad, proveedores, listas y stock, casi en vivo.',
+    desc: 'Ventas, rentabilidad, proveedores y listas, casi en vivo.',
+  },
+  {
+    /* 17/11/2026 (0230, pedido del dueño): era la pestaña Stock de Métricas.
+     * Llave propia; la recibió quien tenía Métricas. */
+    id: 'stock', label: 'Stock valorizado', icon: Inventory2Icon, permiso: 'gerencia.stock',
+    desc: 'La plata en mercadería a costo de hoy, por local, proveedor, marca y categoría, con lo parado y lo que está por agotarse.',
   },
   {
     /* 1/11/2026 (0209): los números del negocio SOLO en %, sin montos, para la
