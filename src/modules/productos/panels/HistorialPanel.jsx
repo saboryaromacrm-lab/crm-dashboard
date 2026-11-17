@@ -4,7 +4,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../context/ProductosContext.jsx';
 import { useSeccion } from '../hooks/useSeccion.js';
 import { num, money, fmtFechaHora } from '../domain/format.js';
-import { TIPOS_MOV, ESTADOS_STOCK, labelTipoMov } from '../domain/constants.js';
+import { TIPOS_MOV, ESTADOS_STOCK, AJUSTE_MANUAL, coincideTipoMov, labelTipoMov } from '../domain/constants.js';
 import { sucursalOptions, productoOptions } from '../components/selectOptions.jsx';
 import { FiltroProductoControles } from '../components/FiltroProducto.jsx';
 import { useFiltroProducto } from '../hooks/useFiltroProducto.js';
@@ -90,7 +90,7 @@ export function HistorialPanel({ preset, embedded }) {
     .sort((a, b) => b.id - a.id)
     .filter((m) => {
       if (!deSaborYAroma(store.getProducto(m.productoId))) return false;
-      if (tipoF && m.tipo !== tipoF) return false;
+      if (!coincideTipoMov(m, tipoF)) return false;
       if (prodF && m.productoId !== parseInt(prodF, 10)) return false;
       if (sucF && m.sucursalId !== parseInt(sucF, 10) && m.sucursalDestinoId !== parseInt(sucF, 10)) return false;
       return fp.coincide(m.productoId, m.productoNombre);
@@ -214,6 +214,7 @@ export function HistorialPanel({ preset, embedded }) {
         <FiltroProductoControles f={fp} id="movs" />
         <select className={s['select-inline']} value={tipoF} onChange={(e) => setTipoF(e.target.value)}>
           <option value="">Todos los movimientos</option>
+          <option value={AJUSTE_MANUAL}>Ajuste a mano (sin reservas ni automáticos)</option>
           {Object.keys(TIPOS_MOV).map((k) => <option key={k} value={k}>{TIPOS_MOV[k].label}</option>)}
         </select>
         <select className={s['select-inline']} value={prodF} onChange={(e) => setProdF(e.target.value)}>

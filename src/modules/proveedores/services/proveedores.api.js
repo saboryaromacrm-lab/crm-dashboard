@@ -120,6 +120,8 @@ export const provApi = {
   /** Los pagos con filtros (`cambio: true` = efectivo por transferencia, 0175). */
   pagos: (filtros) => httpClient.get(`/pagos-proveedor${qs(filtros)}`),
   anularPago: (id, motivo) => httpClient.post(`/pagos-proveedor/${id}/anular`, { motivo }),
+  /** Aplicar lo que le queda a un pago ya registrado a sus facturas (17/11/2026). */
+  aplicarPago: (id, imputaciones) => httpClient.post(`/pagos-proveedor/${id}/imputar`, { imputaciones }),
   /**
    * Los FLETES que este proveedor todavía no descontó: plata que la cajera le
    * adelantó al fletero por su cuenta. Se listan al pagarle, para restarlos de

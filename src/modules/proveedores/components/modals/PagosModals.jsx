@@ -9,6 +9,7 @@ import {
 import { DatosParaElBanco } from './EcheqsModals.jsx';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '@modules/gastos/components/segundaConfirmacion.jsx';
 import { CuentaPropiaSelect, cuentaDelPago, nombreCuentaElegida, useCuentasPropias } from '@shared/components/CuentaPropiaSelect.jsx';
+import { cubiertoALaCuenta, repartirPago } from '../../domain/pagosSinAplicar.js';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -57,8 +58,13 @@ const CAMBIO = 'cambio';
  * da de baja solo (en parte, queda por lo que falte). El HECHO es un papel en
  * el banco: pagarla igual es pagar dos veces —cuando se debite, esa plata queda
  * a cuenta—, y se avisa antes.
+ *
+ * LO QUE YA CUBRE LA PLATA A FAVOR (17/11/2026, pedido del dueño con BRACEMA):
+ * los pagos sin aplicar y los ajustes bajan el saldo pero no la factura. Las
+ * facturas que esa plata ya cubre no se ofrecen —pagarlas era pagar dos
+ * veces— y se avisa que se saldan con «Aplicar a facturas» en el renglón del pago.
  */
-export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], saldo = null, onChange }) {
+export function PagoProveedorModal({ proveedor, docs: todosLosDocs = [], preseleccion = [], saldo = null, onChange }) {
   const { ctx, proveedores, act, closeModal, openModal, toast } = useProveedores();
   const [tildados, setTildados] = useState(
     () => Object.fromEntries((preseleccion ?? []).map((k) => [k, true])),
@@ -97,6 +103,10 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
     [fletesData],
   );
 
+  const aFavor = useMemo(() => cubiertoALaCuenta(todosLosDocs, saldo, claveDoc), [todosLosDocs, saldo]);
+  const cubre = (d) => aFavor.porDoc.get(claveDoc(d)) ?? 0;
+  const docs = useMemo(() => todosLosDocs.filter((d) => (aFavor.porDoc.get(claveDoc(d)) ?? 0) < d.saldo - EPS), [todosLosDocs, aFavor]);
+  const ocultos = todosLosDocs.length - docs.length;
   const elegidos = useMemo(() => docs.filter((d) => tildados[claveDoc(d)]), [docs, tildados]);
   /* La lista se MUESTRA de la más reciente a la más vieja (31/10/2026, pedido
    * del dueño). Solo la vista: `elegidos` sigue en el orden de `docs`, del más
@@ -332,6 +342,13 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
           </>}
       </AvisoSegundaConfirmacion>
       <div className={s['section-title']}>¿Qué se le paga?</div>
+      {aFavor.total > EPS && (
+        <div className={s.callout}>
+          Tiene <strong>{money(aFavor.total)} a favor sin aplicar</strong> (pagos a cuenta o ajustes)
+          {ocultos > 0 ? <>, que ya cubre {ocultos === 1 ? 'una factura: no se ofrece' : `${ocultos} facturas: no se ofrecen`} para no pagar dos veces</> : null}.
+          {' '}Para dejarlas saldadas, en el estado de cuenta tocá <strong>Aplicar a facturas</strong> en el renglón del pago.
+        </div>
+      )}
       {docs.length ? (
         <>
           <div style={cajaTildes(210)}>
@@ -344,6 +361,7 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
                     <span style={{ opacity: 0.65 }}>{' · '}{fmtFecha(d.fecha)}</span>
                   </span>
                   <EcheqsDeFactura d={d} />
+                  {cubre(d) > EPS && <span className={s.hint} style={{ display: 'block', margin: 0 }}>{money(cubre(d))} ya cubiertos con la plata a favor</span>}
                 </FilaTilde>
               );
             })}
@@ -371,7 +389,8 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
         </>
       ) : (
         <div className={s.hint} style={{ marginTop: 0 }}>
-          No tiene facturas ni gastos impagos: lo que se registre queda <strong>a cuenta</strong>.
+          {ocultos > 0 ? 'No queda nada por pagar: lo impago ya lo cubre la plata a favor.' : 'No tiene facturas ni gastos impagos.'}
+          {' '}Lo que se registre queda <strong>a cuenta</strong>.
         </div>
       )}
 
@@ -604,6 +623,86 @@ export function PagoProveedorModal({ proveedor, docs = [], preseleccion = [], sa
           />
         </div>
       </div>}
+    </ModalShell>
+  );
+}
+
+/**
+ * APLICAR A FACTURAS (17/11/2026, pedido del dueño con BRACEMA): el pago que
+ * quedó sin aplicar —el de la caja, el registrado a cuenta— se ata a las
+ * facturas que pagaba y esas quedan saldadas. Lo que le queda al pago se
+ * reparte de la factura más vieja a la más nueva, cada una por su saldo
+ * entero; si no alcanza, la última se lleva todo lo que queda (`repartirPago`:
+ * es lo que la API acepta en «por facturas»). No mueve plata: el pago ya salió.
+ */
+export function AplicarPagoModal({ pago, docs = [], onChange }) {
+  const { act, closeModal } = useProveedores();
+  const [tildados, setTildados] = useState({});
+  /* Un pago de mercadería va a facturas; uno de gastos, a gastos. */
+  const delMundo = useMemo(
+    () => docs.filter((d) => (pago.destino === 'gastos' ? d.tipo === 'gasto' : d.tipo !== 'gasto'))
+      .sort((a, b) => new Date(a.fecha) - new Date(b.fecha)),
+    [docs, pago.destino],
+  );
+  const elegidos = delMundo.filter((d) => tildados[claveDoc(d)]);
+  const reparto = repartirPago(pago.sinAplicar, elegidos);
+  const aplica = new Map(reparto.lineas.map((l) => [claveDoc(l.doc), l.importe]));
+  const total = r2(reparto.lineas.reduce((a, l) => a + l.importe, 0));
+
+  const aplicar = async () => {
+    const ok = await act(
+      provApi.aplicarPago(pago.id, reparto.lineas.map(({ doc, importe }) => (doc.tipo === 'gasto'
+        ? { gastoId: doc.docId, importe }
+        : { comprobanteId: doc.docId, importe }))),
+      `Pago aplicado: ${money(total)} a ${reparto.lineas.length} documento(s).`,
+    );
+    if (ok) onChange?.();
+  };
+
+  return (
+    <ModalShell
+      title={`Aplicar el pago del ${fmtFecha(pago.fecha)} a facturas`}
+      subtitle={`Tiene ${money(pago.sinAplicar)} sin aplicar: tildá qué pagaba`}
+      wide
+      onClose={closeModal}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+        { texto: total > 0 ? `Aplicar ${money(total)}` : 'Aplicar', clase: 'btn-primary', onClick: aplicar, disabled: !reparto.lineas.length },
+      ]}
+    >
+      {delMundo.length ? (
+        <div style={cajaTildes(260)}>
+          {delMundo.map((d) => {
+            const k = claveDoc(d);
+            const marcado = !!tildados[k];
+            const va = aplica.get(k);
+            return (
+              <FilaTilde
+                key={k} marcado={marcado} valor={money(d.saldo)}
+                disabled={!marcado && reparto.sobra <= EPS}
+                onClick={() => setTildados((m) => ({ ...m, [k]: !m[k] }))}
+              >
+                <span style={{ display: 'block' }}>
+                  <span style={{ fontWeight: marcado ? 600 : 400 }}>{d.etiqueta}</span>
+                  <span style={{ opacity: 0.65 }}>{' · '}{fmtFecha(d.fecha)}</span>
+                </span>
+                {marcado && (
+                  <span className={s.hint} style={{ display: 'block', margin: 0 }}>
+                    {va == null ? 'No le alcanza: el pago ya se usó en las anteriores'
+                      : va < d.saldo - EPS ? `Se le aplican ${money(va)} (todo lo que queda del pago) y sigue debiendo ${money(r2(d.saldo - va))}`
+                        : 'Queda saldada'}
+                  </span>
+                )}
+              </FilaTilde>
+            );
+          })}
+        </div>
+      ) : (
+        <div className={s.hint} style={{ marginTop: 0 }}>No tiene {pago.destino === 'gastos' ? 'gastos' : 'facturas'} impagos a los que aplicarlo.</div>
+      )}
+      {elegidos.length > 0 && reparto.sobra > EPS && (
+        <div className={s.hint}>Al pago le quedan {money(reparto.sobra)} sin aplicar.</div>
+      )}
     </ModalShell>
   );
 }

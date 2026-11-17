@@ -490,8 +490,12 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
               <td className={s.num}>{m.debe > 0 ? money(m.debe) : ''}</td>
               <td className={s.num}>{m.haber > 0 ? money(m.haber) : ''}</td>
               <td className={s.num}>{money(m.acumulado ?? 0)}</td>
-              <td>
+              <td><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 {esAjuste && esJefe && <Btn small onClick={() => borrarAjuste(m)}>×</Btn>}
+                {/* El pago que quedó sin aplicar se ata a sus facturas (17/11/2026): si no, siguen «debiendo». */}
+                {m.kind === 'pago' && !m.agrupado && !m.esFlete && m.sinAplicar > EPS && (
+                  <Btn small onClick={() => openModal('aplicarPago', { pago: m, docs, onChange: refrescar })}>Aplicar a facturas</Btn>
+                )}
                 {/* Anular solo si no tiene NADA aplicado: con imputaciones vivas
                     la API lo rechaza, y ofrecerlo sería un botón roto. */}
                 {m.kind === 'pago' && !m.agrupado && esJefe && m.aplicado <= EPS && (
@@ -502,7 +506,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
                     Anular
                   </Btn>
                 )}
-              </td>
+              </div></td>
             </tr>
           );
         })}

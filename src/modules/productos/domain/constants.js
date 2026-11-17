@@ -45,6 +45,17 @@ export const labelTipoMov = (tipo, prodTipo) => (
     : (TIPOS_MOV[tipo]?.label ?? tipo)
 );
 
+/**
+ * «AJUSTE A MANO» (17/11/2026, pedido del dueño): el filtro de tipo que deja
+ * solo los ajustes que carga una persona, sin las reservas de pedidos y
+ * presupuestos, las anulaciones, los conteos ni los descartes, que también se
+ * guardan como «ajuste». La misma regla que la API (crm-api/src/inventario/ajusteManual.ts).
+ */
+export const AJUSTE_MANUAL = 'ajuste_manual';
+export const coincideTipoMov = (m, tipo) => !tipo || (tipo === AJUSTE_MANUAL
+  ? m.tipo === 'ajuste' && Number(m.signo) !== 0 && /^Ajuste [+−]/.test(m.descripcion ?? '')
+  : m.tipo === tipo);
+
 // ---- Estados de stock ----
 export const ESTADOS_STOCK = {
   disponible:   { label: 'Disponible',   pill: 'st-disponible' },
