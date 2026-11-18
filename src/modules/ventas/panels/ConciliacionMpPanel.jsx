@@ -8,8 +8,10 @@
  *
  *   · el calendario del mes, un punto por día (verde cerró, amarillo para
  *     mirar, rojo falta plata);
- *   · lo vendido, lo que entró y lo que falta, por local y por medio;
- *   · tres listas: vendido y no entró, para confirmar, entró sin venta;
+ *   · lo vendido, lo que entró y lo que falta, por local y por medio; tocar un
+ *     local filtra todo (calendario, números y listas) por ese local;
+ *   · tres listas (de lo más reciente a lo más viejo): vendido y no entró,
+ *     para confirmar, entró sin venta;
  *   · los avisos (devoluciones de Mercado Pago, ventas anuladas con la plata
  *     adentro) y, de un día, lo ya atado (con «Deshacer»).
  *
@@ -85,10 +87,13 @@ export function ConciliacionMpPanel() {
   const [dia, setDia] = useState(hoy);
   const [bajando, setBajando] = useState(false);
   const [verAtados, setVerAtados] = useState(false);
+  /* El local elegido en la tabla «por local» (null = todos). */
+  const [local, setLocal] = useState(null);
 
   const rango = rangoMes(mes);
-  const delMes = useResource(`conc-mp:${mes}`, () => ventasApi.conciliacionMp(rango));
-  const delDia = useResource(`conc-mp-dia:${dia}`, () => ventasApi.conciliacionMp({ desde: dia, hasta: dia, conciliados: 1 }), { enabled: !!dia });
+  const sucursalId = local?.id;
+  const delMes = useResource(`conc-mp:${mes}:${sucursalId}`, () => ventasApi.conciliacionMp({ ...rango, sucursalId }));
+  const delDia = useResource(`conc-mp-dia:${dia}:${sucursalId}`, () => ventasApi.conciliacionMp({ desde: dia, hasta: dia, conciliados: 1, sucursalId }), { enabled: !!dia });
   const d = dia ? delDia.data : delMes.data;
   const cargando = dia ? delDia.loading : delMes.loading;
   const error = (dia ? delDia.error : null) || delMes.error;
@@ -165,7 +170,17 @@ export function ConciliacionMpPanel() {
         </div>
 
         <div style={{ flex: '1 1 380px', minWidth: 0 }}>
-          <h3 style={{ margin: '0 0 8px', textTransform: 'capitalize' }}>{dia ? NOMBRE_DIA(dia) : `Todo ${NOMBRE_MES(mes)}`}</h3>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', margin: '0 0 8px' }}>
+            <h3 style={{ margin: 0, textTransform: 'capitalize' }}>{dia ? NOMBRE_DIA(dia) : `Todo ${NOMBRE_MES(mes)}`}</h3>
+            {local && (
+              <Btn small variant="btn-primary" onClick={() => setLocal(null)} title="Ver todos los locales">Solo {local.nombre} ✕</Btn>
+            )}
+          </div>
+          {local && (
+            <div className={s.hint} style={{ margin: '0 0 8px' }}>
+              «Entró a Mercado Pago» cuenta solo los pagos que Mercado Pago dice que son de este local; las transferencias y los posnets sin local no entran al filtrar.
+            </div>
+          )}
           {r && (
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <Stat label="Vendido electrónico" value={money(r.vendido)} nota="QR, tarjetas y transferencias del ERP" />
@@ -178,10 +193,21 @@ export function ConciliacionMpPanel() {
           {d && (d.porSucursal.length > 0 || d.porMedio.length > 0) && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, marginTop: 12 }}>
               {[['Local', d.porSucursal, (x) => x.sucursal], ['Medio', d.porMedio, (x) => FAMILIA[x.familia] ?? x.familia]].map(([titulo, filas, nombre]) => (
-                <Table key={titulo} cols={[{ h: titulo }, { h: 'Vendido', num: true }, { h: 'Confirmado en MP', num: true }]}>
+                <Table key={titulo} cols={[{ h: titulo }, { h: 'Vendido', num: true }, { h: 'En MP', num: true }]}>
                   {filas.map((x) => (
-                    <tr key={nombre(x)}>
-                      <td>{nombre(x)}</td>
+                    <tr key={nombre(x)} style={titulo === 'Local' && local?.id === x.sucursalId ? { background: 'var(--crm-color-primary-soft)' } : undefined}>
+                      <td>
+                        {titulo === 'Local' && x.sucursalId ? (
+                          <button
+                            type="button"
+                            className={s.linkBtn}
+                            title={local?.id === x.sucursalId ? 'Ver todos los locales' : `Ver solo ${x.sucursal}`}
+                            onClick={() => setLocal(local?.id === x.sucursalId ? null : { id: x.sucursalId, nombre: x.sucursal })}
+                          >
+                            {nombre(x)}
+                          </button>
+                        ) : nombre(x)}
+                      </td>
                       <td className={s.num}>{money(x.vendido)}</td>
                       <td className={s.num}>
                         {money(x.confirmado)}
