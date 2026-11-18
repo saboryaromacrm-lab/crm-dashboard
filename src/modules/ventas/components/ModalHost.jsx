@@ -6,7 +6,7 @@ import {
   CobranzaFormModal, CobranzaDetalleModal, AnularCobranzaModal,
 } from './modals/CobranzaModals.jsx';
 import {
-  AbrirCajaModal, CerrarCajaModal, ControlCajaModal, MovimientoCajaModal, ArqueoTurnoModal,
+  AbrirCajaModal, ArqueoDiaModal, CerrarCajaModal, ControlCajaModal, MovimientoCajaModal, ArqueoTurnoModal,
 } from './modals/CajaModals.jsx';
 import { CobroModal, VentaEmitidaModal } from './modals/CobroModal.jsx';
 import {
@@ -35,6 +35,8 @@ const REGISTRY = {
   anularCobranza: AnularCobranzaModal,
   abrirCaja: AbrirCajaModal,
   cerrarCaja: CerrarCajaModal,
+  // Los días que no son de cierre (18/11/2026): contar y firmar sin cerrar.
+  arqueoDia: ArqueoDiaModal,
   controlCaja: ControlCajaModal,
   movimientoCaja: MovimientoCajaModal,
   arqueoTurno: ArqueoTurnoModal,

@@ -107,9 +107,21 @@ export function CajaPanel() {
             <Btn small onClick={() => openModal('controlCaja', { cajaSesionId: actual.id, onChange: alCambiar })}>
               Control de caja
             </Btn>
-            <Btn variant="btn-delete" small onClick={() => openModal('cerrarCaja', { cajaSesionId: actual.id, onChange: alCambiar })}>
-              Cerrar caja
-            </Btn>
+            {/* Un día que no es de cierre (18/11/2026): se arquea; cerrar antes, solo un jefe. */}
+            {actual.plazo?.arqueoDelDia && (
+              <Btn variant="btn-primary" small onClick={() => openModal('arqueoDia', { cajaSesionId: actual.id, cerrarHasta: actual.plazo.cerrarHasta, onChange: alCambiar })}>
+                Arqueo del día
+              </Btn>
+            )}
+            {(!actual.plazo?.arqueoDelDia || esJefe) && (
+              <Btn
+                variant="btn-delete" small
+                title={actual.plazo?.arqueoDelDia ? 'Hoy no es día de cierre: cerrar antes es solo de un jefe' : undefined}
+                onClick={() => openModal('cerrarCaja', { cajaSesionId: actual.id, onChange: alCambiar })}
+              >
+                {actual.plazo?.arqueoDelDia ? 'Cerrar antes' : 'Cerrar caja'}
+              </Btn>
+            )}
           </>
         ) : (
           <>

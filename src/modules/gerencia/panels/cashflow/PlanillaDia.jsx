@@ -89,6 +89,17 @@ function Turno({ t, onControlar }) {
         <Pastilla color={olvidada ? ROJO : e.color}>
           {olvidada ? 'Abierta: no cerró' : enPlazo ? `Abierta · cierra el ${diaEnPalabras(t.cerrarHasta)}` : e.texto}
         </Pastilla>
+        {/* El arqueo de esa noche (18/11/2026): la caja no cerraba ese día, se contó y quedó la plata. */}
+        {t.arqueoDia && (
+          <span style={{ fontVariantNumeric: 'tabular-nums' }} title={`Arqueo del día de ${t.arqueoDia.quien || '—'} a las ${horaCorta(t.arqueoDia.hora)}`}>
+            Arqueo {horaCorta(t.arqueoDia.hora)}: {money(t.arqueoDia.contado)}
+            {Math.abs(t.arqueoDia.diferencia) >= 0.5 && (
+              <span style={{ color: t.arqueoDia.diferencia < 0 ? ROJO : 'var(--crm-color-text-secondary)', fontWeight: 600 }}>
+                {' '}({t.arqueoDia.diferencia < 0 ? '−' : '+'}{money(Math.abs(t.arqueoDia.diferencia))} {t.arqueoDia.diferencia < 0 ? 'faltó' : 'sobró'})
+              </span>
+            )}
+          </span>
+        )}
         {t.envio > 0 && (
           <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
             {money(t.envio)}

@@ -1370,18 +1370,52 @@ function LoQueTieneQueHaber({ turno, contado, conto }) {
  * billete, así que siempre cuadra. El servidor recibe los billetes y suma él,
  * y vuelve a exigir que el sobre salga de lo contado y que quede el fondo.
  */
-function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
-  const { ctx, closeModal, toast, setOperador, sucursales, usuarios, config } = useVentas();
-  const [billetes, setBilletes] = useState({});
-  /* QUIÉN CIERRA (0229, pedido del dueño): obligatorio, de la lista, y firma con
-   * la contraseña con la que entra al sistema. Arranca vacío a propósito:
-   * precargado, se confirmaría sin mirar. */
+/**
+ * QUIÉN CIERRA (o cuenta) LA CAJA (0229, pedido del dueño): obligatorio, de la
+ * lista, y firma con la contraseña con la que entra al sistema. Arranca vacío
+ * a propósito: precargado, se confirmaría sin mirar. Lo usan el cierre y el
+ * arqueo del día.
+ */
+function useQuienFirma(cajaSesionId) {
   const [quien, setQuien] = useState('');
   const [firma, setFirma] = useState('');
   const firmaRef = useRef(null);
-  const { data: cierran } = useResource(`quien-cierra:${cajaSesionId}`, () => ventasApi.cajaQuienCierra(cajaSesionId));
-  const elegido = (cierran ?? []).find((u) => String(u.id) === quien) ?? null;
-  const identificado = !!elegido && !!firma;
+  const { data: lista } = useResource(`quien-cierra:${cajaSesionId}`, () => ventasApi.cajaQuienCierra(cajaSesionId));
+  const elegido = (lista ?? []).find((u) => String(u.id) === quien) ?? null;
+  return { lista, quien, setQuien, firma, setFirma, firmaRef, elegido, identificado: !!elegido && !!firma };
+}
+
+function QuienFirma({ q, pregunta, ayuda }) {
+  return (
+    <div className={cx(s.callout, s.info)} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <div className={s.field} style={{ margin: 0, flex: '1 1 200px' }}>
+        <label htmlFor="cierre-quien">{pregunta}</label>
+        <select
+          id="cierre-quien" value={q.quien}
+          onChange={(e) => { q.setQuien(e.target.value); q.setFirma(''); setTimeout(() => q.firmaRef.current?.focus(), 0); }}
+        >
+          <option value="" disabled>{q.lista ? 'Elegí quién es…' : 'Cargando…'}</option>
+          {(q.lista ?? []).map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+        </select>
+      </div>
+      <div className={s.field} style={{ margin: 0, flex: '1 1 160px' }}>
+        <label htmlFor="cierre-firma">Su contraseña</label>
+        <input
+          id="cierre-firma" ref={q.firmaRef} type="password" autoComplete="off" maxLength={100}
+          disabled={!q.elegido} value={q.firma} placeholder="La que usa para entrar al sistema"
+          onChange={(e) => q.setFirma(e.target.value)}
+        />
+      </div>
+      <div className={s.hint} style={{ margin: 0, flexBasis: '100%' }}>{ayuda}</div>
+    </div>
+  );
+}
+
+function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
+  const { ctx, closeModal, toast, setOperador, sucursales, usuarios, config } = useVentas();
+  const [billetes, setBilletes] = useState({});
+  const q = useQuienFirma(cajaSesionId);
+  const { elegido, identificado } = q;
   /* Los billetes que QUEDAN en la caja (20/10/2026): los elige quien cierra, o los propone el sistema. */
   const [dejar, setDejar] = useState({});
   const [paso, setPaso] = useState('contar');
@@ -1434,7 +1468,7 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
         confirmado: true,
         usuarioId: ctx.usuarioId ?? undefined,
         cerradoPor: elegido.id,
-        firma,
+        firma: q.firma,
         aControlar: dueno ? tilde.pedido : undefined,
       });
       const nombreDe = (id) => usuarios?.find((u) => u.id === id)?.nombre || '';
@@ -1450,7 +1484,7 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
     } catch (e) {
       toast(errorMsg(e), 'err');
       /* Contraseña mal o bloqueada: se vuelve a la primera pantalla a tipearla de nuevo, con el conteo intacto. */
-      if (e?.status === 403) { setFirma(''); setPaso('contar'); }
+      if (e?.status === 403) { q.setFirma(''); setPaso('contar'); }
     } finally {
       candado.current = false;
       setEnviando(false);
@@ -1524,30 +1558,11 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
         { texto: `Continuar: sobre de ${money(envio)}`, clase: 'btn-primary', onClick: aConfirmar, disabled: !identificado || !conto || quedaPoco },
       ]}
     >
-      <div className={cx(s.callout, s.info)} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        <div className={s.field} style={{ margin: 0, flex: '1 1 200px' }}>
-          <label htmlFor="cierre-quien">¿Quién cierra la caja?</label>
-          <select
-            id="cierre-quien" value={quien}
-            onChange={(e) => { setQuien(e.target.value); setFirma(''); setTimeout(() => firmaRef.current?.focus(), 0); }}
-          >
-            <option value="" disabled>{cierran ? 'Elegí quién está cerrando…' : 'Cargando…'}</option>
-            {(cierran ?? []).map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-          </select>
-        </div>
-        <div className={s.field} style={{ margin: 0, flex: '1 1 160px' }}>
-          <label htmlFor="cierre-firma">Su contraseña</label>
-          <input
-            id="cierre-firma" ref={firmaRef} type="password" autoComplete="off" maxLength={100}
-            disabled={!elegido} value={firma} placeholder="La que usa para entrar al sistema"
-            onChange={(e) => setFirma(e.target.value)}
-          />
-        </div>
-        <div className={s.hint} style={{ margin: 0, flexBasis: '100%' }}>
-          Firma quien cierra, con la contraseña con la que entra al sistema: es lo que dice el comprobante y lo que ve
-          el administrador.
-        </div>
-      </div>
+      <QuienFirma
+        q={q}
+        pregunta="¿Quién cierra la caja?"
+        ayuda="Firma quien cierra, con la contraseña con la que entra al sistema: es lo que dice el comprobante y lo que ve el administrador."
+      />
       <div className={s.hint}>
         Contá <strong>todo el efectivo del cajón</strong>, billete por billete, y elegí cuáles <strong>quedan en la caja</strong>{' '}
         (el fondo para mañana{fondo ? `: ${money(fondo)}` : ''}). Lo demás va en el sobre.
@@ -1561,6 +1576,67 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
       )}
       {conto && resumen}
       {ve && <LoQueTieneQueHaber turno={turno} contado={contado} conto={conto} />}
+    </ModalShell>
+  );
+}
+
+/**
+ * EL ARQUEO DEL DÍA (18/11/2026, pedido del dueño). Un local con días de
+ * cierre, un día que no es de cierre: se cuenta todo el cajón y firma quien
+ * cuenta, como al cerrar, pero la caja sigue abierta y la plata queda; el
+ * sobre sale el día de cierre con todo junto. A ciegas igual que el cierre.
+ */
+export function ArqueoDiaModal({ cajaSesionId, cerrarHasta, onChange }) {
+  const { closeModal, toast, config } = useVentas();
+  const q = useQuienFirma(cajaSesionId);
+  const [billetes, setBilletes] = useState({});
+  const [guardando, setGuardando] = useState(false);
+  const { data: turno } = useResource(`turno-arqueo-dia:${cajaSesionId}`, () => ventasApi.cajaArqueo(cajaSesionId));
+  const contado = totalBilletes(billetes);
+  const conto = Object.values(billetes).some((c) => Number(c) > 0);
+  const ve = !!config?.cajaVeEsperado && turno?.esperadoEfectivo != null;
+  const { can } = usePermissions();
+  const dueno = can('gerencia.cashflow');
+  const tilde = useTildeControlar(ve && conto ? [r2(contado - (Number(turno.esperadoEfectivo) || 0))] : [], useUmbralControlar(dueno));
+
+  const guardar = async () => {
+    if (guardando) return;
+    setGuardando(true);
+    try {
+      const r = await ventasApi.arqueoDelDia(cajaSesionId, {
+        billetes: billetesLimpios(billetes), cerradoPor: q.elegido.id, firma: q.firma, aControlar: dueno ? tilde.pedido : undefined,
+      });
+      toast(`Arqueo del día guardado: ${money(r.contado)} en el cajón. La plata queda en la caja hasta el ${diaEnPalabras(cerrarHasta)}.`, 'ok');
+      onChange?.();
+      closeModal();
+    } catch (e) {
+      toast(errorMsg(e), 'err');
+      if (e?.status === 403) q.setFirma('');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <ModalShell
+      title="Arqueo del día"
+      wide
+      onClose={closeModal}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+        { texto: guardando ? 'Guardando…' : `Guardar el arqueo (${money(contado)})`, clase: 'btn-primary', onClick: guardar, disabled: !q.identificado || !conto || guardando },
+      ]}
+    >
+      <div className={cx(s.callout, s.info)}>
+        Hoy no es día de cierre: <strong>la caja no se cierra</strong>. Contá todo el efectivo del cajón, billete por billete:
+        queda registrado con tu firma y <strong>la plata queda en la caja</strong>. El sobre sale el{' '}
+        <strong>{diaEnPalabras(cerrarHasta)}</strong>, con todo junto.
+      </div>
+      <QuienFirma q={q} pregunta="¿Quién cuenta la caja?" ayuda="Firma quien cuenta, con la contraseña con la que entra al sistema: es lo que ve el administrador." />
+      <ConteoBilletes cant={billetes} setCant={setBilletes} />
+      {conto && <div className={s.callout}>Contaste en el cajón <strong className={s.mono} style={{ fontSize: 18 }}>{money(contado)}</strong></div>}
+      {ve && <LoQueTieneQueHaber turno={turno} contado={contado} conto={conto} />}
+      {dueno && <TildeControlar t={tilde} />}
     </ModalShell>
   );
 }

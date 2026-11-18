@@ -95,6 +95,8 @@ export const ventasApi = {
   /** `{ cobros: ['v12', 'r3'], pagos: ['123'], motivo }`: los dos lados = atar; uno solo = explicarlo. */
   conciliacionMpAtar: (dto) => httpClient.post('/mercadopago/conciliacion', dto),
   conciliacionMpDeshacer: (id) => httpClient.delete(`/mercadopago/conciliacion/${id}`),
+  /** «Pasar a …»: el cobro de un atado uno con uno toma el medio que dice Mercado Pago. */
+  conciliacionMpCorregirMedio: (id) => httpClient.post(`/mercadopago/conciliacion/${id}/medio`, {}),
   venta: (id) => httpClient.get(`/ventas/${id}`),
   /** El motivo es obligatorio: queda en `anuladoMotivo` junto a quién y cuándo. */
   anularVenta: (id, motivo) => httpClient.post(`/ventas/${id}/anular`, { motivo }),
@@ -213,6 +215,8 @@ export const ventasApi = {
   conteoCierre: (id, data) => httpClient.post(`/caja/${id}/conteo-cierre`, data),
   /** El cierre del cajero (0111): billetes contados, fondo que queda y envío. */
   enviarCierreCaja: (id, data) => httpClient.post(`/caja/${id}/enviar`, data),
+  /** El arqueo del día (18/11/2026): contar y firmar sin cerrar, los días que no son de cierre. */
+  arqueoDelDia: (id, data) => httpClient.post(`/caja/${id}/arqueo-dia`, data),
   /** Quiénes pueden cerrar el turno (0229): el «¿Quién cierra la caja?», con `tienePin`. */
   cajaQuienCierra: (id) => httpClient.get(`/caja/${id}/quien-cierra`),
   movimientoCaja: (id, data) => httpClient.post(`/caja/${id}/movimiento`, data),
