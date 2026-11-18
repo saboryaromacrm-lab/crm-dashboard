@@ -8,14 +8,17 @@
  *    varios de cada lado. Si no suman lo mismo, hay que decir por qué.
  *  · `ExplicarMpModal`: lo que queda de un solo lado. Plata que entró y no es
  *    una venta, o un cobro que no entró a Mercado Pago.
+ *
+ * Un cobro atado a UN pago toma el medio que dice Mercado Pago (la API lo
+ * corrige y guarda el anterior): `cambioDeMedio` lo anuncia antes de confirmar.
  */
 import { useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
-import { TIPO_MP, nombreMp } from '@shared/utils/mercadoPago.js';
+import { OPERACION_MP, TIPO_MP, nombreMp } from '@shared/utils/mercadoPago.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { ventasApi } from '../../services/ventas.api.js';
-import { FAMILIA, MEDIO_ERP, MOTIVOS, alrededor, comprobanteDe } from '../../domain/conciliacionMp.js';
+import { FAMILIA, MOTIVOS, alrededor, cambioDeMedio, comprobanteDe, nombreMedio } from '../../domain/conciliacionMp.js';
 import { ModalShell, fmtFecha, fmtFechaHora, money, s } from '../ui.jsx';
 
 const EPS = 0.009;
@@ -26,7 +29,8 @@ export function CobroMp({ c, onVer }) {
   const comp = comprobanteDe(c);
   return (
     <div>
-      <strong>{money(c.importe)}</strong> · {MEDIO_ERP[c.medio] ?? c.medio}
+      <strong>{money(c.importe)}</strong> · {nombreMedio(c.medio)}
+      {c.medioAnterior && <span className={s.muted}> (antes {nombreMedio(c.medioAnterior)}: lo corrigió Mercado Pago)</span>}
       <div className={s.hint} style={{ margin: 0 }}>
         {fmtFechaHora(c.fecha)} · {c.sucursal || '—'} ·{' '}
         {onVer ? <button type="button" className={s.linkBtn} onClick={onVer}>{comp}</button> : comp}
@@ -37,13 +41,18 @@ export function CobroMp({ c, onVer }) {
   );
 }
 
-/** Un pago de Mercado Pago: importe y cómo entró; debajo cuándo, dónde, quién pagó y su número. */
+/**
+ * Un pago de Mercado Pago: importe y cómo entró; debajo cuándo, dónde, quién
+ * pagó y su número. Lo que no pasó por el local (QR o Point) se nombra por la
+ * operación: transferencia, ingreso de dinero, cobro, débito automático.
+ */
 export function PagoMp({ p }) {
   const { sucursales = [] } = useVentas();
   const suc = sucursales.find((x) => x.id === p.sucursalId)?.nombre;
   return (
     <div>
-      <strong>{money(p.bruto)}</strong> · {FAMILIA[p.familia]}{p.tipo ? ` (${nombreMp(TIPO_MP, p.tipo)})` : ''}
+      <strong>{money(p.bruto)}</strong> · {p.familia === 'transferencia' && p.operacion ? nombreMp(OPERACION_MP, p.operacion) : FAMILIA[p.familia]}
+      {p.tipo ? ` (${nombreMp(TIPO_MP, p.tipo)})` : ''}
       <div className={s.hint} style={{ margin: 0 }}>
         {[fmtFechaHora(p.fecha), suc, p.pagador, `N° ${p.id}`].filter(Boolean).join(' · ')}
       </div>
@@ -99,10 +108,11 @@ export function AtarMpModal({ dia, cobro, pago, onListo }) {
   const dif = Math.round((suma(elegCobros, 'importe') - suma(elegPagos, 'bruto')) * 100) / 100;
   const descuadra = dosLados && Math.abs(dif) > EPS;
   const listo = dosLados && (!descuadra || motivo.trim());
+  const cambio = elegCobros.length === 1 && elegPagos.length === 1 ? cambioDeMedio(elegCobros[0], elegPagos[0]) : null;
 
   const atar = () => act(
     ventasApi.conciliacionMpAtar({ cobros: [...cobros], pagos: [...pagos], motivo: motivo.trim() || undefined }),
-    'Atado.',
+    cambio ? `Atado. El medio de la venta pasó a ${cambio.split(' → ')[1]}.` : 'Atado.',
     { recargar: false },
   ).then((ok) => { if (ok) onListo?.(); });
 
@@ -130,6 +140,11 @@ export function AtarMpModal({ dia, cobro, pago, onListo }) {
         Cobros {money(suma(elegCobros, 'importe'))} · pagos {money(suma(elegPagos, 'bruto'))}
         {descuadra && <strong style={{ color: 'var(--crm-color-danger)' }}> · diferencia {money(dif)}</strong>}
       </div>
+      {cambio && (
+        <div className={cx(s.callout, s.info)} style={{ margin: '8px 0 0' }}>
+          Mercado Pago dice que se cobró con otro medio: al atar, la venta pasa de <strong>{cambio}</strong>. El importe no cambia; «Deshacer» lo vuelve atrás.
+        </div>
+      )}
       {descuadra && (
         <div className={s.field}>
           <label htmlFor="conc-motivo">No suman lo mismo: ¿por qué? <span className={s.req}>*</span></label>

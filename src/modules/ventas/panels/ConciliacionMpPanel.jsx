@@ -22,7 +22,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
-import { FAMILIA, POR_QUE, TIPO_ATADO, estadoDia, moverMes, rangoMes, semanasDelMes } from '../domain/conciliacionMp.js';
+import { FAMILIA, POR_QUE, TIPO_ATADO, cambioDeMedio, estadoDia, moverMes, nombreMedio, rangoMes, semanasDelMes } from '../domain/conciliacionMp.js';
 import { CobroMp, PagoMp } from '../components/modals/ConciliacionMpModals.jsx';
 import { Btn, PanelHead, Stat, Table, fmtFechaHora, isoDate, money, s } from '../components/ui.jsx';
 
@@ -123,11 +123,11 @@ export function ConciliacionMpPanel() {
   const explicar = (props) => openModal('explicarMp', { onListo: recargar, ...props });
   const confirmar = async (sug) => {
     try {
-      await ventasApi.conciliacionMpAtar({
+      const r = await ventasApi.conciliacionMpAtar({
         cobros: [sug.cobro.clave], pagos: [sug.pago.id],
         motivo: Math.abs(sug.cobro.importe - sug.pago.bruto) > 0.009 ? POR_QUE[sug.motivo] : undefined,
       });
-      toast('Atado.');
+      toast(r?.medio ? `Atado. El medio de la venta pasó a ${nombreMedio(r.medio.ahora)}.` : 'Atado.');
       recargar();
     } catch (e) { toast(errorMsg(e), 'err'); }
   };
@@ -265,14 +265,19 @@ export function ConciliacionMpPanel() {
             color="var(--crm-color-warning)"
             titulo="Para confirmar"
             n={d.sugeridos.length}
-            desc="Un cobro del ERP y el pago de Mercado Pago que más se le parece. Si es ese, «Es este»; si no, buscá otro."
+            desc="Un cobro del ERP y el pago de Mercado Pago que más se le parece. Si es ese, «Es este»; si no, buscá otro. Si Mercado Pago dice que se cobró con otro medio, al confirmar se corrige el medio de la venta (el importe no cambia)."
           >
             <Table cols={[{ h: 'Cobro del ERP' }, { h: 'Pago en Mercado Pago' }, { h: 'Por qué' }, { h: '', cls: 'actions-col' }]} empty="Nada para confirmar.">
               {d.sugeridos.map((x) => (
                 <tr key={x.cobro.clave}>
                   <td><CobroMp c={x.cobro} onVer={() => verComprobante(x.cobro)} /></td>
                   <td><PagoMp p={x.pago} /></td>
-                  <td>{POR_QUE[x.motivo]}</td>
+                  <td>
+                    {POR_QUE[x.motivo]}
+                    {cambioDeMedio(x.cobro, x.pago) && (
+                      <div className={s.hint} style={{ margin: 0 }}>Al confirmar, la venta pasa de <strong>{cambioDeMedio(x.cobro, x.pago)}</strong></div>
+                    )}
+                  </td>
                   <td className={s['actions-col']}>
                     <div className={s['row-actions']}>
                       <Btn small variant="btn-primary" onClick={() => confirmar(x)}>Es este</Btn>

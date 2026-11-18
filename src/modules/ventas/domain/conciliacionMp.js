@@ -7,6 +7,16 @@ import { TIPOS_VENTA, nroComprobante } from './constants.js';
 
 export const FAMILIA = { qr: 'QR', tarjeta: 'Tarjeta (Point)', transferencia: 'Transferencia' };
 export const MEDIO_ERP = { qr: 'QR', tarjeta_debito: 'Débito', tarjeta_credito: 'Crédito', transferencia: 'Transferencia' };
+export const nombreMedio = (m) => MEDIO_ERP[m] ?? m;
+
+/**
+ * «QR → Crédito» si atar este cobro con este pago le cambia el medio a la
+ * venta (un cobro atado a UN pago toma el medio que dice Mercado Pago: la API
+ * lo corrige, `pago.medioErp`); si no, null.
+ */
+export const cambioDeMedio = (cobro, pago) => (cobro && pago?.medioErp && pago.medioErp !== cobro.medio
+  ? `${nombreMedio(cobro.medio)} → ${nombreMedio(pago.medioErp)}` : null);
+
 /** Por qué se sugiere un pago para un cobro (ver `sugerir` en la API). */
 export const POR_QUE = {
   varios: 'Hay más de uno posible',

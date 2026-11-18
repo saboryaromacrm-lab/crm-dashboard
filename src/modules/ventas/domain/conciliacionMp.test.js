@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { alrededor, comprobanteDe, estadoDia, moverMes, rangoMes, semanasDelMes } from './conciliacionMp.js';
+import { alrededor, cambioDeMedio, comprobanteDe, estadoDia, moverMes, rangoMes, semanasDelMes } from './conciliacionMp.js';
 
 test('el color del día', () => {
   assert.equal(estadoDia(undefined), 'vacio');
@@ -27,4 +27,10 @@ test('meses y alrededores', () => {
 test('el comprobante', () => {
   assert.equal(comprobanteDe({ origen: 'venta', tipoDoc: 'factura_b', puntoVenta: '00030', numero: 431 }), 'Factura B 00030-00000431');
   assert.equal(comprobanteDe({ origen: 'recibo', tipoDoc: 'recibo', puntoVenta: '0001', numero: 12 }), 'Recibo 0001-00000012');
+});
+
+test('el cambio de medio que anuncia la pantalla', () => {
+  assert.equal(cambioDeMedio({ medio: 'qr' }, { medioErp: 'tarjeta_credito' }), 'QR → Crédito');
+  assert.equal(cambioDeMedio({ medio: 'tarjeta_debito' }, { medioErp: 'tarjeta_debito' }), null);
+  assert.equal(cambioDeMedio({ medio: 'qr' }, {}), null);
 });
