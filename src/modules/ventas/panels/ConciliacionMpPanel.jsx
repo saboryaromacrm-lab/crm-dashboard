@@ -22,7 +22,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
-import { FAMILIA, POR_QUE, TIPO_ATADO, cambioDeMedio, estadoDia, moverMes, nombreMedio, rangoMes, semanasDelMes } from '../domain/conciliacionMp.js';
+import { FAMILIA, POR_QUE, TIPO_ATADO, cambioDeMedio, estadoDia, mismoImporte, moverMes, nombreMedio, rangoMes, semanasDelMes } from '../domain/conciliacionMp.js';
 import { CobroMp, PagoMp } from '../components/modals/ConciliacionMpModals.jsx';
 import { Btn, PanelHead, Stat, Table, fmtFechaHora, isoDate, money, s } from '../components/ui.jsx';
 
@@ -68,6 +68,14 @@ function Calendario({ mes, dias, dia, onDia }) {
   );
 }
 
+/** «Entraron $X menos que lo vendido» si los dos lados de un atado no suman lo mismo; si no, null. */
+function diferenciaDe(g) {
+  if (!g.cobros.length || !g.pagos.length) return null;
+  const dif = g.cobros.reduce((a, c) => a + c.importe, 0) - g.pagos.reduce((a, p) => a + p.bruto, 0);
+  if (Math.abs(dif) <= 0.009) return null;
+  return dif > 0 ? `Entraron ${money(dif)} menos que lo vendido` : `Entraron ${money(-dif)} más que lo vendido`;
+}
+
 /** Una sección de pendientes con su título de color y cuántos son. */
 function Seccion({ color, titulo, desc, n, children }) {
   return (
@@ -87,6 +95,8 @@ export function ConciliacionMpPanel() {
   const [dia, setDia] = useState(hoy);
   const [bajando, setBajando] = useState(false);
   const [verAtados, setVerAtados] = useState(false);
+  /* El atado que espera «¿Seguro?» antes de deshacerse. */
+  const [porDeshacer, setPorDeshacer] = useState(null);
   /* El local elegido en la tabla «por local» (null = todos). */
   const [local, setLocal] = useState(null);
 
@@ -114,19 +124,27 @@ export function ConciliacionMpPanel() {
     }
   };
   const deshacer = async (id) => {
+    setPorDeshacer(null);
     try { await ventasApi.conciliacionMpDeshacer(id); toast('Deshecho: vuelve a pendientes.'); recargar(); } catch (e) { toast(errorMsg(e), 'err'); }
+  };
+  const corregirMedio = async (id) => {
+    try {
+      const r = await ventasApi.conciliacionMpCorregirMedio(id);
+      toast(`Listo: la venta pasó a ${nombreMedio(r.ahora)} (quedó en Auditoría).`);
+      recargar();
+    } catch (e) { toast(errorMsg(e), 'err'); }
   };
   const verComprobante = (c) => (c.origen === 'recibo'
     ? openModal('cobranzaDetalle', { cobranzaId: c.docId })
     : openModal('detalleVenta', { ventaId: c.docId }));
   const atar = (props) => openModal('atarMp', { dia: dia ?? (props.cobro ?? props.pago).dia, onListo: recargar, ...props });
   const explicar = (props) => openModal('explicarMp', { onListo: recargar, ...props });
+  /* Con otro importe no hay «Es este» de un clic: se abre el atado a mano con
+   * los dos elegidos y hay que escribir por qué (puede ser plata que falta). */
   const confirmar = async (sug) => {
+    if (!mismoImporte(sug.cobro, sug.pago)) { atar({ cobro: sug.cobro, pago: sug.pago }); return; }
     try {
-      const r = await ventasApi.conciliacionMpAtar({
-        cobros: [sug.cobro.clave], pagos: [sug.pago.id],
-        motivo: Math.abs(sug.cobro.importe - sug.pago.bruto) > 0.009 ? POR_QUE[sug.motivo] : undefined,
-      });
+      const r = await ventasApi.conciliacionMpAtar({ cobros: [sug.cobro.clave], pagos: [sug.pago.id] });
       toast(r?.medio ? `Atado. El medio de la venta pasó a ${nombreMedio(r.medio.ahora)}.` : 'Atado.');
       recargar();
     } catch (e) { toast(errorMsg(e), 'err'); }
@@ -280,7 +298,7 @@ export function ConciliacionMpPanel() {
                   </td>
                   <td className={s['actions-col']}>
                     <div className={s['row-actions']}>
-                      <Btn small variant="btn-primary" onClick={() => confirmar(x)}>Es este</Btn>
+                      <Btn small variant="btn-primary" onClick={() => confirmar(x)}>{mismoImporte(x.cobro, x.pago) ? 'Es este' : 'Es este…'}</Btn>
                       <Btn small variant="btn-ghost" onClick={() => atar({ cobro: x.cobro })}>Otro…</Btn>
                     </div>
                   </td>
@@ -324,8 +342,23 @@ export function ConciliacionMpPanel() {
                       <td>
                         {TIPO_ATADO[g.tipo]}
                         {(g.motivo || g.usuario) && <div className={s.hint} style={{ margin: 0 }}>{[g.motivo, g.usuario].filter(Boolean).join(' · ')}</div>}
+                        {diferenciaDe(g) && <div style={{ margin: 0, color: 'var(--crm-color-danger)', fontSize: 12.5 }}>{diferenciaDe(g)}</div>}
                       </td>
-                      <td className={s['actions-col']}><Btn small variant="btn-ghost" onClick={() => deshacer(g.id)}>Deshacer</Btn></td>
+                      <td className={s['actions-col']}>
+                        <div className={s['row-actions']}>
+                          {g.cobros.length === 1 && g.pagos.length === 1 && !g.cobros[0].medioAnterior && cambioDeMedio(g.cobros[0], g.pagos[0]) && (
+                            <Btn small title={`Mercado Pago dice que se cobró con otro medio: ${cambioDeMedio(g.cobros[0], g.pagos[0])}`} onClick={() => corregirMedio(g.id)}>
+                              Pasar a {nombreMedio(g.pagos[0].medioErp)}
+                            </Btn>
+                          )}
+                          {porDeshacer === g.id ? (
+                            <>
+                              <Btn small variant="btn-delete" onClick={() => deshacer(g.id)}>Sí, deshacer</Btn>
+                              <Btn small variant="btn-ghost" onClick={() => setPorDeshacer(null)}>No</Btn>
+                            </>
+                          ) : <Btn small variant="btn-ghost" onClick={() => setPorDeshacer(g.id)}>Deshacer</Btn>}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </Table>

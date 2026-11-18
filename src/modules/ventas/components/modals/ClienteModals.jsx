@@ -6,7 +6,7 @@ import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { errorMsg, ventasApi } from '../../services/ventas.api.js';
 import {
-  CONDICIONES_IVA, CONDICIONES_PAGO, TIPOS_DOC, docLegible, nroComprobante,
+  CONDICIONES_IVA, CONDICIONES_PAGO, MEDIOS_PAGO, TIPOS_DOC, docLegible, nroComprobante,
 } from '../../domain/constants.js';
 import {
   Table, Btn, Di, ModalShell, VentaTag, VentaEstadoPill, SaldoMonto, VenceComprobante,
@@ -526,12 +526,21 @@ function AnularRetiro({ retiro, onHecho }) {
   );
 }
 
-/** Pestaña de comprobantes emitidos (últimos 100). */
+/**
+ * Pestaña de comprobantes emitidos (últimos 100). Cada uno se abre (el detalle
+ * con sus renglones, cómo se pagó y para reimprimir; «Volver» trae de nuevo la
+ * ficha) y dice con qué se pagó. Saldo solo tiene la de cuenta corriente.
+ */
 function TabComprobantes({ clienteId }) {
+  const { openModal } = useVentas();
   const { data, loading, error } = useResource(
     `ventas:${clienteId}`,
-    () => ventasApi.ventas({ clienteId, limit: 100 }),
+    () => ventasApi.ventas({ clienteId, limit: 100, incluirPagos: true }),
   );
+  const abrir = (v) => openModal('detalleVenta', {
+    ventaId: v.id,
+    volver: () => openModal('detalleCliente', { clienteId, tab: 2 }),
+  });
 
   if (loading) return <div className={s['empty-state']}>Cargando comprobantes…</div>;
   if (error) return <div className={cx(s.callout, s.warn)}>{error}</div>;
@@ -539,16 +548,25 @@ function TabComprobantes({ clienteId }) {
   return (
     <Table
       cols={[
-        { h: 'Comprobante' }, { h: 'Fecha' }, { h: 'Condición' },
+        { h: 'Comprobante' }, { h: 'Fecha' }, { h: 'Condición' }, { h: 'Forma de pago' },
         { h: 'Total', num: true }, { h: 'Saldo', num: true }, { h: 'Estado' },
       ]}
       empty="Este cliente todavía no tiene comprobantes."
     >
       {(data ?? []).map((v) => (
-        <tr key={v.id}>
+        <tr key={v.id} className={s.clickable} title="Ver el comprobante" onClick={() => abrir(v)}>
           <td><VentaTag tipo={v.tipo} /> <span className={s.mono}>{nroComprobante(v)}</span></td>
           <td>{fmtFecha(v.fecha)}</td>
           <td>{CONDICIONES_PAGO[v.condicionPago] || v.condicionPago}</td>
+          <td>
+            {v.pagos?.length
+              ? v.pagos.map((p, i) => (
+                <div key={i} style={{ whiteSpace: 'nowrap' }}>
+                  {MEDIOS_PAGO[p.medio] || p.medio}{v.pagos.length > 1 ? ` ${money(p.importe)}` : ''}{p.cuotas > 1 ? ` · ${p.cuotas} cuotas` : ''}
+                </div>
+              ))
+              : <span className={s.muted}>{v.condicionPago === 'cuenta_corriente' ? 'A cuenta' : '—'}</span>}
+          </td>
           <td className={s.num}>{money(v.total)}</td>
           <td className={s.num}>{v.saldo > 0.009 ? <SaldoMonto valor={v.saldo}>{money(v.saldo)}</SaldoMonto> : <span className={s.muted}>—</span>}</td>
           <td><VentaEstadoPill estado={v.estado} /></td>
@@ -558,9 +576,10 @@ function TabComprobantes({ clienteId }) {
   );
 }
 
-export function DetalleClienteModal({ clienteId }) {
+/** `tab`: la pestaña con que abre (0 Resumen, 1 Cuenta corriente, 2 Comprobantes): al volver de un comprobante, la de comprobantes. */
+export function DetalleClienteModal({ clienteId, tab: tabInicial = 0 }) {
   const { getCliente, closeModal, openModal, usuarios, sucursalesTodas: sucursales } = useVentas();
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState(tabInicial);
   const cliente = getCliente(clienteId);
 
   const vendedor = useMemo(

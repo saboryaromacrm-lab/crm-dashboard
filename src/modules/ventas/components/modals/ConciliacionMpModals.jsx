@@ -81,9 +81,10 @@ function Elegir({ titulo, items, clave, elegidos, onCambio, render }) {
   );
 }
 
+/** Se abre desde un cobro, desde un pago, o con los dos (un sugerido con otro importe: hay que decir por qué). */
 export function AtarMpModal({ dia, cobro, pago, onListo }) {
   const { closeModal, act } = useVentas();
-  const rango = alrededor(dia);
+  const rango = alrededor(dia, !cobro);
   const { data, loading, error } = useResource(`conc-sueltos:${dia}`, () => ventasApi.conciliacionMpSueltos(rango));
   const [cobros, setCobros] = useState(() => new Set(cobro ? [cobro.clave] : []));
   const [pagos, setPagos] = useState(() => new Set(pago ? [pago.id] : []));

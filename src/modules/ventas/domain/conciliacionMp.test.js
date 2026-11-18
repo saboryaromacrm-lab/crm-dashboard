@@ -22,6 +22,7 @@ test('meses y alrededores', () => {
   assert.equal(moverMes('2026-01', -1), '2025-12');
   assert.equal(moverMes('2026-12', 1), '2027-01');
   assert.deepEqual(alrededor('2026-11-02'), { desde: '2026-10-30', hasta: '2026-11-03' });
+  assert.deepEqual(alrededor('2026-11-02', true), { desde: '2026-11-01', hasta: '2026-11-05' }, 'desde un pago: las ventas de después');
 });
 
 test('el comprobante', () => {
@@ -29,8 +30,10 @@ test('el comprobante', () => {
   assert.equal(comprobanteDe({ origen: 'recibo', tipoDoc: 'recibo', puntoVenta: '0001', numero: 12 }), 'Recibo 0001-00000012');
 });
 
-test('el cambio de medio que anuncia la pantalla', () => {
-  assert.equal(cambioDeMedio({ medio: 'qr' }, { medioErp: 'tarjeta_credito' }), 'QR → Crédito');
-  assert.equal(cambioDeMedio({ medio: 'tarjeta_debito' }, { medioErp: 'tarjeta_debito' }), null);
-  assert.equal(cambioDeMedio({ medio: 'qr' }, {}), null);
+test('el cambio de medio que anuncia la pantalla (la misma regla que la API)', () => {
+  assert.equal(cambioDeMedio({ medio: 'qr', importe: 100 }, { medioErp: 'tarjeta_credito', bruto: 100 }), 'QR → Crédito');
+  assert.equal(cambioDeMedio({ medio: 'tarjeta_debito', importe: 100 }, { medioErp: 'tarjeta_debito', bruto: 100 }), null);
+  assert.equal(cambioDeMedio({ medio: 'qr', importe: 100 }, { medioErp: null, bruto: 100 }), null, 'Mercado Pago no lo dice claro');
+  assert.equal(cambioDeMedio({ medio: 'qr', importe: 100 }, { medioErp: 'tarjeta_credito', bruto: 1000 }), null, 'otro importe: no se toca');
+  assert.equal(cambioDeMedio({ medio: 'qr', importe: 100, referencia: 'MP 123' }, { medioErp: 'tarjeta_credito', bruto: 100 }), null, 'el QR del ERP');
 });

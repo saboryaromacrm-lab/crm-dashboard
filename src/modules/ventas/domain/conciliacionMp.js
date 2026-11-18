@@ -9,12 +9,17 @@ export const FAMILIA = { qr: 'QR', tarjeta: 'Tarjeta (Point)', transferencia: 'T
 export const MEDIO_ERP = { qr: 'QR', tarjeta_debito: 'Débito', tarjeta_credito: 'Crédito', transferencia: 'Transferencia' };
 export const nombreMedio = (m) => MEDIO_ERP[m] ?? m;
 
+/** ¿Los dos lados son la misma plata (al centavo)? */
+export const mismoImporte = (cobro, pago) => Math.abs((cobro?.importe ?? 0) - (pago?.bruto ?? 0)) <= 0.009;
+
 /**
  * «QR → Crédito» si atar este cobro con este pago le cambia el medio a la
- * venta (un cobro atado a UN pago toma el medio que dice Mercado Pago: la API
- * lo corrige, `pago.medioErp`); si no, null.
+ * venta; si no, null. La misma regla que la API: uno con uno, mismo importe,
+ * Mercado Pago dice un medio claro (`pago.medioErp`) y distinto, y no es el QR
+ * del ERP (referencia «MP n»).
  */
 export const cambioDeMedio = (cobro, pago) => (cobro && pago?.medioErp && pago.medioErp !== cobro.medio
+  && mismoImporte(cobro, pago) && !String(cobro.referencia ?? '').startsWith('MP ')
   ? `${nombreMedio(cobro.medio)} → ${nombreMedio(pago.medioErp)}` : null);
 
 /** Por qué se sugiere un pago para un cobro (ver `sugerir` en la API). */
@@ -69,9 +74,13 @@ export function semanasDelMes(mes) {
 /** «Factura B 00030-00000431» o «Recibo 0001-00000012». */
 export const comprobanteDe = (c) => `${c.origen === 'recibo' ? 'Recibo' : TIPOS_VENTA[c.tipoDoc]?.label ?? c.tipoDoc} ${nroComprobante(c)}`;
 
-/** Lo de alrededor de un día para atar a mano: 3 días antes y 1 después (una transferencia llega antes). */
-export function alrededor(dia) {
+/**
+ * Lo de alrededor de un día para atar a mano. Una transferencia llega hasta 3
+ * días ANTES de la venta: desde un cobro se mira 3 días atrás y 1 adelante;
+ * desde un pago, 1 atrás y 3 adelante (las ventas que vinieron después).
+ */
+export function alrededor(dia, desdePago = false) {
   const d = new Date(`${dia}T12:00:00Z`);
   const mover = (n) => new Date(d.getTime() + n * 86_400_000).toISOString().slice(0, 10);
-  return { desde: mover(-3), hasta: mover(1) };
+  return desdePago ? { desde: mover(-1), hasta: mover(3) } : { desde: mover(-3), hasta: mover(1) };
 }

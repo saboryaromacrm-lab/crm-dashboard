@@ -25,8 +25,10 @@ import {
 } from '../ui.jsx';
 
 /* ============================== DETALLE ============================== */
-export function DetalleVentaModal({ ventaId, onCambio }) {
+/** `volver`: se abrió desde otra ventana (la ficha del cliente) y al cerrar vuelve a ella. */
+export function DetalleVentaModal({ ventaId, onCambio, volver }) {
   const { closeModal, openModal, toast } = useVentas();
+  const cerrar = volver ?? closeModal;
   /*
    * LA PANTALLA MIRA LAS MISMAS LLAVES QUE EL SERVIDOR, y nada más.
    *
@@ -61,7 +63,7 @@ export function DetalleVentaModal({ ventaId, onCambio }) {
     }
   };
 
-  const pie = [{ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal }];
+  const pie = [{ texto: volver ? 'Volver' : 'Cerrar', clase: 'btn-ghost', onClick: cerrar }];
   if (v) {
     pie.unshift({
       texto: imprimiendo ? 'Imprimiendo…' : 'Reimprimir',
@@ -122,7 +124,7 @@ export function DetalleVentaModal({ ventaId, onCambio }) {
         ? `${v.tipo === 'nota_credito_ticket' ? 'Devolución' : esNotaCredito(v.tipo) ? 'Nota de crédito' : 'Venta'} ${nroComprobante(v)}`
         : 'Venta'}
       wide
-      onClose={closeModal}
+      onClose={cerrar}
       footer={pie}
     >
       {loading && <div className={s.hint}>Cargando el ticket…</div>}
