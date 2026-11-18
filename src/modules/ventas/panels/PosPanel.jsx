@@ -23,7 +23,7 @@ import {
   Table, PanelHead, Btn, ModalShell, Paginador, usePaginado, money, num, fmtFechaHora, s,
 } from '../components/ui.jsx';
 import { MisPedidosFraccion } from '../components/MisPedidosFraccion.jsx';
-import { AvisoCierreCaja, CajaVencidaAviso, PlazoCajaDato } from '../components/PlazoCaja.jsx';
+import { AvisoArqueoDia, AvisoCierreCaja, CajaVencidaAviso, PlazoCajaDato } from '../components/PlazoCaja.jsx';
 import { useMisPedidosFraccion } from '../hooks/useMisPedidosFraccion.js';
 import { imprimirVenta } from '@core/services/imprimir.js';
 import { EVENTO_PRECIOS, cambiosPrecio } from '@core/services/cambiosPrecio.js';
@@ -1730,6 +1730,7 @@ export function PosPanel() {
 
         <CajaVencidaAviso caja={caja} onCerrar={() => goPanel('caja')} />
         <AvisoCierreCaja caja={caja} />
+        <AvisoArqueoDia caja={caja} />
 
         {/* Lo pedido a fraccionado (0170) y cómo va: a la vista del cajero. */}
         <MisPedidosFraccion pedidos={misPedidos.pedidos} onEntendido={misPedidos.entendido} onCancelar={misPedidos.cancelar} />
@@ -2150,6 +2151,7 @@ export function PosPanel() {
 
       <CajaVencidaAviso caja={caja} onCerrar={() => goPanel('caja')} />
       <AvisoCierreCaja caja={caja} />
+      <AvisoArqueoDia caja={caja} />
 
       {/* Lo pedido a fraccionado (0170), también desde la lista. */}
       <MisPedidosFraccion pedidos={misPedidos.pedidos} onEntendido={misPedidos.entendido} onCancelar={misPedidos.cancelar} />

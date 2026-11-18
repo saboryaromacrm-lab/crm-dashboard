@@ -11,6 +11,9 @@ export const diaEnPalabras = (dia) => {
   return `${d.toLocaleDateString('es-AR', { weekday: 'long' })} ${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
 };
 
+/** El día de la semana que sigue a 'AAAA-MM-DD': «jueves». */
+export const diaSiguiente = (dia) => (dia ? new Date(new Date(`${dia}T12:00:00`).getTime() + 86_400_000).toLocaleDateString('es-AR', { weekday: 'long' }) : '');
+
 /** Los días de la semana como los guarda el servidor: 1 = lunes … 7 = domingo. En plural, como se dice. */
 export const DIAS_CIERRE = [[1, 'L', 'lunes'], [2, 'M', 'martes'], [3, 'M', 'miércoles'], [4, 'J', 'jueves'], [5, 'V', 'viernes'], [6, 'S', 'sábados'], [7, 'D', 'domingos']];
 

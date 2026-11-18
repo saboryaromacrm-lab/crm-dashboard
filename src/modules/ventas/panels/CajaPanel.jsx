@@ -8,7 +8,7 @@ import { Table, PanelHead, Stat, Btn, Pill, usePaginado, money, fmtFechaHora, s 
 import p from '../styles/Pos.module.css';
 import { CajaMovimientos } from './CajaMovimientos.jsx';
 import { ATAJOS, diaAtras } from '../domain/diasCaja.js';
-import { CajaVencidaAviso, PlazoCajaDato } from '../components/PlazoCaja.jsx';
+import { AvisoArqueoDia, CajaVencidaAviso, PlazoCajaDato } from '../components/PlazoCaja.jsx';
 import { diasDelTurno, textoDiasCierre } from '@shared/utils/plazoCaja.js';
 import { cerroOtro } from '../domain/cajeros.js';
 
@@ -143,6 +143,7 @@ export function CajaPanel() {
         textoBoton="Cerrar caja"
         onCerrar={() => openModal('cerrarCaja', { cajaSesionId: actual.id, onChange: alCambiar })}
       />
+      <AvisoArqueoDia caja={actual} />
 
  <Tabs value={vista} onChange={(e, v) => setVista(v)} sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 40 }}>
         <Tab value="turnos" label="Turnos" sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600 }} />

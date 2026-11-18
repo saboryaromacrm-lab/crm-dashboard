@@ -5,7 +5,7 @@
  * los días no muestra nada nuevo: sigue como siempre.
  */
 import { cx } from '@shared/utils/classNames.js';
-import { diaEnPalabras } from '@shared/utils/plazoCaja.js';
+import { diaEnPalabras, diaSiguiente } from '@shared/utils/plazoCaja.js';
 import { CartelRojo, useAvisoCadaDosHoras } from '@core/layout/components/CartelRojo.jsx';
 import { Btn, s } from './ui.jsx';
 import p from '../styles/Pos.module.css';
@@ -45,6 +45,22 @@ export function CajaVencidaAviso({ caja, onCerrar, textoBoton = 'Cerrar la caja'
         Después abrís una nueva.
       </span>
       {onCerrar && <Btn variant="btn-delete" small onClick={onCerrar}>{textoBoton}</Btn>}
+    </div>
+  );
+}
+
+/**
+ * Un día que no es de cierre (18/11/2026): la caja no se cierra, se arquea a
+ * la noche. El texto es el del dueño; el sobre se manda al día siguiente del
+ * cierre, cuando se lleva mercadería.
+ */
+export function AvisoArqueoDia({ caja }) {
+  if (caja?.estado !== 'abierta' || !caja.plazo?.arqueoDelDia) return null;
+  const { cerrarHasta } = caja.plazo;
+  return (
+    <div className={cx(s.callout, s.info)} role="status" style={{ margin: 0 }}>
+      <strong>Hoy no se cierra la caja:</strong> a la noche hacé el <strong>«Arqueo del día»</strong>. La caja se cierra
+      el <strong>{diaEnPalabras(cerrarHasta)}</strong>, para enviar el {diaSiguiente(cerrarHasta)} cuando llevan mercadería.
     </div>
   );
 }
