@@ -23,6 +23,7 @@ import {
 import { ExplorarProductosModal } from './ExplorarProductosModal.jsx';
 import { SelectorOperador, useOperadoresFraccion } from '../OperadorFraccion.jsx';
 import { bultoDe } from '../../domain/bulto.js';
+import { fechaHoraAr } from '@shared/utils/hora.js';
 
 /* ---------------- Preparación: helpers compartidos ---------------- */
 
@@ -1316,7 +1317,7 @@ function imprimirLista(t, store, tipo, filas) {
     titulo: `${t.codigo} — ${meta.titulo}`,
     cuerpo: cuerpoListaPreparacion({
       titulo: `${t.codigo} · ${meta.titulo} — para ${destino}`,
-      sub: [`Lista del ${meta.encargado} · ${filas.length} renglón(es) · impresa ${new Date().toLocaleString('es-AR')} · tildá lo preparado y anotá lo que falte`],
+      sub: [`Lista del ${meta.encargado} · ${filas.length} renglón(es) · impresa ${fechaHoraAr(new Date())} · tildá lo preparado y anotá lo que falte`],
       /* En el PAPEL importa más que en la pantalla: el que camina el depósito
        * con la hoja en la mano no tiene dónde hacer la cuenta de las cajas. */
       filas: filas.map(({ it, p }) => ({

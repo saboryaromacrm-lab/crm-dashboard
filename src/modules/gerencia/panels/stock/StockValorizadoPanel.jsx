@@ -21,6 +21,7 @@ import { Table, PanelHead, Btn, usePaginado, s } from '@modules/productos/compon
 import { Barras } from '../metricas/graficos.jsx';
 import { compacto, fechaLarga, nombreMes, parte, pctTxt } from '../metricas/formato.js';
 import { Aviso, Bloque, Cargando, ConParte, Grilla, Tile, Tiles } from '../metricas/piezas.jsx';
+import { fechaHoraAr } from '@shared/utils/hora.js';
 import {
   AGRUPAR, CLASES_ABC, ESTADOS_STOCK, ORDENES_GRUPO,
   agruparStock, conVariacion, filtrarStock, marcarAbc, opcionesStock, ordenarStock, resumirStock, siguienteOrden,
@@ -31,7 +32,7 @@ const FILTROS_VACIOS = { proveedor: '', marca: '', categoria: '', tipo: '', abc:
 const VISTAS = { articulos: 'Artículo por artículo', ...Object.fromEntries(Object.entries(AGRUPAR).map(([k, g]) => [k, g.label])) };
 const veces = (v) => (v == null ? '—' : `${num(v, 1)} ${v === 1 ? 'vez' : 'veces'}`);
 const porPeso = (v) => (v == null ? '—' : money(v));
-const cuando = (ts) => new Date(ts).toLocaleString('es-AR', {
+const cuando = (ts) => fechaHoraAr(ts, {
   timeZone: 'America/Argentina/Buenos_Aires', day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit',
 });
 

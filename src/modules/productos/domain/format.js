@@ -5,6 +5,7 @@
  * Ported from the original vanilla `app.data.js`; `esc()` is intentionally gone
  * because React escapes text by default.
  */
+import { horaAr } from '../../../shared/utils/hora.js';
 
 /* ---- Fechas (el JS corre en el navegador) ---- */
 /**
@@ -26,11 +27,7 @@ export function fmtFecha(v) {
 }
 export function fmtFechaHora(v) {
   const d = new Date(v);
-  return (
-    d.toLocaleDateString('es-AR') +
-    ' ' +
-    d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-  );
+  return `${d.toLocaleDateString('es-AR')} ${horaAr(d)}`;
 }
 
 /* ---- Formato numérico / moneda ---- */

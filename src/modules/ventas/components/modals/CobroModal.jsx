@@ -14,6 +14,7 @@ import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { leerTokenTerminal } from '@core/auth/terminal.js';
 import { enDireccionVieja } from '@core/services/direccion.js';
 import p from '../../styles/Pos.module.css';
+import { horaAr } from '@shared/utils/hora.js';
 
 /**
  * COBRO
@@ -424,7 +425,7 @@ export function CobroModal({
       vinculandoRef.current = false; setVinculando(false);
     }
   };
-  const horaDe = (iso) => (iso ? new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '');
+  const horaDe = (iso) => (iso ? horaAr(iso, { segundos: true }) : '');
 
   const accionQr = async (fn) => {
     if (ocupadoQrRef.current) return;

@@ -19,12 +19,13 @@ import { Table, Btn, s } from '@modules/productos/components/ui.jsx';
 import { Columnas } from '@modules/gerencia/panels/metricas/graficos.jsx';
 import { pctTxt } from '@modules/gerencia/panels/metricas/formato.js';
 import { Aviso, Bloque } from '@modules/gerencia/panels/metricas/piezas.jsx';
+import { fechaHoraAr } from '@shared/utils/hora.js';
 
 const DESTINOS = [['/', 'La portada'], ['/tienda', 'Toda la tienda'], ['/tienda?oferta=1', 'Las ofertas'], ['otra', 'Otra página (pegá su dirección)']];
 const CANALES = [['whatsapp', 'WhatsApp'], ['instagram', 'Instagram'], ['facebook', 'Facebook'], ['tiktok', 'TikTok'], ['email', 'Correo'], ['otro', 'Otro'], ['', 'Sin decir']];
 const nombreCanal = Object.fromEntries(CANALES);
 const entero = (v) => num(v, 0);
-const fecha = (v) => (v ? new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
+const fecha = (v) => (v ? fechaHoraAr(v, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 const urlDe = (l) => `${env.tiendaUrl}/l/${l.codigo}`;
 const VACIO = { nombre: '', destino: '/', otra: '', canal: 'whatsapp' };
 

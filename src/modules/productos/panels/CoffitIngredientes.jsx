@@ -20,6 +20,7 @@ import { useResource } from '@modules/gastos/hooks/useResource.js';
 import { money, fmtFecha } from '../domain/format.js';
 import { BuscadorCatalogo } from '../components/modals/CafeteriaModals.jsx';
 import { Table, Btn, s } from '../components/ui.jsx';
+import { horaAr } from '@shared/utils/hora.js';
 
 const ETIQUETA_COSTO = { kg: 'kg', g: 'g', '100g': '100 g', l: 'litro', ml: 'ml', '100ml': '100 ml', u: 'unidad', doc: 'docena' };
 const OPC_MASA = [['kg', 'por kg'], ['100g', 'por 100 g'], ['g', 'por gramo']];
@@ -154,7 +155,7 @@ function EstadoCoffitcost({ version, onEnviado, toast }) {
           <>— falta la <strong>clave</strong> en el servidor (variable <code>COFFITCOST_API_KEY</code> en Dokploy). Hasta que esté, no se manda nada.</>
         ) : ultimo ? (
           <>
-            — último envío <strong>{ultimo.referencia || '—'}</strong> el {fmtFecha(ultimo.fecha)} {new Date(ultimo.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+            — último envío <strong>{ultimo.referencia || '—'}</strong> el {fmtFecha(ultimo.fecha)} {horaAr(ultimo.fecha)}
             {' · '}{ultimo.cantidad} costos · {ultimo.origen === 'automatico' ? 'automático' : 'a mano'} · {ultimo.ok ? <strong>salió bien</strong> : <strong>falló</strong>}
             {!ultimo.ok && <div className={s.hint} style={{ margin: '2px 0 0' }}>{ultimo.estadoHttp ? `CoffitCost contestó ${ultimo.estadoHttp}: ` : ''}{resumen(ultimo.respuesta).slice(0, 220)}</div>}
             {ultimo.ok && ultimo.respuesta && <div className={s.hint} style={{ margin: '2px 0 0' }}>Respuesta: {resumen(ultimo.respuesta).slice(0, 220)}</div>}

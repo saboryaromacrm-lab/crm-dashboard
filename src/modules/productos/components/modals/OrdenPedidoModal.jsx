@@ -12,6 +12,7 @@ import { norm } from '../CatalogoPicker.jsx';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Btn, s } from '../ui.jsx';
+import { fechaHoraAr } from '@shared/utils/hora.js';
 
 /**
  * ORDEN DE PEDIDO A UN PROVEEDOR (12/10/2026, pedido del dueño)
@@ -45,7 +46,7 @@ const CIERRE = 'Por favor confirmar recibido.';
 /** Va en el título solo si algún renglón lleva el código del proveedor (10/11/2026). */
 const AVISO_CODIGO = '(N°) es el código interno de ustedes';
 
-const fechaHora = (v) => new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const fechaHora = (v) => fechaHoraAr(v, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /**
  * Los recordatorios del proveedor: se leen siempre; «Editar» los cambia y

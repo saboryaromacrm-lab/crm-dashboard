@@ -4,6 +4,7 @@
  * digan lo mismo con las mismas palabras.
  */
 import { iso, MESES } from '../metricas/formato.js';
+import { fechaHoraAr, horaAr } from '../../../../shared/utils/hora.js';
 
 export const DENOMINACIONES = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20];
 /**
@@ -29,13 +30,13 @@ export const DIAS_SEMANA = ['DOM', 'LU', 'MA', 'MI', 'JU', 'VI', 'SAB'];
 const aFecha = (v) => new Date(typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T12:00:00` : v);
 export const diaSemana = (v) => (v ? DIAS_SEMANA[aFecha(v).getDay()] : '');
 const conDia = (v, texto) => (v ? `${diaSemana(v)} ${texto}` : texto);
-export const fechaHoraSinDia = (v) => (v ? aFecha(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+export const fechaHoraSinDia = (v) => (v ? fechaHoraAr(aFecha(v), { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 export const fechaCortaSinDia = (v) => (v ? aFecha(v).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
 export const fechaIsoSinDia = (p) => (p ? `${p.slice(8, 10)}/${p.slice(5, 7)}/${p.slice(0, 4)}` : '—');
 export const fechaHora = (v) => conDia(v, fechaHoraSinDia(v));
 export const fechaCorta = (v) => conDia(v, fechaCortaSinDia(v));
 export const fechaIso = (p) => conDia(p, fechaIsoSinDia(p));
-export const horaCorta = (v) => (v ? new Date(v).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) : '');
+export const horaCorta = (v) => (v ? horaAr(v) : '');
 export const ORIGEN = { saldo_inicial: 'Saldo inicial', sobre: 'Sobre de caja', concepto: 'Concepto', pago_proveedor: 'Pago a proveedor', gasto: 'Gasto', conteo: 'Conteo' };
 /** `cambio` = efectivo por transferencia (0175): en la base queda como transferencia con `cambioPor`. */
 export const MEDIO = { efectivo: 'efectivo', deposito: 'depósito', transferencia: 'transferencia', cambio: 'efectivo por transferencia' };

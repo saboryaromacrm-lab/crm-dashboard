@@ -31,6 +31,7 @@ import { MarcaEstadoModal } from '../CatalogoAdmin.jsx';
 import { norm } from '../CatalogoPicker.jsx';
 import { ModalShell } from '../Modal.jsx';
 import { Table, Btn, s } from '../ui.jsx';
+import { fechaHoraAr } from '@shared/utils/hora.js';
 
 /* ------------------------------------------------------------------ *
  * Alta: el alcance
@@ -544,7 +545,7 @@ export function ConteoModal({ conteoId, alTerminar }) {
         alcance: data.alcance,
         sucursal: store.getSucursal(data.sucursalId)?.nombre ?? '',
         responsable: data.responsable,
-        impresa: new Date().toLocaleString('es-AR'),
+        impresa: fechaHoraAr(new Date()),
         hoja: vista === 'pendientes' ? 'pendientes de contar'
           : vista === 'contados' ? 'ya contados' : 'lista completa',
         filas: paraImprimir.map((it) => ({ ...it, codigo: codigoDe(it) })),

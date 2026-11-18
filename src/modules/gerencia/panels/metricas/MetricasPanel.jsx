@@ -31,6 +31,7 @@ import { PestanaAnterior } from './PestanaAnterior.jsx';
 import { PestanaSucursales } from './PestanaSucursales.jsx';
 import { DiasAbiertos } from '../DiasAbiertos.jsx';
 import { textoDiasContra } from '../actividad.js';
+import { fechaHoraAr } from '@shared/utils/hora.js';
 
 /* ============================================================================
  * EL PANEL
@@ -94,7 +95,7 @@ export function MetricasPanel({ pestanaInicial = 'ventas' } = {}) {
         desc="Ventas, por días y horas (locales, turnos y horas), productos y categorías, marcas, comparación de fechas, granel y enteros, rentabilidad, ofertas y descuentos, proveedores y el sistema anterior. Se actualiza solo cada 10 minutos; con «Sincronizar» traés lo último en el momento."
         actions={(
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <span className={s.hint} style={{ margin: 0 }} title={e?.ultimaOk ? new Date(e.ultimaOk).toLocaleString('es-AR') : ''}>
+            <span className={s.hint} style={{ margin: 0 }} title={e?.ultimaOk ? fechaHoraAr(e.ultimaOk) : ''}>
               {e?.corriendo ? 'Actualizando…' : `Actualizado ${haceCuanto(e?.ultimaOk)}`}
             </span>
             <Btn variant="btn-primary" disabled={sincronizando} onClick={sincronizar}>{sincronizando ? 'Sincronizando…' : 'Sincronizar'}</Btn>

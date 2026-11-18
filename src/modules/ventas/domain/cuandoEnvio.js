@@ -5,10 +5,11 @@
  * 20 minutos) o `whatsapp` (lo coordina). Acá el texto, el día y los filtros
  * de tiempo de Pedidos online. Todo en hora argentina.
  */
+import { horaAr } from '../../../shared/utils/hora.js';
 const ZONA = 'America/Argentina/Buenos_Aires';
 const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
-const hora = (iso) => new Date(iso).toLocaleTimeString('es-AR', { timeZone: ZONA, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const hora = (iso) => horaAr(iso, { timeZone: ZONA });
 /** El día en Argentina de un instante, AAAA-MM-DD. */
 export const diaAr = (v) => new Date(v).toLocaleDateString('en-CA', { timeZone: ZONA });
 const sumarDias = (dia, n) => new Date(Date.parse(`${dia}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);

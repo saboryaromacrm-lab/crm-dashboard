@@ -35,6 +35,7 @@ import { Barras, Columnas, Reparto } from '@modules/gerencia/panels/metricas/gra
 import { DIAS_SEMANA, PRESETS, compacto, etiquetaPeriodo, fechaLarga, nombrePaso, pasoPara, pctTxt, rangoDe, tituloPeriodo } from '@modules/gerencia/panels/metricas/formato.js';
 import { Aviso, Bloque, Cargando, Grilla, Tile, Tiles, Variacion } from '@modules/gerencia/panels/metricas/piezas.jsx';
 import { LinksMedibles } from '../components/LinksMedibles.jsx';
+import { fechaHoraAr } from '@shared/utils/hora.js';
 
 const MODOS = [['mayorista', 'Tienda mayorista'], ['minorista', 'Tienda minorista']];
 const ESTADOS = [
@@ -48,7 +49,7 @@ const ENTREGAS = { retiro: 'Retiro en el local', cadete: 'Envío a domicilio', c
 const entero = (v) => num(v, 0);
 const ESTADO_OFERTA = { vigente: ['Vigente', 'st-disponible'], programada: ['Programada', 'est-transito'], vencida: ['Vencida', 'est-recibida'], inactiva: ['Inactiva', 'est-cancelada'] };
 const HORAS = Array.from({ length: 24 }, (_, h) => `${h} h`);
-const fechaHora = (v) => new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const fechaHora = (v) => fechaHoraAr(v, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /** Un número del resumen con su comparación: la API manda {ahora, antes, variacion}. */
 const TileCmp = ({ label, dato, formato = entero, detalle, periodoAntes }) => (

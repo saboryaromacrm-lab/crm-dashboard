@@ -15,6 +15,7 @@ import { useProductos } from '../context/ProductosContext.jsx';
 import { num, fmtTam } from '../domain/format.js';
 import { ModalShell } from '../components/Modal.jsx';
 import { Table, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
+import { fechaHoraAr } from '@shared/utils/hora.js';
 
 const norm = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 const esEntero = (v) => /^\d+$/.test(String(v ?? '').trim());
@@ -38,7 +39,7 @@ const opcionesDe = (lista, clave, elegida) => {
   for (const x of lista) if (x.p[clave]) m.set(x.p[clave], (m.get(x.p[clave]) ?? 0) + 1);
   return [...m].sort((a, b) => a[0].localeCompare(b[0], 'es'));
 };
-const fecha = (v) => (v ? new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
+const fecha = (v) => (v ? fechaHoraAr(v, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
 
 /** La hoja del fraccionador: la planilla única del que prepara, igual a la del pedido entre sucursales. */
 function imprimirPedidoFraccion(pedido, distribuidora) {
@@ -47,7 +48,7 @@ function imprimirPedidoFraccion(pedido, distribuidora) {
     cuerpo: cuerpoListaPreparacion({
       titulo: `${pedido.codigo} · Pedido de fraccionado — ${distribuidora?.nombre ?? 'Distribuidora'}`,
       sub: [
-        `Para la góndola · armado por ${pedido.usuario || '—'} el ${fecha(pedido.creadoEn)} · ${num(pedido.kg, 3)} kg de granel · impreso ${new Date().toLocaleString('es-AR')} · tildá lo fraccionado y cargalo al volver`,
+        `Para la góndola · armado por ${pedido.usuario || '—'} el ${fecha(pedido.creadoEn)} · ${num(pedido.kg, 3)} kg de granel · impreso ${fechaHoraAr(new Date())} · tildá lo fraccionado y cargalo al volver`,
         ...(pedido.observaciones ? [`Observaciones: ${pedido.observaciones}`] : []),
       ],
       filas: pedido.items.map((it) => ({ producto: it.nombre, paquete: fmtTam(it.tamKg), pedido: num(it.paquetes, 0) })),

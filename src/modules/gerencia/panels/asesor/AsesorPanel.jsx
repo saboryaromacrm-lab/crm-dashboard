@@ -24,6 +24,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { PanelHead, Btn, Pill, s } from '@modules/productos/components/ui.jsx';
 import { Aviso, Bloque, Cargando } from '../metricas/piezas.jsx';
 import { Markdown } from './Markdown.jsx';
+import { fechaHoraAr } from '@shared/utils/hora.js';
 
 const PESTANAS = [['analisis', 'Análisis'], ['preguntar', 'Preguntar'], ['configuracion', 'Configuración']];
 const PRIORIDAD = {
@@ -33,7 +34,7 @@ const NIVEL = { urgente: PRIORIDAD.urgente, mirar: PRIORIDAD.mirar, dato: PRIORI
 const ESTADO = { bien: ['st-disponible', 'Bien'], atencion: ['st-comprometido', 'Atención'], problema: ['st-defectuoso', 'Problema'] };
 const OPINIONES = [['util', 'Útil'], ['no_aplica', 'No aplica'], ['ya_lo_se', 'Ya lo sé']];
 export const usd = (n) => `USD ${(Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-export const fechaHora = (v) => (v ? new Date(v).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+export const fechaHora = (v) => (v ? fechaHoraAr(v, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 
 /** El de Gerencia: el negocio entero (ventas, márgenes, granel, stock, cajas, gastos, resultados). */
 const NEGOCIO = {

@@ -19,6 +19,7 @@ import { antiguedad, esVozDelCafe, vozCafeteria } from '../../domain/cafeteria.v
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
+import { fechaHoraAr } from '@shared/utils/hora.js';
 import {
   BULTO, bultoOfrecible, valorPresentacion, cambioPresentacion, bultosDe, unidadesDeBultos, bultosPartidos,
 } from '../../domain/bulto.js';
@@ -859,7 +860,7 @@ function imprimirRemito(envio, ventana = null) {
   const control = recibido
     ? `<div class="nota"><strong>${envio.recepcion === 'recibido' ? 'RECIBIDO OK' : 'RECIBIDO CON DIFERENCIAS'}</strong>`
       + `${envio.recibidoPorNombre ? ` · controló ${esc(envio.recibidoPorNombre)}` : ''}`
-      + `${envio.recibidoEn ? ` · ${esc(new Date(envio.recibidoEn).toLocaleString('es-AR'))}` : ''}`
+      + `${envio.recibidoEn ? ` · ${esc(fechaHoraAr(envio.recibidoEn))}` : ''}`
       + `${envio.recepcionObs ? ` · ${esc(envio.recepcionObs)}` : ''}</div>`
     : `<div class="nota"><strong>CONTROL AL RECIBIR:</strong> ${quienRecibe} cuenta cada renglón contra este remito,
        anota lo que llegó en la columna «Llegó» y lo marca en el sistema (Controlar y recibir).</div>
@@ -872,7 +873,7 @@ function imprimirRemito(envio, ventana = null) {
     titulo: `${envio.codigo} — ${entrada ? 'Remito de Coffit' : 'Remito a Coffit'}`,
     cuerpo: `
       <h1>${esc(envio.codigo)} · ${entrada ? `Remito de Coffit a ${esc(envio.sucursalNombre || '')}` : 'Remito a Coffit'}${envio.version > 1 ? ` (versión ${Number(envio.version)})` : ''}</h1>
-      <div class="sub">${esc(new Date(envio.fecha).toLocaleString('es-AR'))} · ${entrada ? `llega a ${esc(envio.sucursalNombre || '')}` : `sale de ${esc(envio.sucursalNombre || '')}`}${envio.usuarioNombre ? ` · cargó ${esc(envio.usuarioNombre)}` : ''}</div>
+      <div class="sub">${esc(fechaHoraAr(envio.fecha))} · ${entrada ? `llega a ${esc(envio.sucursalNombre || '')}` : `sale de ${esc(envio.sucursalNombre || '')}`}${envio.usuarioNombre ? ` · cargó ${esc(envio.usuarioNombre)}` : ''}</div>
       <table>
         <thead><tr><th>Producto</th><th>Código</th><th>Cantidad</th><th>Equiv. kg</th><th>Costo unit.</th><th>Subtotal</th><th>Llegó</th></tr></thead>
         <tbody>${filas}</tbody>

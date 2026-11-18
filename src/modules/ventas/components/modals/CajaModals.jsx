@@ -16,6 +16,7 @@ import { TildeControlar } from '@modules/gerencia/panels/cashflow/CajasAControla
 import { useTildeControlar, useUmbralControlar } from '@modules/gerencia/panels/cashflow/tildeControlar.js';
 import { diaEnPalabras } from '@shared/utils/plazoCaja.js';
 import { EmpleadoAdelanto } from '@shared/components/EmpleadoAdelanto.jsx';
+import { horaAr } from '@shared/utils/hora.js';
 
 const norm = (v) => String(v ?? '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
@@ -1300,7 +1301,7 @@ function sacarComprobanteArqueo(arqueo, { sucursales, usuarios, ctx, reimpresion
     moneda: money,
     fechaHora: fmtFechaHora,
     /* Solo la hora, para el rollo: los movimientos son todos del mismo turno. */
-    hora: (v) => new Date(v).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+    hora: (v) => horaAr(v),
     sucursal: sucursales?.find((x) => x.id === ses.sucursalId)?.nombre || '',
     /* El CAJERO del papel es el DUEÑO DEL TURNO, no quien esta mirando la
      * pantalla: el que rinde la plata es el que la cobro. */
