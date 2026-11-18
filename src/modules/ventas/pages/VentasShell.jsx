@@ -19,6 +19,7 @@ import { AManoPanel } from '../panels/AManoPanel.jsx';
 import { PresupuestosPanel } from '../panels/PresupuestosPanel.jsx';
 import { ClientesPanel } from '../panels/ClientesPanel.jsx';
 import { CobranzasPanel } from '../panels/CobranzasPanel.jsx';
+import { ConciliacionMpPanel } from '../panels/ConciliacionMpPanel.jsx';
 import { CajaPanel } from '../panels/CajaPanel.jsx';
 import { OfertasPanel } from '../panels/OfertasPanel.jsx';
 import { AsesorComercialPanel } from '../panels/AsesorComercialPanel.jsx';
@@ -37,6 +38,7 @@ const PANEL_COMPONENTS = {
   presupuestos: PresupuestosPanel,
   clientes: ClientesPanel,
   cobranzas: CobranzasPanel,
+  conciliacionMp: ConciliacionMpPanel,
   caja: CajaPanel,
   ofertas: OfertasPanel,
   asesorComercial: AsesorComercialPanel,

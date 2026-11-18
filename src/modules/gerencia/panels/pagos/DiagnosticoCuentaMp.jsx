@@ -18,12 +18,8 @@ import { cx } from '@shared/utils/classNames.js';
 import { httpClient } from '@core/services/httpClient.js';
 import { fmtFecha, fmtFechaHora, fmtFechaVenc, money } from '@modules/productos/domain/format.js';
 import { Btn, Table, s } from '@modules/productos/components/ui.jsx';
+import { ESTADO_MP as ESTADO, OPERACION_MP as OPERACION, TIPO_MP as TIPO, nombreMp as nombre } from '@shared/utils/mercadoPago.js';
 
-/* Nombres legibles de lo que contesta Mercado Pago (lo desconocido se muestra tal cual). */
-const TIPO = { account_money: 'Dinero en cuenta', credit_card: 'Tarjeta de crédito', debit_card: 'Tarjeta de débito', prepaid_card: 'Tarjeta prepaga', bank_transfer: 'Transferencia', ticket: 'Efectivo (cupón)', atm: 'Cajero', digital_currency: 'Crédito de Mercado Pago', digital_wallet: 'Billetera digital' };
-const OPERACION = { regular_payment: 'Cobro', money_transfer: 'Transferencia', pos_payment: 'Cobro en local', account_fund: 'Ingreso de dinero', recurring_payment: 'Débito automático', payment_addition: 'Agregado' };
-const ESTADO = { approved: 'Aprobado', rejected: 'Rechazado', refunded: 'Devuelto', cancelled: 'Cancelado', pending: 'Pendiente', in_process: 'En proceso', charged_back: 'Contracargo', in_mediation: 'En reclamo' };
-const nombre = (dic, k) => (k ? dic[k] ?? k : '—');
 const errorMsg = (e) => e?.data?.message || e?.message || 'No se pudo consultar a Mercado Pago.';
 
 export function DiagnosticoCuentaMp() {

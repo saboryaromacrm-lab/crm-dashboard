@@ -19,6 +19,7 @@ import {
 } from './modals/ListaModals.jsx';
 import { OfertaFormModal, BorrarOfertaModal } from './modals/OfertaModals.jsx';
 import { DetalleVentaModal, AnularVentaModal, NotaCreditoModal } from './modals/VentaModals.jsx';
+import { AtarMpModal, ExplicarMpModal } from './modals/ConciliacionMpModals.jsx';
 import { RelevoModal } from './modals/RelevoModal.jsx';
 import { MinimosMarcaModal } from './modals/MinimosMarcaModal.jsx';
 import { PedirFraccionadoModal } from './modals/PedirFraccionadoModal.jsx';
@@ -46,6 +47,9 @@ const REGISTRY = {
   ofertaForm: OfertaFormModal,
   borrarOferta: BorrarOfertaModal,
   detalleVenta: DetalleVentaModal,
+  // Conciliación MP (18/11/2026): atar a mano y explicar lo que queda de un solo lado.
+  atarMp: AtarMpModal,
+  explicarMp: ExplicarMpModal,
   anularVenta: AnularVentaModal,
   notaCredito: NotaCreditoModal,
   verLogica: VerLogicaModal,

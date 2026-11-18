@@ -24,6 +24,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import PercentIcon from '@mui/icons-material/Percent';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import EditNoteIcon from '@mui/icons-material/EditNote';
+import FactCheckIcon from '@mui/icons-material/FactCheck';
 
 /**
  * `permiso`: clave de sección del catálogo — sin ella, el panel no existe para
@@ -50,6 +51,8 @@ export const VENTAS_PANELS = [
   { id: 'presupuestos', label: 'Presupuestos', icon: RequestQuoteIcon, permiso: 'ventas.presupuestos' },
   { id: 'clientes', label: 'Clientes', icon: PeopleAltIcon, permiso: 'ventas.clientes' },
   { id: 'cobranzas', label: 'Cobranzas', icon: PaymentsIcon, permiso: 'ventas.cobranzas' },
+  /* Los cobros electrónicos contra lo que entró a la cuenta de Mercado Pago (18/11/2026). */
+  { id: 'conciliacionMp', label: 'Conciliación MP', icon: FactCheckIcon, permiso: 'ventas.conciliacion_mp' },
   { id: 'ofertas', label: 'Ofertas', icon: LocalOfferIcon, permiso: 'ventas.ofertas' },
   /* La IA especialista en ofertas, combos, fechas, tienda online y por vencer
      (0193, 21/10/2026): el superadmin y los administradores (`ventas.asesor`). */

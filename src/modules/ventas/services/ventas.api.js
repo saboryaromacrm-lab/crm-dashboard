@@ -88,6 +88,13 @@ export const ventasApi = {
   variaciones: (periodos) => httpClient.get(`/ventas-variaciones${qs(periodos)}`),
   /* Lo cobrado con «Cargo extra» escrito a mano (5/11/2026). */
   aMano: (filtros) => httpClient.get(`/ventas-a-mano${qs(filtros)}`),
+  /* Conciliación MP (18/11/2026): cobros del ERP contra lo que entró a Mercado Pago. */
+  conciliacionMp: (filtros) => httpClient.get(`/mercadopago/conciliacion${qs(filtros)}`),
+  conciliacionMpSueltos: (rango) => httpClient.get(`/mercadopago/conciliacion/sueltos${qs(rango)}`),
+  conciliacionMpActualizar: () => httpClient.post('/mercadopago/conciliacion/actualizar', {}),
+  /** `{ cobros: ['v12', 'r3'], pagos: ['123'], motivo }`: los dos lados = atar; uno solo = explicarlo. */
+  conciliacionMpAtar: (dto) => httpClient.post('/mercadopago/conciliacion', dto),
+  conciliacionMpDeshacer: (id) => httpClient.delete(`/mercadopago/conciliacion/${id}`),
   venta: (id) => httpClient.get(`/ventas/${id}`),
   /** El motivo es obligatorio: queda en `anuladoMotivo` junto a quién y cuándo. */
   anularVenta: (id, motivo) => httpClient.post(`/ventas/${id}/anular`, { motivo }),
