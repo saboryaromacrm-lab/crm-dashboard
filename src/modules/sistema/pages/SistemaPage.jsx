@@ -247,14 +247,15 @@ export function SistemaPage() {
     }
   };
 
-  const subirLogo = (file) => {
+  /** `campo`: 'logo' (documentos A4) o 'logoTicket' (rollo, blanco y negro). */
+  const subirLogo = (file, campo = 'logo') => {
     if (!file) return;
     if (file.size > MAX_LOGO_KB * 1024) {
       setAviso({ tipo: 'err', texto: `El logo pesa demasiado: usá una imagen de hasta ${MAX_LOGO_KB} KB.` });
       return;
     }
     const r = new FileReader();
-    r.onload = () => setEmpresa((e) => ({ ...e, logo: String(r.result) }));
+    r.onload = () => setEmpresa((e) => ({ ...e, [campo]: String(r.result) }));
     r.readAsDataURL(file);
   };
 
@@ -431,6 +432,21 @@ export function SistemaPage() {
                     </div>
                   ) : (
                     <div className={s.hint}>Sin logo todavía: los documentos salen solo con el nombre. Subilo cuando lo tengas.</div>
+                  )}
+                </div>
+                <div className={s.field}>
+                  <label>Logo para tickets (blanco y negro)</label>
+                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => subirLogo(e.target.files?.[0], 'logoTicket')} />
+                  {empresa.logoTicket ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                      <img src={empresa.logoTicket} alt="Logo para tickets" style={{ maxHeight: 56, maxWidth: 220, border: '1px solid var(--crm-color-border)', borderRadius: 6, padding: 4, background: '#fff' }} />
+                      <Btn small onClick={() => setEmpresa((x) => ({ ...x, logoTicket: '' }))}>Quitar</Btn>
+                    </div>
+                  ) : (
+                    <div className={s.hint}>
+                      En negro sobre blanco, sin grises: la impresora de tickets no los imprime. Cargado, el ticket sale con el logo
+                      grande y abajo la dirección de la casa central (la de arriba).
+                    </div>
                   )}
                 </div>
                 <div className={s.field}>

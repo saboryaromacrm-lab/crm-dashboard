@@ -143,6 +143,9 @@ export function invalidarConfigImpresion() { _cache = null; }
 const colorSeguro = (v, porDefecto) => (/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(String(v ?? '').trim())
   ? String(v).trim() : porDefecto);
 
+/** «SARMIENTO 1314» → «Sarmiento 1314»: la dirección como se escribe, para el ticket. */
+const comoNombre = (v) => String(v ?? '').trim().toLowerCase().replace(/(^|[\s,(-])(\p{L})/gu, (m, a, l) => a + l.toUpperCase());
+
 /** El logo solo puede ser una imagen embebida. Un `data:text/html` no es un logo. */
 const logoSeguro = (v) => (/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(String(v ?? '').trim())
   ? String(v).trim() : '');
@@ -166,7 +169,7 @@ const CSP_IMPRESION = "default-src 'none'; img-src data: blob: https: http:; "
  * lo escapa quien lo arma, dato por dato. Es la única entrada que queda cruda,
  * y por eso existe el candado 3.
  */
-export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTicket = false }) {
+export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTicket = false, direccionLocal = '' }) {
   const f = FORMATOS[formato] || FORMATOS.a4;
   // La etiqueta no es un documento chico: no lleva membrete, ni pie, ni bordes,
   // y cada una es una página del rollo. Sale por su propio camino.
@@ -178,10 +181,13 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
    * razón social además figura como "Emisor", que es donde la exige la RG 1415;
    * acá está para que el papel diga quién cobra aunque no sea fiscal. */
   const razon = String(empresa.razonSocial || '').trim();
+  /* `direccionLocal`: la del LOCAL que emite (ticket y factura). El membrete no
+   * puede decir otro domicilio que el impreso como del emisor (2/10/2026: la
+   * factura de Fontana decía Sarmiento 1314 arriba y Pringles 808 abajo). */
   const datos = [
     razon && razon !== String(empresa.nombre || '').trim() && esc(razon),
     empresa.cuit && `CUIT ${esc(empresa.cuit)}`,
-    esc(empresa.direccion),
+    esc(direccionLocal || empresa.direccion),
     esc(empresa.telefono),
   ].filter(Boolean).join(' · ');
   // Una sola vez: la vista previa de Sistema rearma el documento en CADA tecla,
@@ -189,6 +195,19 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
   // duplicado en cada pulsación.
   const src = logoSeguro(empresa.logo);
   const logo = src ? `<img class="logo" src="${src}" alt="" />` : '';
+  /*
+   * EL ROLLO CON SU LOGO EN BLANCO Y NEGRO (18/11/2026, pedido del dueño: «como
+   * lo tengo en Coffit»). El logo ocupa el ancho y ya dice el nombre; abajo, la
+   * casa central y, si el papel es de otro local, su dirección (la del emisor).
+   */
+  const srcTicket = f.rollo ? logoSeguro(empresa.logoTicket) : null;
+  const casaCentral = comoNombre(empresa.direccion);
+  const local = comoNombre(direccionLocal);
+  const encabezado = srcTicket
+    ? `<div class="emp empTicket"><img class="logoTicket" src="${srcTicket}" alt="" />`
+      + `<div class="empDatos">${casaCentral ? `${esc(casaCentral)} - Casa central` : ''}`
+      + `${local && local.toLowerCase() !== casaCentral.toLowerCase() ? `<br />Sucursal: ${esc(local)}` : ''}</div></div>`
+    : `<div class="emp">${logo}<div><div class="empNombre">${esc(empresa.nombre || '')}</div>${datos ? `<div class="empDatos">${datos}</div>` : ''}</div></div>`;
   return `<!doctype html><html><head><meta charset="utf-8" />`
     + `<meta http-equiv="Content-Security-Policy" content="${CSP_IMPRESION}" />`
     + `<title>${esc(titulo)}</title><style>
@@ -214,6 +233,9 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
     body { font: ${f.font}/1.45 ${f.rollo ? "'Courier New', monospace" : 'system-ui, sans-serif'}; margin: 0; color: ${f.rollo ? '#000' : '#111'}; ${f.rollo ? 'font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact;' : ''} }
     .emp { display: flex; align-items: center; gap: ${f.rollo ? '6px' : '14px'}; border-bottom: 2px solid ${color}; padding-bottom: ${f.rollo ? '4px' : '10px'}; margin-bottom: ${f.rollo ? '6px' : '14px'}; ${f.rollo ? 'flex-direction: column; text-align: center;' : ''} }
     .logo { max-height: ${f.rollo ? '34px' : '58px'}; max-width: ${f.rollo ? '46mm' : '70mm'}; ${f.rollo ? 'filter: grayscale(1);' : ''} }
+    /* Blanco y negro puro, a lo ancho del papel y sin suavizar: la térmica quema puntos, no grises. */
+    .logoTicket { width: 100%; max-width: 64mm; image-rendering: pixelated; }
+    .empTicket { gap: 4px; }
     .empNombre { font-size: ${f.rollo ? '13px' : '19px'}; font-weight: 800; color: ${color}; }
     .empDatos { font-size: ${f.chica}; color: ${f.rollo ? '#000' : '#555'}; }
     h1 { font-size: ${f.rollo ? '12px' : '17px'}; margin: 0; color: ${color}; }
@@ -324,7 +346,7 @@ export function htmlDocumento({ empresa, formato, titulo, cuerpo, pie = '', esTi
     }
     .caeNro { font-family: 'Courier New', monospace; font-size: ${f.rollo ? '12px' : '15px'}; font-weight: 700; letter-spacing: 0.04em; }
   </style></head><body>
-    <div class="emp">${logo}<div><div class="empNombre">${esc(empresa.nombre || '')}</div>${datos ? `<div class="empDatos">${datos}</div>` : ''}</div></div>
+    ${encabezado}
     ${cuerpo}
     ${pie ? `<div class="nota">${esc(pie)}</div>` : ''}
   </body></html>`;
@@ -1392,10 +1414,7 @@ export async function imprimirDocumento(tipoDoc, { titulo, cuerpo, pie, esTicket
   const { empresa, impresion } = await configImpresion();
   const formato = impresion[tipoDoc] || formatoPorDefecto(tipoDoc);
   const html = htmlDocumento({
-    /* `direccion`: la del LOCAL que emite (ticket y factura). El membrete no
-     * puede decir otro domicilio que el impreso como del emisor (2/10/2026: la
-     * factura de Fontana decía Sarmiento 1314 arriba y Pringles 808 abajo). */
-    empresa: direccion ? { ...empresa, direccion } : empresa, formato, titulo, cuerpo, esTicket,
+    empresa, direccionLocal: direccion, formato, titulo, cuerpo, esTicket,
     pie: pie ?? (esTicket ? impresion.pieTicket : ''),
   });
   /*
