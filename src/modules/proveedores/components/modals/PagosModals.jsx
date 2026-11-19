@@ -10,6 +10,8 @@ import { DatosParaElBanco } from './EcheqsModals.jsx';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '@modules/gastos/components/segundaConfirmacion.jsx';
 import { CuentaPropiaSelect, cuentaDelPago, nombreCuentaElegida, useCuentasPropias } from '@shared/components/CuentaPropiaSelect.jsx';
 import { cubiertoALaCuenta, repartirPago } from '../../domain/pagosSinAplicar.js';
+import { PARTE_VACIA } from '../../domain/partesPago.js';
+import { PartesPago } from '../PartesPago.jsx';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -75,7 +77,7 @@ export function PagoProveedorModal({ proveedor, docs: todosLosDocs = [], presele
   const [medio, setMedio] = useState('transferencia');
   /* De qué cuenta propia sale la transferencia (0207); en un pago mixto, cada parte dice la suya. */
   const [cuentaId, setCuentaId] = useState('');
-  const [formas, setFormas] = useState([{ medio: 'transferencia', importe: '', fecha: '', cuentaId: '' }]);
+  const [formas, setFormas] = useState([PARTE_VACIA]);
   const [fecha, setFecha] = useState(hoyISO());
   const [concepto, setConcepto] = useState('');
   const [referencia, setReferencia] = useState('');
@@ -171,8 +173,6 @@ export function PagoProveedorModal({ proveedor, docs: todosLosDocs = [], presele
   const copiarCuenta = (c) => navigator.clipboard.writeText(c.cbuAlias)
     .then(() => toast(`Copiado: ${c.cbuAlias}`, 'ok'), () => toast('No se pudo copiar al portapapeles.', 'err'));
   const sumaFormas = r2(formas.reduce((a, x) => a + (Number(x.importe) || 0), 0));
-  const cambiarForma = (i, k, v) => setFormas((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
-  const setForma = (i, k) => (e) => cambiarForma(i, k, e.target.value);
   const { cuentas: misCuentas } = useCuentasPropias();
   const nombreCuenta = nombreCuentaElegida(cuentaId, misCuentas);
   const alternar = (d) => setTildados((m) => {
@@ -537,33 +537,7 @@ export function PagoProveedorModal({ proveedor, docs: todosLosDocs = [], presele
 
       {modo === 'mixto' && (
         <>
-          {formas.map((x, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-              <select value={x.medio} onChange={setForma(i, 'medio')} style={{ width: 160 }}>
-                {Object.entries(MEDIOS_PAGO_REAL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-              {x.medio === 'transferencia' && (
-                <CuentaPropiaSelect value={x.cuentaId} onChange={(v) => cambiarForma(i, 'cuentaId', v)} style={{ width: 170 }} />
-              )}
-              <input
-                type="number" min="0" step="0.01" placeholder="Importe"
-                value={x.importe} onChange={setForma(i, 'importe')} style={{ width: 130, textAlign: 'right' }}
-              />
-              {/* Fecha propia de la parte: "una parte la transferí hace 10 días". */}
-              <input type="date" max={hoyISO()} value={x.fecha} onChange={setForma(i, 'fecha')} />
-              {formas.length > 1 && (
-                <Btn small onClick={() => setFormas((xs) => xs.filter((_, j) => j !== i))}>×</Btn>
-              )}
-            </div>
-          ))}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Btn small onClick={() => setFormas((xs) => [...xs, { medio: 'transferencia', importe: '', fecha: '', cuentaId: '' }])}>
-              + Agregar parte
-            </Btn>
-            <span className={s.hint} style={{ margin: 0 }}>
-              Suman {money(sumaFormas)} de {money(importe)}
-            </span>
-          </div>
+          <PartesPago formas={formas} setFormas={setFormas} total={importe} />
         </>
       )}
 

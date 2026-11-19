@@ -105,6 +105,8 @@ export const gastosApi = {
    * el permiso para verla.
    */
   proveedores: (tipo) => httpClient.get(`/proveedores${qs({ tipo })}`),
+  /** Por proveedor de gastos: lo del período, lo que falta pagar, el último gasto y el rubro de siempre. */
+  porProveedor: (filtros) => httpClient.get(`/gastos/por-proveedor${qs(filtros)}`),
   crearProveedor: (data) => httpClient.post('/proveedores', data),
   editarProveedor: (id, data) => httpClient.patch(`/proveedores/${id}`, data),
 

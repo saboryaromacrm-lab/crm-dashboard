@@ -11,6 +11,7 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import CategoryIcon from '@mui/icons-material/Category';
 import InsightsIcon from '@mui/icons-material/Insights';
+import StorefrontIcon from '@mui/icons-material/Storefront';
 
 export const GASTOS_PANELS = [
   // "Pagos en sucursal" ya no es sección propia: es la segunda pestaña de
@@ -20,7 +21,8 @@ export const GASTOS_PANELS = [
   { id: 'cuentas', label: 'Cuentas a pagar', icon: EventBusyIcon, permiso: 'gastos.pagos', badge: 'vencidos' },
   // Gastos fijos y sueldos (0152) se mudaron a Gerencia (3/11/2026; desde el 5/11 con botón propio en su menú).
   { id: 'categorias', label: 'Rubros', icon: CategoryIcon, permiso: 'gastos.categorias' },
-  // El ABM de Proveedores se fue al MÓDULO Proveedores (0068): la ficha única
-  // con lo comercial completo vive allá. Acá quedó solo lo que es de gastos.
+  // Los proveedores que facturan GASTOS (19/11/2026, pedido del dueño): el mismo
+  // padrón del módulo Proveedores, solo los de gastos y con lo que se les debe.
+  { id: 'proveedores', label: 'Proveedores', icon: StorefrontIcon, permiso: 'gastos.proveedores' },
   { id: 'resumen', label: 'Resumen', icon: InsightsIcon, permiso: 'gastos.resumen' },
 ];

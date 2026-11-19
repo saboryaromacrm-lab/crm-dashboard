@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useProveedores } from '../../context/ProveedoresContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { provApi, MEDIOS_PAGO_REAL } from '../../services/proveedores.api.js';
-import { Btn, Di, ImporteCompromiso, ModalShell, money, fmtFecha, s } from '../ui.jsx';
+import { Di, ImporteCompromiso, ModalShell, money, fmtFecha, s } from '../ui.jsx';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '@modules/gastos/components/segundaConfirmacion.jsx';
 import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
+import { PARTE_VACIA } from '../../domain/partesPago.js';
+import { PartesPago } from '../PartesPago.jsx';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -86,7 +88,7 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
   const [medio, setMedio] = useState('transferencia');
   /* De qué cuenta propia sale la transferencia (0207); en partes, cada una dice la suya. */
   const [cuentaId, setCuentaId] = useState('');
-  const [formas, setFormas] = useState([{ medio: 'transferencia', importe: '', fecha: '', cuentaId: '' }]);
+  const [formas, setFormas] = useState([PARTE_VACIA]);
   const [fecha, setFecha] = useState(hoyISO());
   const [referencia, setReferencia] = useState('');
   const [desdeCaja, setDesdeCaja] = useState(true);
@@ -100,8 +102,6 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
   const usaEfectivo = modo === 'simple'
     ? medio === 'efectivo'
     : formas.some((x) => x.medio === 'efectivo' && Number(x.importe) > 0);
-  const cambiarForma = (i, k, v) => setFormas((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
-  const setForma = (i, k) => (e) => cambiarForma(i, k, e.target.value);
   const sumaFormas = r2(formas.reduce((a, x) => a + (Number(x.importe) || 0), 0));
   // Lo que de verdad falta (27/10/2026): si la factura ya se pagó en parte, no la promesa entera.
   const aPagar = compromiso.falta;
@@ -183,31 +183,7 @@ export function PagarCompromisoModal({ compromiso, onChange }) {
         </div>
       ) : (
         <>
-          {formas.map((x, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-              <select value={x.medio} onChange={setForma(i, 'medio')} style={{ width: 160 }}>
-                {Object.entries(MEDIOS_PAGO_REAL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-              {x.medio === 'transferencia' && (
-                <CuentaPropiaSelect value={x.cuentaId} onChange={(v) => cambiarForma(i, 'cuentaId', v)} style={{ width: 170 }} />
-              )}
-              <input
-                type="number" min="0" step="0.01" placeholder="Importe"
-                value={x.importe} onChange={setForma(i, 'importe')} style={{ width: 130, textAlign: 'right' }}
-              />
-              {/* Fecha propia de la parte: "transferí una parte hace 10 días". */}
-              <input type="date" max={hoyISO()} value={x.fecha} onChange={setForma(i, 'fecha')} />
-              {formas.length > 1 && (
-                <Btn small onClick={() => setFormas((xs) => xs.filter((_, j) => j !== i))}>×</Btn>
-              )}
-            </div>
-          ))}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Btn small onClick={() => setFormas((xs) => [...xs, { medio: 'transferencia', importe: '', fecha: '', cuentaId: '' }])}>
-              + Agregar parte
-            </Btn>
-            <span className={s.hint}>Suman {money(sumaFormas)} de {money(aPagar)}</span>
-          </div>
+          <PartesPago formas={formas} setFormas={setFormas} total={aPagar} />
         </>
       )}
 

@@ -822,6 +822,34 @@ export const MANUAL = [
         ],
       },
       {
+        id: 'lista',
+        actualizado: '2026-11-19',
+        titulo: 'La lista: qué está vigente y cuánto se usó',
+        bloques: [
+          {
+            t: 'tabla',
+            cols: ['Filtro', 'Qué muestra'],
+            filas: [
+              ['**Vigentes** (arranca acá)', 'Activas y dentro de sus fechas'],
+              ['**Aplican hoy**', 'Vigentes que hoy descuentan: una de «solo los lunes» un jueves no está'],
+              ['**Vencen en 7 días**', 'Vigentes que terminan en una semana o menos'],
+              ['**Programadas**', 'Activas que todavía no empezaron'],
+              ['**Vencidas**', 'Ya pasó su fecha de fin'],
+              ['**Inactivas**', 'Apagadas a mano'],
+            ],
+          },
+          {
+            t: 'p',
+            texto: 'Cada botón dice **cuántas hay** con los demás filtros puestos: buscador (nombre, producto o marca), **mecánica**, **local** (las que corren ahí; sin locales tildados corre en todos), **origen** (por vencimiento, automáticas de la regla, armadas a mano) y el **orden** (las más nuevas, las que vencen primero, las que más descuento dieron, nombre). Debajo del estado de cada una: «vence en 3 días», «empieza en 5 días», «venció hace 4 días» u «hoy no aplica (solo los lunes)».',
+          },
+          {
+            t: 'p',
+            texto: 'La columna **Uso** dice cuántas unidades se vendieron con la oferta desde que existe, cuánto descuento dio y la última venta. Sale de Métricas: las notas de crédito restan y **se actualiza cada 10 minutos**. Arriba de la tabla, el descuento que dieron todas las que se ven.',
+          },
+          { t: 'ruta', texto: 'Ventas › Ofertas' },
+        ],
+      },
+      {
         id: 'alcance',
         actualizado: '2026-08-15 05:00',
         titulo: 'Alcance y condiciones',
@@ -3243,6 +3271,9 @@ export const MANUAL = [
             t: 'tabla',
             cols: ['Fecha', 'Qué se hizo'],
             filas: [
+              ['**19/11/2026**', '**PAGO MIXTO: «EL RESTO»** (pedido del dueño). Al pagarle a un proveedor (o pagar un compromiso) partido en varios medios, **«+ Agregar parte» ya trae lo que falta** para llegar al total, y una parte vacía (o la última) tiene el botón **«El resto»**, que la completa con la diferencia. Abajo dice cuánto **falta**, si **sobra** o si **cierra justo**. Nadie tiene que restar.'],
+              ['**19/11/2026**', '**VENTAS › OFERTAS: MÁS FILTROS E INFORMACIÓN** (pedido del dueño). La lista arranca en las **vigentes** y tiene botones con la cantidad de cada estado: vigentes, aplican hoy, vencen en 7 días, programadas, vencidas, inactivas y todas. Se filtra por **mecánica**, **local**, **origen** y con un buscador, y se ordena por las más nuevas, las que vencen primero, las que más descuento dieron o nombre. Cada oferta dice cuándo vence o empieza (o si hoy no aplica por el día) y una columna **Uso** muestra las unidades vendidas con ella, el descuento que dio y la última venta.'],
+              ['**19/11/2026**', '**GASTOS › PROVEEDORES** (pedido del dueño). Una sección con **solo los proveedores de gastos** (servicios, fletes, honorarios, alquiler): lo que se les gastó en el período (con fechas desde/hasta), cuántos comprobantes, **lo que falta pagarles** (de cualquier fecha), el último gasto y el rubro de siempre. Buscador por nombre, CUIT o rubro, y orden por lo gastado, lo que falta pagar, el último gasto o nombre. Tocar uno abre su cuenta corriente; «Editar» y «+ Nuevo proveedor» usan la misma ficha de Proveedores. Un proveedor de mercadería que además factura gastos aparece marcado «También mercadería».'],
               ['**18/11/2026**', '**CAJA: EL ARQUEO DEL DÍA** (pedido del dueño, migración 0234). En un local con días de cierre (por ejemplo los Express, que cierran los miércoles), **los días que no son de cierre la caja no se cierra**: a la noche se toca **«Arqueo del día»**, se cuenta todo el cajón billete por billete y firma quien cuenta con su contraseña (igual que el cierre). Queda registrado lo contado, lo que tenía que haber y la diferencia (a ciegas para la cajera, como el cierre), **el turno sigue abierto y la plata queda en la caja**. El **sobre sale solo el día de cierre**, con todo lo de esos días. Ese día no se puede cerrar la caja salvo un jefe («Cerrar antes»). Si la diferencia de un arqueo pasa del límite de «Cajas a controlar», la caja queda ahí sola. En **Cash Flow › Planilla del día** cada día muestra el arqueo de esa noche (hora, quién, cuánto y si faltó o sobró). Los locales que cierran todos los días siguen igual.'],
               ['**18/11/2026**', '**CLIENTES › COMPROBANTES**: cada comprobante se abre (renglones, cómo se pagó, reimprimir; «Volver» trae la ficha) y suma la columna **Forma de pago**. El **saldo** aparece solo en los de cuenta corriente vigentes, menos lo cobrado y las notas de crédito (antes los de contado figuraban debiendo entero).'],
               ['**18/11/2026**', '**VENTAS › CONCILIACIÓN MP** (pedido del dueño, migración 0232; permiso «Conciliación MP»). Controla que lo cobrado por **QR, tarjeta (Point) o transferencia** —en ventas y en recibos de cuenta corriente— haya entrado a la cuenta de Mercado Pago. El servidor baja los pagos de Mercado Pago **cada 5 minutos** (también con «Actualizar ahora»), desde el 1/11/2026, y **ata solo lo seguro**: el QR del ERP por su número de pago, y lo demás por medio, importe exacto y hora (±20 min en el local; una transferencia, de 3 días antes a 1 día después de la venta). Si hay tantos cobros como pagos iguales, se atan en orden de hora; si no, nadie sabe cuál falta y queda para confirmar. Quedan afuera los rechazados, los movimientos entre reservas de la misma cuenta y lo que pagamos nosotros. **Calendario** del mes con un punto por día: verde cerró, amarillo para mirar, rojo falta plata (con cuánto). Arriba lo **vendido electrónico**, lo que **entró a Mercado Pago** y lo que **falta**, por local y por medio (la comisión y el neto, solo jefes). Tres listas: **Vendido y no entró** («Buscar el pago» o «No entró», con el motivo), **Para confirmar** (el pago más parecido: varios posibles, mismo importe con otro medio, o misma hora con otro importe; «Es este» u «Otro…») y **Entró y no tiene venta** («Buscar la venta» o «No es venta»: aporte, devolución de un proveedor…). Atar a mano admite **varios de cada lado** (una venta cobrada con dos tarjetas, dos tickets en un solo pago); si no suman lo mismo, hay que decir por qué. **Avisos**: un pago atado que Mercado Pago devolvió o tiene en reclamo, o una venta anulada con la plata adentro. De un día se ve **lo ya atado**, con quién y por qué, y se puede **deshacer** (ese pago ya no lo vuelve a atar el automático). De quien transfiere se guarda solo el nombre.'],

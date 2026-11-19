@@ -161,6 +161,8 @@ export const ventasApi = {
 
   /* ---- Ofertas ---- */
   ofertas: () => httpClient.get('/ofertas'),
+  /** Cuánto se usó cada oferta desde que existe (unidades, descuento, última venta): solo quien administra ofertas. */
+  ofertasUso: () => httpClient.get('/ofertas/uso'),
   crearOferta: (o) => httpClient.post('/ofertas', o),
   /*
    * Puente con el vigía de fechas (Almacén › Vencimientos). Vive acá porque el

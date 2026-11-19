@@ -13,14 +13,16 @@ import { Btn, s } from '../components/ui.jsx';
 import { GastosPanel } from '../panels/GastosPanel.jsx';
 import { CuentasAPagarPanel } from '../panels/CuentasAPagarPanel.jsx';
 import { CategoriasPanel } from '../panels/CategoriasPanel.jsx';
+import { ProveedoresPanel } from '../panels/ProveedoresPanel.jsx';
 import { ResumenPanel } from '../panels/ResumenPanel.jsx';
 
-/** Los `id` coinciden con `GASTOS_PANELS` (config/gastos.config.js). El ABM
- *  de proveedores vive en el módulo Proveedores desde 0068. */
+/** Los `id` coinciden con `GASTOS_PANELS` (config/gastos.config.js). La ficha
+ *  completa del proveedor vive en el módulo Proveedores (0068); acá, los de gastos. */
 const PANEL_COMPONENTS = {
   gastos: GastosPanel,
   cuentas: CuentasAPagarPanel,
   categorias: CategoriasPanel,
+  proveedores: ProveedoresPanel,
   resumen: ResumenPanel,
 };
 

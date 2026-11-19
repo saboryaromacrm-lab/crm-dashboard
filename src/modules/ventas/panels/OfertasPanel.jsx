@@ -12,6 +12,13 @@
  * QUIÉN LA CREÓ Y POR VENCIMIENTO (0187, 20/10/2026, pedido del dueño): una
  * columna con quién la creó y cuándo, y un filtro por las armadas para rematar
  * mercadería por vencer (`porVencer`).
+ *
+ * MÁS FILTROS E INFORMACIÓN (19/11/2026, pedido del dueño): arranca en las
+ * VIGENTES, con los estados contados (aplican hoy, vencen en 7 días,
+ * programadas, vencidas, inactivas); filtros por mecánica, local, origen y un
+ * buscador; cuándo vence o empieza cada una, si hoy aplica, y cuánto se usó
+ * desde que existe (unidades, descuento, última venta). Las reglas, en
+ * `domain/ofertasLista.js` (con pruebas).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -19,14 +26,13 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
 import { TIPOS_OFERTA, MEDIOS_PAGO } from '../domain/constants.js';
-import { describirOferta, estadoOferta } from '../domain/ofertas.js';
-import { PanelHead, Table, Btn, usePaginado, money, s } from '../components/ui.jsx';
+import { describirOferta } from '../domain/ofertas.js';
+import { FILTROS_ESTADO, FILTROS_ORIGEN, ORDENES_OFERTA, correEnSucursal, cuandoDias, situacionOferta, textoSituacion } from '../domain/ofertasLista.js';
+import { PanelHead, Table, Btn, usePaginado, money, num, s } from '../components/ui.jsx';
 
-/** El filtro por vencimiento: todas, solo las por vencimiento o las demás. */
-const FILTRO_VENC = [['', 'Todas las ofertas'], ['si', 'Por vencimiento'], ['auto', 'Automáticas (regla de vencimiento)'], ['no', 'Sin las de vencimiento']];
-/** El filtro de arriba: `auto` son las que arma y escala la regla del rango (0188). */
-const pasaFiltroVenc = (o, f) => !f || (f === 'auto' ? o.autoVencimiento : o.porVencer === (f === 'si'));
 const fecha = (iso) => new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric', year: '2-digit' });
+/** Un día 'AAAA-MM-DD' (la última venta) en corto, sin correrse por el huso. */
+const fechaDia = (dia) => (dia ? `${Number(dia.slice(8, 10))}/${Number(dia.slice(5, 7))}/${dia.slice(2, 4)}` : '');
 
 const PILL_ESTADO = {
   vigente: 'est-recibida',
@@ -46,6 +52,8 @@ export function OfertasPanel() {
    * vencida se apaga desde esta pantalla, no desde el depósito.
    */
   const [venc, setVenc] = useState(null);
+  /** Cuánto se usó cada oferta (por id). Accesorio: sin él, la columna dice «—». */
+  const [uso, setUso] = useState(new Map());
 
   const cargar = useCallback(async () => {
     try {
@@ -53,6 +61,7 @@ export function OfertasPanel() {
     } catch (e) { toast(errorMsg(e), 'err'); }
     // El aviso es accesorio: si no se puede leer, la pantalla funciona igual.
     ventasApi.vencimientosEnOferta().then(setVenc).catch(() => setVenc(null));
+    ventasApi.ofertasUso().then((l) => setUso(new Map(l.map((u) => [u.ofertaId, u])))).catch(() => setUso(new Map()));
   }, [toast]);
 
   useEffect(() => { cargar(); }, [cargar]);
@@ -112,7 +121,7 @@ export function OfertasPanel() {
     if (o.desde || o.hasta) {
       parts.push(`${o.desde ? new Date(o.desde).toLocaleDateString() : '…'} → ${o.hasta ? new Date(o.hasta).toLocaleDateString() : '…'}`);
     }
-    if (o.dias) parts.push('días puntuales');
+    if (cuandoDias(o.dias)) parts.push(cuandoDias(o.dias));
     if (o.sucursales) {
       const nombres = o.sucursales.split(',').map((id) => sucursales.find((x) => x.id === Number(id))?.nombre).filter(Boolean);
       if (nombres.length) parts.push(nombres.join(' / '));
@@ -159,13 +168,36 @@ export function OfertasPanel() {
     return m;
   }, [venc]);
 
-  const [porVencer, setPorVencer] = useState('');
-  const filtradas = useMemo(
-    () => (ofertas ?? []).filter((o) => pasaFiltroVenc(o, porVencer)),
-    [ofertas, porVencer],
-  );
-  const cuantas = (f) => (ofertas ?? []).filter((o) => pasaFiltroVenc(o, f)).length;
-  const pag = usePaginado(filtradas, 'ofertas');
+  /* Los filtros. Arranca en las vigentes: es lo que se mira todos los días. */
+  const [estado, setEstado] = useState('vigentes');
+  const [origen, setOrigen] = useState('');
+  const [tipo, setTipo] = useState('');
+  const [sucursalId, setSucursalId] = useState('');
+  const [q, setQ] = useState('');
+  const [orden, setOrden] = useState('recientes');
+
+  /** Cada oferta con su situación de hoy y su uso, una vez por carga. */
+  const conSituacion = useMemo(() => {
+    const ahora = new Date();
+    return (ofertas ?? []).map((o) => ({ ...o, sit: situacionOferta(o, ahora), uso: uso.get(o.id) ?? null }));
+  }, [ofertas, uso]);
+  /* Todos los filtros menos el de estado: sobre esto se cuentan los estados, así los números cierran con lo que se ve. */
+  const sinEstado = useMemo(() => {
+    const ql = q.trim().toLowerCase();
+    const pasaOrigen = FILTROS_ORIGEN.find(([k]) => k === origen)[2];
+    return conSituacion.filter((o) => pasaOrigen(o) && (!tipo || o.tipo === tipo) && correEnSucursal(o, sucursalId)
+      && (!ql || `${o.nombre} ${alcanceLegible(o)}`.toLowerCase().includes(ql)));
+    // alcanceLegible depende del catálogo (universo), que entra por `universo`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conSituacion, origen, tipo, sucursalId, q, universo]);
+  const cuantas = useMemo(() => Object.fromEntries(FILTROS_ESTADO.map(([k, , f]) => [k, sinEstado.filter((o) => f(o.sit)).length])), [sinEstado]);
+  const filtradas = useMemo(() => {
+    const f = FILTROS_ESTADO.find(([k]) => k === estado)[2];
+    return sinEstado.filter((o) => f(o.sit)).sort(ORDENES_OFERTA[orden].fn);
+  }, [sinEstado, estado, orden]);
+  const descuentoDado = filtradas.reduce((a, o) => a + (o.uso?.descuento ?? 0), 0);
+  const pag = usePaginado(filtradas, 'ofertas', `${estado}|${origen}|${tipo}|${sucursalId}|${q}|${orden}`);
+  const hayFiltros = origen || tipo || sucursalId || q;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
@@ -199,27 +231,51 @@ export function OfertasPanel() {
         </div>
       )}
 
+      {/* Los estados, contados: tocar uno filtra. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }} role="group" aria-label="Estado de las ofertas">
+        {FILTROS_ESTADO.map(([k, label]) => (
+          <Btn key={k} small variant={estado === k ? 'btn-primary' : 'btn-ghost'} aria-pressed={estado === k} onClick={() => setEstado(k)}>
+            {label} ({cuantas[k] ?? 0})
+          </Btn>
+        ))}
+      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-        <select
-          id="ofertas-filtro-vencer" aria-label="Filtrar por vencimiento" className={s['select-inline']}
-          value={porVencer} onChange={(e) => setPorVencer(e.target.value)}
-        >
-          {FILTRO_VENC.map(([v, label]) => <option key={v} value={v}>{v === 'si' || v === 'auto' ? `${label} (${cuantas(v)})` : label}</option>)}
+        <input
+          type="search" placeholder="Buscar por nombre, producto o marca…" value={q} onChange={(e) => setQ(e.target.value)}
+          aria-label="Buscar oferta" style={{ flex: '1 1 220px', maxWidth: 320 }}
+        />
+        <select aria-label="Mecánica" className={s['select-inline']} value={tipo} onChange={(e) => setTipo(e.target.value)}>
+          <option value="">Todas las mecánicas</option>
+          {Object.entries(TIPOS_OFERTA).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
         </select>
-        {porVencer && <span className={s.hint} style={{ margin: 0 }}>{filtradas.length} de {(ofertas ?? []).length}</span>}
+        <select aria-label="Local" className={s['select-inline']} value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
+          <option value="">Todos los locales</option>
+          {(sucursales ?? []).filter((x) => x.activa !== false).map((x) => <option key={x.id} value={x.id}>Corren en {x.nombre}</option>)}
+        </select>
+        <select id="ofertas-filtro-vencer" aria-label="Origen" className={s['select-inline']} value={origen} onChange={(e) => setOrigen(e.target.value)}>
+          {FILTROS_ORIGEN.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+        <select aria-label="Ordenar" className={s['select-inline']} value={orden} onChange={(e) => setOrden(e.target.value)}>
+          {Object.entries(ORDENES_OFERTA).map(([k, o]) => <option key={k} value={k}>Orden: {o.label.toLowerCase()}</option>)}
+        </select>
+        {hayFiltros && <Btn small onClick={() => { setOrigen(''); setTipo(''); setSucursalId(''); setQ(''); }}>Limpiar filtros</Btn>}
+      </div>
+      <div className={s.hint} style={{ margin: 0 }}>
+        {filtradas.length} oferta{filtradas.length === 1 ? '' : 's'}
+        {descuentoDado > 0.009 && <> · dieron <strong>{money(descuentoDado)}</strong> de descuento desde que existen (las notas de crédito restan; se actualiza cada 10 minutos)</>}
       </div>
 
       <Table
         cols={[
           { h: 'Oferta' }, { h: 'Mecánica' }, { h: 'Alcanza a' }, { h: 'Condiciones' },
-          { h: 'Creada por' }, { h: 'Estado' }, { h: 'Acciones' },
+          { h: 'Uso' }, { h: 'Creada por' }, { h: 'Estado' }, { h: 'Acciones' },
         ]}
         empty={ofertas === null ? 'Cargando…'
-          : porVencer ? 'Ninguna oferta con ese filtro.' : 'Sin ofertas todavía. Creá la primera.'}
+          : (ofertas ?? []).length ? 'Ninguna oferta con esos filtros.' : 'Sin ofertas todavía. Creá la primera.'}
         pag={pag}
       >
         {pag.visibles.map((o) => {
-          const est = estadoOferta(o);
+          const est = o.sit.estado;
           return (
             <tr key={o.id} style={{ opacity: est.id === 'vigente' || est.id === 'programada' ? 1 : 0.55 }}>
               <td>
@@ -250,11 +306,23 @@ export function OfertasPanel() {
               </td>
               <td style={{ maxWidth: 260 }}>{alcanceLegible(o)}</td>
               <td style={{ maxWidth: 220 }}>{condiciones(o)}</td>
+              <td style={{ whiteSpace: 'nowrap' }}>
+                {o.uso?.renglones ? (
+                  <>
+                    <strong>{num(o.uso.unidades, 3)}</strong> vendidas
+                    <div className={s.muted} style={{ fontSize: 12 }}>{money(o.uso.descuento)} de descuento</div>
+                    <div className={s.muted} style={{ fontSize: 12 }}>última: {fechaDia(o.uso.ultimo)}</div>
+                  </>
+                ) : <span className={s.muted}>Sin ventas</span>}
+              </td>
               <td>
                 {o.creadoPorNombre || <span className={s.muted} title="Creada antes de que se registrara quién la crea">Sin dato</span>}
                 {o.creadoEn && <div className={s.muted} style={{ fontSize: 12 }}>{fecha(o.creadoEn)}</div>}
               </td>
-              <td><span className={cx(s.pill, s[PILL_ESTADO[est.id]])}>{est.label}</span></td>
+              <td>
+                <span className={cx(s.pill, s[PILL_ESTADO[est.id]])}>{est.label}</span>
+                <div className={s.muted} style={{ fontSize: 12, maxWidth: 160 }}>{textoSituacion(o, o.sit)}</div>
+              </td>
               <td>
                 <div className={s['row-actions']}>
                   <Btn small onClick={() => abrirForm(o)}>Editar</Btn>
