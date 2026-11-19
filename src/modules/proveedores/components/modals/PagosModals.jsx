@@ -12,6 +12,7 @@ import { CuentaPropiaSelect, cuentaDelPago, nombreCuentaElegida, useCuentasPropi
 import { cubiertoALaCuenta, repartirPago } from '../../domain/pagosSinAplicar.js';
 import { PARTE_VACIA } from '../../domain/partesPago.js';
 import { PartesPago } from '../PartesPago.jsx';
+import { CAMBIO as EDIT_CAMBIO, cuerpoEdicion, formDesdePago, huboCambios } from '../../domain/editarPago.js';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -710,6 +711,176 @@ export function AnularPagoModal({ pagoId, importe, onChange }) {
         <label>Motivo <span className={s.req}>*</span></label>
         <input autoFocus value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej: se cargó dos veces" />
       </div>
+    </ModalShell>
+  );
+}
+
+/**
+ * MODIFICAR EL PAGO (19/11/2026, pedido del dueño desde el estado de cuenta:
+ * «permitime poder modificar estos registros»). Fecha, importe, cómo se pagó
+ * (un medio con su cuenta, mixto o efectivo por transferencia), referencia,
+ * concepto y observaciones. Lo que no se puede cambiar llega de la API con su
+ * porqué (salió del Cash Flow, de un turno ya cerrado, de una cuenta
+ * disponible…) y se muestra antes de que alguien lo intente. Cada cambio queda
+ * en la auditoría del proveedor.
+ */
+export function EditarPagoModal({ pagoId, onChange }) {
+  const { act, closeModal, toast } = useProveedores();
+  const { data, error, loading } = useResource(`editar-pago:${pagoId}`, () => provApi.edicionPago(pagoId));
+  const [form, setForm] = useState(null);
+  const [inicial, setInicial] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  if (data && !inicial) {
+    const f = formDesdePago(data.pago, data.formas);
+    setInicial(f);
+    setForm(f);
+  }
+  const poner = (k) => (v) => setForm((f) => ({ ...f, [k]: v?.target ? v.target.value : v }));
+  const setFormas = (fn) => setForm((f) => ({ ...f, formas: typeof fn === 'function' ? fn(f.formas) : fn }));
+
+  const pago = data?.pago;
+  const bloqueos = data?.bloqueos ?? {};
+  const sinPlata = !!bloqueos.plata;
+  const sinFecha = !!bloqueos.fecha;
+  const importe = r2(form?.importe);
+  const aplicado = r2(pago?.aplicado);
+  const libre = data?.modoCuenta === 'libre';
+  const usaEfectivo = form && (form.modo === 'mixto'
+    ? form.formas.some((x) => x.medio === 'efectivo' && Number(x.importe) > 0)
+    : form.medio === 'efectivo' || form.medio === EDIT_CAMBIO);
+
+  const guardar = async () => {
+    if (!form) return;
+    if (!huboCambios(inicial, form)) { toast('No cambiaste nada.', 'err'); return; }
+    if (!form.fecha) { toast('Poné la fecha del pago.', 'err'); return; }
+    if (!(importe > 0)) { toast('Poné el importe del pago.', 'err'); return; }
+    if (form.modo === 'mixto') {
+      const partes = form.formas.filter((x) => Number(x.importe) > 0);
+      if (partes.length < 2) { toast('Un pago mixto tiene al menos dos partes con importe.', 'err'); return; }
+      const suma = r2(partes.reduce((a, x) => a + Number(x.importe), 0));
+      if (Math.abs(suma - importe) > EPS) { toast(`Las partes suman ${money(suma)} y el pago es de ${money(importe)}: tienen que coincidir.`, 'err'); return; }
+    }
+    if (form.modo === 'simple' && form.medio === EDIT_CAMBIO && !form.cambioPor.trim()) {
+      toast('Escribí quién hizo la transferencia (a quién le diste el efectivo).', 'err'); return;
+    }
+    if (!libre && importe < aplicado - EPS) {
+      toast(`Tiene ${money(aplicado)} aplicados a facturas: no puede quedar en menos. Primero quitá esas aplicaciones.`, 'err'); return;
+    }
+    setGuardando(true);
+    const ok = await act(provApi.editarPago(pagoId, cuerpoEdicion(form)), 'Pago modificado.');
+    setGuardando(false);
+    if (ok) onChange?.();
+  };
+
+  return (
+    <ModalShell
+      title={`Modificar el pago #${pagoId}`}
+      subtitle={pago ? `${pago.proveedorNombre} · registrado por ${pago.usuarioNombre || '—'}` : undefined}
+      wide
+      onClose={closeModal}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+        { texto: guardando ? 'Guardando…' : 'Guardar cambios', clase: 'btn-primary', onClick: guardar, disabled: !form || guardando },
+      ]}
+    >
+      {loading && !data && <div className={s.hint}>Cargando el pago…</div>}
+      {error && <div className={cx(s.callout, s.warn)}>{error}</div>}
+      {form && (
+        <>
+          {(sinPlata || sinFecha) && (
+            <div className={cx(s.callout, s.warn)}>
+              {sinPlata && sinFecha ? <>Solo se puede corregir el papel (referencia, concepto y observaciones). </>
+                : sinPlata ? <>El importe y cómo se pagó no se pueden cambiar. </> : null}
+              {bloqueos.plata || bloqueos.fecha}
+            </div>
+          )}
+          {!sinPlata && aplicado > EPS && (
+            <div className={s.hint} style={{ margin: '0 0 10px' }}>
+              Tiene <strong>{money(aplicado)}</strong> aplicados a {pago.imputaciones?.length === 1 ? pago.imputaciones[0].etiqueta : `${pago.imputaciones?.length ?? 0} documentos`}.
+              {libre
+                ? ' Si lo bajás de eso, se vuelve a repartir solo (cuenta libre: lo más viejo primero).'
+                : ' No puede quedar en menos que eso (la cuenta es «por facturas»): para bajarlo, primero quitá las aplicaciones desde la factura.'}
+            </div>
+          )}
+          <div className={s['form-grid']}>
+            <div className={s.field}>
+              <label>Fecha del pago</label>
+              <input type="date" max={hoyISO()} value={form.fecha} onChange={poner('fecha')} disabled={sinFecha} />
+            </div>
+            <div className={s.field}>
+              <label>Importe</label>
+              <input type="number" min="0" step="0.01" value={form.importe} onChange={poner('importe')} disabled={sinPlata} style={{ textAlign: 'right' }} />
+            </div>
+            <div className={s.field}>
+              <label>¿Cómo salió la plata?</label>
+              <select value={form.modo} onChange={poner('modo')} disabled={sinPlata}>
+                <option value="simple">Un solo medio</option>
+                <option value="mixto">Mixto (se partió en varios medios)</option>
+              </select>
+            </div>
+            {form.modo === 'simple' && (
+              <div className={s.field}>
+                <label>Medio real</label>
+                <select value={form.medio} onChange={poner('medio')} disabled={sinPlata}>
+                  {Object.entries(MEDIOS_PAGO_REAL)
+                    .filter(([k]) => k !== 'echeq' || pago.medio === 'echeq')
+                    .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  <option value={EDIT_CAMBIO}>Efectivo por transferencia</option>
+                  {pago.medio === 'pago_coffit' && <option value="pago_coffit">Lo pagó Coffit (con su plata)</option>}
+                </select>
+              </div>
+            )}
+            {form.modo === 'simple' && form.medio === 'transferencia' && (
+              <div className={s.field}>
+                <label>¿De qué cuenta salió?</label>
+                {sinPlata ? <input value={pago.cuentaPropiaNombre || '—'} disabled /> : <CuentaPropiaSelect value={form.cuentaId} onChange={poner('cuentaId')} />}
+              </div>
+            )}
+            {form.modo === 'simple' && form.medio === EDIT_CAMBIO && (
+              <div className={s.field}>
+                <label>¿Quién hizo la transferencia? <span className={s.req}>*</span></label>
+                <input value={form.cambioPor} maxLength={80} onChange={poner('cambioPor')} disabled={sinPlata} placeholder="A quién le diste el efectivo" />
+              </div>
+            )}
+          </div>
+          {form.modo === 'mixto' && (sinPlata
+            ? <div className={s.hint}>{data.formas.map((x) => `${MEDIOS_PAGO_REAL[x.medio] ?? x.medio}${x.cuenta ? ` desde ${x.cuenta}` : ''} ${money(x.importe)}`).join(' + ')}</div>
+            : <PartesPago formas={form.formas} setFormas={setFormas} total={importe} />)}
+          {!sinPlata && usaEfectivo && (
+            <div className={s.hint} style={{ margin: '0 0 10px' }}>
+              {pago.cajaMovimientoId
+                ? <>Salió del turno de caja #{pago.cajaSesionId} (todavía abierto): el egreso del cajón se ajusta al efectivo nuevo.</>
+                : <>Es un registro: no toca ninguna caja (ni la de los locales ni el Cash Flow).</>}
+            </div>
+          )}
+          {!sinPlata && !usaEfectivo && pago.cajaMovimientoId && (
+            <div className={s.hint} style={{ margin: '0 0 10px' }}>
+              Salió del turno de caja #{pago.cajaSesionId}: sin efectivo, ese egreso se borra del cajón.
+            </div>
+          )}
+          <div className={s['form-grid']}>
+            <div className={s.field}>
+              <label>Concepto</label>
+              <input value={form.concepto} maxLength={300} onChange={poner('concepto')} />
+            </div>
+            <div className={s.field}>
+              <label>Referencia</label>
+              <input value={form.referencia} maxLength={200} onChange={poner('referencia')} placeholder="N° de transferencia, quién recibió… (opcional)" />
+            </div>
+          </div>
+          <div className={s.field}>
+            <label>Observaciones</label>
+            <textarea rows={2} value={form.observaciones} maxLength={1000} onChange={poner('observaciones')} />
+          </div>
+          <div className={s.field}>
+            <label>¿Por qué lo corregís? (opcional)</label>
+            <input value={form.motivo} maxLength={200} onChange={poner('motivo')} placeholder="Ej: era transferencia, no efectivo" />
+            <div className={s.hint} style={{ margin: '6px 0 0' }}>
+              Cada cambio queda en la auditoría del proveedor (antes → después, quién y cuándo).
+            </div>
+          </div>
+        </>
+      )}
     </ModalShell>
   );
 }

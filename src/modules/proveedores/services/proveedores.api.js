@@ -120,6 +120,9 @@ export const provApi = {
   /** Los pagos con filtros (`cambio: true` = efectivo por transferencia, 0175). */
   pagos: (filtros) => httpClient.get(`/pagos-proveedor${qs(filtros)}`),
   anularPago: (id, motivo) => httpClient.post(`/pagos-proveedor/${id}/anular`, { motivo }),
+  /** Modificar un pago (19/11/2026): qué se puede cambiar, y guardar el cambio. */
+  edicionPago: (id) => httpClient.get(`/pagos-proveedor/${id}/edicion`),
+  editarPago: (id, data) => httpClient.patch(`/pagos-proveedor/${id}`, data),
   /** Aplicar lo que le queda a un pago ya registrado a sus facturas (17/11/2026). */
   aplicarPago: (id, imputaciones) => httpClient.post(`/pagos-proveedor/${id}/imputar`, { imputaciones }),
   /**

@@ -7,7 +7,7 @@ import { useResource } from '../hooks/useResource.js';
 import { provApi, CONDICIONES_COMPRA, MEDIOS_HABITUALES, MEDIOS_PAGO_REAL } from '../services/proveedores.api.js';
 import {
   Btn, Di, EcheqCubre, EstadoEcheqPill, ImporteCompromiso, PanelHead, Pill, Saldo, Stat, Table, VencePill,
-  fmtFecha, money, s, usePaginado,
+  fmtFecha, fmtFechaHora, money, s, usePaginado,
 } from '../components/ui.jsx';
 
 /**
@@ -474,6 +474,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
                       m.cajaSesionId ? `turno #${m.cajaSesionId}` : 'no salió de caja',
                       m.referencia ? `ref. ${m.referencia}` : null,
                       m.sinAplicar > EPS ? `${money(m.sinAplicar)} sin aplicar` : null,
+                      m.modificado ? `modificado${m.modificado.usuario ? ` por ${m.modificado.usuario}` : ''} el ${fmtFechaHora(m.modificado.fecha)}` : null,
                     ].filter(Boolean).join(' · ')}
                   </div>
                 )}
@@ -495,6 +496,10 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
                 {/* El pago que quedó sin aplicar se ata a sus facturas (17/11/2026): si no, siguen «debiendo». */}
                 {m.kind === 'pago' && !m.agrupado && !m.esFlete && m.sinAplicar > EPS && (
                   <Btn small onClick={() => openModal('aplicarPago', { pago: m, docs, onChange: refrescar })}>Aplicar a facturas</Btn>
+                )}
+                {/* Modificar el pago (19/11/2026): fecha, importe, medio y papel; la API dice qué no se puede y por qué. */}
+                {m.kind === 'pago' && !m.agrupado && esJefe && (
+                  <Btn small onClick={() => openModal('editarPago', { pagoId: m.id, onChange: refrescar })}>Modificar</Btn>
                 )}
                 {/* Anular solo si no tiene NADA aplicado: con imputaciones vivas
                     la API lo rechaza, y ofrecerlo sería un botón roto. */}

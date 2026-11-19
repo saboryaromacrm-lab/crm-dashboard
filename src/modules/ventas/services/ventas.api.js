@@ -88,6 +88,8 @@ export const ventasApi = {
   variaciones: (periodos) => httpClient.get(`/ventas-variaciones${qs(periodos)}`),
   /* Lo cobrado con «Cargo extra» escrito a mano (5/11/2026). */
   aMano: (filtros) => httpClient.get(`/ventas-a-mano${qs(filtros)}`),
+  /** Ventas › Notas de crédito: todas, detalladas (19/11/2026). */
+  notasCredito: (filtros) => httpClient.get(`/ventas/notas-credito${qs(filtros)}`),
   /* Conciliación MP (18/11/2026): cobros del ERP contra lo que entró a Mercado Pago. */
   conciliacionMp: (filtros) => httpClient.get(`/mercadopago/conciliacion${qs(filtros)}`),
   conciliacionMpSueltos: (rango) => httpClient.get(`/mercadopago/conciliacion/sueltos${qs(rango)}`),

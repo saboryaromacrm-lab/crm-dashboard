@@ -724,45 +724,57 @@ function Ticket({ renglones, dispatch, permitirStockNegativo, descuentoMax, sinD
  * Tabla de ventas abiertas (pantalla principal)
  * ==================================================================== */
 
-function VentasAbiertas({ abiertas, catalogo, onAbrir, onNueva, cargando }) {
-  const { getCliente, usuarios, openModal } = useVentas();
+/** Las columnas que comparten la lista propia y la de las otras sucursales. */
+const COLS_ABIERTA = [
+  { h: 'Cliente' }, { h: 'Forma de pago' }, { h: 'Total', num: true },
+  { h: 'Último producto' }, { h: 'Vendedor' }, { h: 'Abierta' },
+];
 
-  const nombreUsuario = (id) => usuarios.find((u) => u.id === id)?.nombre || '—';
+/** Las celdas de `COLS_ABIERTA` para un ticket abierto. */
+function CeldasAbierta({ v, catalogo }) {
+  const { getCliente, usuarios } = useVentas();
+  const ultimo = ultimoArticulo(v, catalogo);
+  const cliente = getCliente(v.clienteId);
+  return (
+    <>
+      <td>
+        <strong>{cliente?.nombre || `Cliente #${v.clienteId}`}</strong>
+        {cliente && <div className={s.hint} style={{ margin: 0 }}>{CONDICIONES_IVA[cliente.condicionIva]?.corto}</div>}
+      </td>
+      <td>{CONDICIONES_PAGO[v.condicionPago] || v.condicionPago}</td>
+      <td className={s.num}>{cliente?.retiroSinCosto ? <span className={s.muted}>retiro sin costo</span> : <strong>{money(v.total)}</strong>}</td>
+      <td>
+        {ultimo
+          ? <>
+            {ultimo.nombre}
+            <div className={s.hint} style={{ margin: 0 }}>× {num(ultimo.cantidad)} {ultimo.unidad}</div>
+          </>
+          : <span className={s.muted}>Ticket vacío</span>}
+      </td>
+      <td>{usuarios.find((u) => u.id === v.usuarioId)?.nombre || '—'}</td>
+      <td>{fmtFechaHora(v.fecha)}</td>
+    </>
+  );
+}
+
+function VentasAbiertas({ abiertas, catalogo, onAbrir, onNueva, cargando, sucursalId }) {
+  const { getCliente, openModal, esJefe } = useVentas();
   const stop = (e) => e.stopPropagation();
 
-  const filas = abiertas.map((v) => {
-    const ultimo = ultimoArticulo(v, catalogo);
-    const cliente = getCliente(v.clienteId);
-    return (
-      <tr key={v.id} className={s.clickable} onClick={() => onAbrir(v.id)}>
-        <td className={s.mono}>#{v.id}</td>
-        <td>
-          <strong>{cliente?.nombre || `Cliente #${v.clienteId}`}</strong>
-          {cliente && <div className={s.hint} style={{ margin: 0 }}>{CONDICIONES_IVA[cliente.condicionIva]?.corto}</div>}
-        </td>
-        <td>{CONDICIONES_PAGO[v.condicionPago] || v.condicionPago}</td>
-        <td className={s.num}>{cliente?.retiroSinCosto ? <span className={s.muted}>retiro sin costo</span> : <strong>{money(v.total)}</strong>}</td>
-        <td>
-          {ultimo
-            ? <>
-              {ultimo.nombre}
-              <div className={s.hint} style={{ margin: 0 }}>× {num(ultimo.cantidad)} {ultimo.unidad}</div>
-            </>
-            : <span className={s.muted}>Ticket vacío</span>}
-        </td>
-        <td>{nombreUsuario(v.usuarioId)}</td>
-        <td>{fmtFechaHora(v.fecha)}</td>
-        <td className={s['actions-col']}>
-          <div className={s['row-actions']} onClick={stop}>
-            <Btn variant="btn-primary" small onClick={() => onAbrir(v.id)}>Continuar</Btn>
-            <Btn variant="btn-delete" small onClick={() => openModal('descartarVenta', { ventaId: v.id, etiqueta: cliente?.nombre })}>
-              Descartar
-            </Btn>
-          </div>
-        </td>
-      </tr>
-    );
-  });
+  const filas = abiertas.map((v) => (
+    <tr key={v.id} className={s.clickable} onClick={() => onAbrir(v.id)}>
+      <td className={s.mono}>#{v.id}</td>
+      <CeldasAbierta v={v} catalogo={catalogo} />
+      <td className={s['actions-col']}>
+        <div className={s['row-actions']} onClick={stop}>
+          <Btn variant="btn-primary" small onClick={() => onAbrir(v.id)}>Continuar</Btn>
+          <Btn variant="btn-delete" small onClick={() => openModal('descartarVenta', { ventaId: v.id, etiqueta: getCliente(v.clienteId)?.nombre })}>
+            Descartar
+          </Btn>
+        </div>
+      </td>
+    </tr>
+  ));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--crm-space-4)' }}>
@@ -781,16 +793,64 @@ function VentasAbiertas({ abiertas, catalogo, onAbrir, onNueva, cargando }) {
       </div>
 
       <Table
-        cols={[
-          { h: '#' }, { h: 'Cliente' }, { h: 'Forma de pago' }, { h: 'Total', num: true },
-          { h: 'Último producto' }, { h: 'Vendedor' }, { h: 'Abierta' },
-          { h: 'Acciones', cls: 'actions-col' },
-        ]}
+        cols={[{ h: '#' }, ...COLS_ABIERTA, { h: 'Acciones', cls: 'actions-col' }]}
         empty={cargando ? 'Cargando…' : 'No hay ventas abiertas. Empezá una nueva.'}
       >
         {filas}
       </Table>
+
+      {esJefe && <AbiertasOtrasSucursales sucursalId={sucursalId} catalogo={catalogo} />}
     </div>
+  );
+}
+
+/**
+ * LAS OTRAS SUCURSALES, solo jefes y solo para mirar (19/11/2026, pedido del
+ * dueño: «¿por qué a mí no me salen las ventas en curso de la Fontana?»). La
+ * lista de arriba es la de la sucursal en la que uno está parado, porque cada
+ * cajero continúa o descarta lo suyo; acá se ven los tickets abiertos del resto
+ * sin cambiar de sucursal. Sin acciones: para tocar uno hay que pararse en esa
+ * sucursal. Se lee al volver a la lista (o con «Actualizar»), nunca mientras se
+ * vende.
+ */
+function AbiertasOtrasSucursales({ sucursalId, catalogo }) {
+  const { sucursalesTodas } = useVentas();
+  const { data, loading, error, reload } = useResource('abiertas:todas', () => ventasApi.ventasAbiertas());
+
+  const otras = useMemo(() => {
+    const nombre = (id) => sucursalesTodas.find((x) => x.id === id)?.nombre || `Sucursal #${id}`;
+    return (data ?? [])
+      .filter((v) => v.sucursalId !== sucursalId)
+      .map((v) => ({ ...v, sucursal: nombre(v.sucursalId) }))
+      .sort((a, b) => a.sucursal.localeCompare(b.sucursal) || b.id - a.id);
+  }, [data, sucursalId, sucursalesTodas]);
+
+  return (
+    <>
+      <div className={s['panel-head']}>
+        <div>
+          <h2>En las otras sucursales{otras.length > 0 && ` (${otras.length})`}</h2>
+          <div className={s.desc}>
+            Solo para mirar. Para continuar o descartar uno, cambiá a esa sucursal.
+          </div>
+        </div>
+        <div className={s['panel-actions']}>
+          <Btn onClick={reload} disabled={loading}>{loading ? 'Actualizando…' : 'Actualizar'}</Btn>
+        </div>
+      </div>
+      <Table
+        cols={[{ h: 'Sucursal' }, { h: '#' }, ...COLS_ABIERTA]}
+        empty={loading ? 'Cargando…' : error ? `No se pudo cargar: ${error}` : 'No hay tickets abiertos en las otras sucursales.'}
+      >
+        {otras.map((v) => (
+          <tr key={v.id}>
+            <td><strong>{v.sucursal}</strong></td>
+            <td className={s.mono}>#{v.id}</td>
+            <CeldasAbierta v={v} catalogo={catalogo} />
+          </tr>
+        ))}
+      </Table>
+    </>
   );
 }
 
@@ -2188,6 +2248,7 @@ export function PosPanel() {
         onAbrir={abrirVenta}
         onNueva={nuevaVenta}
         cargando={cargandoAbiertas}
+        sucursalId={sucursalId}
       />
     </div>
   );

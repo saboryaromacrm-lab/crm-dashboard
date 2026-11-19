@@ -19,10 +19,42 @@ import { ventasApi, errorMsg } from '../../services/ventas.api.js';
 import {
   MEDIOS_PAGO, CONDICIONES_PAGO, nroComprobante, esNotaCredito,
 } from '../../domain/constants.js';
+import { segunMercadoPago } from '../../domain/conciliacionMp.js';
 import {
   ModalShell, Table, Pill, VentaEstadoPill, VentaTag, Di, SaldoMonto,
   money, num, fmtFechaHora, s,
 } from '../ui.jsx';
+
+/**
+ * La celda «Según Mercado Pago» de un renglón de pago: dónde se cobró (QR del
+ * mostrador y de qué caja, posnet con tarjeta, QR del posnet, fuera del
+ * local), con qué pagó el cliente, el número de operación, y los avisos (el
+ * medio del ERP no coincide, devuelto, «No entró»). Ver `segunMercadoPago`.
+ */
+function SegunMp({ info }) {
+  if (!info) return <span className={s.muted}>—</span>;
+  const chico = { fontSize: 12, margin: 0 };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 320 }}>
+      {info.pagos.map((x) => (
+        <div key={x.id || x.donde}>
+          <strong>{x.donde}</strong>
+          {info.pagos.length > 1 && <span className={s.muted}> · {money(x.bruto)}</span>}
+          {x.estado && <> <span style={{ color: 'var(--crm-color-danger)', fontWeight: 600 }}>· {x.estado}</span></>}
+          {(x.como || x.operacion) && (
+            <div className={s.muted} style={chico}>
+              {[x.como && `Pagó con ${x.como}`, x.operacion && `Operación ${x.operacion}`].filter(Boolean).join(' · ')}
+            </div>
+          )}
+        </div>
+      ))}
+      {info.avisos.map((a) => (
+        <div key={a} style={{ ...chico, color: 'var(--crm-color-warning)', fontWeight: 600 }}>⚠ {a}</div>
+      ))}
+      {info.fuente && <div className={s.muted} style={{ ...chico, fontStyle: info.sinDato ? 'italic' : 'normal' }}>{info.fuente}</div>}
+    </div>
+  );
+}
 
 /* ============================== DETALLE ============================== */
 /** `volver`: se abrió desde otra ventana (la ficha del cliente) y al cerrar vuelve a ella. */
@@ -213,17 +245,27 @@ export function DetalleVentaModal({ ventaId, onCambio, volver }) {
           ) : (
             <>
               <h3 className={s['card-title']} style={{ marginTop: 'var(--crm-space-3)' }}>Cómo se pagó</h3>
-              {v.pagos?.length ? (
-                <Table cols={[{ h: 'Medio' }, { h: 'Referencia' }, { h: 'Importe', num: true }]}>
-                  {v.pagos.map((p) => (
-                    <tr key={p.id}>
-                      <td>{MEDIOS_PAGO[p.medio] || p.medio}</td>
-                      <td>{p.referencia || <span className={s.muted}>—</span>}</td>
-                      <td className={s.num}>{money(p.importe)}</td>
-                    </tr>
-                  ))}
-                </Table>
-              ) : (
+              {v.pagos?.length ? (() => {
+                /* Lo que dijo Mercado Pago de cada renglón: si fue el QR del
+                 * mostrador (y de qué caja), el posnet con tarjeta o el QR del
+                 * posnet. La columna aparece solo si algún renglón tiene algo. */
+                const segun = new Map(v.pagos.map((p) => [p.id, segunMercadoPago(p, {
+                  fechaVenta: v.fecha, nombreDelMedio: (m) => MEDIOS_PAGO[m] || m,
+                })]));
+                const conMp = [...segun.values()].some(Boolean);
+                return (
+                  <Table cols={[{ h: 'Medio' }, ...(conMp ? [{ h: 'Según Mercado Pago' }] : []), { h: 'Referencia' }, { h: 'Importe', num: true }]}>
+                    {v.pagos.map((p) => (
+                      <tr key={p.id}>
+                        <td>{MEDIOS_PAGO[p.medio] || p.medio}</td>
+                        {conMp && <td><SegunMp info={segun.get(p.id)} /></td>}
+                        <td>{p.referencia || <span className={s.muted}>—</span>}</td>
+                        <td className={s.num}>{money(p.importe)}</td>
+                      </tr>
+                    ))}
+                  </Table>
+                );
+              })() : (
                 <div className={s.hint}>
                   Sin pagos registrados en el ticket
                   {v.condicionPago === 'cuenta_corriente' ? ': quedó en la cuenta del cliente.' : '.'}

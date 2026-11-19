@@ -6,7 +6,7 @@ import { CompromisoModal, PagarCompromisoModal } from './modals/CompromisosModal
 import { ConfirmarEcheqModal, EcheqModal, FacturasEcheqModal } from './modals/EcheqsModals.jsx';
 import { AjusteModal, BorrarAjusteModal } from './modals/EdocModals.jsx';
 import { FacturasMesModal } from './modals/FacturasMesModal.jsx';
-import { PagoProveedorModal, AnularPagoModal, AplicarPagoModal } from './modals/PagosModals.jsx';
+import { PagoProveedorModal, AnularPagoModal, AplicarPagoModal, EditarPagoModal } from './modals/PagosModals.jsx';
 import { AnularPagoPropioModal, CuentaDisponibleModal, PagoPropioModal, ResumenCuentaModal } from './modals/CuentasDisponiblesModals.jsx';
 import { StockProveedorModal, IngresosProveedorModal } from './ProveedorMenu.jsx';
 import { DetalleReposicionModal, MandarReposicionModal, RecibirReposicionModal } from './modals/ReposicionesModals.jsx';
@@ -31,6 +31,8 @@ const MODALS = {
   pagoProveedor: PagoProveedorModal,
   anularPago: AnularPagoModal,
   aplicarPago: AplicarPagoModal,
+  // Modificar un pago desde el estado de cuenta (19/11/2026).
+  editarPago: EditarPagoModal,
   // Cuentas disponibles (0095): el balde y su resumen para el proveedor.
   cuentaDisponible: CuentaDisponibleModal,
   resumenCuenta: ResumenCuentaModal,

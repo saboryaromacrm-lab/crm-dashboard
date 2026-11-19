@@ -1115,13 +1115,12 @@ const avanzarIncidencia = (id) => _mutate(() => httpClient.post('/incidencias/' 
 const resolverIncidencia = (id, resolucion, contado) => _mutate(() => httpClient.post('/incidencias/' + id + '/resolver',
   contado === undefined ? { resolucion } : { resolucion, contado }));
 /**
- * La orden de pedido queda anotada en Proveedores › Pedidos (12/10/2026): la
- * primera vez nace la tarjeta en «Pedido» (o pasa ahí la que el proveedor ya
- * tenía, 0223); después se le actualiza la nota.
+ * La orden de pedido al cerrarse (10/11/2026): la tarjeta queda en Solicitado
+ * con «Pedido enviado» (o suma la nota a la que ya estaba). Los `renglones`
+ * ({ productoId, cantidad, unidad }) quedan como «pedido anterior» (0235).
  */
-/** La orden de pedido al cerrarse (10/11/2026): la tarjeta queda en Solicitado con «Pedido enviado» (o suma la nota a la que ya estaba). */
-const anotarPedidoProveedor = async (proveedorId, notas) => {
-  const r = await _directo(() => httpClient.post('/pedidos-proveedor/directo', { proveedorId, notas, enviado: true }));
+const anotarPedidoProveedor = async (proveedorId, notas, renglones) => {
+  const r = await _directo(() => httpClient.post('/pedidos-proveedor/directo', { proveedorId, notas, enviado: true, renglones }));
   /* Un pedido enviado saca a ese proveedor de Bajos en stock (y del globito) en el acto; también del de Coffit si está abierto. */
   if (r.ok) {
     refrescarBajos(true);

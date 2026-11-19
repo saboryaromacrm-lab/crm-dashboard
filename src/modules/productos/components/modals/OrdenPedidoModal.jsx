@@ -28,6 +28,8 @@ import { fechaHoraAr } from '@shared/utils/hora.js';
  * próxima vez. Al cerrar (o al cambiar de proveedor) pregunta si se anota en
  * Proveedores › Pedidos (10/11/2026, pedido del dueño): la tarjeta queda en
  * «Solicitado» con «Pedido enviado»; a «Pedido» se pasa a mano cuando confirma.
+ * Lo anotado guarda sus renglones (0235, 19/11/2026, pedido del dueño): la
+ * próxima orden muestra al lado de cada producto cuánto se pidió esa vez.
  *
  * RECORDATORIOS DEL PROVEEDOR (0181, 19/10/2026, pedido del dueño): una nota
  * por proveedor («mínimo 3 bultos», «no manda los martes») arriba de todo,
@@ -132,7 +134,12 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   const [orden, setOrden] = useState(() => Object.keys(sugeridos ?? {}).map(Number));
   /** El mensaje retocado a mano: `{ texto, base }` (`base` = cómo lo armaba la lista al empezar a editar), o null = se arma solo. */
   const [editado, setEditado] = useState(null);
-  /** Al elegir el proveedor: su pedido anterior como estaba al abrir (lo de esta vez se ve la próxima) y sus recordatorios: { provId, pedido, nota }. */
+  /**
+   * Al elegir el proveedor, como estaba al abrir (lo de esta vez se ve la
+   * próxima): `pedido` = el texto copiado o mandado, `enviado` = el último
+   * anotado en Proveedores › Pedidos con sus renglones, `nota` = los
+   * recordatorios. { provId, pedido, enviado, nota }.
+   */
   const [anterior, setAnterior] = useState(null);
   const [verAnterior, setVerAnterior] = useState(false);
   /** «¿Lo anotás en Proveedores › Pedidos?» antes de cerrar o cambiar de proveedor: `{ luego }` = qué hacer después, o null. */
@@ -160,11 +167,17 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
     setVerAnterior(false);
     if (!provId) return undefined;
     let vivo = true;
-    store.ultimoPedido(provId).then((r) => { if (vivo) setAnterior({ provId, pedido: r.ok ? r.data?.pedido ?? null : null, nota: r.ok ? r.data?.nota ?? null : null }); });
+    store.ultimoPedido(provId).then((r) => {
+      const d = r.ok ? r.data : null;
+      if (vivo) setAnterior({ provId, pedido: d?.pedido ?? null, enviado: d?.enviado ?? null, nota: d?.nota ?? null });
+    });
     return () => { vivo = false; };
   }, [provId, store]);
   const delElegido = anterior?.provId === provId ? anterior : null;
   const pedidoAnterior = delElegido?.pedido ?? null;
+  const enviadoAnterior = delElegido?.enviado ?? null;
+  /** productoId → lo que se pidió en el último pedido anotado. */
+  const antes = useMemo(() => new Map((enviadoAnterior?.renglones ?? []).map((r) => [r.productoId, r])), [enviadoAnterior]);
 
   /* Los productos activos del proveedor, con su bulto y en el orden de la góndola (marca → nombre).
    * `costoDe`: el proveedor cuyo costo arma el precio, si no es este (null = es este). */
@@ -204,6 +217,12 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
     /* Tocar «Stock» ordena de mayor a menor, otra vez de menor a mayor, y otra vuelve al orden de la góndola. */
     return ordenStock ? lista.sort((a, b) => (a.stock - b.stock) * (ordenStock === 'asc' ? 1 : -1)) : lista;
   }, [delProveedor, disponible, sucId, tope, categoria, q, cant, ordenStock, conOtros]);
+
+  /* Los del pedido anterior que hoy no están en la lista (por los filtros o porque ya no son de este proveedor). */
+  const antesFuera = useMemo(() => {
+    const enLista = new Set(filas.map((x) => x.id));
+    return [...antes.keys()].filter((id) => !enLista.has(id)).length;
+  }, [antes, filas]);
 
   const conBulto = (x) => [x.nombre, bultoTexto(x.p, x.bulto)].filter(Boolean).join(' ');
   /** Cuánto haría falta para llegar al «menor a»: en bultos (o en la unidad, sin bulto). */
@@ -271,7 +290,10 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
       if (anotando.current) return;
       anotando.current = true;
       setOcupado(true);
-      const r = await store.anotarPedidoProveedor(proveedor.id, mensaje);
+      const r = await store.anotarPedidoProveedor(
+        proveedor.id, mensaje,
+        pedidos.map(({ x, n }) => ({ productoId: x.id, cantidad: n, unidad: unidadPedido(x.p, x.bulto, n) })),
+      );
       anotando.current = false;
       setOcupado(false);
       if (!r.ok) { toast(`No quedó anotado en Proveedores › Pedidos: ${r.error}`, 'err'); return; }
@@ -363,6 +385,14 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
             onGuardada={(nota) => setAnterior((a) => (a?.provId === provId ? { ...a, nota } : a))}
           />
         )}
+        {proveedor && enviadoAnterior && (
+          <div id="orden-anterior-resumen" className={s.hint} style={{ margin: 0 }}>
+            <strong>Pedido anterior:</strong> anotado en Proveedores › Pedidos el {fechaHora(enviadoAnterior.fecha)}
+            {enviadoAnterior.usuario ? ` por ${enviadoAnterior.usuario}` : ''} · {antes.size} {antes.size === 1 ? 'producto' : 'productos'}.
+            {' '}Lo que se pidió de cada uno está en la columna «Pedido anterior».
+            {antesFuera > 0 && ` ${antesFuera} de ellos no ${antesFuera === 1 ? 'está' : 'están'} en la lista de abajo (filtros).`}
+          </div>
+        )}
         {!proveedor ? (
           <div className={cx(s.callout, s.info)}>Elegí el proveedor para ver qué le falta pedir.</div>
         ) : (
@@ -375,6 +405,9 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                 <thead>
                   <tr>
                     <th style={TH_FIJO}>Producto</th><th className={s.num} style={TH_FIJO}>A pedir</th>
+                    {enviadoAnterior && (
+                      <th className={s.num} style={TH_FIJO} title={`Lo que se pidió el ${fechaHora(enviadoAnterior.fecha)}`}>Pedido anterior</th>
+                    )}
                     <th className={s.num} style={TH_FIJO} aria-sort={ordenStock === 'asc' ? 'ascending' : ordenStock === 'desc' ? 'descending' : 'none'}>
                       <button
                         type="button" id="orden-ordenar-stock" title="Ordenar por stock"
@@ -391,6 +424,7 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                   {filas.map((x) => {
                     const sug = sugerido(x);
                     const uni = unidadPedido(x.p, x.bulto, 2);
+                    const previo = antes.get(x.id);
                     return (
                       <tr key={x.id}>
                         <td>
@@ -417,6 +451,11 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                           />
                           <span className={s.hint} style={{ margin: '0 0 0 4px' }}>{uni}</span>
                         </td>
+                        {enviadoAnterior && (
+                          <td className={cx(s.num, s.muted)} style={{ whiteSpace: 'nowrap' }}>
+                            {previo && `${fmtN(previo.cantidad)} ${previo.unidad}`}
+                          </td>
+                        )}
                         <td className={cx(s.num, s.mono)} style={{ color: x.stock <= 0 ? 'var(--crm-color-danger)' : undefined }}>
                           {fmtN(x.stock)} {x.p.tipo === 'granel' ? 'kg' : 'u.'}
                         </td>
@@ -429,7 +468,7 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                     );
                   })}
                   {filas.length === 0 && (
-                    <tr><td colSpan={4} className={s.hint}>
+                    <tr><td colSpan={enviadoAnterior ? 5 : 4} className={s.hint}>
                       {!delProveedor.length
                         ? `${proveedor.nombre} no tiene productos activos cargados.`
                         : !visibles.length
