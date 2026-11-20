@@ -3,8 +3,8 @@
  * creadas, bien detalladas»). Las notas fiscales (A, B, C) y las devoluciones
  * de ticket, con lo que hizo cada una: a qué venta ajusta y cómo se había
  * cobrado, el motivo, qué artículos volvieron y si la mercadería reingresó al
- * stock, qué pasó con la plata (efectivo del cajón, cuenta corriente o sin
- * efectivo) y cómo quedó ante ARCA. Clic en una fila abre la nota; en la venta
+ * stock, qué pasó con la plata (efectivo del cajón, cuenta corriente, sin
+ * efectivo, o un cambio y en qué venta se usó) y cómo quedó ante ARCA. Clic en una fila abre la nota; en la venta
  * original, la original. Ver crm-api/src/ventas/notas-credito.ts.
  */
 import { useDeferredValue, useState } from 'react';
@@ -116,6 +116,7 @@ export function NotasCreditoPanel() {
           <Stat label="Efectivo devuelto del cajón" value={money(t.efectivo)} accent={t.efectivo > 0.009 ? 'accent-amber' : undefined} />
           <Stat label="Descontado de cuentas corrientes" value={money(t.ctacte)} />
           <Stat label="Sin efectivo del cajón" value={money(t.medio)} />
+          {t.cambio > 0.009 && <Stat label="Cambios (se llevó otra mercadería)" value={money(t.cambio)} />}
           {t.pendientes > 0 && <Stat label="Pendientes de ARCA" value={String(t.pendientes)} accent="accent-red" />}
         </div>
       )}
@@ -173,6 +174,11 @@ export function NotasCreditoPanel() {
             <td style={{ minWidth: 170 }} title={PLATA_NC[n.plata]?.label}>
               <Pill pill={PLATA_NC[n.plata]?.pill} label={PLATA_NC[n.plata]?.corto ?? n.plata} />
               {n.plata === 'efectivo' && <div className={s.hint} style={{ margin: 0 }}>Salieron {money(n.total)} del turno</div>}
+              {n.plata === 'cambio' && (
+                <div className={s.hint} style={{ margin: 0 }}>
+                  {n.cambioEn.length ? `Pagó ${n.cambioEn.map(comprobante).join(' y ')}` : 'Sin usar en una venta'}
+                </div>
+              )}
               <div style={{ marginTop: 4 }}><Pill pill={ARCA_NC[n.arca]?.pill} label={ARCA_NC[n.arca]?.label ?? n.arca} /></div>
               {n.arca === 'cae' && <div className={s.hint} style={{ margin: 0, fontFamily: 'monospace' }}>CAE {n.cae}</div>}
               {n.arca === 'pendiente' && n.facturarMotivo && <div className={s.hint} style={{ margin: 0 }}>{n.facturarMotivo}</div>}

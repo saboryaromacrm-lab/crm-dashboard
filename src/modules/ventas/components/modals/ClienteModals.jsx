@@ -6,7 +6,7 @@ import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { errorMsg, ventasApi } from '../../services/ventas.api.js';
 import {
-  CONDICIONES_IVA, CONDICIONES_PAGO, MEDIOS_PAGO, TIPOS_DOC, docLegible, nroComprobante,
+  CONDICIONES_IVA, CONDICIONES_PAGO, MEDIOS_COBRADOS, TIPOS_DOC, docLegible, nroComprobante,
 } from '../../domain/constants.js';
 import {
   Table, Btn, Di, ModalShell, VentaTag, VentaEstadoPill, SaldoMonto, VenceComprobante,
@@ -562,7 +562,7 @@ function TabComprobantes({ clienteId }) {
             {v.pagos?.length
               ? v.pagos.map((p, i) => (
                 <div key={i} style={{ whiteSpace: 'nowrap' }}>
-                  {MEDIOS_PAGO[p.medio] || p.medio}{v.pagos.length > 1 ? ` ${money(p.importe)}` : ''}{p.cuotas > 1 ? ` · ${p.cuotas} cuotas` : ''}
+                  {MEDIOS_COBRADOS[p.medio] || p.medio}{v.pagos.length > 1 ? ` ${money(p.importe)}` : ''}{p.cuotas > 1 ? ` · ${p.cuotas} cuotas` : ''}
                 </div>
               ))
               : <span className={s.muted}>{v.condicionPago === 'cuenta_corriente' ? 'A cuenta' : '—'}</span>}

@@ -6,7 +6,7 @@ import { useResource } from '../hooks/useResource.js';
 import { errorMsg, provApi } from '../services/proveedores.api.js';
 import { BotonesAlta } from '../components/modals/PedidosModals.jsx';
 import { ProveedorMenu } from '../components/ProveedorMenu.jsx';
-import { Btn, PanelHead, Pill, Stat, Table, fmtFecha, fmtFechaHora, money, s } from '../components/ui.jsx';
+import { Btn, PanelHead, Pill, Stat, Table, diasCalendario, fmtFecha, fmtFechaHora, hace, money, s } from '../components/ui.jsx';
 
 /**
  * PEDIDOS — el kanban de la app externa, tal cual: la pizarra entre el admin
@@ -35,14 +35,6 @@ const SIN_FILTROS = { estado: '', enviado: '', visto: '' };
 /** ¿La tarjeta pasa el filtro de una marca («si» / «no»)? */
 const pasa = (filtro, tiene) => !filtro || (filtro === 'si') === tiene;
 
-/** Días de CALENDARIO hasta hoy (lo de anoche es «ayer», aunque no hayan pasado 24 h). */
-function diasCalendario(fecha) {
-  const d = new Date(fecha); d.setHours(0, 0, 0, 0);
-  const h = new Date(); h.setHours(0, 0, 0, 0);
-  return Math.max(0, Math.round((h - d) / 86400000));
-}
-/** «hoy», «ayer», «hace 5 días». */
-const hace = (dias) => (dias === 0 ? 'hoy' : dias === 1 ? 'ayer' : `hace ${dias} días`);
 
 export function PedidosPanel() {
   const { openModal, toast, recargarContadores, getProveedor, goPanel } = useProveedores();

@@ -17,9 +17,10 @@ import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../../services/ventas.api.js';
 import {
-  MEDIOS_PAGO, CONDICIONES_PAGO, nroComprobante, esNotaCredito,
+  MEDIOS_COBRADOS, CONDICIONES_PAGO, nroComprobante, esNotaCredito,
 } from '../../domain/constants.js';
 import { segunMercadoPago } from '../../domain/conciliacionMp.js';
+import { comprobante, mediosDe } from '../../domain/notasCredito.js';
 import {
   ModalShell, Table, Pill, VentaEstadoPill, VentaTag, Di, SaldoMonto,
   money, num, fmtFechaHora, s,
@@ -241,6 +242,15 @@ export function DetalleVentaModal({ ventaId, onCambio, volver }) {
                 ? `Le descuenta ${money(v.total)} de la cuenta corriente del cliente.`
                 : `Devuelve ${money(v.total)} al cliente.`}
               {v.cajaSesionId ? ` La plata salió por el turno de caja #${v.cajaSesionId}.` : ''}
+              {v.cambio && (
+                <div style={{ marginTop: 6 }}>
+                  <strong>Cambio:</strong>{' '}
+                  {v.cambio.usadoEn.filter((u) => u.estado !== 'anulada').map((u) => `pagó ${money(u.importe)} de ${comprobante(u)}`).join(' y ') || 'todavía no pagó ninguna venta'}
+                  {v.cambio.efectivo > 0.009 && ` · se devolvieron ${money(v.cambio.efectivo)} en efectivo`}
+                  {v.cambio.medio > 0.009 && ` · se devolvieron ${money(v.cambio.medio)} por el mismo medio`}
+                  {v.cambio.saldo > 0.009 && <> · <strong style={{ color: 'var(--crm-color-danger)' }}>quedan {money(v.cambio.saldo)} sin resolver</strong> (se resuelve desde el punto de venta)</>}
+                </div>
+              )}
             </div>
           ) : (
             <>
@@ -250,14 +260,14 @@ export function DetalleVentaModal({ ventaId, onCambio, volver }) {
                  * mostrador (y de qué caja), el posnet con tarjeta o el QR del
                  * posnet. La columna aparece solo si algún renglón tiene algo. */
                 const segun = new Map(v.pagos.map((p) => [p.id, segunMercadoPago(p, {
-                  fechaVenta: v.fecha, nombreDelMedio: (m) => MEDIOS_PAGO[m] || m,
+                  fechaVenta: v.fecha, nombreDelMedio: (m) => MEDIOS_COBRADOS[m] || m,
                 })]));
                 const conMp = [...segun.values()].some(Boolean);
                 return (
                   <Table cols={[{ h: 'Medio' }, ...(conMp ? [{ h: 'Según Mercado Pago' }] : []), { h: 'Referencia' }, { h: 'Importe', num: true }]}>
                     {v.pagos.map((p) => (
                       <tr key={p.id}>
-                        <td>{MEDIOS_PAGO[p.medio] || p.medio}</td>
+                        <td>{MEDIOS_COBRADOS[p.medio] || p.medio}</td>
                         {conMp && <td><SegunMp info={segun.get(p.id)} /></td>}
                         <td>{p.referencia || <span className={s.muted}>—</span>}</td>
                         <td className={s.num}>{money(p.importe)}</td>
@@ -433,29 +443,36 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
  *     cliente.
  *  2. SI LA MERCADERÍA VUELVE al stock. Una nota por un error de precio no
  *     mueve un gramo; una devolución sí. Son la misma nota y distinta cosa.
- *  3. SI SE DEVUELVE EL EFECTIVO por caja. Va apagado a propósito: hacerlo
- *     automático le descuadraría el arqueo a quien no lo esperaba.
+ *  3. CÓMO SE DEVUELVE LA PLATA (0236), en una venta al contado: efectivo del
+ *     cajón, por el mismo medio con que pagó (queda anotado) o un CAMBIO (se
+ *     lleva otra mercadería ahora: la nota paga ese ticket en el punto de
+ *     venta). Sin elegir no se emite: cada opción mueve la caja distinto. En
+ *     cuenta corriente la nota ya baja la deuda; ahí queda el tilde de siempre
+ *     por si además se entrega efectivo.
  *
  * Los "otros cargos" (envío, packaging) solo viajan en la nota TOTAL: devolver
  * medio envío no significa nada y prorratearlo sería inventar un número.
  */
 export function NotaCreditoModal({ venta, onCambio }) {
-  const { closeModal, act, toast } = useVentas();
+  const { closeModal, act, toast, goPanel, panels } = useVentas();
   /*
    * LA MISMA PANTALLA PARA LA FACTURA Y PARA EL TICKET. La cuenta, los topes y
    * los renglones son idénticos; lo que cambia es cómo se llama el papel que
-   * sale ("nota de crédito" o "devolución"), por qué puerta de la API entra, y
-   * un default: en una devolución de ticket AL CONTADO la plata sale por
-   * defecto. El cliente está parado en el mostrador con el producto en la
-   * mano; si la casilla arrancara apagada y la cajera no la viera, le
-   * entregaría la plata igual y el arqueo cerraría con un sobrante que nadie
-   * explica. Queda a la vista para destildarla si la plata va aparte.
+   * sale ("nota de crédito" o "devolución") y por qué puerta de la API entra.
    */
   const esTicket = venta.tipo === 'ticket';
+  const contado = venta.condicionPago === 'contado';
+  /* Del cajón solo sale lo que entró en efectivo (la API lo revalida con lo ya devuelto), y
+   * «por el mismo medio» solo existe si se cobró con algo que no es efectivo. */
+  const cobroEnEfectivo = (venta.pagos ?? []).some((p) => p.medio === 'efectivo');
+  const otrosMedios = [...new Set((venta.pagos ?? []).map((p) => p.medio).filter((m) => m !== 'efectivo'))];
   const [motivo, setMotivo] = useState('');
   const [parcial, setParcial] = useState(false);
   const [devuelveMercaderia, setDevuelveMercaderia] = useState(true);
-  const [devolverEfectivo, setDevolverEfectivo] = useState(esTicket && venta.condicionPago === 'contado');
+  /** Al contado: 'efectivo' | 'medio' | 'cambio', sin default (se elige). */
+  const [devolucion, setDevolucion] = useState('');
+  /** En cuenta corriente: si además de bajar la deuda se entrega efectivo. */
+  const [devolverEfectivo, setDevolverEfectivo] = useState(false);
   const [enviando, setEnviando] = useState(false);
   /** itemId → cantidad tipeada (solo en modo parcial). */
   const [cants, setCants] = useState({});
@@ -519,6 +536,10 @@ export function NotaCreditoModal({ venta, onCambio }) {
       toast(`${esTicket ? 'La devolución' : 'La nota'} da ${money(calc.total)} y de esta venta quedan ${money(tope)} por ${esTicket ? 'devolver' : 'acreditar'}.`, 'err');
       return;
     }
+    if (contado && !devolucion) {
+      toast('Elegí cómo se le devuelve la plata: en efectivo, por el mismo medio, o si se lleva otra mercadería.', 'err');
+      return;
+    }
     setEnviando(true);
     /*
      * LA VENTANA DE IMPRESIÓN SE ABRE EN ESTE CLIC (7/10/2026, el dueño: «al
@@ -536,7 +557,7 @@ export function NotaCreditoModal({ venta, onCambio }) {
         // Sin `items` la API emite la nota TOTAL, con los otros cargos adentro.
         items: parcial ? calc.elegidos : undefined,
         devuelveMercaderia,
-        devolverEfectivo,
+        devolucion: contado ? devolucion : (devolverEfectivo ? 'efectivo' : 'medio'),
       }),
       esTicket ? 'Devolución registrada.' : 'Nota de crédito emitida.',
       { recargar: false },
@@ -544,6 +565,11 @@ export function NotaCreditoModal({ venta, onCambio }) {
     setEnviando(false);
     if (!nc) { try { ventana?.close(); } catch { /* ya cerrada */ } return; }
     onCambio?.();
+    /* El cambio sigue en el punto de venta: ahí está la nota a favor, arriba del ticket. */
+    if (devolucion === 'cambio' && panels.some((x) => x.id === 'pos')) {
+      goPanel('pos');
+      toast('Ahora armá el ticket de lo que se lleva y tocá «Usar en este ticket» en el cambio de arriba.', 'ok');
+    }
     /* Se imprime sola: una nota de crédito que no se le entrega al cliente no
      * sirve de nada, y volver a buscarla en el listado es un paso que se
      * olvida. Si el navegador bloquea la ventana, se avisa — el comprobante ya
@@ -577,9 +603,9 @@ export function NotaCreditoModal({ venta, onCambio }) {
     >
       {esTicket ? (
         <p>
-          Elegí qué devuelve el cliente. La mercadería vuelve al stock y, si está tildado, la plata
-          sale de la caja. Queda un comprobante de devolución con tu nombre, y el ticket original
-          sigue existiendo con lo que no se devolvió.
+          Elegí qué devuelve el cliente y cómo se le devuelve la plata. La mercadería vuelve al
+          stock. Queda un comprobante de devolución con tu nombre, y el ticket original sigue
+          existiendo con lo que no se devolvió.
         </p>
       ) : (
         <p>
@@ -692,21 +718,53 @@ export function NotaCreditoModal({ venta, onCambio }) {
         </div>
       </div>
 
-      <div className={s.field}>
-        <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontWeight: 400 }}>
-          <input
-            type="checkbox"
-            checked={devolverEfectivo}
-            onChange={(e) => setDevolverEfectivo(e.target.checked)}
-          />
-          Devolver {money(calc.total)} en efectivo por caja
-        </label>
-        <div className={s.hint}>
-          {venta.condicionPago === 'cuenta_corriente'
-            ? 'Esta venta fue en cuenta corriente: la nota ya le baja la deuda al cliente. Tildá esto solo si además se le entrega plata.'
-            : 'Sale como egreso del turno abierto y le baja el efectivo esperado al arqueo.'}
+      {contado ? (
+        <div className={s.field}>
+          <label>¿Cómo le devolvés los {money(calc.total)}? <span className={s.req}>*</span></label>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {[
+              {
+                id: 'efectivo', titulo: 'En efectivo, del cajón', bloqueo: cobroEnEfectivo ? '' : 'La venta no se cobró en efectivo: del cajón no sale.',
+                ayuda: 'Sale como egreso del turno abierto.',
+              },
+              otrosMedios.length > 0 && {
+                id: 'medio', titulo: `Por el mismo medio con que pagó (${mediosDe(otrosMedios)})`,
+                ayuda: 'Devolvelo desde la app de Mercado Pago, anulalo en el posnet o transferilo. No toca la caja: queda anotado.',
+              },
+              {
+                id: 'cambio', titulo: 'Se lleva otra mercadería (cambio)',
+                ayuda: `La nota queda a favor para el ticket que armás ahora, en ${venta.sucursalNombre}. Si se lleva más, paga la diferencia; si se lleva menos, el resto se le devuelve al cobrar.`,
+              },
+            ].filter(Boolean).map((o) => (
+              <label key={o.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontWeight: 400, opacity: o.bloqueo ? 0.55 : 1 }}>
+                <input
+                  type="radio" name="devolucion" style={{ marginTop: 3 }}
+                  checked={devolucion === o.id} disabled={!!o.bloqueo}
+                  onChange={() => setDevolucion(o.id)}
+                />
+                <span>
+                  <strong>{o.titulo}</strong>
+                  <div className={s.hint} style={{ margin: 0 }}>{o.bloqueo || o.ayuda}</div>
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className={s.field}>
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontWeight: 400 }}>
+            <input
+              type="checkbox"
+              checked={devolverEfectivo}
+              onChange={(e) => setDevolverEfectivo(e.target.checked)}
+            />
+            Devolver {money(calc.total)} en efectivo por caja
+          </label>
+          <div className={s.hint}>
+            Esta venta fue en cuenta corriente: la nota ya le baja la deuda al cliente. Tildá esto solo si además se le entrega plata.
+          </div>
+        </div>
+      )}
 
       <div className={s.field}>
         <label>Motivo <span className={s.req}>*</span></label>

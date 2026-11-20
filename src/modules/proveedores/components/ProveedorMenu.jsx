@@ -23,7 +23,7 @@ import { abrirWhatsApp } from '@shared/utils/whatsapp.js';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { provApi } from '../services/proveedores.api.js';
-import { ModalShell, Table, money, num, fmtFecha, s } from './ui.jsx';
+import { ModalShell, Table, diasCalendario, hace, money, num, fmtFecha, s } from './ui.jsx';
 
 const TIPO = { factura: 'Factura', remito: 'Remito', liquidacion: 'Liquidación' };
 const cant = (n, tipo) => `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 3 })}${tipo === 'granel' ? ' kg' : ''}`;
@@ -142,7 +142,7 @@ export function IngresosProveedorModal({ proveedorId, nombre }) {
       <Table cols={[{ h: 'Fecha' }, { h: 'Comprobante' }, { h: 'Sucursal' }, { h: 'Productos', num: true }, { h: 'Total', num: true }]} empty={loading ? 'Cargando…' : 'Todavía no hay comprobantes de este proveedor.'}>
         {filas.map((c) => [
           <tr key={c.id} className={s.clickable} onClick={() => setAbierto(abierto === c.id ? null : c.id)} title="Ver qué trajo">
-            <td>{fmtFecha(c.fecha)}</td>
+            <td>{fmtFecha(c.fecha)}<div className={s.hint} style={{ margin: 0, whiteSpace: 'nowrap' }}>{hace(diasCalendario(c.fecha))}</div></td>
             <td>{abierto === c.id ? '▾ ' : '▸ '}{nroDe(c)}{c.recepcion && <span className={s.muted}> · ingresó mercadería</span>}</td>
             <td>{c.sucursal || '—'}</td>
             <td className={s.num}>{(c.items ?? []).length}</td>

@@ -4,7 +4,7 @@ import { useProveedores } from '../../context/ProveedoresContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { provApi, MEDIOS_PAGO_REAL } from '../../services/proveedores.api.js';
 import {
-  Btn, EcheqsDeFactura, FilaTilde, ModalShell, cajaTildes, echeqsDeFactura, money, fmtFecha, s,
+  Btn, EcheqsDeFactura, FilaTilde, ModalShell, cajaTildes, diasCalendario, echeqsDeFactura, hace, money, fmtFecha, s,
 } from '../ui.jsx';
 import { DatosParaElBanco } from './EcheqsModals.jsx';
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '@modules/gastos/components/segundaConfirmacion.jsx';
@@ -173,6 +173,16 @@ export function PagoProveedorModal({ proveedor, docs: todosLosDocs = [], presele
   const { data: cuentasBanco, error: errorCuentas } = useResource(`cuentas-banco:${proveedor.id}`, () => provApi.cuentas(proveedor.id), { enabled: usaBanco });
   const copiarCuenta = (c) => navigator.clipboard.writeText(c.cbuAlias)
     .then(() => toast(`Copiado: ${c.cbuAlias}`, 'ok'), () => toast('No se pudo copiar al portapapeles.', 'err'));
+  /* El importe para pegar en el home banking sin tipearlo (20/11/2026, pedido del dueño):
+     sin separador de miles y con coma decimal, como lo piden los bancos de acá. */
+  const copiarImporte = () => {
+    const texto = importe.toFixed(2).replace('.', ',');
+    navigator.clipboard.writeText(texto)
+      .then(() => toast(`Importe copiado: ${texto}`, 'ok'), () => toast('No se pudo copiar al portapapeles.', 'err'));
+  };
+  const botonCopiar = importe > EPS && (
+    <Btn small onClick={copiarImporte} title="Para pegarlo en el home banking">Copiar importe</Btn>
+  );
   const sumaFormas = r2(formas.reduce((a, x) => a + (Number(x.importe) || 0), 0));
   const { cuentas: misCuentas } = useCuentasPropias();
   const nombreCuenta = nombreCuentaElegida(cuentaId, misCuentas);
@@ -359,7 +369,8 @@ export function PagoProveedorModal({ proveedor, docs: todosLosDocs = [], presele
                 <FilaTilde key={claveDoc(d)} marcado={marcado} onClick={() => alternar(d)} valor={money(d.saldo)}>
                   <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     <span style={{ fontWeight: marcado ? 600 : 400 }}>{d.etiqueta}</span>
-                    <span style={{ opacity: 0.65 }}>{' · '}{fmtFecha(d.fecha)}</span>
+                    {/* Cuántos días tiene la factura, como en la pizarra de pedidos (20/11/2026, pedido del dueño). */}
+                    <span style={{ opacity: 0.65 }}>{' · '}{fmtFecha(d.fecha)}{' · '}{hace(diasCalendario(d.fecha))}</span>
                   </span>
                   <EcheqsDeFactura d={d} />
                   {cubre(d) > EPS && <span className={s.hint} style={{ display: 'block', margin: 0 }}>{money(cubre(d))} ya cubiertos con la plata a favor</span>}
@@ -446,6 +457,7 @@ export function PagoProveedorModal({ proveedor, docs: todosLosDocs = [], presele
             <>
               <input value={money(importe)} disabled />
               <div className={s.hint} style={{ margin: '6px 0 0' }}>
+                {botonCopiar && <div style={{ marginBottom: 6 }}>{botonCopiar}</div>}
                 {sumaFletes > EPS ? (
                   <>
                     {money(sumaElegidos)} de documentos − {money(sumaFletes)} de flete ya pagado.
@@ -464,9 +476,9 @@ export function PagoProveedorModal({ proveedor, docs: todosLosDocs = [], presele
                 placeholder="Lo que se le entrega"
               />
               {/* El saldo a mano para no salir a mirarlo (30/10/2026, pedido del dueño). */}
-              {saldo != null && (
+              {(saldo != null || botonCopiar) && (
                 <div className={s.hint} style={{ margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  {saldo > EPS ? (
+                  {saldo == null ? null : saldo > EPS ? (
                     <>
                       <span>Saldo de la cuenta: <strong>{money(saldo)}</strong></span>
                       {Math.abs(r2(importeLibre) - r2(saldo)) > EPS && (
@@ -478,6 +490,7 @@ export function PagoProveedorModal({ proveedor, docs: todosLosDocs = [], presele
                   ) : (
                     <span>No se le debe nada: el saldo está en cero.</span>
                   )}
+                  {botonCopiar}
                 </div>
               )}
             </>

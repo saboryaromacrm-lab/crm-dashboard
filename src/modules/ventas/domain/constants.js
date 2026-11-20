@@ -41,6 +41,13 @@ export const MEDIOS_PAGO = {
   otro: 'Otro',
 };
 
+/**
+ * PARA MOSTRAR LO COBRADO, no para elegir: los medios más la nota de crédito de
+ * un cambio (0236), que paga una venta pero no se elige ni se configura. Los
+ * selectores siguen con `MEDIOS_PAGO`.
+ */
+export const MEDIOS_COBRADOS = { ...MEDIOS_PAGO, nota_credito: 'Nota de crédito (cambio)' };
+
 /*
  * ARCA no tiene "nota de crédito" a secas: tiene una POR LETRA, con su código
  * y su numeración propia, y la letra tiene que ser la misma que la de la

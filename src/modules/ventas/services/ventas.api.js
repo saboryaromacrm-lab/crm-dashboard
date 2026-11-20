@@ -124,7 +124,7 @@ export const ventasApi = {
   /**
    * NOTA DE CRÉDITO: la única forma de deshacer una factura con CAE.
    * `items` vacío = nota TOTAL (toda la venta, con sus otros cargos).
-   * `{ motivo, items?: [{itemId, cantidad}], devuelveMercaderia?, devolverEfectivo? }`
+   * `{ motivo, items?: [{itemId, cantidad}], devuelveMercaderia?, devolucion: 'efectivo'|'medio'|'cambio' }`
    */
   notaCredito: (id, datos) => httpClient.post(`/ventas/${id}/nota-credito`, datos),
   /**
@@ -132,6 +132,10 @@ export const ventasApi = {
    * crédito, por la puerta del cajero (`devoluciones`). Solo acepta tickets.
    */
   devolucion: (id, datos) => httpClient.post(`/ventas/${id}/devolucion`, datos),
+  /** Los cambios sin terminar del local (0236): `[{ id, etiqueta, fecha, total, saldo, efectivoDisponible }]`. */
+  cambiosPendientes: (sucursalId) => httpClient.get(`/ventas/cambios-pendientes${qs({ sucursalId })}`),
+  /** Devolver lo que le queda a un cambio: `como` = 'efectivo' (del turno) | 'medio' (anotado). */
+  devolverCambio: (ncId, como) => httpClient.post(`/ventas/${ncId}/cambio/devolver`, { como }),
 
   /* Ventas abiertas del punto de venta (borradores) */
   ventasAbiertas: (sucursalId) =>

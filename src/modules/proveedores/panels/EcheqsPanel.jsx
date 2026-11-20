@@ -276,10 +276,11 @@ export function EcheqsPanel() {
                   {activo && (
                     <>
                       {/* El banco no lo debita antes de su fecha (27/9/2026): antes de
-                          eso no se ofrece "Cobrar" — la API también lo rechaza. */}
+                          eso no se ofrece «Ya debitado» — la API también lo rechaza. Es un
+                          echeq propio: el banco lo debita, no se cobra (20/11/2026, pedido del dueño). */}
                       {e.diasRest <= 0
-                        ? <Btn small variant="btn-primary" onClick={() => cambiarEstado(e, 'cobrado', e.proveedorId ? 'Echeq cobrado: pago registrado.' : 'Echeq cobrado.')}>Cobrar</Btn>
-                        : <span className={s.hint} style={{ margin: 0 }}>se cobra desde el {fmtFecha(e.fechaVenc)}</span>}
+                        ? <Btn small variant="btn-primary" onClick={() => cambiarEstado(e, 'cobrado', e.proveedorId ? 'Echeq debitado: pago registrado.' : 'Echeq debitado.')}>Ya debitado</Btn>
+                        : <span className={s.hint} style={{ margin: 0 }}>se debita desde el {fmtFecha(e.fechaVenc)}</span>}
                       {e.estado === 'emitido' && (
                         <Btn small onClick={() => cambiarEstado(e, 'entregado', 'Marcado como entregado.')}>Entregado</Btn>
                       )}

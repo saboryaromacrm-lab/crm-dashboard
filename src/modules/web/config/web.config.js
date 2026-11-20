@@ -13,6 +13,7 @@ import ImageIcon from '@mui/icons-material/Image';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
 import SettingsIcon from '@mui/icons-material/Settings';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 
 export const WEB_SECCIONES = [
   /* Quién puede comprar (0155): pedidos de ingreso por DNI. La llave conserva el nombre con que nació.
@@ -32,6 +33,8 @@ export const WEB_SECCIONES = [
   { id: 'contenido', label: 'Contenido del sitio', icon: ImageIcon, permiso: 'web.contenido' },
   /* Métricas por modo (0179): la sección conserva el id y la llave con que nació. */
   { id: 'estadisticas', label: 'Métricas', icon: QueryStatsIcon, permiso: 'web.estadisticas' },
+  /* El vendedor con IA del WhatsApp de ventas (0237): probarlo, sus charlas y su configuración. */
+  { id: 'whatsapp', label: 'Bot de WhatsApp', icon: WhatsAppIcon, permiso: 'web.whatsapp' },
   /* Todo lo configurable de la tienda (16/10/2026, antes en Ventas › Configuración): general, mayorista y minorista. */
   { id: 'configuracion', label: 'Configuración', icon: SettingsIcon, permiso: 'web.configuracion' },
 ];

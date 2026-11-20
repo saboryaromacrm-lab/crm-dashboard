@@ -23,6 +23,7 @@ import {
   Table, PanelHead, Btn, ModalShell, Paginador, usePaginado, money, num, fmtFechaHora, s,
 } from '../components/ui.jsx';
 import { MisPedidosFraccion } from '../components/MisPedidosFraccion.jsx';
+import { CambiosPendientes } from '../components/CambiosPendientes.jsx';
 import { AvisoArqueoDia, AvisoCierreCaja, CajaVencidaAviso, PlazoCajaDato } from '../components/PlazoCaja.jsx';
 import { useMisPedidosFraccion } from '../hooks/useMisPedidosFraccion.js';
 import { imprimirVenta } from '@core/services/imprimir.js';
@@ -907,6 +908,41 @@ export function PosPanel() {
     { enabled: !!sucursalId },
   );
 
+  /*
+   * EL CAMBIO (0236): las notas de crédito del local que quedaron a favor del
+   * cliente («se lleva otra mercadería»), y cuál paga el ticket abierto. Se
+   * releen cada vez que se cierra una ventana: la nota se emite en una y el
+   * cobro que la usa termina en otra.
+   */
+  const { data: cambios, reload: recargarCambios } = useResource(
+    `cambios:${sucursalId}`,
+    () => ventasApi.cambiosPendientes(sucursalId),
+    { enabled: !!sucursalId },
+  );
+  const habiaVentana = useRef(false);
+  useEffect(() => {
+    if (habiaVentana.current && !modal) recargarCambios();
+    habiaVentana.current = !!modal;
+  }, [modal, recargarCambios]);
+  /** `{ ncId, ventaId }`: la nota vale para el ticket donde se eligió. */
+  const [cambioElegido, setCambioElegido] = useState(null);
+  const cambioDelTicket = cambioElegido?.ventaId === activaId
+    ? (cambios ?? []).find((c) => c.id === cambioElegido.ncId) ?? null
+    : null;
+  /** «No se lleva nada»: devuelve lo que le queda a la nota. `true` si salió. */
+  const devolverCambio = useCallback(async (nc, como) => {
+    try {
+      await ventasApi.devolverCambio(nc.id, como);
+      toast(`Se devolvieron ${money(nc.saldo)} ${como === 'efectivo' ? 'en efectivo del cajón' : 'por el mismo medio'}: el cambio quedó resuelto.`, 'ok');
+      setCambioElegido((c) => (c?.ncId === nc.id ? null : c));
+      recargarCambios();
+      return true;
+    } catch (e) {
+      toast(errorMsg(e), 'err');
+      return false;
+    }
+  }, [toast, recargarCambios]);
+
   const consumidorFinal = useMemo(() => clientes.find((c) => c.esConsumidorFinal), [clientes]);
   const clienteActual = getCliente(clienteId) || consumidorFinal || null;
   /*
@@ -1597,6 +1633,8 @@ export function PosPanel() {
          * cliente paga con otro, vuelve a minorista y se cobra de nuevo con
          * el total nuevo a la vista. */
         mayorista: restriccion,
+        /* El cambio (0236): la nota de crédito que paga este ticket. */
+        cambio: cambioDelTicket,
         /* Un descuento con nombre que exige un medio (8/10/2026): el cobro
          * ofrece solo ese medio. Si el cliente paga con otro, se saca el
          * descuento y se cobra de nuevo con el total nuevo a la vista. */
@@ -1621,6 +1659,7 @@ export function PosPanel() {
         },
         onCobrado: (venta, vuelto) => {
           closeModal();
+          setCambioElegido(null);
           /*
            * DIRECTO AL TICKET SIGUIENTE (6/10/2026, pedido del dueño): sin la
            * ventana «Venta registrada». El papel ya salió al cobrar (si está
@@ -1643,7 +1682,7 @@ export function PosPanel() {
         },
       });
     });
-  }, [puedeCobrar, problemas, activaId, cajaVencida, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast, restriccion, conMedio, cambioDesc, getCliente, can]);
+  }, [puedeCobrar, problemas, activaId, cajaVencida, ticket, clienteActual, totales, caja, config.arcaHabilitado, sucursales, sucursalId, guardarAhora, openModal, closeModal, trasCobrar, toast, restriccion, conMedio, cambioDesc, cambioDelTicket, getCliente, can]);
   useEffect(() => {
     if (!reabrirCobro.current) return;
     reabrirCobro.current = false;
@@ -1704,6 +1743,15 @@ export function PosPanel() {
 
   const sucursal = sucursales.find((x) => x.id === sucursalId);
   const enLista = !activaId;
+  const avisoCambios = (
+    <CambiosPendientes
+      cambios={cambios}
+      elegidoId={cambioElegido?.ventaId === activaId ? cambioElegido.ncId : null}
+      puedeElegir={!!activaId}
+      onElegir={(ncId) => setCambioElegido(ncId ? { ncId, ventaId: activaId } : null)}
+      onDevolver={devolverCambio}
+    />
+  );
 
   /**
    * La misma barra de pestañas vive en las dos vistas: la lista (panel normal)
@@ -1791,6 +1839,7 @@ export function PosPanel() {
         <CajaVencidaAviso caja={caja} onCerrar={() => goPanel('caja')} />
         <AvisoCierreCaja caja={caja} />
         <AvisoArqueoDia caja={caja} />
+        {avisoCambios}
 
         {/* Lo pedido a fraccionado (0170) y cómo va: a la vista del cajero. */}
         <MisPedidosFraccion pedidos={misPedidos.pedidos} onEntendido={misPedidos.entendido} onCancelar={misPedidos.cancelar} />
@@ -2236,6 +2285,7 @@ export function PosPanel() {
 
       {/* ---------------- Pestañas ---------------- */}
       {barraPestanas(false)}
+      {avisoCambios}
 
       {errorCatalogo && (
         <div className={cx(s.callout, s.warn)}>No se pudo cargar el catálogo: <strong>{errorCatalogo}</strong></div>

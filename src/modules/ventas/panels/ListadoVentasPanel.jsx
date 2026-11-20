@@ -32,7 +32,7 @@ import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
 import { imprimirVenta } from '@core/services/imprimir.js';
 import {
-  MEDIOS_PAGO, ESTADOS_VENTA, ENTREGAS, ORIGENES_PEDIDO, TIPOS_VENTA, esEnvio, nroComprobante, esNotaCredito,
+  MEDIOS_COBRADOS, ESTADOS_VENTA, ENTREGAS, ORIGENES_PEDIDO, TIPOS_VENTA, esEnvio, nroComprobante, esNotaCredito,
 } from '../domain/constants.js';
 import {
   Table, PanelHead, Stat, Btn, Pill, VentaEstadoPill, VentaTag,
@@ -146,6 +146,7 @@ function PorSucursal({ sucursales, elegida, elegir }) {
 const COLOR_MEDIO = {
   efectivo: '#16a34a', transferencia: '#2563eb', tarjeta_debito: '#7c3aed', tarjeta_credito: '#db2777',
   qr: '#0891b2', qr_mp: '#f97316', cheque: '#a16207', transferencia_proveedor: '#4f46e5', otro: '#64748b',
+  nota_credito: '#a8a29e',
 };
 
 /*
@@ -154,7 +155,7 @@ const COLOR_MEDIO = {
  * la caja (referencia «MP …»); «QR / billetera» queda para los QR cobrados por
  * fuera. No va en `MEDIOS_PAGO`: esa lista arma también los medios de la caja.
  */
-const NOMBRE_MEDIO = Object.fromEntries(Object.entries(MEDIOS_PAGO).flatMap(([k, v]) => (k === 'qr' ? [[k, v], ['qr_mp', 'QR Mercado Pago']] : [[k, v]])));
+const NOMBRE_MEDIO = Object.fromEntries(Object.entries(MEDIOS_COBRADOS).flatMap(([k, v]) => (k === 'qr' ? [[k, v], ['qr_mp', 'QR Mercado Pago']] : [[k, v]])));
 
 /** Un dato de la rentabilidad: nombre arriba, número abajo. */
 function DatoRenta({ nombre, valor, color }) {

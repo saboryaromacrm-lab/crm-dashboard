@@ -3,7 +3,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { errorMsg, ventasApi } from '../../services/ventas.api.js';
-import { MEDIOS_PAGO } from '../../domain/constants.js';
+import { MEDIOS_COBRADOS } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
 import { imprimirArqueoCaja, imprimirEnvioCaja } from '@core/services/imprimir.js';
 import { separarEnvio } from '../../domain/separarEnvio.js';
@@ -1253,7 +1253,7 @@ export function DetalleArqueo({ arqueo, ciego: forzarCiego = false, onAnularPost
       >
         {medios.map(([medio, m]) => (
           <tr key={medio}>
-            <td>{MEDIOS_PAGO[medio] || medio}</td>
+            <td>{MEDIOS_COBRADOS[medio] || medio}</td>
             <td className={s.num}>{money(m.ventas)}</td>
             <td className={s.num}>{money(m.cobranzas)}</td>
             {/* EL RECARGO POR CUOTAS, DENTRO DEL MISMO COBRO. Va al lado del

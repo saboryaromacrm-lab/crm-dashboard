@@ -120,4 +120,4 @@ export function haceCuanto(isoFecha) {
   return h < 24 ? `hace ${h} h` : `hace ${Math.round(h / 24)} días`;
 }
 
-export const MEDIOS = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta_debito: 'Débito', tarjeta_credito: 'Crédito', qr: 'QR', cheque: 'Cheque', transferencia_proveedor: 'Transferencia a proveedor', otro: 'Otro' };
+export const MEDIOS = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta_debito: 'Débito', tarjeta_credito: 'Crédito', qr: 'QR', cheque: 'Cheque', transferencia_proveedor: 'Transferencia a proveedor', otro: 'Otro', nota_credito: 'Nota de crédito (cambio)' };

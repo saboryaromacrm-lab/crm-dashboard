@@ -23,7 +23,6 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useSeccionEnUrl, useSubnavALaVista } from '@core/hooks/useSeccionEnUrl.js';
-import { useSearchParams } from 'react-router-dom';
 import { httpClient } from '@core/services/httpClient.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { PageHeader } from '@shared/components/PageHeader/PageHeader.jsx';
@@ -32,6 +31,7 @@ import { Table, PanelHead, Btn, s } from '@modules/productos/components/ui.jsx';
 import { WEB_SECCIONES } from '../config/web.config.js';
 import { SubirImagenBtn } from '../components/SubirImagenBtn.jsx';
 import { AccesosTiendaPanel } from '../components/AccesosTiendaPanel.jsx';
+import { BotWhatsappPanel } from '../components/BotWhatsappPanel.jsx';
 import { ConfiguracionTiendaPanel } from '../components/ConfiguracionTiendaPanel.jsx';
 import { BuscadoresEditor } from '../components/BuscadoresEditor.jsx';
 import { NosotrosEditor } from '../components/NosotrosEditor.jsx';
@@ -591,10 +591,17 @@ const CON_CATALOGO = new Set(['contenido', 'configuracion']);
 export function WebPage() {
   const { can } = usePermissions();
   const secciones = useMemo(() => WEB_SECCIONES.filter((x) => can(x.permiso)), [can]);
-  /* `?seccion=accesos` abre esa sección (el cartel de pedidos de ingreso), también con la página ya abierta. */
-  const pedida = useSearchParams()[0].get('seccion');
-  const [seccion, setSeccion] = useState(secciones[0]?.id);
-  useEffect(() => { if (pedida) setSeccion(pedida); }, [pedida]);
+  /*
+   * `?seccion=accesos` abre esa sección (el cartel de pedidos de ingreso). Se lee
+   * AL ARRANCAR, como Gerencia: arrancar en la primera y corregir después peleaba
+   * con `useSeccionEnUrl` y, al recargar en otra sección, la página quedaba
+   * saltando entre las dos y pidiéndole todo a la API sin parar (19/11/2026).
+   * Con la página ya abierta, el cambio de dirección lo sigue `useSeccionEnUrl`.
+   */
+  const [seccion, setSeccion] = useState(() => {
+    const pedida = new URLSearchParams(window.location.search).get('seccion');
+    return pedida && secciones.some((x) => x.id === pedida) ? pedida : secciones[0]?.id;
+  });
   const [catalogo, setCatalogo] = useState(null);
   const [error, setError] = useState(null);
   const [aviso, setAviso] = useState(null);
@@ -687,6 +694,7 @@ export function WebPage() {
           {activa === 'ofertas' && <OfertasWebPanel avisar={avisar} />}
           {activa === 'estadisticas' && <MetricasTiendaPanel />}
           {activa === 'accesos' && <AccesosTiendaPanel avisar={avisar} />}
+          {activa === 'whatsapp' && <BotWhatsappPanel avisar={avisar} />}
           {usaCatalogo && catalogo === null && !error && <div className={s['empty-state']}>Cargando el catálogo del sitio…</div>}
           {usaCatalogo && catalogo && (
             <>

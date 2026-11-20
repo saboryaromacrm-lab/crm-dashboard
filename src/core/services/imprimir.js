@@ -1050,6 +1050,8 @@ const MEDIOS_CAJA = {
   cheque: 'Cheque',
   qr: 'QR / billetera',
   otro: 'Otro',
+  // 0236: la nota de crédito de un cambio. Se ve, pero no es plata del cajón.
+  nota_credito: 'Nota de credito (cambio)',
 };
 
 /**
@@ -1504,6 +1506,7 @@ const MEDIO_PAPEL = {
   cheque: 'Cheque',
   qr: 'QR / billetera',
   otro: 'Otro',
+  nota_credito: 'Nota de crédito',
 };
 
 /**
@@ -1519,7 +1522,9 @@ function bloqueFormaPago(venta, moneda) {
     /* El cobro con el QR de Mercado Pago deja la referencia «MP <operación>»:
      * en el papel sale con su nombre y el número, que es lo que el cliente ve en su app. */
     const op = p.medio === 'qr' ? /^MP (?:orden )?(\S+)$/.exec(String(p.referencia ?? '').trim()) : null;
-    const nombre = op ? `QR Mercado Pago (op. ${op[1]})` : (MEDIO_PAPEL[p.medio] || p.medio);
+    /* Un cambio (0236) sale con la nota que lo pagó: la referencia es «Nota de crédito B 00032-00000002». */
+    const nombre = op ? `QR Mercado Pago (op. ${op[1]})`
+      : p.medio === 'nota_credito' && p.referencia ? p.referencia : (MEDIO_PAPEL[p.medio] || p.medio);
     return `<tr><td>${esc(nombre + cuotas)}</td><td class="n">${moneda(p.importe)}</td></tr>`;
   });
   if (venta.condicionPago === 'cuenta_corriente') {

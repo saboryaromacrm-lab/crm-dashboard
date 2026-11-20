@@ -41,6 +41,11 @@ import { horaAr } from '@shared/utils/hora.js';
  * salta a la vista. El selector Contado/Cta.Cte. solo existe si ESTE cliente
  * tiene cuenta corriente habilitada — si no, toda venta es al contado y no hay
  * nada que elegir. Los medios de pago arrancan en efectivo por el total.
+ *
+ * EL CAMBIO (0236): con `cambio` (la nota de crédito de una devolución, elegida
+ * en el punto de venta) la nota paga primero y los medios cubren solo la
+ * diferencia. Si la nota alcanza para todo, lo que sobra se devuelve en el acto:
+ * en efectivo del cajón o por el mismo medio, y hay que elegirlo.
  */
 const TERC = 'transferencia_proveedor';
 /** El medio de pantalla del cobro por QR de Mercado Pago (0126). */
@@ -54,6 +59,7 @@ const PLANES = [1, 3, 6];
 export function CobroModal({
   ventaId, totales, clienteId, cajaSesionId, onCobrado, facturaInterna = false, mayorista = null, onVolverMinorista = null,
   descuentosMedio = [], onSacarDescuentos = null, cambioDescuento = null, onCambiarDescuento = null,
+  cambio = null,
 }) {
   const { getCliente, config, ctx, closeModal, toast, operadorId } = useVentas();
   const cliente = getCliente(clienteId);
@@ -93,10 +99,18 @@ export function CobroModal({
     ? (mediosDescuento.includes('efectivo') ? 'efectivo' : mediosDescuento[0])
     : (soloMayorista && !soloMayorista.includes('efectivo') ? soloMayorista[0] : 'efectivo');
 
+  /* El cambio: cuánto paga la nota, y lo que sobra de ella si alcanza para todo. */
+  const creditoNc = cambio ? r2(Math.min(cambio.saldo, Number(totales.total) || 0)) : 0;
+  const sobraNc = cambio ? r2(cambio.saldo - creditoNc) : 0;
+  const efectivoAlcanza = !!cambio && cambio.efectivoDisponible + 0.009 >= sobraNc;
+  /** Cómo se devuelve lo que sobra de la nota: '' | 'efectivo' | 'medio'. */
+  const [sobrante, setSobrante] = useState('');
+  const pagoNc = creditoNc > 0 ? [{ medio: 'nota_credito', importe: creditoNc, ncVentaId: cambio.id }] : [];
+
   const [condicionPago, setCondicionPago] = useState('contado');
   const [pagos, setPagos] = useState(() => [{
     medio: medioInicial,
-    importe: String(totales.total), cuentaDisponibleId: null,
+    importe: String(r2(totales.total - creditoNc)), cuentaDisponibleId: null,
   }]);
   const [entregado, setEntregado] = useState('');
   const [observaciones, setObservaciones] = useState('');
@@ -129,13 +143,13 @@ export function CobroModal({
    *
    * Ahora se cobra el total EXACTO. `totalCobrar` queda porque es el número
    * que miran las validaciones, el vuelto y los pagos — solo que ya no le
-   * suma nada.
+   * suma nada. Con un cambio (0236) es lo que la nota no cubre.
    *
    * Los tickets viejos que ya tienen el renglón se siguen imprimiendo igual:
    * el extra quedó guardado en la venta y sacarlo del papel dejaría un total
    * que no cierra con su detalle.
    */
-  const totalCobrar = r2(totales.total);
+  const totalCobrar = r2(totales.total - creditoNc);
 
   // El foco entra directo en "Con cuánto paga". Diferido porque el focus-trap
   // del Dialog de MUI corre después del montaje y pisa un autoFocus normal.
@@ -347,7 +361,7 @@ export function CobroModal({
           cajaSesionId: cajaSesionId ?? undefined,
           operadorId: operadorId ?? undefined,
           observaciones,
-          pagos: pagosReales.filter((x) => x.medio !== QR_MP && Number(x.importe) > 0).map((x) => ({ medio: x.medio, importe: r2(x.importe) })),
+          pagos: [...pagoNc, ...pagosReales.filter((x) => x.medio !== QR_MP && Number(x.importe) > 0).map((x) => ({ medio: x.medio, importe: r2(x.importe) }))],
           ...(aCuit && tipo === 'factura' ? { facturaCuit: { cuit: aCuit.cuit, ...(aCuit.manual ? { manual: aCuit.manual } : {}) } } : {}),
         },
       });
@@ -509,6 +523,10 @@ export function CobroModal({
       toast('Supera el límite de crédito del cliente.', 'err');
       return;
     }
+    if (sobraNc > 0.009 && !sobrante) {
+      toast(`Sobran ${money(sobraNc)} de la nota de crédito: elegí si se devuelven en efectivo o por el mismo medio.`, 'err');
+      return;
+    }
     // Con QR de Mercado Pago no se confirma acá: el monto va al QR y la venta se cierra sola cuando entra el pago.
     if (montoQrMp > 0) { await iniciarCobroQr(tipo); return; }
     enviandoRef.current = true;
@@ -527,15 +545,16 @@ export function CobroModal({
           // Factura a un CUIT (0125): solo el CUIT; los datos los pone ARCA en el servidor.
           ...(aCuit && tipo === 'factura' ? { facturaCuit: { cuit: aCuit.cuit, ...(aCuit.manual ? { manual: aCuit.manual } : {}) } } : {}),
           pagos: condicionPago === 'contado'
-            ? pagosReales.filter((x) => Number(x.importe) > 0).map((x) => ({
+            ? [...pagoNc, ...pagosReales.filter((x) => Number(x.importe) > 0).map((x) => ({
               medio: x.medio, importe: r2(x.importe),
               /* El PLAN, no el recargo ni el porcentaje: el servidor los
                * calcula con su propia configuración. Mandarle el monto sería
                * dejar que la caja declare cuánto de una venta es financiación. */
               ...(x.medio === CREDITO && x.cuotas ? { cuotas: Number(x.cuotas) } : {}),
               ...(x.medio === TERC ? { cuentaDisponibleId: x.cuentaDisponibleId } : {}),
-            }))
+            }))]
             : [],
+          ...(sobraNc > 0.009 ? { sobranteCambio: sobrante } : {}),
         });
       } catch (e1) {
         /*
@@ -610,7 +629,7 @@ export function CobroModal({
 
   const pagosOk = condicionPago === 'cuenta_corriente'
     ? !(excedeCredito && config.ctaCteBloquearSuperado)
-    : Math.abs(faltante) <= 0.01 && !avisoTerc && !(faltaMayorista > 0.01) && !choqueDescuento;
+    : Math.abs(faltante) <= 0.01 && !avisoTerc && !(faltaMayorista > 0.01) && !choqueDescuento && !(sobraNc > 0.009 && !sobrante);
   const puedeLiquidar = pagosOk && condicionPago === 'contado' && !medioExigeFactura && !enviando && !aCuit;
   const puedeFacturar = pagosOk && !enviando && (!aCuit || aCuit.listo);
 
@@ -763,7 +782,7 @@ export function CobroModal({
       ].filter(Boolean)}
     >
       <div className={p.cobroTotal}>
-        <span className={p.cobroTotalLabel}>Total</span>
+        <span className={p.cobroTotalLabel}>{creditoNc > 0 ? 'A cobrar' : 'Total'}</span>
         <span className={p.cobroTotalValor}>{money(totalFinal)}</span>
       </div>
       {/* 0124: esta sucursal todavía no factura con ARCA. Se dice ANTES de
@@ -773,6 +792,38 @@ export function CobroModal({
           Esta sucursal todavía no factura con ARCA: <strong>Facturar</strong> emite un comprobante interno, sin CAE.
         </div>
       )}
+      {cambio && (
+        <div className={cx(s.callout, s.info)} style={{ margin: '6px 0 var(--crm-space-3)', display: 'grid', gap: 6 }}>
+          <div>
+            <strong>Cambio</strong> con la {cambio.etiqueta}: paga <strong>{money(creditoNc)}</strong> del ticket de {money(totales.total)}.
+            {totalCobrar > 0.009 ? <> Falta cobrar <strong>{money(totalCobrar)}</strong>.</> : ' No se cobra nada más.'}
+          </div>
+          {sobraNc > 0.009 && (
+            <>
+              <div>Sobran <strong>{money(sobraNc)}</strong> de la nota: ¿cómo se los devolvés? <span className={s.req}>*</span></div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <Btn
+                  small variant={sobrante === 'efectivo' ? 'btn-primary' : 'btn-ghost'} disabled={!efectivoAlcanza}
+                  onClick={() => setSobrante('efectivo')}
+                >
+                  En efectivo, del cajón
+                </Btn>
+                {cambio.mismoMedio && (
+                  <Btn small variant={sobrante === 'medio' ? 'btn-primary' : 'btn-ghost'} onClick={() => setSobrante('medio')}>
+                    Por el mismo medio con que pagó
+                  </Btn>
+                )}
+              </div>
+              {!efectivoAlcanza && (
+                <div className={s.hint} style={{ margin: 0 }}>
+                  En efectivo no: de la venta original quedan {money(cambio.efectivoDisponible)} cobrados en efectivo. Lo demás vuelve por el mismo medio.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Con recargo, el total grande ya no es el de la mercadería: se muestra
           de dónde salió, para que el número no aparezca cambiado sin
           explicación justo cuando el cliente está mirando. */}
@@ -865,7 +916,7 @@ export function CobroModal({
       {/* El selector solo existe cuando hay algo que elegir: cliente con cta. cte.
           Con precio mayorista también (1/10/2026): se fía y se cobra con sus medios.
           Con un descuento que exige medio, no: ese descuento es al contado. */}
-      {ctaCteDisponible && !descuentosMedio.length && (
+      {ctaCteDisponible && !descuentosMedio.length && !cambio && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 'var(--crm-space-3)' }}>
           <Btn
             variant={condicionPago === 'contado' ? 'btn-primary' : 'btn-ghost'}
@@ -946,6 +997,8 @@ export function CobroModal({
             </>
           )}
 
+          {totalCobrar > 0.009 && (
+          <>
           <div className={s['section-title']}>Medios de pago</div>
           {sinQrMp && (!mediosDescuento || mediosDescuento.includes('qr')) &&<div className={s.hint} style={{ margin: '-4px 0 6px' }}>Sin QR de Mercado Pago: {sinQrMp}</div>}
           {pagos.map((x, i) => (
@@ -1011,6 +1064,8 @@ export function CobroModal({
             {(medios.length > 1 || !mediosDescuento) && <Btn small onClick={agregarPago}>+ Otro medio</Btn>}
             {pagos.length > 1 && <Btn small onClick={dividir}>Partes iguales</Btn>}
           </div>
+          </>
+          )}
 
           {/* El medio que exige factura ya no avisa (5/10/2026, pedido del dueño):
               «Liquidar» desaparece y la venta se cierra facturada. */}
@@ -1019,7 +1074,7 @@ export function CobroModal({
           {Math.abs(faltante) > 0.01 && (
             <div className={cx(s.callout, s.warn)} style={{ marginTop: 'var(--crm-space-3)' }}>
               {faltante > 0
-                ? <>Falta asignar <strong>{money(faltante)}</strong> (asignado {money(pagado)} de {money(totales.total)}).</>
+                ? <>Falta asignar <strong>{money(faltante)}</strong> (asignado {money(pagado)} de {money(totalCobrar)}).</>
                 : <>Los medios suman <strong>{money(-faltante)}</strong> de más.</>}
             </div>
           )}

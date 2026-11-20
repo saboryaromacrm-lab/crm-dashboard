@@ -10,6 +10,15 @@ export { Di, Saldo } from '@modules/gastos/components/ui.jsx';
 import { Pill as PillBase, s } from '@modules/productos/components/ui.jsx';
 import { fmtFecha, money } from '@modules/productos/domain/format.js';
 
+/** Días de CALENDARIO hasta hoy (lo de anoche es «ayer», aunque no hayan pasado 24 h). */
+export function diasCalendario(fecha) {
+  const d = new Date(fecha); d.setHours(0, 0, 0, 0);
+  const h = new Date(); h.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((h - d) / 86400000));
+}
+/** «hoy», «ayer», «hace 5 días». */
+export const hace = (dias) => (dias === 0 ? 'hoy' : dias === 1 ? 'ayer' : `hace ${dias} días`);
+
 /* Las clases de pill son las del sistema: est-pendiente (ámbar),
  * est-recibida (verde), est-cancelada (rojo), null = neutra. */
 
