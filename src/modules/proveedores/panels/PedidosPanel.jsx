@@ -34,6 +34,8 @@ const FILTROS = {
 const SIN_FILTROS = { estado: '', enviado: '', visto: '' };
 /** ¿La tarjeta pasa el filtro de una marca («si» / «no»)? */
 const pasa = (filtro, tiene) => !filtro || (filtro === 'si') === tiene;
+/** «Ya lo vi»: celeste, neutro (ni el verde de enviado ni un color de alerta). */
+const CELESTE = '#0ea5e9';
 
 
 export function PedidosPanel() {
@@ -80,17 +82,20 @@ export function PedidosPanel() {
     const abierta = abiertas.has(t.id);
     /* Enviado (10/11/2026, pedido del dueño): la tarjeta entera en verde, para verlo sin abrirla. */
     const enviada = t.estado === 'solicitado' && t.pedidoEnviado;
+    /* «Ya lo vi» (20/11/2026, pedido del dueño): la tarjeta en celeste, un color neutro. Si además se envió, manda el verde. */
+    const vista = t.estado === 'solicitado' && !enviada && revisadoHace != null;
+    const tinte = enviada ? 'var(--crm-color-success)' : vista ? CELESTE : null;
     return (
       <div
         className={s.card}
         style={{
           padding: abierta ? 10 : '6px 10px', marginBottom: abierta ? 8 : 6,
-          ...(enviada && {
-            background: 'color-mix(in srgb, var(--crm-color-success) 22%, var(--crm-color-surface))',
-            borderColor: 'var(--crm-color-success)',
+          ...(tinte && {
+            background: `color-mix(in srgb, ${tinte} ${enviada ? 22 : 14}%, var(--crm-color-surface))`,
+            borderColor: tinte,
           }),
         }}
-        title={enviada ? 'Pedido enviado: esperando que el proveedor lo confirme' : undefined}
+        title={enviada ? 'Pedido enviado: esperando que el proveedor lo confirme' : vista ? `Ya lo viste ${hace(revisadoHace)}` : undefined}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
           <div style={{ minWidth: 0, display: 'flex' }}>

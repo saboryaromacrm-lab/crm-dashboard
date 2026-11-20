@@ -91,6 +91,9 @@ test('bultoTexto y unidadPedido: como se escribe en el pedido', () => {
   assert.equal(unidadPedido(gra, 25, 2), 'bolsas');
   assert.equal(unidadPedido(ent, 0, 5), 'u.');
   assert.equal(unidadPedido(gra, 0, 5), 'kg');
+  /* Medio bulto (20/11/2026): singular hasta uno. */
+  assert.equal(unidadPedido(ent, 36, 0.5), 'bulto');
+  assert.equal(unidadPedido(ent, 36, 1.5), 'bultos');
 });
 
 test('indiceDisponible: solo lo disponible; el granel suma sus paquetes en kg', () => {
@@ -130,6 +133,8 @@ test('totales del pedido: bultos y unidades; el granel en bolsas y kg aparte', (
   const e = { tipo: 'entero' }; const g = { tipo: 'granel' };
   assert.equal(totalesPedido([{ p: e, bulto: 18, cantidad: 3 }, { p: e, bulto: 24, cantidad: 1 }, { p: e, bulto: 0, cantidad: 5 }]), 'Total: 4 bultos · 83 unidades');
   assert.equal(totalesPedido([{ p: e, bulto: 18, cantidad: 1 }]), 'Total: 1 bulto · 18 unidades');
+  assert.equal(totalesPedido([{ p: e, bulto: 36, cantidad: 0.5 }]), 'Total: 0,5 bulto · 18 unidades');
+  assert.equal(totalesPedido([{ p: e, bulto: 36, cantidad: 0.5 }, { p: e, bulto: 36, cantidad: 1 }]), 'Total: 1,5 bultos · 54 unidades');
   assert.equal(totalesPedido([{ p: g, bulto: 25, cantidad: 2 }, { p: g, bulto: 0, cantidad: 2.5 }]), 'Total: 2 bolsas · 52,5 kg');
   assert.equal(totalesPedido([{ p: e, bulto: 12, cantidad: 0 }]), '');
 });

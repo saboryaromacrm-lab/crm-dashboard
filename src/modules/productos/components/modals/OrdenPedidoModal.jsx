@@ -264,6 +264,13 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
     return previoAnterior.total - enLista.size;
   }, [previoAnterior, filas]);
 
+  /*
+   * MEDIO BULTO (20/11/2026, pedido del dueño): hay proveedores que dejan
+   * mezclar sabores, así que en los bultos se puede pedir de a medio (0,5 ·
+   * 1,5). Solo si el bulto es par: medio bulto de 25 serían 12,5 unidades.
+   */
+  const pasoBulto = (x) => (x.p.tipo !== 'granel' && x.bulto > 1 && x.bulto % 2 === 0 ? 0.5 : 1);
+  const partido = (x, n) => x.bulto > 1 && !Number.isInteger(n);
   const conBulto = (x) => [x.nombre, bultoTexto(x.p, x.bulto)].filter(Boolean).join(' ');
   /** Cuánto haría falta para llegar al «menor a»: en bultos (o en la unidad, sin bulto). */
   const sugerido = (x) => {
@@ -273,7 +280,8 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   };
 
   const pedidos = orden.map((id) => porId.get(id)).filter(Boolean).map((x) => ({ x, n: aNumero(cant[x.id]) }));
-  const lineas = pedidos.map(({ x, n }) => `${conBulto(x)}${x.codigo ? ` (${x.codigo})` : ''} — ${fmtN(n)} ${unidadPedido(x.p, x.bulto, n)}`);
+  /* Medio bulto: el renglón dice también cuántas unidades son, para que el proveedor no dude. */
+  const lineas = pedidos.map(({ x, n }) => `${conBulto(x)}${x.codigo ? ` (${x.codigo})` : ''} — ${fmtN(n)} ${unidadPedido(x.p, x.bulto, n)}${partido(x, n) ? ` (${fmtN(n * x.bulto)} u.)` : ''}`);
   const titulo = [`Pedido - ${QUIEN_PIDE} - ${hoy()}`, ...(pedidos.some(({ x }) => x.codigo) ? [AVISO_CODIGO] : [])].join(' - ');
   const renglones = pedidos.map(({ x, n }) => ({ p: x.p, bulto: x.bulto, cantidad: n }));
   /* Cuánto suma, a costo (13/10/2026): solo para mirar, no va en el mensaje. Solo quien ve costos. */
@@ -286,13 +294,23 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
 
   const limpiarPara = (v) => { setProvId(v); setCant({}); setOrden([]); setQ(''); setCategoria(''); setEditado(null); };
   const editar = (texto) => setEditado((e) => ({ texto, base: e?.base ?? armado }));
-  /** Enteros (bultos, unidades, bolsas); kg con coma solo en el granel sin bolsa. */
+  /** Enteros (unidades, bolsas); kg con coma en el granel sin bolsa; en los bultos pares, también medio (0,5). */
   const cargar = (x, texto) => {
-    const decimales = x.p.tipo === 'granel' && !(x.bulto > 1);
+    const decimales = (x.p.tipo === 'granel' && !(x.bulto > 1)) || pasoBulto(x) === 0.5;
     const limpio = String(texto).replace(decimales ? /[^\d.,]/g : /\D/g, '');
     setCant((m) => ({ ...m, [x.id]: limpio }));
     const hay = aNumero(limpio) > 0;
     setOrden((o) => (hay ? (o.includes(x.id) ? o : [...o, x.id]) : o.filter((id) => id !== x.id)));
+  };
+  /** Al salir de la casilla de un bulto, lo tecleado queda en el medio bulto más cercano (0,3 → 0,5; 1,7 → 1,5). */
+  const ajustarBulto = (x) => {
+    if (pasoBulto(x) !== 0.5) return;
+    const n = aNumero(cant[x.id]);
+    if (!(n > 0)) return;
+    const bien = Math.max(0.5, Math.round(n * 2) / 2);
+    if (bien === n) return;
+    cargar(x, fmtN(bien));
+    toast(`${x.nombre}: se pide de a medio bulto (${x.bulto / 2} u.), quedó en ${fmtN(bien)}.`, 'ok');
   };
   /** Enter o ↓ pasan al renglón de abajo; ↑ al de arriba (en el acto, como en el conteo). */
   const mover = (x, paso) => {
@@ -367,7 +385,7 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
   return (
     <ModalShell
       title="Orden de pedido"
-      subtitle="Los productos del proveedor (o los que tienen menos stock que el número elegido), en el bulto en que se le compran"
+      subtitle="Los productos del proveedor (o los que tienen menos stock que el número elegido), en el bulto en que se le compran. Se puede pedir medio bulto: 0,5"
       size="xl"
       onClose={cerrar}
       footer={pregunta ? [] : [{ texto: volverA ? 'Cerrar y volver' : 'Cerrar', clase: 'btn-ghost', onClick: cerrar }]}
@@ -480,6 +498,8 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                             inputMode="decimal" autoComplete="off" aria-label={`A pedir: ${x.nombre}`}
                             value={cant[x.id] ?? ''} placeholder="0"
                             onChange={(e) => cargar(x, e.target.value)}
+                            onBlur={() => ajustarBulto(x)}
+                            title={pasoBulto(x) === 0.5 ? `Se puede pedir medio bulto (${x.bulto / 2} u.): 0,5 · 1,5…` : undefined}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); mover(x, 1); }
                               else if (e.key === 'ArrowUp') { e.preventDefault(); mover(x, -1); }
@@ -487,6 +507,9 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
                             style={{ width: 64, textAlign: 'right' }}
                           />
                           <span className={s.hint} style={{ margin: '0 0 0 4px' }}>{uni}</span>
+                          {partido(x, aNumero(cant[x.id])) && (
+                            <div className={s.hint} style={{ margin: '4px 0 0' }}>= {fmtN(aNumero(cant[x.id]) * x.bulto)} u.</div>
+                          )}
                           {previo && (
                             <div className={s.hint} style={{ margin: '4px 0 0' }}>
                               Pedido anterior: <strong>{fmtN(previo.cantidad)} {previo.unidad}</strong>

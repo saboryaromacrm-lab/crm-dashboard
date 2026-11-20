@@ -81,14 +81,16 @@ export function bultoDelProveedor(p, proveedorId) {
 
 /** Cómo se dice el bulto en el pedido: «bulto X10Un», «bolsa X25Kg» o nada. */
 export const bultoTexto = (p, n) => (n > 1 ? (p?.tipo === 'granel' ? `bolsa X${n}Kg` : `bulto X${n}Un`) : '');
+/** Singular hasta uno: «1 bulto», «0,5 bulto» (medio bulto, 20/11/2026); «1,5 bultos». */
+const uno = (q) => q > 0 && q <= 1;
 /** La unidad en que se pide un renglón: bultos, bolsas, u. o kg. */
 export const unidadPedido = (p, n, q) => {
-  if (n > 1) return p?.tipo === 'granel' ? (q === 1 ? 'bolsa' : 'bolsas') : (q === 1 ? 'bulto' : 'bultos');
+  if (n > 1) return p?.tipo === 'granel' ? (uno(q) ? 'bolsa' : 'bolsas') : (uno(q) ? 'bulto' : 'bultos');
   return p?.tipo === 'granel' ? 'kg' : 'u.';
 };
 
 const cifra = (n) => String(Math.round(n * 1000) / 1000).replace('.', ',');
-const plural = (n, uno, varios) => `${cifra(n)} ${n === 1 ? uno : varios}`;
+const plural = (n, singular, varios) => `${cifra(n)} ${uno(n) ? singular : varios}`;
 /**
  * LA LÍNEA DE TOTALES DEL PEDIDO (22/10/2026, pedido del dueño): cuántos
  * bultos y cuántas unidades en total; del granel, bolsas y kilos aparte (no
