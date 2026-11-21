@@ -18,6 +18,7 @@ import { ModalShell } from '../Modal.jsx';
 import { money, fmtFecha } from '../../domain/format.js';
 import { TIPOS_COMPROBANTE } from '../../domain/constants.js';
 import { s } from '../ui.jsx';
+import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { prepararArchivo, esPdf } from '../../domain/leerFactura.js';
 
 const soloDigitos = (x) => String(x ?? '').replace(/\D/g, '');
@@ -329,11 +330,13 @@ export function LecturaFacturaModal({ id }) {
 
       <div className={s['form-grid']}>
         <div className={s.field}>
-          <label>Proveedor <span className={s.req}>*</span></label>
-          <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)} disabled={!editable}>
-            <option value="">— elegir —</option>
-            {store.state.proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          <label htmlFor="lectura-proveedor">Proveedor <span className={s.req}>*</span></label>
+          {/* Con buscador (21/11/2026, pedido del dueño): se escribe parte del nombre en vez de bajar por toda la lista. */}
+          <BuscadorOpcion
+            id="lectura-proveedor" ariaLabel="Proveedor" style={{ width: '100%', minWidth: 0 }}
+            opciones={store.state.proveedores} value={proveedorId} onChange={setProveedorId}
+            todos="— elegir —" placeholder="Escribí el proveedor…" disabled={!editable}
+          />
           {l.cuit && (
             <div className={s.hint}>
               CUIT del papel: <span className={s.mono}>{l.cuit}</span>
