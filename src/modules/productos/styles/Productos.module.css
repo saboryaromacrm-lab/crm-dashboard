@@ -262,6 +262,9 @@
   color: var(--crm-color-text);
 }
 .table tbody tr:last-child td { border-bottom: none; }
+/* Tablas con muchas columnas que tienen que entrar enteras (Cuentas disponibles). */
+.tablaCompacta .table thead th, .tablaCompacta .table tbody td { padding-inline: 6px; }
+.tablaCompacta .table thead th { white-space: normal; }
 .table tbody tr.clickable { cursor: pointer; }
 .table tbody tr.clickable:hover { background: var(--crm-color-surface-2); }
 .num { text-align: right; }

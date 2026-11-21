@@ -82,7 +82,12 @@ function VistaCuentas({ tick }) {
     () => provApi.cuentasDisponibles({ estado, proveedorId: proveedorId || undefined, desde: desde || undefined, hasta: hasta || undefined }),
   );
   const refrescar = () => { reload(); recargarContadores(); };
-  const filas = data?.filas ?? [];
+  /* Las abiertas, en el orden en que la caja las ofrece (la estrella, después la más vieja).
+     Las demás son historia: la más nueva arriba (pedido del dueño, 21/11/2026). */
+  const filas = useMemo(() => {
+    const f = data?.filas ?? [];
+    return estado === 'abiertas' ? f : [...f].sort((a, b) => new Date(b.fecha) - new Date(a.fecha) || b.id - a.id);
+  }, [data, estado]);
 
   /** Los tildes se cambian en el lugar; la API decide y la lista se vuelve a pedir. */
   const cambiar = async (c, campo, valor) => {
@@ -128,30 +133,37 @@ function VistaCuentas({ tick }) {
         <Btn small onClick={refrescar}>Actualizar</Btn>
       </div>
 
+      {/* Compacta y con lo pagado debajo de lo que hay que cubrir: entra entera, sin correrla de costado. */}
+      <div className={s.tablaCompacta}>
       <Table
         cols={[
-          { h: 'Fecha' }, { h: 'Proveedor' }, { h: 'Titular' }, { h: 'Alias / CBU' },
-          { h: 'A cubrir', num: true }, { h: 'Pagado', num: true }, { h: 'Falta', num: true }, { h: 'Cant', num: true },
-          { h: '★' }, { h: 'Enviado' }, { h: 'Corte' }, { h: 'Obs.' }, { h: 'Acciones' },
+          { h: 'Fecha' }, { h: 'Proveedor / titular' }, { h: 'Alias / CBU' },
+          { h: 'A cubrir / pagado', num: true }, { h: 'Falta', num: true }, { h: 'Cant', num: true },
+          { h: '★' }, { h: 'Enviado' }, { h: 'Corte' }, { h: 'Acciones' },
         ]}
         empty="Nada en este filtro."
       >
         {filas.map((c) => (
           <tr key={c.id} style={fondo(c)}>
-            <td>{fmtFecha(c.fecha)}</td>
-            <td><strong>{c.proveedorNombre}</strong></td>
+            <td style={{ whiteSpace: 'nowrap' }}>{fmtFecha(c.fecha)}</td>
             <td>
-              {c.titular}
+              <strong>{c.proveedorNombre}</strong>
+              <div className={s.muted}>{c.titular}</div>
               {c.ventaMinima > 0 && <div><Pill pill="est-transito" label={`solo ventas desde ${money(c.ventaMinima)}`} /></div>}
               {c.puedePasarse && <div><Pill pill="est-transito" label="puede pasarse del monto" /></div>}
+              {c.observaciones && <div className={s.hint} style={{ margin: '2px 0 0' }}>{c.observaciones}</div>}
             </td>
             <td>
-              <span className={s.mono}>{c.cbuAlias}</span>{' '}
-              <Btn small onClick={() => copiar(c)} title="Copiar alias">⧉</Btn>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span className={s.mono} style={{ wordBreak: 'break-all', minWidth: '11ch' }}>{c.cbuAlias}</span>
+                <Btn small onClick={() => copiar(c)} title="Copiar alias">⧉</Btn>
+              </div>
             </td>
-            <td className={s.num}><strong>{money(c.importe)}</strong></td>
-            <td className={s.num} style={{ color: 'var(--crm-color-success)' }}>{money(c.pagado)}</td>
-            <td className={s.num}>
+            <td className={s.num} style={{ whiteSpace: 'nowrap' }}>
+              <strong>{money(c.importe)}</strong>
+              <div style={{ color: 'var(--crm-color-success)' }}>{money(c.pagado)}</div>
+            </td>
+            <td className={s.num} style={{ whiteSpace: 'nowrap' }}>
               {c.estado === 'cubierta' ? <Pill pill="est-recibida" label="cubierta" /> : <strong>{money(c.falta)}</strong>}
               {c.pasado > 0 && <div className={s.hint} style={{ margin: 0 }}>pasada por {money(c.pasado)}</div>}
               {c.restoBajoMinimo && (
@@ -170,9 +182,8 @@ function VistaCuentas({ tick }) {
             </td>
             <td><input type="checkbox" checked={c.enviado} onChange={(e) => cambiar(c, 'enviado', e.target.checked)} title="Resumen enviado al proveedor" /></td>
             <td><input type="checkbox" checked={c.corte} onChange={(e) => cambiar(c, 'corte', e.target.checked)} title="Corte: cerrar aunque no esté completa" /></td>
-            <td>{c.observaciones || <span className={s.muted}>—</span>}</td>
             <td>
-              <div style={{ display: 'flex', gap: 4 }}>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 <Btn small variant="btn-primary" onClick={() => openModal('resumenCuenta', { cuentaId: c.id, onChange: refrescar })}>Resumen</Btn>
                 {c.estado === 'abierta' && (
                   <Btn small variant="btn-ingreso" title="Una transferencia tuya, desde la cuenta de Sabor y Aroma (sin pasar por la caja)" onClick={() => openModal('pagoPropio', { cuenta: c, onChange: refrescar })}>Pagar</Btn>
@@ -184,6 +195,7 @@ function VistaCuentas({ tick }) {
           </tr>
         ))}
       </Table>
+      </div>
       {filas.length > 0 && (
         <div className={s.hint} style={{ marginTop: 8 }}>
           {data.total} cuenta(s) · a cubrir {money(data.totalImporte)} · falta {money(data.totalFalta)}
