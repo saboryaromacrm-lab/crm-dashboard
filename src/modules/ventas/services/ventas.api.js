@@ -153,6 +153,9 @@ export const ventasApi = {
   cuentaCliente: (clienteId) => httpClient.get(`/ventas/cuenta/${clienteId}`),
   /** Las cuentas de proveedor abiertas para recibir transferencias de clientes (Cuentas disponibles). */
   cuentasParaCobrar: () => httpClient.get('/cuentas-disponibles/para-cobrar'),
+  /* Una «Transferencia» ya cobrada que fue a una cuenta disponible (21/11/2026): solo el superadmin. */
+  cuentasDisponiblesTodas: () => httpClient.get('/cuentas-disponibles?estado=todas'),
+  corregirTransferencia: (cuentaId, data) => httpClient.post(`/cuentas-disponibles/${cuentaId}/corregir-transferencia`, data),
 
   /**
    * Todo lo vendible de una sucursal:
@@ -233,6 +236,9 @@ export const ventasApi = {
   /** Superadmin (0137): lo que el cajero se olvidó, asentado en un turno YA cerrado; y su anulación. */
   movimientoPosterior: (id, data) => httpClient.post(`/caja/${id}/movimiento-posterior`, data),
   anularMovimientoPosterior: (id, movId, data) => httpClient.post(`/caja/${id}/movimiento-posterior/${movId}/anular`, data),
+  /* Corregir lo que quedó en la caja de un cierre por envío (21/11/2026): solo el superadmin. */
+  cajaCorreccionQueda: (id) => httpClient.get(`/caja/${id}/correccion-queda`),
+  corregirQuedaCaja: (id, data) => httpClient.post(`/caja/${id}/corregir-queda`, data),
 
   /* Pagos a proveedores (la plata que sale, desde la caja o desde Gastos) */
   proveedoresPadron: (tipo) => httpClient.get(`/proveedores${qs({ tipo })}`),

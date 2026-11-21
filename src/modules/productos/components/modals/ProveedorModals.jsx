@@ -6,6 +6,7 @@ import { useProductos } from '../../context/ProductosContext.jsx';
 import { useSeccion } from '../../hooks/useSeccion.js';
 import { money, fmtFecha, fmtFechaHora } from '../../domain/format.js';
 import { CONDICIONES_IVA_PROV } from '../../domain/constants.js';
+import { NOMBRE_TIPO_PERC, tipoSegunNombre } from '../../domain/percepciones.js';
 import { ModalShell } from '../Modal.jsx';
 import { Table, Btn, s } from '../ui.jsx';
 import { ComprobanteTag, ComprobanteEstadoPill, comprobanteNro } from './ComprobanteModals.jsx';
@@ -173,16 +174,7 @@ export function DetalleProveedorModal({ provId }) {
  * declarar cada una por separado, así que cada una lleva su nombre.
  */
 /* De qué impuesto es cada percepción (0132): manda la marca; sin marca se
- * deduce del nombre con la MISMA regla del servidor (crm-api common/iva.ts),
- * que es la que usa Gerencia › Métricas › Resultados IVA. */
-const NOMBRE_TIPO_PERC = { iva: 'IVA', iibb: 'Ingresos Brutos', otro: 'Otro impuesto' };
-function tipoSegunNombre(nombre) {
-  const n = String(nombre ?? '').toLowerCase();
-  if (/(^|[^a-z])iva([^a-z]|$)|rg\s*(2408|3337|5329)/.test(n)) return 'iva';
-  if (/iibb|ingresos\s*brutos|(^|[^a-z])dgr([^a-z]|$)|(^|[^a-z])ib([^a-z]|$)/.test(n)) return 'iibb';
-  return 'otro';
-}
-
+ * deduce del nombre (`tipoSegunNombre`, la misma regla del servidor). */
 function PercepcionesTab({ prov }) {
   const { store, isAdmin, toast } = useProductos();
   const [filas, setFilas] = useState(null);

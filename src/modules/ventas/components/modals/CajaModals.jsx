@@ -6,7 +6,7 @@ import { errorMsg, ventasApi } from '../../services/ventas.api.js';
 import { MEDIOS_COBRADOS } from '../../domain/constants.js';
 import { r2 } from '../../domain/pos.js';
 import { imprimirArqueoCaja, imprimirEnvioCaja } from '@core/services/imprimir.js';
-import { separarEnvio } from '../../domain/separarEnvio.js';
+import { separarEnvio, sumaBilletes } from '../../domain/separarEnvio.js';
 import { textoCajeros } from '../../domain/cajeros.js';
 import { Table, Di, Btn, Pill, ModalShell, money, fmtFechaHora, s } from '../ui.jsx';
 import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@modules/gastos/components/segundaConfirmacion.jsx';
@@ -54,6 +54,16 @@ export function AbrirCajaModal({ onChange }) {
     if (fondo != null) setMontoInicial((m) => (m === '' ? String(fondo) : m));
   }, [fondo]);
   const [observaciones, setObservaciones] = useState('');
+  /*
+   * EL ADMINISTRADOR QUE ABRE CON OTRO MONTO (21/11/2026): si el último cierre
+   * dejó un fondo contado y se abre con otro número, esa diferencia es plata
+   * que falta o que apareció entre una caja y la otra. Pide el motivo y queda
+   * como control del turno, igual que cuando cuenta un cajero.
+   */
+  const [motivoDif, setMotivoDif] = useState('');
+  const dejado = ap?.dejadoEnCaja != null ? Number(ap.dejadoEnCaja) : null;
+  const difAdmin = !conFondoFijo && dejado != null && Number(montoInicial) > 0 ? r2(Number(montoInicial) - dejado) : 0;
+  const pideMotivo = Math.abs(difAdmin) > 0.009;
   /** Para el que no es jefe: 'si' (están) o 'contar' (no están: se cuentan). */
   const [respuesta, setRespuesta] = useState(null);
   const [billetes, setBilletes] = useState({});
@@ -77,7 +87,11 @@ export function AbrirCajaModal({ onChange }) {
         toast('Declará el fondo inicial: la caja siempre arranca con un monto.', 'err');
         return;
       }
-      cuerpo = { montoInicial: r2(montoInicial) };
+      if (pideMotivo && motivoDif.trim().length < 5) {
+        toast(`El último cierre dejó ${money(dejado)}: escribí por qué abrís con ${money(montoInicial)}.`, 'err');
+        return;
+      }
+      cuerpo = { montoInicial: r2(montoInicial), ...(pideMotivo ? { motivoDiferencia: motivoDif.trim() } : {}) };
     }
     candado.current = true;
     setEnviando(true);
@@ -183,6 +197,23 @@ export function AbrirCajaModal({ onChange }) {
               ? <>Este monto queda como <strong>fondo fijo</strong> de la caja de {sucursal?.nombre || 'esta sucursal'}: las próximas aperturas arrancan con él.</>
               : <>Propuesto: {ap.dejadoEnCaja != null ? 'lo que quedó de cambio en el último cierre' : 'el fondo fijo'} ({money(fondo)}). Podés abrir este turno con otro monto; el fondo fijo lo cambia el superadmin en Sistema › Sucursales.</>}
           </div>
+          {pideMotivo && (
+            <div className={cx(s.callout, s.warn)} style={{ margin: '10px 0 0', display: 'grid', gap: 8 }}>
+              <span>
+                El último cierre{ap.ultimoCierre ? ` (${fmtFechaHora(ap.ultimoCierre)})` : ''} dejó <strong>{money(dejado)}</strong> en la caja
+                y abrís con <strong>{money(montoInicial)}</strong>: {difAdmin < 0 ? 'faltan' : 'sobran'} <strong>{money(Math.abs(difAdmin))}</strong>.
+                Queda registrado como diferencia al abrir, con tu nombre y el motivo.
+              </span>
+              <input
+                id="abrir-motivo-dif" value={motivoDif} maxLength={300}
+                placeholder="Motivo (obligatorio): por ejemplo, «había $120.000: el cajero contó mal al cerrar»"
+                onChange={(e) => setMotivoDif(e.target.value)}
+              />
+              <span className={s.hint} style={{ margin: 0 }}>
+                Si el cierre anterior dijo mal cuánto quedaba, corregilo en el historial de turnos (turno #{ap.ultimoTurnoId} › «Corregir lo que quedó en la caja»).
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -1440,6 +1471,18 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
   const envio = r2(contado - queda);
   const faltaFondo = r2(Math.max(0, fondo - queda));
   const quedaPoco = conto && queda + 0.009 < debeQuedar;
+  /*
+   * DEJA MÁS QUE EL FONDO (21/11/2026, pedido del dueño). El 20/11 un cajero
+   * contó $120.000 de más y el sistema anotó «quedan $240.000» con un fondo de
+   * $120.000 sin frenar a nadie. Lo mínimo que puede quedar es lo que propone el
+   * sistema (el fondo exacto, o lo más cerca por arriba si los billetes no dan);
+   * lo que pase de eso hay que confirmarlo contando de nuevo lo que queda.
+   */
+  const minimoQueda = conto ? sumaBilletes(separarEnvio(billetesLimpios(billetes), debeQuedar).queda) : 0;
+  const deMas = conto ? r2(Math.max(0, queda - minimoQueda)) : 0;
+  const conDeMas = deMas > 0.009;
+  const [reconto, setReconto] = useState(false);
+  useEffect(() => { setReconto(false); }, [queda]);
   const proponer = () => setDejar(separarEnvio(billetesLimpios(billetes), debeQuedar).queda);
   /* A ciegas salvo que la configuración deje ver lo que tiene que haber: ahí el
    * servidor manda el arqueo completo y se muestra el detalle. Apagada, ni
@@ -1466,6 +1509,7 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
         billetes: billetesLimpios(billetes),
         billetesEnvio: billetesLimpios(envioB),
         confirmado: true,
+        ...(conDeMas ? { quedaDeMas: queda } : {}),
         usuarioId: ctx.usuarioId ?? undefined,
         cerradoPor: elegido.id,
         firma: q.firma,
@@ -1508,8 +1552,14 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
       </div>
       <div className={s.hint} style={{ margin: '8px 0 0' }}>
         Dejá <strong>{money(queda)}</strong> en la caja: es el fondo para el próximo turno{fondo ? ` (fondo fijo ${money(fondo)})` : ''}.
-        {queda > debeQuedar + 0.009 && ` Quedan ${money(r2(queda - debeQuedar))} más que el fondo: si no hace falta, pasalos al sobre.`}
       </div>
+      {conDeMas && (
+        <div className={cx(s.callout, s.warn)} style={{ margin: '8px 0 0' }}>
+          <strong>Ojo: vas a dejar {money(queda)} en la caja y el fondo es {money(fondo)}: son {money(deMas)} de más.</strong>{' '}
+          Si no hace falta más cambio, tocá «Que lo proponga el sistema» y esa plata va en el sobre. Si te parece raro, volvé a contar el cajón:
+          es el error más común al cerrar.
+        </div>
+      )}
       {quedaPoco && (
         <div className={cx(s.callout, s.warn)} style={{ margin: '8px 0 0' }}>
           Así quedarían {money(queda)} en la caja y tienen que quedar {money(debeQuedar)}: elegí más billetes en «Queda en caja»
@@ -1532,9 +1582,21 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
         onClose={closeModal}
         footer={[
           { texto: 'Volver a contar', clase: 'btn-ghost', onClick: () => setPaso('contar'), disabled: enviando },
-          { texto: enviando ? 'Enviando…' : `Sí, enviar ${money(envio)} y cerrar`, clase: 'btn-delete', onClick: enviar, disabled: enviando },
+          { texto: enviando ? 'Enviando…' : `Sí, enviar ${money(envio)} y cerrar`, clase: 'btn-delete', onClick: enviar, disabled: enviando || (conDeMas && !reconto) },
         ]}
       >
+        {conDeMas && (
+          <div className={cx(s.callout, s.warn)} style={{ display: 'grid', gap: 8 }}>
+            <span>
+              <strong>Quedan {money(deMas)} más que el fondo.</strong> Antes de cerrar, contá de nuevo los billetes que dejás en el cajón
+              (la tabla «Dejar en caja» de abajo). Si no da {money(queda)}, tocá «Volver a contar».
+            </span>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600 }}>
+              <input id="cierre-reconto" type="checkbox" checked={reconto} onChange={(e) => setReconto(e.target.checked)} />
+              Los volví a contar: en el cajón quedan {money(queda)}.
+            </label>
+          </div>
+        )}
         <div className={cx(s.callout, s.warn)}>
           ¿Confirmás? <strong>{elegido?.nombre}</strong> cierra la caja: <strong>deja {money(queda)} en la caja</strong> y va el{' '}
           <strong>sobre de {money(envio)}</strong> con los billetes de abajo. <strong>El turno se cierra</strong>: no se puede reabrir.
@@ -1808,15 +1870,131 @@ function AnularPosterior({ sesion, mov, onHecho, onCancelar }) {
 }
 
 /**
+ * CORREGIR LO QUE QUEDÓ EN LA CAJA (21/11/2026, pedido del dueño). El cajero
+ * contó mal al cerrar: el sobre estaba bien, pero el cierre anotó que quedaba
+ * más (o menos) de lo que había. El ENVÍO no cambia (el sobre se controla
+ * aparte, en el Cash Flow); cambian lo que quedó, lo contado y la diferencia.
+ * Propone con lo que abrió el turno siguiente, que es lo que se encontró, y
+ * muestra antes y después de cada número, también la apertura del turno
+ * siguiente si dejó un control medido contra el número malo.
+ */
+function CorregirQueda({ sesion, onHecho, onCancelar }) {
+  const { toast } = useVentas();
+  const { data: info, loading, error: errorInfo } = useResource(`correccion-queda:${sesion.id}`, () => ventasApi.cajaCorreccionQueda(sesion.id));
+  const [importe, setImporte] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const [error, setError] = useState('');
+  const sig = info?.siguiente ?? null;
+  /* Propuesto: con lo que abrió el turno siguiente (lo que se encontró a la mañana). */
+  useEffect(() => {
+    if (sig) setImporte((v) => (v === '' ? String(sig.montoInicial) : v));
+  }, [sig]);
+  const n = Number(importe);
+  const valido = importe !== '' && Number.isFinite(n) && n >= 0;
+  const envio = Number(sesion.envioEfectivo) || 0;
+  const esperado = Number(sesion.sistemaEfectivo) || 0;
+  const quedaAntes = Number(sesion.fondoQueda) || 0;
+  const contadoAntes = Number(sesion.declaradoEfectivo) || 0;
+  const difAntes = Number(sesion.diferencia) || 0;
+  const contadoDespues = valido ? r2(envio + n) : contadoAntes;
+  const difDespues = valido ? r2(contadoDespues - esperado) : difAntes;
+  const igual = valido && Math.abs(n - quedaAntes) < 0.01;
+  const ctrl = sig?.control ?? null;
+  const ctrlDespues = ctrl && valido ? r2(ctrl.contado - n) : null;
+  const difApertura = sig && valido ? r2(sig.montoInicial - n) : 0;
+  const sc = useSegundaConfirmacion(`${importe}|${motivo}`);
+  const confirmar = () => sc.clic(
+    () => {
+      setError('');
+      if (!valido) { setError('Escribí cuánto quedó de verdad en la caja.'); return false; }
+      if (igual) { setError(`El cierre ya dice ${money(quedaAntes)}: no hay nada que corregir.`); return false; }
+      if (motivo.trim().length < 10) { setError('Escribí el motivo: qué pasó y cómo lo sabés.'); return false; }
+      return true;
+    },
+    async () => {
+      try {
+        const r = await ventasApi.corregirQuedaCaja(sesion.id, { fondoQueda: n, motivo: motivo.trim(), confirmado: true });
+        toast(`Turno #${sesion.id} corregido: quedaron ${money(r.despues.queda)} y la diferencia del cierre es ${money(r.despues.diferencia)}.`, 'ok');
+        onHecho();
+      } catch (e) { setError(errorMsg(e)); }
+    },
+  );
+  const fila = (label, antes, despues, cambia = true) => (
+    <>
+      <span>{label}</span>
+      <span className={s.mono}>{antes}</span>
+      <span className={s.mono} style={cambia ? { fontWeight: 700 } : undefined}>{cambia ? '→' : ''}</span>
+      <span className={s.mono} style={cambia ? { fontWeight: 700 } : undefined}>{despues}</span>
+    </>
+  );
+  return (
+    <div className={cx(s.callout, s.info)} style={{ display: 'grid', gap: 10 }}>
+      <strong>Corregir lo que quedó en la caja</strong>
+      <span className={s.hint} style={{ margin: 0 }}>
+        Para cuando el cajero contó mal al cerrar. El sobre de <strong>{money(envio)}</strong> no cambia (se controla aparte, en el Cash Flow):
+        cambian lo que quedó en la caja, lo contado y la diferencia del cierre. Queda firmado por vos, con el motivo, en el turno y en la auditoría.
+      </span>
+      {loading && <div className={s.hint} style={{ margin: 0 }}>Buscando el turno siguiente…</div>}
+      {errorInfo && <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>No se pudo consultar el turno siguiente: {errorInfo}</div>}
+      {sig && (
+        <div>
+          El turno siguiente, <strong>#{sig.id}</strong> ({fmtFechaHora(sig.apertura)}), abrió con <strong>{money(sig.montoInicial)}</strong>.
+          {ctrl && <> Al abrir dejó un control: se contaron {money(ctrl.contado)} contra los {money(ctrl.esperado)} que decía este cierre (<DifCierre v={ctrl.diferencia} />).</>}
+        </div>
+      )}
+      {!loading && !sig && <div>Todavía no se abrió otro turno en esta sucursal: escribí lo que hay en el cajón.</div>}
+      <div className={s.field}>
+        <label htmlFor="corregir-queda-importe">¿Cuánto quedó de verdad en la caja? <span className={s.req}>*</span></label>
+        <input id="corregir-queda-importe" type="number" min="0" step="any" autoFocus value={importe} onChange={(e) => setImporte(e.target.value)} />
+      </div>
+      <div className={s.field}>
+        <label htmlFor="corregir-queda-motivo">Motivo <span className={s.req}>*</span></label>
+        <input
+          id="corregir-queda-motivo" value={motivo} maxLength={300}
+          placeholder="Ej: contó $120.000 de más; el sobre llegó bien y a la mañana había $120.000"
+          onChange={(e) => setMotivo(e.target.value)}
+        />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto auto auto auto', gap: '3px 12px', justifyContent: 'start', alignItems: 'baseline' }}>
+        {fila('Quedó en la caja', money(quedaAntes), money(valido ? n : quedaAntes))}
+        {fila('Envío (el sobre)', money(envio), money(envio), false)}
+        {fila('Contado', money(contadoAntes), money(contadoDespues))}
+        {fila('Esperado', money(esperado), money(esperado), false)}
+        {fila('Diferencia del cierre', <DifCierre v={difAntes} />, <DifCierre v={difDespues} />)}
+        {ctrl && fila(`Diferencia al abrir (#${sig.id})`, <DifCierre v={ctrl.diferencia} />, <DifCierre v={ctrlDespues ?? ctrl.diferencia} />)}
+      </div>
+      {sig && valido && !igual && Math.abs(difApertura) > 0.009 && (
+        <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>
+          El turno #{sig.id} abrió con {money(sig.montoInicial)} y acá quedarían {money(n)}: queda una diferencia al abrir de{' '}
+          <DifCierre v={difApertura} />. {Math.abs(sig.montoInicial - quedaAntes) < 0.01
+            ? `Ese turno abrió confirmando los ${money(quedaAntes)} de este cierre: si en realidad había ${money(n)}, su fondo inicial también quedó mal y su cierre lo va a mostrar como diferencia.`
+            : 'Revisá que el importe sea el correcto.'}
+        </div>
+      )}
+      <AvisoSegundaConfirmacion {...sc}>
+        El turno #{sesion.id} pasa a decir que quedaron <strong>{money(valido ? n : 0)}</strong> en la caja: contado {money(contadoDespues)} y
+        diferencia del cierre <DifCierre v={difDespues} />. El sobre sigue en {money(envio)}.
+      </AvisoSegundaConfirmacion>
+      {error && <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Btn small onClick={onCancelar}>Cancelar</Btn>
+        <Btn small variant="btn-primary" onClick={confirmar} disabled={loading}>{textoBoton(sc, 'Corregir', 'Sí, corregir')}</Btn>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Arqueo de un turno desde el historial. Para el SUPERADMIN, con el turno
- * cerrado: asentar lo que el cajero se olvidó y anular lo asentado así (0137).
+ * cerrado: asentar lo que el cajero se olvidó y anular lo asentado así (0137),
+ * y corregir lo que quedó en la caja si el cajero contó mal (21/11/2026).
  */
 export function ArqueoTurnoModal({ cajaSesionId, onChange }) {
   // Es historial: nombra también un local que ya cerró (0143).
   const { closeModal, sucursalesTodas: sucursales, usuarios, ctx, toast } = useVentas();
   const { data: arqueo, loading, error, reload } = useResource(`arqueo-ver:${cajaSesionId}`, () => ventasApi.cajaArqueo(cajaSesionId));
   const esSuperadmin = usuarios.find((u) => u.id === ctx?.usuarioId)?.rolClave === 'superadmin';
-  /** null | 'asentar' | { anular: movimiento } */
+  /** null | 'asentar' | 'corregir' | { anular: movimiento } */
   const [modo, setModo] = useState(null);
   const corregible = esSuperadmin && arqueo?.sesion?.estado === 'cerrada' && !arqueo?.ciego;
   const hecho = () => { setModo(null); reload(); onChange?.(); };
@@ -1824,6 +2002,9 @@ export function ArqueoTurnoModal({ cajaSesionId, onChange }) {
   const footer = [
     { texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal },
     corregible && !modo && { texto: 'Asentar movimiento olvidado', clase: 'btn-ghost', onClick: () => setModo('asentar') },
+    corregible && !modo && arqueo?.sesion?.envioEfectivo != null && {
+      texto: 'Corregir lo que quedó en la caja', clase: 'btn-ghost', onClick: () => setModo('corregir'),
+    },
     /* Reimprimir SIEMPRE, no solo los turnos cerrados: con el turno abierto el
      * papel sale sin conteo y avisandolo, que es justo lo que se necesita para
      * un control a mitad del dia. Salvo A CIEGAS: el papel del turno abierto
@@ -1911,6 +2092,7 @@ export function ArqueoTurnoModal({ cajaSesionId, onChange }) {
       )}
 
       {modo === 'asentar' && <MovimientoPosterior sesion={sesion} onHecho={hecho} onCancelar={() => setModo(null)} />}
+      {modo === 'corregir' && <CorregirQueda sesion={sesion} onHecho={hecho} onCancelar={() => setModo(null)} />}
       {modo?.anular && <AnularPosterior sesion={sesion} mov={modo.anular} onHecho={hecho} onCancelar={() => setModo(null)} />}
 
       <DetalleArqueo arqueo={arqueo} onAnularPosterior={corregible ? (m) => setModo({ anular: m }) : undefined} />

@@ -18,18 +18,21 @@ export const seOfrece = (cuenta, total) => !(r2(cuenta?.ventaMinima) > 0) || r2(
 /**
  * Por qué esta transferencia no entra en esta cuenta, o `null` si entra.
  *  - solo en ventas desde la venta mínima de la cuenta;
- *  - nunca más de lo que falta, salvo la cuenta que «puede pasarse» (0177):
+ *  - nunca más de lo que falta, salvo la cuenta que «puede pasarse» (0177)
+ *    o que el cliente YA le haya transferido de más (`deMas`, 21/11/2026):
  *    ahí entra más y ese pago la cierra;
  *  - nunca menos del mínimo del proveedor, salvo que CIERRE la cuenta
  *    (el resto final es lo que es).
  */
-export function validarTransferenciaProveedor(importe, cuenta, total) {
+export function validarTransferenciaProveedor(importe, cuenta, total, deMas = false) {
   if (!cuenta) return 'Elegí a qué cuenta del proveedor va la transferencia.';
   if (!seOfrece(cuenta, total)) return `Esa cuenta es solo para ventas desde ${fmt(cuenta.ventaMinima)}: elegí otra.`;
   const imp = r2(importe);
   if (imp <= 0) return null; // sin importe todavía no hay nada que juzgar
   const falta = r2(cuenta.falta);
-  if (!cuenta.puedePasarse && imp > falta + EPS) return `A esta cuenta le faltan ${fmt(falta)}: no puede recibir de más.`;
+  if (!cuenta.puedePasarse && !deMas && imp > falta + EPS) {
+    return `A esta cuenta le faltan ${fmt(falta)}: no puede recibir de más. Si el cliente ya le transfirió de más, tildá «El cliente ya le transfirió de más».`;
+  }
   const cierra = imp >= falta - EPS;
   const minimo = r2(cuenta.minimo);
   if (!cierra && minimo > 0 && imp < minimo - EPS) {
@@ -39,6 +42,14 @@ export function validarTransferenciaProveedor(importe, cuenta, total) {
   }
   return null;
 }
+
+/**
+ * ¿Hay que preguntar si el cliente ya le transfirió de más? (21/11/2026) Sí
+ * cuando lo que hay para cobrar con esta cuenta pasa lo que le falta y la
+ * cuenta no «puede pasarse»: la caja propone solo lo que falta, y si el
+ * cliente ya mandó todo, el resto NO es otro medio — es plata del proveedor.
+ */
+export const pideDeMas = (cuenta, monto) => !!cuenta && !cuenta.puedePasarse && r2(monto) > r2(cuenta.falta) + EPS;
 
 /**
  * Qué importe proponer al elegir la cuenta: lo que le falta, recortado al tope

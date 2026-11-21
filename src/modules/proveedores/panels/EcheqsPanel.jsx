@@ -119,7 +119,7 @@ function ComprometidoPorMes({ porMes = [] }) {
               x.pendientes.n > 0 && `${cuantos(x.pendientes.n, 'pendiente de confirmar', 'pendientes de confirmar')} · ${money(x.pendientes.monto)}`,
             ].filter(Boolean).join(' — ')
             : 'Nada para debitar.'}
-          {x.atrasados > 0 && ` — incluye ${cuantos(x.atrasados, 'echeq', 'echeqs')} de meses anteriores sin cobrar`}
+          {x.atrasados > 0 && ` — incluye ${cuantos(x.atrasados, 'echeq', 'echeqs')} de meses anteriores sin debitar`}
           {x.cobrados?.n > 0 && ` — ya se ${x.cobrados.n === 1 ? 'debitó 1' : `debitaron ${x.cobrados.n}`} · ${money(x.cobrados.monto)}`}
         </div>
         <DiasDelMes dias={x.dias} />
@@ -220,7 +220,7 @@ export function EcheqsPanel() {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <Stat label="Pendientes de confirmar" value={`${stats?.pendientes?.n ?? 0} · ${money(stats?.pendientes?.monto ?? 0)}`} accent={stats?.pendientes?.n ? 'accent-amber' : undefined} />
         <Stat label="En cartera (hechos)" value={`${stats?.activos?.n ?? 0} · ${money(stats?.activos?.monto ?? 0)}`} />
-        <Stat label="Vencidos sin cobrar" value={`${stats?.vencidos?.n ?? 0} · ${money(stats?.vencidos?.monto ?? 0)}`} accent={stats?.vencidos?.n ? 'accent-red' : undefined} />
+        <Stat label="Vencidos sin debitar" value={`${stats?.vencidos?.n ?? 0} · ${money(stats?.vencidos?.monto ?? 0)}`} accent={stats?.vencidos?.n ? 'accent-red' : undefined} />
         <Stat label="Debitan en 3 días" value={`${stats?.prox3?.n ?? 0} · ${money(stats?.prox3?.monto ?? 0)}`} accent={stats?.prox3?.n ? 'accent-amber' : undefined} />
       </div>
       {stats && <ComprometidoPorMes porMes={stats.porMes} />}

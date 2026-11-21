@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  agruparPorProveedor, saldoCuenta, seOfrece, sugerirImporteCuenta, textoResumenCuenta, validarTransferenciaProveedor,
+  agruparPorProveedor, pideDeMas, saldoCuenta, seOfrece, sugerirImporteCuenta, textoResumenCuenta, validarTransferenciaProveedor,
 } from './cuentasProveedor.js';
 
 const cuenta = (extra = {}) => ({
@@ -92,4 +92,15 @@ test('saldo de la cuenta: lo que falta o por cuánto se pasó', () => {
   const t = textoResumenCuenta(cuenta({ importe: 100000, pagado: 120000, falta: 0, pasado: 20000, cant: 2 }), [], (f) => f);
   assert.match(t, /Pasada por: \$20\.000/);
   assert.doesNotMatch(t, /Falta:/);
+});
+
+test('el cliente ya transfirió de más (21/11/2026): se pregunta y, tildado, entra entero', () => {
+  // El caso real: a Becchio le faltaban $101.200,50 y la venta era de $159.262.
+  const becchio = cuenta({ importe: 3422600, pagado: 3321399.5, falta: 101200.5, minimo: 0 });
+  assert.equal(pideDeMas(becchio, 159262), true, 'la venta pasa lo que falta: se pregunta');
+  assert.equal(pideDeMas(becchio, 101200.5), false, 'justo lo que falta: no');
+  assert.equal(pideDeMas({ ...becchio, puedePasarse: true }, 159262), false, 'la que puede pasarse ya toma todo');
+  assert.equal(pideDeMas(null, 159262), false);
+  assert.match(validarTransferenciaProveedor(159262, becchio, 159262), /ya le transfirió de más/, 'sin tildar: el rechazo dice cómo seguir');
+  assert.equal(validarTransferenciaProveedor(159262, becchio, 159262, true), null, 'tildado: entra entero');
 });

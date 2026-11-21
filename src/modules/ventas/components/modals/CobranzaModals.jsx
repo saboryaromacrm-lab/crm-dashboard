@@ -60,7 +60,7 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
     if (!hayTerc) return null;
     for (const x of pagos) {
       if (x.medio !== TERC || !(Number(x.importe) > 0)) continue;
-      const m = validarTransferenciaProveedor(x.importe, (cuentasTerc ?? []).find((c) => c.id === x.cuentaDisponibleId), totalPagos);
+      const m = validarTransferenciaProveedor(x.importe, (cuentasTerc ?? []).find((c) => c.id === x.cuentaDisponibleId), totalPagos, x.deMas);
       if (m) return m;
     }
     return null;
@@ -103,12 +103,12 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
   /* ---------------------------- Pagos ---------------------------- */
   const setPago = (i, campo, valor) =>
     setPagos((ps) => ps.map((p, j) => (j === i
-      ? { ...p, [campo]: valor, ...(campo === 'medio' && valor !== TERC ? { cuentaDisponibleId: null } : {}) }
+      ? { ...p, [campo]: valor, ...(campo === 'medio' && valor !== TERC ? { cuentaDisponibleId: null, deMas: false } : {}) }
       : p)));
   /** Sin importe tipeado, se propone cubrir lo que le falta a la cuenta. */
   const elegirCuenta = (i, c) => setPagos((ps) => ps.map((p, j) => (j !== i ? p : (c
-    ? { ...p, cuentaDisponibleId: c.id, importe: Number(p.importe) > 0 ? p.importe : String(sugerirImporteCuenta(c, 0)) }
-    : { ...p, cuentaDisponibleId: null }))));
+    ? { ...p, cuentaDisponibleId: c.id, deMas: false, importe: Number(p.importe) > 0 ? p.importe : String(sugerirImporteCuenta(c, 0)) }
+    : { ...p, cuentaDisponibleId: null, deMas: false }))));
   const agregarPago = () => setPagos((ps) => [...ps, { medio: medios[0], importe: '', referencia: '', cuentaDisponibleId: null }]);
   const quitarPago = (i) => setPagos((ps) => (ps.length > 1 ? ps.filter((_, j) => j !== i) : ps));
 
@@ -175,7 +175,7 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
         .filter((p) => Number(p.importe) > 0)
         .map((p) => ({
           medio: p.medio, importe: r2(p.importe), referencia: p.referencia,
-          ...(p.medio === TERC ? { cuentaDisponibleId: p.cuentaDisponibleId } : {}),
+          ...(p.medio === TERC ? { cuentaDisponibleId: p.cuentaDisponibleId, ...(p.deMas ? { deMas: true } : {}) } : {}),
         })),
       imputaciones: Object.entries(imputado)
         .map(([ventaId, importe]) => ({ ventaId: Number(ventaId), importe: r2(importe) }))
@@ -254,7 +254,8 @@ export function CobranzaFormModal({ clienteId: clienteInicial, onChange }) {
         {p.medio === TERC && (
           <CuentaProveedorPicker
             cuentas={cuentasTerc} total={totalPagos} loading={cargandoTerc && !cuentasTerc} error={errorTerc}
-            cuentaId={p.cuentaDisponibleId} importe={p.importe}
+            cuentaId={p.cuentaDisponibleId} importe={p.importe} deMas={!!p.deMas}
+            onDeMas={(v) => setPago(i, 'deMas', v)}
             onSeleccionar={(c) => elegirCuenta(i, c)} onRefrescar={recargarTerc}
           />
         )}

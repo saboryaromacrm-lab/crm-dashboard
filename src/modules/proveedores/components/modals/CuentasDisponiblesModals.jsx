@@ -8,6 +8,7 @@ import { copiarImagenResumen } from '../../services/resumenImagen.js';
 import { fmt, saldoCuenta, textoResumenCuenta } from '@modules/ventas/domain/cuentasProveedor.js';
 import { Di, ModalShell, Pill, Table, fmtFecha, fmtFechaHora, money, s } from '../ui.jsx';
 import { CuentaPropiaSelect } from '@shared/components/CuentaPropiaSelect.jsx';
+import { avisarCuentasCompletas } from '@core/layout/components/cuentasCompletas.js';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -25,18 +26,22 @@ const NUEVA = 'nueva';
  * transferencias, el titular y el alias quedan congelados: el importe se puede
  * subir (nunca por debajo de lo pagado), y el resto son tildes. «Puede pasarse
  * del monto» (0177) no se saca de una cuenta que ya se pasó.
+ *
+ * `sugerida` (20/11/2026): viene del banner «no hay cuentas disponibles
+ * abiertas» — proveedor, lo que se le debe y la última cuenta bancaria que usó.
+ * Arranca cargada con eso; se revisa y se guarda.
  */
-export function CuentaDisponibleModal({ cuenta, onChange }) {
+export function CuentaDisponibleModal({ cuenta, sugerida, onChange }) {
   const { proveedores, act, closeModal, toast } = useProveedores();
   const editando = !!cuenta;
   const congelada = editando && cuenta.historia > 0;
 
   const [f, setF] = useState({
-    proveedorId: cuenta?.proveedorId ?? '',
+    proveedorId: cuenta?.proveedorId ?? sugerida?.proveedorId ?? '',
     bancaria: '',
     titular: cuenta?.titular ?? '',
     cbuAlias: cuenta?.cbuAlias ?? '',
-    importe: cuenta ? String(cuenta.importe) : '',
+    importe: cuenta ? String(cuenta.importe) : sugerida?.importe > 0 ? String(sugerida.importe) : '',
     fecha: cuenta?.fecha ? String(cuenta.fecha).slice(0, 10) : hoyISO(),
     prioritaria: !!cuenta?.prioritaria,
     puedePasarse: !!cuenta?.puedePasarse,
@@ -57,7 +62,18 @@ export function CuentaDisponibleModal({ cuenta, onChange }) {
   // Con una sola en la ficha, queda elegida; sin ninguna, directo a cargar una.
   useEffect(() => {
     if (editando || !bancarias) return;
+    /* La sugerida trae la última cuenta que usó el proveedor: si sigue en la
+       ficha, esa; si ya no está, se carga de nuevo con su titular y alias. */
+    if (sugerida && Number(f.proveedorId) === sugerida.proveedorId) {
+      const misma = bancarias.find((b) => b.id === sugerida.cuentaId)
+        ?? bancarias.find((b) => b.cbuAlias && b.cbuAlias === sugerida.cbuAlias);
+      setF((x) => (misma
+        ? { ...x, bancaria: String(misma.id) }
+        : { ...x, bancaria: NUEVA, titular: sugerida.titular ?? '', cbuAlias: sugerida.cbuAlias ?? '' }));
+      return;
+    }
     setF((x) => ({ ...x, bancaria: bancarias.length === 1 ? String(bancarias[0].id) : bancarias.length ? '' : NUEVA }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bancarias, editando]);
 
   const proveedor = useMemo(() => proveedores.find((p) => p.id === Number(f.proveedorId)), [proveedores, f.proveedorId]);
@@ -96,7 +112,7 @@ export function CuentaDisponibleModal({ cuenta, onChange }) {
         }),
       editando ? 'Cuenta actualizada.' : 'Cuenta disponible creada: ya se ofrece en la caja.',
     );
-    if (res) onChange?.();
+    if (res) { onChange?.(); avisarCuentasCompletas(); }
   };
 
   return (
@@ -285,7 +301,7 @@ export function ResumenCuentaModal({ cuentaId, onChange }) {
     try {
       await provApi.editarCuentaDisponible(cuenta.id, { enviado: true });
       toast('Marcada como enviada.', 'ok');
-      reload(); onChange?.();
+      reload(); onChange?.(); avisarCuentasCompletas();
     } catch (e) { toast(errorMsg(e), 'err'); }
   };
 
@@ -379,7 +395,7 @@ export function PagoPropioModal({ cuenta: c, onChange }) {
           ? `Pago de ${tercero.trim()} por ${money(n)} a ${c.proveedorNombre} (${c.titular}) registrado.`
           : `Pago propio de ${money(n)} a ${c.proveedorNombre} (${c.titular}) registrado.`,
       );
-      if (ok) onChange?.();
+      if (ok) { onChange?.(); avisarCuentasCompletas(); }
     } finally { enCurso.current = false; }
   };
 
@@ -457,7 +473,7 @@ export function AnularPagoPropioModal({ pago: p, onChange }) {
     enCurso.current = true;
     try {
       const ok = await act(provApi.anularPagoPropio(p.id, motivo.trim()), 'Pago propio anulado.');
-      if (ok) onChange?.();
+      if (ok) { onChange?.(); avisarCuentasCompletas(); }
     } finally { enCurso.current = false; }
   };
   return (

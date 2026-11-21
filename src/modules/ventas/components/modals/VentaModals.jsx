@@ -20,9 +20,11 @@ import {
   MEDIOS_COBRADOS, CONDICIONES_PAGO, nroComprobante, esNotaCredito,
 } from '../../domain/constants.js';
 import { segunMercadoPago } from '../../domain/conciliacionMp.js';
+import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@modules/gastos/components/segundaConfirmacion.jsx';
+import { avisarCuentasCompletas } from '@core/layout/components/cuentasCompletas.js';
 import { comprobante, mediosDe } from '../../domain/notasCredito.js';
 import {
-  ModalShell, Table, Pill, VentaEstadoPill, VentaTag, Di, SaldoMonto,
+  ModalShell, Table, Pill, VentaEstadoPill, VentaTag, Di, SaldoMonto, Btn,
   money, num, fmtFechaHora, s,
 } from '../ui.jsx';
 
@@ -57,6 +59,96 @@ function SegunMp({ info }) {
   );
 }
 
+/** Llave fuera del catálogo: solo el superadmin (`*`). La misma que exige la API. */
+const PERMISO_CORREGIR_TRANSFERENCIA = 'ventas.corregir-transferencia';
+/** Cómo se lee una cuenta disponible, igual que la referencia del renglón: proveedor · titular · alias. */
+const refCuenta = (c) => `${c.proveedorNombre} · ${c.titular} · ${c.cbuAlias}`;
+const estadoCuenta = (c) => (c.estado === 'cortada' ? 'cortada' : c.falta > 0.009 ? `faltan ${money(c.falta)}` : c.pasado > 0.009 ? `pasada por ${money(c.pasado)}` : 'cubierta');
+const ORDEN_ESTADO = { abierta: 0, cubierta: 1, cortada: 2 };
+
+/**
+ * LA TRANSFERENCIA QUE FUE A UNA CUENTA DISPONIBLE (21/11/2026, pedido del
+ * dueño). El cajero cargó como «Transferencia» plata que el cliente le mandó
+ * al proveedor (venta 00034-00002293: todo a Becchio). El renglón pasa a
+ * «Transf. a proveedor» de esa cuenta —aunque ya esté cubierta: la plata ya
+ * está ahí—, el proveedor la tiene pagada y deja de esperarse en Mercado
+ * Pago. Propone la cuenta que ya usa la venta en otro renglón.
+ */
+function CorregirTransferencia({ venta, pago, onHecho, onCancelar }) {
+  const { toast } = useVentas();
+  const { data, loading, error: errorCuentas } = useResource('cuentas-disponibles-todas', ventasApi.cuentasDisponiblesTodas);
+  const usadas = useMemo(() => new Set(venta.pagos.filter((p) => p.medio === 'transferencia_proveedor').map((p) => p.referencia)), [venta.pagos]);
+  const cuentas = useMemo(() => [...(data?.filas ?? [])].sort((a, b) => (usadas.has(refCuenta(b)) - usadas.has(refCuenta(a)))
+    || ORDEN_ESTADO[a.estado] - ORDEN_ESTADO[b.estado] || a.proveedorNombre.localeCompare(b.proveedorNombre, 'es')), [data, usadas]);
+  const [elegidaId, setElegidaId] = useState('');
+  const elegida = cuentas.find((c) => String(c.id) === elegidaId) ?? cuentas.find((c) => usadas.has(refCuenta(c))) ?? null;
+  const [motivo, setMotivo] = useState('');
+  const [error, setError] = useState('');
+  const importe = Number(pago.importe) || 0;
+  const pasaraPor = elegida ? Math.max(0, Math.round((elegida.pagado + importe - elegida.importe) * 100) / 100) : 0;
+  const sc = useSegundaConfirmacion(`${elegida?.id}|${motivo}`);
+  const confirmar = () => sc.clic(
+    () => {
+      setError('');
+      if (!elegida) { setError('Elegí a qué cuenta fue la transferencia.'); return false; }
+      if (motivo.trim().length < 10) { setError('Escribí el motivo: qué pasó y cómo lo sabés.'); return false; }
+      return true;
+    },
+    async () => {
+      try {
+        await ventasApi.corregirTransferencia(elegida.id, { ventaPagoId: pago.id, motivo: motivo.trim(), confirmado: true });
+        toast(`Listo: ${money(importe)} quedaron pagados a ${elegida.proveedorNombre} (${elegida.titular}).`, 'ok');
+        avisarCuentasCompletas();
+        onHecho();
+      } catch (e) { setError(errorMsg(e)); }
+    },
+  );
+  return (
+    <div className={cx(s.callout, s.info)} style={{ display: 'grid', gap: 10, marginTop: 'var(--crm-space-2)' }}>
+      <strong>La transferencia de {money(importe)} fue a una cuenta disponible</strong>
+      <span className={s.hint} style={{ margin: 0 }}>
+        Para cuando el cliente le transfirió al proveedor y se cargó como «Transferencia»: esa plata nunca entra a tu Mercado Pago.
+        El renglón pasa a «Transf. a proveedor», el proveedor la tiene pagada y deja de esperarse en la Conciliación MP.
+        No toca tu caja. Queda firmado por vos, con el motivo, en la cuenta y en la auditoría.
+      </span>
+      {loading && <div className={s.hint} style={{ margin: 0 }}>Buscando las cuentas…</div>}
+      {errorCuentas && <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>No se pudieron traer las cuentas: {errorCuentas}</div>}
+      <div className={s.field}>
+        <label htmlFor="corregir-transf-cuenta">¿A qué cuenta fue? <span className={s.req}>*</span></label>
+        <select id="corregir-transf-cuenta" value={elegida ? String(elegida.id) : ''} onChange={(e) => setElegidaId(e.target.value)}>
+          <option value="" disabled>Elegí la cuenta…</option>
+          {cuentas.map((c) => (
+            <option key={c.id} value={c.id}>{usadas.has(refCuenta(c)) ? '★ ' : ''}{refCuenta(c)} · {estadoCuenta(c)}</option>
+          ))}
+        </select>
+      </div>
+      <div className={s.field}>
+        <label htmlFor="corregir-transf-motivo">Motivo <span className={s.req}>*</span></label>
+        <input
+          id="corregir-transf-motivo" value={motivo} maxLength={300}
+          placeholder="Ej: el cliente le transfirió todo a Becchio; se cargó el resto como transferencia"
+          onChange={(e) => setMotivo(e.target.value)}
+        />
+      </div>
+      {elegida && (
+        <div>
+          La cuenta de <strong>{elegida.proveedorNombre}</strong> ({elegida.titular}) pasa de {money(elegida.pagado)} a{' '}
+          <strong>{money(elegida.pagado + importe)}</strong> transferidos de {money(elegida.importe)}
+          {pasaraPor > 0.009 && <>: queda <strong style={{ color: 'var(--crm-color-danger)' }}>pasada por {money(pasaraPor)}</strong>, a cuenta del proveedor</>}.
+        </div>
+      )}
+      <AvisoSegundaConfirmacion {...sc}>
+        Los {money(importe)} pasan a «Transf. a proveedor» de {elegida ? refCuenta(elegida) : '—'} y quedan pagados a {elegida?.proveedorNombre ?? '—'}.
+      </AvisoSegundaConfirmacion>
+      {error && <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Btn small onClick={onCancelar}>Cancelar</Btn>
+        <Btn small variant="btn-primary" onClick={confirmar} disabled={loading}>{textoBoton(sc, 'Corregir', 'Sí, corregir')}</Btn>
+      </div>
+    </div>
+  );
+}
+
 /* ============================== DETALLE ============================== */
 /** `volver`: se abrió desde otra ventana (la ficha del cliente) y al cerrar vuelve a ella. */
 export function DetalleVentaModal({ ventaId, onCambio, volver }) {
@@ -77,7 +169,9 @@ export function DetalleVentaModal({ ventaId, onCambio, volver }) {
    */
   const { can } = usePermissions();
   const [imprimiendo, setImprimiendo] = useState(false);
-  const { data: v, loading, error } = useResource(`venta:${ventaId}`, () => ventasApi.venta(ventaId));
+  const { data: v, loading, error, reload } = useResource(`venta:${ventaId}`, () => ventasApi.venta(ventaId));
+  /** El renglón «Transferencia» que se está corrigiendo (21/11/2026). */
+  const [corrigiendo, setCorrigiendo] = useState(null);
 
   /** Reimprime con el formato de Sistema › Impresión (rollo 80 por defecto). */
   const reimprimir = async () => {
@@ -263,17 +357,42 @@ export function DetalleVentaModal({ ventaId, onCambio, volver }) {
                   fechaVenta: v.fecha, nombreDelMedio: (m) => MEDIOS_COBRADOS[m] || m,
                 })]));
                 const conMp = [...segun.values()].some(Boolean);
+                /* Una «Transferencia» sin atar a Mercado Pago se puede corregir: fue a una cuenta disponible. */
+                const corregible = (p) => p.medio === 'transferencia' && !p.mp && ['confirmada', 'pendiente_cae'].includes(v.estado)
+                  && can(PERMISO_CORREGIR_TRANSFERENCIA);
+                const conAccion = v.pagos.some(corregible);
                 return (
-                  <Table cols={[{ h: 'Medio' }, ...(conMp ? [{ h: 'Según Mercado Pago' }] : []), { h: 'Referencia' }, { h: 'Importe', num: true }]}>
-                    {v.pagos.map((p) => (
-                      <tr key={p.id}>
-                        <td>{MEDIOS_COBRADOS[p.medio] || p.medio}</td>
-                        {conMp && <td><SegunMp info={segun.get(p.id)} /></td>}
-                        <td>{p.referencia || <span className={s.muted}>—</span>}</td>
-                        <td className={s.num}>{money(p.importe)}</td>
-                      </tr>
-                    ))}
-                  </Table>
+                  <>
+                    <Table cols={[
+                      { h: 'Medio' }, ...(conMp ? [{ h: 'Según Mercado Pago' }] : []), { h: 'Referencia' }, { h: 'Importe', num: true },
+                      ...(conAccion ? [{ h: '' }] : []),
+                    ]}
+                    >
+                      {v.pagos.map((p) => (
+                        <tr key={p.id}>
+                          <td>{MEDIOS_COBRADOS[p.medio] || p.medio}</td>
+                          {conMp && <td><SegunMp info={segun.get(p.id)} /></td>}
+                          <td>{p.referencia || <span className={s.muted}>—</span>}</td>
+                          <td className={s.num}>{money(p.importe)}</td>
+                          {conAccion && (
+                            <td>
+                              {corregible(p) && !corrigiendo && (
+                                <Btn small onClick={() => setCorrigiendo(p)} title="El cliente le transfirió al proveedor: pasarlo a «Transf. a proveedor»">
+                                  Fue a una cuenta disponible
+                                </Btn>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </Table>
+                    {corrigiendo && (
+                      <CorregirTransferencia
+                        venta={v} pago={corrigiendo} onCancelar={() => setCorrigiendo(null)}
+                        onHecho={() => { setCorrigiendo(null); reload(); onCambio?.(); }}
+                      />
+                    )}
+                  </>
                 );
               })() : (
                 <div className={s.hint}>

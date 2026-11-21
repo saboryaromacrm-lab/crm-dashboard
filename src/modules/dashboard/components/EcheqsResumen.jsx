@@ -28,7 +28,7 @@ export function EcheqsResumen() {
       </h3>
       {/* Se acomodan solos: cuatro en la PC, uno abajo del otro en el celular (los importes no se cortan). */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 210px), 1fr))', gap: 12, marginBottom: 12 }}>
-        <Stat label="Vencidos sin marcar cobrados" value={cuenta(e.vencidos)} accent={e.vencidos.n ? 'accent-red' : undefined} />
+        <Stat label="Vencidos sin debitar" value={cuenta(e.vencidos)} accent={e.vencidos.n ? 'accent-red' : undefined} />
         <Stat label="Debitan en 3 días" value={cuenta(e.prox3)} accent={e.prox3.n ? 'accent-amber' : undefined} />
         <Stat label="Debitan en 7 días" value={cuenta(e.semana)} />
         <Stat label="En circulación" value={cuenta(e.activos)} />

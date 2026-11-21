@@ -1,6 +1,8 @@
 import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { cx } from '@shared/utils/classNames.js';
+import { avisarCuentasCompletas } from '@core/layout/components/cuentasCompletas.js';
 import { rangoDe } from '@modules/gerencia/panels/metricas/formato.js';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { Fechas } from '../components/Fechas.jsx';
@@ -27,6 +29,19 @@ export function CuentasDisponiblesPanel() {
   const [vista, setVista] = useState('cuentas');
   // El alta vive en la cabecera y la lista adentro: un tick los une.
   const [tick, setTick] = useState(0);
+  /* «Crear cuenta» desde el banner de «no hay cuentas abiertas»: llega con la
+     sugerencia en el estado de la navegación, abre el alta cargada y la saca
+     del historial (un «atrás» o una recarga no la vuelven a abrir). */
+  const location = useLocation();
+  const navigate = useNavigate();
+  const sugerida = location.state?.cuentaSugerida;
+  useEffect(() => {
+    if (!sugerida) return;
+    setVista('cuentas');
+    openModal('cuentaDisponible', { sugerida, onChange: () => { setTick((t) => t + 1); avisarCuentasCompletas(); } });
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sugerida]);
   return (
     <div>
       <PanelHead
@@ -54,7 +69,11 @@ export function CuentasDisponiblesPanel() {
 
 function VistaCuentas({ tick }) {
   const { proveedores, openModal, toast, recargarContadores } = useProveedores();
-  const [estado, setEstado] = useState('abiertas');
+  /* `?estado=cubiertas` (el banner de cuenta completa, 0238) abre en ese filtro. */
+  const [params] = useSearchParams();
+  const estadoUrl = ESTADOS.some(([k]) => k === params.get('estado')) ? params.get('estado') : null;
+  const [estado, setEstado] = useState(estadoUrl || 'abiertas');
+  useEffect(() => { if (estadoUrl) setEstado(estadoUrl); }, [estadoUrl]);
   const [proveedorId, setProveedorId] = useState('');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
@@ -70,6 +89,7 @@ function VistaCuentas({ tick }) {
     try {
       await provApi.editarCuentaDisponible(c.id, { [campo]: valor });
       refrescar();
+      avisarCuentasCompletas();
     } catch (e) { toast(errorMsg(e), 'err'); }
   };
   const borrar = async (c) => {

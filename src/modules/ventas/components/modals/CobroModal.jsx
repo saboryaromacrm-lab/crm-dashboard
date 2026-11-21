@@ -258,7 +258,7 @@ export function CobroModal({
     if (!hayTerc) return null;
     for (const x of pagos) {
       if (x.medio !== TERC || !(Number(x.importe) > 0)) continue;
-      const m = validarTransferenciaProveedor(x.importe, (cuentasTerc ?? []).find((c) => c.id === x.cuentaDisponibleId), totalCobrar);
+      const m = validarTransferenciaProveedor(x.importe, (cuentasTerc ?? []).find((c) => c.id === x.cuentaDisponibleId), totalCobrar, x.deMas);
       if (m) return m;
     }
     return null;
@@ -292,15 +292,24 @@ export function CobroModal({
   // Cambiar de medio suelta la cuenta de proveedor que pudiera tener el renglón.
   const setPago = (i, campo, valor) =>
     setPagos((ps) => ps.map((x, j) => (j === i
-      ? { ...x, [campo]: valor, ...(campo === 'medio' && valor !== TERC ? { cuentaDisponibleId: null } : {}) }
+      ? { ...x, [campo]: valor, ...(campo === 'medio' && valor !== TERC ? { cuentaDisponibleId: null, deMas: false } : {}) }
       : x)));
+  /** Lo que le queda por cobrar a la venta para el renglón `i` (el total menos los otros renglones). */
+  const restoPara = (ps, i) => r2(totalCobrar - ps.reduce((a, y, k) => (k === i ? a : a + (Number(y.importe) || 0)), 0));
   /** Al elegir la cuenta se propone el importe: lo que le falta, o lo que resta de la venta. */
   const elegirCuenta = (i, cuenta) => setPagos((ps) => ps.map((x, j) => {
     if (j !== i) return x;
-    if (!cuenta) return { ...x, cuentaDisponibleId: null };
-    const otros = r2(ps.reduce((a, y, k) => (k === i ? a : a + (Number(y.importe) || 0)), 0));
-    return { ...x, cuentaDisponibleId: cuenta.id, importe: String(sugerirImporteCuenta(cuenta, r2(totalCobrar - otros))) };
+    if (!cuenta) return { ...x, cuentaDisponibleId: null, deMas: false };
+    return { ...x, cuentaDisponibleId: cuenta.id, deMas: false, importe: String(sugerirImporteCuenta(cuenta, restoPara(ps, i))) };
   }));
+  /**
+   * EL CLIENTE YA LE TRANSFIRIÓ DE MÁS (21/11/2026): tildado, el renglón toma
+   * todo lo que le queda a la venta (se corrige a mano si transfirió menos);
+   * destildado, vuelve a lo que le falta a la cuenta.
+   */
+  const marcarDeMas = (i, deMas, cuenta) => setPagos((ps) => ps.map((x, j) => (j !== i ? x : {
+    ...x, deMas, importe: String(deMas ? restoPara(ps, i) : sugerirImporteCuenta(cuenta, restoPara(ps, i))),
+  })));
   /** El renglón nuevo arranca con lo que falta: el caso típico es partir el pago. */
   const agregarPago = () => setPagos((ps) => {
     const asignado = r2(ps.reduce((a, x) => a + (Number(x.importe) || 0), 0));
@@ -314,8 +323,7 @@ export function CobroModal({
   const quitarPago = (i) => setPagos((ps) => (ps.length > 1 ? ps.filter((_, j) => j !== i) : ps));
   /** Completa este renglón con lo que falta para llegar al total. */
   const completar = (i) => {
-    const otros = r2(pagos.reduce((a, x, j) => (j === i ? a : a + (Number(x.importe) || 0)), 0));
-    setPago(i, 'importe', String(Math.max(0, r2(totalCobrar - otros))));
+    setPago(i, 'importe', String(Math.max(0, restoPara(pagos, i))));
   };
   /** Reparte el total en partes iguales entre los medios cargados. */
   const dividir = () => setPagos((ps) => {
@@ -551,7 +559,7 @@ export function CobroModal({
                * calcula con su propia configuración. Mandarle el monto sería
                * dejar que la caja declare cuánto de una venta es financiación. */
               ...(x.medio === CREDITO && x.cuotas ? { cuotas: Number(x.cuotas) } : {}),
-              ...(x.medio === TERC ? { cuentaDisponibleId: x.cuentaDisponibleId } : {}),
+              ...(x.medio === TERC ? { cuentaDisponibleId: x.cuentaDisponibleId, ...(x.deMas ? { deMas: true } : {}) } : {}),
             }))]
             : [],
           ...(sobraNc > 0.009 ? { sobranteCambio: sobrante } : {}),
@@ -1054,7 +1062,8 @@ export function CobroModal({
             {x.medio === TERC && (
               <CuentaProveedorPicker
                 cuentas={cuentasTerc} total={totalCobrar} loading={cargandoTerc && !cuentasTerc} error={errorTerc}
-                cuentaId={x.cuentaDisponibleId} importe={x.importe}
+                cuentaId={x.cuentaDisponibleId} importe={x.importe} resto={restoPara(pagos, i)} deMas={!!x.deMas}
+                onDeMas={(v) => marcarDeMas(i, v, (cuentasTerc ?? []).find((c) => c.id === x.cuentaDisponibleId))}
                 onSeleccionar={(c) => elegirCuenta(i, c)} onRefrescar={recargarTerc}
               />
             )}

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
-import { agruparPorProveedor, etiquetaCuenta, fmt, seOfrece, validarTransferenciaProveedor } from '../domain/cuentasProveedor.js';
+import { agruparPorProveedor, etiquetaCuenta, fmt, pideDeMas, seOfrece, validarTransferenciaProveedor } from '../domain/cuentasProveedor.js';
 import { Btn, s } from './ui.jsx';
 import p from '../styles/Pos.module.css';
 
@@ -17,8 +17,15 @@ import p from '../styles/Pos.module.css';
  * (que la pide una vez por modal) y devuelve la cuenta elegida. `total` es el
  * de la venta o el recibo: las cuentas «solo para ventas desde $X» no se
  * ofrecen por debajo de X (0168).
+ *
+ * EL CLIENTE YA TRANSFIRIÓ DE MÁS (21/11/2026): si lo que hay para cobrar con
+ * esta cuenta (`resto`; sin él, el importe cargado) pasa lo que le falta, se
+ * pregunta. Tildado (`deMas`), entra lo que transfirió: la cuenta queda pasada,
+ * lo de más a cuenta del proveedor, y administración recibe el aviso.
  */
-export function CuentaProveedorPicker({ cuentas, total, loading, error, cuentaId, importe, onSeleccionar, onRefrescar }) {
+export function CuentaProveedorPicker({
+  cuentas, total, loading, error, cuentaId, importe, resto, deMas = false, onDeMas, onSeleccionar, onRefrescar,
+}) {
   const { toast } = useVentas();
   const ofrecidas = useMemo(() => (cuentas ?? []).filter((c) => seOfrece(c, total)), [cuentas, total]);
   const ocultas = (cuentas?.length ?? 0) - ofrecidas.length;
@@ -71,7 +78,8 @@ export function CuentaProveedorPicker({ cuentas, total, loading, error, cuentaId
     );
   }
 
-  const aviso = validarTransferenciaProveedor(importe, elegida, total);
+  const aviso = validarTransferenciaProveedor(importe, elegida, total, deMas);
+  const preguntaDeMas = onDeMas && elegida && (deMas || pideDeMas(elegida, resto ?? importe));
 
   return (
     <div className={p.terc}>
@@ -116,6 +124,23 @@ export function CuentaProveedorPicker({ cuentas, total, loading, error, cuentaId
             {elegida.ventaMinima > 0 && <span>Solo ventas desde <strong>{fmt(elegida.ventaMinima)}</strong></span>}
             {elegida.puedePasarse && <span>Puede pasarse: <strong>toma el pago entero</strong> y se cierra</span>}
           </div>
+          {preguntaDeMas && (
+            <div className={cx(s.callout, s.warn)} style={{ marginTop: 8, marginBottom: 0, display: 'grid', gap: 6 }}>
+              <span>
+                A esta cuenta le faltan <strong>{fmt(elegida.falta)}</strong>. Si el cliente <strong>ya le transfirió más</strong>,
+                tildalo: no cargues el resto como «Transferencia», esa plata no entra a tu cuenta.
+              </span>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600 }}>
+                <input type="checkbox" checked={deMas} onChange={(e) => onDeMas(e.target.checked)} />
+                El cliente ya le transfirió de más a esta cuenta
+              </label>
+              {deMas && (
+                <span className={s.hint} style={{ margin: 0 }}>
+                  Cargá en el importe <strong>todo lo que transfirió</strong>. Lo de más queda a cuenta de {elegida.proveedorNombre} y se le avisa a administración.
+                </span>
+              )}
+            </div>
+          )}
           {aviso && <div className={cx(s.callout, s.warn)} style={{ marginTop: 8, marginBottom: 0 }}>{aviso}</div>}
         </div>
       )}

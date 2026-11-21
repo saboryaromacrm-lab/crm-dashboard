@@ -13,6 +13,8 @@ import { ID_AVISOS_IMPORTANTES, RecordatoriosBanner } from './components/Recorda
 import { AccesosTiendaBanner } from './components/AccesosTiendaBanner.jsx';
 import { CuentasVencidasBanner } from './components/CuentasVencidasBanner.jsx';
 import { FacturasSinCargarBanner } from './components/FacturasSinCargarBanner.jsx';
+import { CuentasCompletasBanner } from './components/CuentasCompletasBanner.jsx';
+import { SinCuentasDisponiblesBanner } from './components/SinCuentasDisponiblesBanner.jsx';
 import { DireccionViejaBanner } from './components/DireccionViejaBanner.jsx';
 import { AvisosArriba } from './components/AvisosArriba.jsx';
 import { BarraInferior } from './components/BarraInferior/BarraInferior.jsx';
@@ -78,6 +80,10 @@ export function MainLayout() {
           <CuentasVencidasBanner />
           {/* Mercadería recibida (tarjeta de Pedidos) sin su factura cargada (7/11/2026): administración. */}
           <FacturasSinCargarBanner />
+          {/* Una cuenta disponible de un proveedor quedó cubierta (0238): administración, hasta «Entendido». */}
+          <CuentasCompletasBanner />
+          {/* Ninguna cuenta disponible abierta, con sugerencias de a quién abrirle una (20/11/2026): administración. */}
+          <SinCuentasDisponiblesBanner />
           {/* El próximo feriado, de hoy a 10 días (0182): administración. */}
           <FeriadosBanner />
         </AvisosArriba>

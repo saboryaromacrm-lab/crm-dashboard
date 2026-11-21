@@ -6,6 +6,7 @@ import { TIPOS_COMPROBANTE, ESTADOS_COMPROBANTE, LETRAS_COMPROBANTE, CONDICIONES
 import { displaysDe, envasesDelRenglon, nombreEnvase } from '../../domain/bulto.js';
 import { cargaDelRenglon } from '../../domain/renglonPapel.js';
 import { deOtraSucursal, esJefeSesion, pagoSeOfrece } from '../../domain/pagosACuenta.js';
+import { emparejarPercepciones, tipoSegunNombre } from '../../domain/percepciones.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
@@ -1082,6 +1083,43 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   const percAplicadas = percCalculadas.filter((p) => p.aplicar).length;
   /** Toca UNA percepción por su índice real (lo usa la × del pie). */
   const setPerc = (i, patch) => setPercepciones((r) => r.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  /**
+   * LA PERCEPCIÓN QUE EL PROVEEDOR NO TIENE EN SU FICHA (21/11/2026, pedido del
+   * dueño). La factura de La Serenísima trajo «Per. IIBB Formosa» y la ficha
+   * tenía solo la de IVA: no había dónde tildarla y la factura no cerraba.
+   * Las que el papel trae y ninguna de la ficha empareja se ofrecen para
+   * agregar con un toque: quedan en la ficha (la próxima factura ya la tiene)
+   * y aplicadas en esta con el importe del papel.
+   */
+  const percSueltas = useMemo(
+    () => (esNoFiscal ? [] : emparejarPercepciones(percepciones, propuestaIa?.pie?.percepciones).sueltas.filter((x) => Number(x.importe) > 0.009)),
+    [percepciones, propuestaIa, esNoFiscal],
+  );
+  const [agregandoPerc, setAgregandoPerc] = useState(null);
+  const agregarPercepcionDelPapel = async (x) => {
+    const pid = parseInt(provId, 10);
+    if (!pid || agregandoPerc) return;
+    setAgregandoPerc(x.nombre);
+    const nueva = { nombre: x.nombre, alicuota: Number(x.alicuota) || 0, base: 'neto', activa: true, tipo: tipoSegunNombre(x.nombre) };
+    let error = '';
+    try {
+      // La lista FRESCA de la ficha más la nueva: guardar reemplaza la lista entera.
+      const actuales = await store.percepcionesProveedor(pid);
+      const res = await store.guardarPercepcionesProveedor(pid, [
+        ...(actuales ?? []).map((p) => ({ nombre: p.nombre, alicuota: Number(p.alicuota) || 0, base: p.base, activa: p.activa !== false, tipo: p.tipo || '' })),
+        nueva,
+      ]);
+      if (!res.ok) error = res.error || 'no se pudo guardar';
+    } catch (err) {
+      error = err?.data?.message || err?.message || 'no se pudo guardar';
+    }
+    setPercepciones((prev) => [...prev, { ...nueva, aplicar: true, importeManual: Number(x.importe) || 0 }]);
+    setAgregandoPerc(null);
+    const prov = provElegido?.nombre || 'el proveedor';
+    toast(error
+      ? `«${x.nombre}» quedó aplicada en esta factura, pero no se guardó en la ficha de ${prov}: ${error}.`
+      : `«${x.nombre}» quedó en la ficha de ${prov} y aplicada en esta factura.`, error ? 'err' : 'ok');
+  };
 
   /* ---- La lectura con IA: pedir la propuesta y precargar el formulario ---- */
 
@@ -1148,17 +1186,12 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       if (d.pie.bonifImporte > 0) setBonifManual(d.pie.bonifImporte);
     }
     if (d.pie?.percepciones?.length) {
-      // Tildar las configuradas del proveedor que el papel trajo: por nombre
-      // parecido o por la misma alícuota. El importe del papel manda.
-      const k = (v) => String(v || '').normalize('NFD').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-      setPercepciones((prev) => prev.map((p) => {
-        const m = d.pie.percepciones.find((x) => {
-          const a = k(x.nombre); const b = k(p.nombre);
-          return (a && b && (a.includes(b) || b.includes(a)))
-            || (x.alicuota && Number(p.alicuota) === Number(x.alicuota));
-        });
-        return m ? { ...p, aplicar: true, importeManual: m.importe } : p;
-      }));
+      // Tildar las de la ficha del proveedor que el papel trajo (`emparejarPercepciones`:
+      // por nombre o por impuesto, nunca por la alícuota sola). El importe del papel manda.
+      setPercepciones((prev) => {
+        const { pares } = emparejarPercepciones(prev, d.pie.percepciones);
+        return prev.map((p, i) => (pares.has(i) ? { ...p, aplicar: true, importeManual: pares.get(i).importe } : p));
+      });
     }
     return filas.length;
   };
@@ -2674,6 +2707,18 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
               )}
               {porQueNoCierra.pieDistinto.map((p) => (
                 <li key={p.nombre}>{p.nombre}: en la factura {money(p.papel)}, cargado {money(p.cargado)}.</li>
+              ))}
+              {percSueltas.map((x) => (
+                <li key={x.nombre}>
+                  La factura trae <strong>«{x.nombre}»</strong>{Number(x.alicuota) > 0 ? ` ${num(x.alicuota)} %` : ''} por {money(x.importe)}
+                  {' '}y {provElegido?.nombre || 'el proveedor'} no la tiene en su ficha.{' '}
+                  <button
+                    type="button" className={cx(s.btn, s['btn-ghost'], s['btn-sm'])} style={{ marginTop: 4 }}
+                    disabled={!!agregandoPerc} onClick={() => agregarPercepcionDelPapel(x)}
+                  >
+                    {agregandoPerc === x.nombre ? 'Agregando…' : 'Agregarla al proveedor y aplicarla'}
+                  </button>
+                </li>
               ))}
               {!porQueNoCierra.sinCargar.length && !porQueNoCierra.distintos.length && !porQueNoCierra.deMas.length && !porQueNoCierra.pieDistinto.length && (
                 <li>Los renglones y el pie coinciden con lo leído: la diferencia está en el total del papel. Revisalo con «Ver el papel».</li>
