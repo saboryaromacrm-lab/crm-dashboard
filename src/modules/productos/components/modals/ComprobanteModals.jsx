@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFecha, isoDate } from '../../domain/format.js';
-import { TIPOS_COMPROBANTE, ESTADOS_COMPROBANTE, LETRAS_COMPROBANTE, CONDICIONES_PAGO } from '../../domain/constants.js';
+import { TIPOS_COMPROBANTE, ESTADOS_COMPROBANTE, LETRAS_COMPROBANTE, CONDICIONES_PAGO, IVA_OPCIONES } from '../../domain/constants.js';
 import { displaysDe, envasesDelRenglon, nombreEnvase } from '../../domain/bulto.js';
-import { cargaDelRenglon } from '../../domain/renglonPapel.js';
+import { bultoDelRenglon, cargaDelRenglon, nombreDelRenglon } from '../../domain/renglonPapel.js';
 import { deOtraSucursal, esJefeSesion, pagoSeOfrece } from '../../domain/pagosACuenta.js';
 import { emparejarPercepciones, tipoSegunNombre } from '../../domain/percepciones.js';
 import { leerSesion } from '@core/auth/sesion.js';
+import { verificadorEan13 } from '@core/services/barcode.js';
 import { ModalShell } from '../Modal.jsx';
+import { DetalleProductoModal, ProductoFormModal } from './ProductoModals.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
 import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
@@ -63,7 +65,7 @@ const SEMAFORO = {
  */
 function PanelIa({
   propuesta: d, cargando, leyendo, eligiendo, porRenglon, usados, productos, proveedor,
-  onAplicar, onReleer, onElegir, onAsociar, onAceptarSugerencias, onGuardarCodigo, onUsarEncabezado,
+  onAplicar, onReleer, onElegir, onAsociar, onAceptarSugerencias, onGuardarCodigo, onUsarEncabezado, onCrearProducto,
 }) {
   /** Qué colores se ven (tocando los contadores): null = todos. */
   const [filtro, setFiltro] = useState(null);
@@ -228,6 +230,12 @@ function PanelIa({
                         La IA sugiere <strong>{x.sugerido.nombre}</strong>{' '}
                         <button type="button" className={s.linkBtn} onClick={() => onAsociar(x, x.sugerido.id)}>Aceptar</button>
                       </span>
+                    )}
+                    {/* También en amarillo: la IA pudo suponer uno parecido y el de verdad no estar cargado. */}
+                    {color !== 'verde' && onCrearProducto && (
+                      <button type="button" className={s.linkBtn} onClick={() => onCrearProducto(x)}>
+                        {prod ? 'No es ese: crear uno nuevo' : '+ Crear este producto'}
+                      </button>
                     )}
                     {color !== 'verde' && (
                       <select
@@ -604,7 +612,7 @@ function filaDesdeItemRemito(it, entry) {
 }
 
 function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) {
-  const { store, closeModal, toast, sucOperativa, can, openModal } = useProductos();
+  const { store, closeModal, toast, sucOperativa, can, openModal, isAdmin } = useProductos();
 
   /** Modo conversión: facturar un remito ya ingresado. */
   const esConversion = !!remito;
@@ -1281,6 +1289,38 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     if (!fila) return;
     ponerFilas([fila]);
     toast(`${store.getProducto(parseInt(prodId, 10)).nombre} asociado. Al guardar, queda aprendido para las próximas facturas.`, 'ok');
+  };
+  /*
+   * CREAR EL PRODUCTO DESDE LA FACTURA (21/11/2026, pedido del dueño): el renglón
+   * que no está en el sistema abre el alta ENCIMA de la factura (no se pierde
+   * nada), con lo que trae el papel; creado, se completan sus formatos y, al
+   * terminar, el renglón queda asociado con el producto tal como quedó (su
+   * Formato de Compra decide bultos y costo, como con cualquier otro).
+   */
+  const [altaProducto, setAltaProducto] = useState(null); // { renglon, prodId }
+  const inicialDeRenglon = (x) => {
+    const codigo = String(x.codigo ?? '').trim();
+    /* El bulto y su costo, como los guarda el Formato de Compra (ver bultoDelRenglon). */
+    const { bulto, costo, por } = bultoDelRenglon(x);
+    /* La escala del papel tal cual; si trae más de 4 (o es una lectura vieja sin ella), su equivalente. */
+    const escala = (x.descuentos ?? []).map(Number).filter((d) => d > 0);
+    return {
+      renglon: x.descripcion || `cód ${codigo}`,
+      nombre: nombreDelRenglon(x.descripcion),
+      proveedorId: provId,
+      codigoProveedor: codigo,
+      /* Muchos proveedores imprimen el EAN del artículo como código: si cierra el verificador, es el de barras. */
+      ...(verificadorEan13(codigo) ? { codigoBarras: codigo } : {}),
+      bulto, bultoPor: por, costo,
+      /* Un bulto con decimales son kilos: granel (se puede destildar). */
+      esGranel: !Number.isInteger(bulto),
+      descuentos: escala.length && escala.length <= 4 ? escala : (Number(x.dto) > 0 ? [Number(x.dto)] : []),
+      ...(IVA_OPCIONES.includes(Number(x.iva)) ? { iva: Number(x.iva) } : {}),
+    };
+  };
+  const terminarAlta = () => {
+    asociarRenglon(altaProducto.renglon, altaProducto.prodId);
+    setAltaProducto(null);
   };
   /** «Aceptar las N sugerencias»: todas de una vez (siguen siendo revisables y cambiables). */
   const aceptarSugerencias = (rens) => {
@@ -2199,6 +2239,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           onReleer={releerIa} onElegir={elegirIa} onAsociar={asociarRenglon} onAceptarSugerencias={aceptarSugerencias}
           onGuardarCodigo={guardarCodigoRenglon}
           onUsarEncabezado={usarEncabezadoIa}
+          onCrearProducto={isAdmin && provId ? (x) => setAltaProducto({ renglon: x, prodId: null }) : null}
         />
       )}
       {esConversion ? (
@@ -3249,6 +3290,17 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           }}
           onClose={() => setModalPie(null)}
         />
+      )}
+      {/* El producto que no estaba: alta y después sus formatos, encima de la factura. */}
+      {altaProducto && !altaProducto.prodId && (
+        <ProductoFormModal
+          inicial={inicialDeRenglon(altaProducto.renglon)}
+          alCrear={(r) => setAltaProducto((a) => ({ ...a, prodId: r.id }))}
+          alCerrar={() => setAltaProducto(null)}
+        />
+      )}
+      {altaProducto?.prodId && (
+        <DetalleProductoModal prodId={altaProducto.prodId} pestana="Formato de Venta" alCerrar={terminarAlta} />
       )}
     </>
   );

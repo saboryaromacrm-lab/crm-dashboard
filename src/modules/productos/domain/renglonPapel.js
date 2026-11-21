@@ -42,3 +42,49 @@ export function cargaDelRenglon({ cantidad, costoPapel, bultosPapel = 0 }, { por
     ? { bultos: Math.round(k), porBulto: n, costoBulto: +(p * n).toFixed(4), modo: 'bulto', porUnidad: true }
     : { bultos: q, porBulto: n, costoBulto: p, modo: 'unidad', porUnidad: true };
 }
+
+/*
+ * EL PRODUCTO NUEVO QUE NACE DE UN RENGLÓN (21/11/2026, crear el producto desde
+ * la carga de la factura). El Formato de Compra guarda el costo del BULTO y
+ * cuántas unidades (o kg) trae, así que el alta tiene que saber las dos cosas;
+ * si no, nace con «bulto de 1» y el costo de la caja, y cada unidad vale N veces
+ * más. Del papel se deduce así, en este orden:
+ *
+ *   1. la columna de BULTOS: «45 unidades en 1 bulto» → bulto de 45, y el
+ *      precio impreso es por unidad (el bulto cuesta 45 veces eso);
+ *   2. el IMPORTE: si solo cierra con N unidades por bulto («2 PACK a $13.632,30
+ *      −8 −18 = $246.820,97» cierra con 12), el bulto es N y `costoBulto` (el
+ *      importe repartido entre los bultos) ya es el del bulto. N puede no ser
+ *      entero: «X 22,680 KG» → bulto de 22,68 kg (granel);
+ *   3. el NOMBRE: «560G X14U», «Bulto x 72u.» → bulto de 14 / 72, al precio del
+ *      renglón (que entonces es el del bulto).
+ *
+ * Sin nada de eso, bulto de 1. Es una PROPUESTA: el alta la muestra con el costo
+ * por unidad al lado, para que la persona la confirme o la corrija.
+ */
+const r3 = (n) => Math.round(n * 1000) / 1000;
+const redondearBulto = (k) => (Math.abs(k - Math.round(k)) <= 0.01 * k ? Math.round(k) : r3(k));
+const BULTO_EN_NOMBRE = /\bx\s*(\d{1,4})\s*(?:u|un|und|unid|unidades)\b/i;
+
+export function bultoDelRenglon({ cantidad, costoBulto, precioUnitario, bultosPapel = 0, descripcion = '' }) {
+  const q = Number(cantidad) || 0;
+  const c = Number(costoBulto) || 0;
+  const pu = Number(precioUnitario) || 0;
+  const b = Number(bultosPapel) || 0;
+  if (b > 0 && q > b + EPS) {
+    const n = redondearBulto(q / b);
+    return { bulto: n, costo: +(c * n).toFixed(4), por: 'bultos' };
+  }
+  if (pu > 0 && c > 0 && c / pu > 1.01) return { bulto: redondearBulto(c / pu), costo: c, por: 'importe' };
+  const m = BULTO_EN_NOMBRE.exec(descripcion || '');
+  if (m && Number(m[1]) > 1) return { bulto: Number(m[1]), costo: c, por: 'nombre' };
+  return { bulto: 1, costo: c, por: null };
+}
+
+/** El nombre del papel sin la cola de lote y vencimiento que algunos proveedores le pegan («… - +IC04 113163 K BS.AS 11/06/2026»). */
+export function nombreDelRenglon(descripcion) {
+  return String(descripcion || '')
+    .replace(/\s+-\s+\+.*$/, '')
+    .replace(/\s+\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/, '')
+    .trim();
+}

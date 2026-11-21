@@ -69,24 +69,39 @@ function EtapasProducto({ paso, irA }) {
   );
 }
 
+/** De dónde salió el bulto propuesto desde una factura (ver `bultoDelRenglon`). */
+const PORQUE_BULTO = {
+  bultos: 'Lo dice la columna de bultos de la factura.',
+  importe: 'Sale del importe del renglón, que solo cierra con ese bulto: revisalo.',
+  nombre: 'Sale del nombre del renglón: revisalo.',
+};
+
 /** Kilos de granel que consume 1 kg de paquete con esta merma (ver `escalaPaquete`). */
 const escalaDe = (tam, merma) => {
   const m = Math.min(Math.max(Number(String(merma ?? '').replace(',', '.')) || 0, 0), 50) / 100;
   return (Number(tam) || 0) / (1 - m);
 };
 
-export function ProductoFormModal({ prodId }) {
+/*
+ * `inicial` precarga un alta con lo que trae el renglón de una factura leída
+ * (21/11/2026: crear el producto desde la carga de la factura, sin cerrarla);
+ * `alCrear(producto)` sigue el trámite y `alCerrar` reemplaza a closeModal
+ * cuando el formulario va montado encima de otro modal.
+ */
+export function ProductoFormModal({ prodId, inicial = null, alCrear = null, alCerrar = null }) {
   const { store, act, closeModal, toast } = useProductos();
+  const cerrar = alCerrar ?? closeModal;
+  const enVuelo = useRef(false);
   const prod = prodId != null ? store.getProducto(prodId) : null;
   const ed = !!prod;
   const cat = store.state.catalogos;
 
-  const [esGranel, setEsGranel] = useState(prod ? prod.tipo === 'granel' : false);
+  const [esGranel, setEsGranel] = useState(prod ? prod.tipo === 'granel' : !!inicial?.esGranel);
   const [f, setF] = useState(() => ({
-    nombre: prod?.nombre || '',
+    nombre: prod?.nombre || inicial?.nombre || '',
     descripcion: prod?.descripcion || '',
     codigoPropio: prod?.codigoPropio || '',
-    codigoBarras: prod?.codigoBarras || '',
+    codigoBarras: prod?.codigoBarras || inicial?.codigoBarras || '',
     dun: prod?.dun || '',
     unidadesPorBulto: prod?.unidadesPorBulto != null ? String(prod.unidadesPorBulto) : '1',
     stockMin: Number(prod?.stockMin) > 0 ? String(prod.stockMin) : '',
@@ -94,7 +109,7 @@ export function ProductoFormModal({ prodId }) {
     categoriaId: prod?.categoriaId ?? null,
     subcategoriaId: prod?.subcategoriaId ?? null,
     etiquetas: prod?.etiquetas || [],
-    iva: prod?.iva != null ? String(prod.iva) : '21',
+    iva: prod?.iva != null ? String(prod.iva) : String(inicial?.iva ?? 21),
     // '' = heredar el redondeo de configuración, que es el caso normal.
     redondeo: prod?.redondeo == null ? '' : String(prod.redondeo),
     merma: prod?.merma ? String(prod.merma) : '0',
@@ -102,10 +117,12 @@ export function ProductoFormModal({ prodId }) {
     idExterno: prod?.idExterno || '',
     // Solo alta (etapa 2): crea el Formato de Compra de entrada — con el
     // código del proveedor, su escala y su flete el producto nace completo.
-    proveedorId: '',
-    costoInicial: '',
-    codigoProveedor: '',
-    d1: '', d2: '', d3: '', d4: '',
+    proveedorId: inicial?.proveedorId ? String(inicial.proveedorId) : '',
+    // El costo de lista es el de SU bulto: cuántas unidades (o kg) trae.
+    bultoFormato: inicial?.bulto ? String(inicial.bulto) : '1',
+    costoInicial: inicial?.costo ? String(inicial.costo) : '',
+    codigoProveedor: inicial?.codigoProveedor || '',
+    ...Object.fromEntries(['d1', 'd2', 'd3', 'd4'].map((k, i) => [k, inicial?.descuentos?.[i] ? String(inicial.descuentos[i]) : ''])),
     flete: '',
   }));
   /** Alta en DOS etapas: 1 = el producto en sí, 2 = con quién llega. */
@@ -150,6 +167,7 @@ export function ProductoFormModal({ prodId }) {
   const [admin, setAdmin] = useState(null);
 
   const set = (k, v) => setF((prev) => ({ ...prev, [k]: v }));
+  const bultoNum = Number(String(f.bultoFormato).replace(',', '.')) || 0;
 
   // Cascada: al cambiar de categoría, la subcategoría elegida deja de ser
   // válida. Limpiarla acá evita guardar una combinación que el backend rechaza.
@@ -183,7 +201,7 @@ export function ProductoFormModal({ prodId }) {
     setPaso(2);
   };
 
-  const guardar = () => {
+  const guardar = async () => {
     const nombre = f.nombre.trim();
     if (!nombre) { toast('El concepto es obligatorio.', 'err'); return; }
     const o = {
@@ -210,7 +228,11 @@ export function ProductoFormModal({ prodId }) {
       origenCafeteria,
     };
     if (!ed && f.proveedorId && !origenCafeteria) {
+      const bulto = Number(String(f.bultoFormato).replace(',', '.'));
+      if (!(bulto > 0)) { toast('El bulto del proveedor tiene que ser mayor que cero.', 'err'); return; }
+      if (!esGranel && !Number.isInteger(bulto)) { toast('El bulto de un producto entero va en unidades enteras.', 'err'); return; }
       o.proveedorId = parseInt(f.proveedorId, 10);
+      o.cantidadFormato = bulto;
       o.costoInicial = Number(f.costoInicial) || 0;
       o.codigoProveedor = f.codigoProveedor.trim();
       o.descuento = Number(f.d1) || 0;
@@ -219,22 +241,33 @@ export function ProductoFormModal({ prodId }) {
       o.descuento4 = Number(f.d4) || 0;
       o.flete = Number(f.flete) || 0;
     }
-    act(
-      prod ? store.editarProducto(prod.id, o) : store.crearProducto(o),
-      prod ? 'Producto actualizado.' : 'Producto creado.',
-    );
+    if (!alCrear || prod) {
+      act(
+        prod ? store.editarProducto(prod.id, o) : store.crearProducto(o),
+        prod ? 'Producto actualizado.' : 'Producto creado.',
+      );
+      return;
+    }
+    if (enVuelo.current) return;
+    enVuelo.current = true;
+    try {
+      const r = await store.crearProducto(o);
+      if (!r?.ok) { toast(r?.error || 'No se pudo crear el producto.', 'err'); return; }
+      toast(`${nombre} creado.`, 'ok');
+      await alCrear(r);
+    } finally { enVuelo.current = false; }
   };
 
   /* El pie cambia con la etapa: en el alta se avanza y se vuelve; la edición
    * sigue siendo una sola pantalla (el proveedor ya vive en su Formato). */
   const footer = ed
     ? [
-      { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+      { texto: 'Cancelar', clase: 'btn-ghost', onClick: cerrar },
       { texto: 'Guardar', clase: 'btn-primary', onClick: guardar },
     ]
     : paso === 1
       ? [
-        { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: cerrar },
         { texto: 'Continuar', clase: 'btn-primary', onClick: continuar },
       ]
       : [
@@ -250,10 +283,16 @@ export function ProductoFormModal({ prodId }) {
           ? 'Etapa 1 de 2 · El producto en sí'
           : 'Etapa 2 de 2 · Con quién llega')}
         wide
-        onClose={closeModal}
+        onClose={cerrar}
         footer={footer}
       >
         {!ed && <EtapasProducto paso={paso} irA={setPaso} />}
+        {inicial?.renglon && (
+          <div className={cx(s.callout, s.info)}>
+            Con los datos del renglón de la factura: <strong>{inicial.renglon}</strong>. Revisalos y completá lo que falta;
+            al crearlo, seguís con sus formatos y después con la factura.
+          </div>
+        )}
 
         {(ed || paso === 1) && (
           <>
@@ -580,7 +619,16 @@ export function ProductoFormModal({ prodId }) {
             <Seccion>Costo</Seccion>
             <div className={s['form-grid']}>
               <div className={s.field}>
-                <label>Costo de lista (neto)</label>
+                <label htmlFor="alta-bulto-formato">{esGranel ? 'Kilos por bulto' : 'Unidades por bulto'}</label>
+                <input
+                  id="alta-bulto-formato" type="number" min="0" step={esGranel ? '0.001' : '1'}
+                  value={f.bultoFormato}
+                  disabled={!f.proveedorId}
+                  onChange={(e) => set('bultoFormato', e.target.value)}
+                />
+              </div>
+              <div className={s.field}>
+                <label>{bultoNum > 1 ? 'Costo de lista del bulto (neto)' : 'Costo de lista (neto)'}</label>
                 <input
                   type="number" min="0" step="0.01"
                   value={f.costoInicial}
@@ -600,6 +648,13 @@ export function ProductoFormModal({ prodId }) {
                 />
               </div>
             </div>
+            {f.proveedorId && bultoNum > 1 && Number(f.costoInicial) > 0 && (
+              <div className={s.hint}>
+                Bulto de {num(bultoNum, esGranel ? 3 : 0)} {esGranel ? 'kg' : 'u.'} a {money(Number(f.costoInicial))}:{' '}
+                <strong>{money(Number(f.costoInicial) / bultoNum)} por {esGranel ? 'kg' : 'unidad'}</strong> de lista, antes de descuentos.
+                {inicial?.bultoPor && ` ${PORQUE_BULTO[inicial.bultoPor]}`}
+              </div>
+            )}
 
             <div className={s.field}>
               <label>Escala de descuentos (se aplican en cascada)</label>
@@ -646,12 +701,16 @@ function Di({ label, children }) {
  * desde «Crear fraccionados» en Compras › Productos). Las pestañas se eligen
  * por nombre y no por posición: la de Presentaciones solo existe en granel.
  */
-export function DetalleProductoModal({ prodId, pestana }) {
+export function DetalleProductoModal({ prodId, pestana, alCerrar = null }) {
   const { store, isAdmin, closeModal, openModal } = useProductos();
   useSeccion('movimientos');
   const p = store.getProducto(prodId);
   const [tab, setTab] = useState(pestana || 'Resumen');
   if (!p) return null;
+  /* Montado encima de la carga de una factura (`alCerrar`, 21/11/2026): solo lo
+     que se completa de un producto recién creado, y nada que abra otro modal
+     en lugar de la factura. */
+  const embebido = !!alCerrar;
 
   // Compra y Venta, en ese orden: es el recorrido real del producto — primero
   // cómo entra (y a qué costo), después cómo sale (y a qué precio).
@@ -664,15 +723,23 @@ export function DetalleProductoModal({ prodId, pestana }) {
   if (p.tipo === 'granel') tabDefs.push({ label: 'Presentaciones', C: PresentacionesTab });
   /* La foto, el destacado y el mínimo web (19/10/2026, antes en Tienda online › Productos del sitio). */
   tabDefs.push({ label: 'Tienda online', C: TiendaProductoTab });
-  const activa = tabDefs.find((t) => t.label === tab) || tabDefs[0];
+  const visibles = embebido ? tabDefs.filter((t) => !['Resumen', 'Evolución de precios'].includes(t.label)) : tabDefs;
+  const activa = visibles.find((t) => t.label === tab) || visibles[0];
   const Active = activa.C;
 
-  const footer = [];
-  if (isAdmin) footer.push({ texto: 'Editar producto', clase: 'btn-primary', onClick: () => openModal('producto', { prodId: p.id }) });
-  footer.push({ texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal });
+  const footer = embebido
+    ? [{ texto: 'Listo: seguir con la factura', clase: 'btn-primary', onClick: alCerrar }]
+    : [
+      ...(isAdmin ? [{ texto: 'Editar producto', clase: 'btn-primary', onClick: () => openModal('producto', { prodId: p.id }) }] : []),
+      { texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal },
+    ];
 
   return (
-    <ModalShell title={'Detalle — ' + p.nombre} wide onClose={closeModal} footer={footer}>
+    <ModalShell
+      title={(embebido ? 'Formatos — ' : 'Detalle — ') + p.nombre}
+      subtitle={embebido ? 'Creado. Cargá su formato de venta (y lo que haga falta); al terminar seguís con la factura.' : undefined}
+      wide onClose={alCerrar ?? closeModal} footer={footer}
+    >
       <Tabs
         value={activa.label}
         onChange={(e, v) => setTab(v)}
@@ -680,9 +747,9 @@ export function DetalleProductoModal({ prodId, pestana }) {
         scrollButtons="auto"
         sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
       >
-        {tabDefs.map((t) => <Tab key={t.label} value={t.label} label={t.label} />)}
+        {visibles.map((t) => <Tab key={t.label} value={t.label} label={t.label} />)}
       </Tabs>
-      <Active prod={p} />
+      <Active prod={p} embebido={embebido} />
     </ModalShell>
   );
 }
@@ -1067,7 +1134,7 @@ function estadoCodigo(row, previoDe, repetidos) {
   };
 }
 
-function PresentacionesTab({ prod: p }) {
+function PresentacionesTab({ prod: p, embebido = false }) {
   const { store, isAdmin, toast, closeModal, openModal } = useProductos();
   const neto = store.costoNeto(p);
   const [rows, setRows] = useState(() => {
@@ -1220,7 +1287,7 @@ function PresentacionesTab({ prod: p }) {
                 })()}
               </div>
               <div className={s.muted} style={{ paddingTop: 8 }}>{num(stk, 0)} paq.</div>
-              {guardada ? (
+              {guardada && !embebido ? (
                 <Btn
                   small
                   variant="btn-ghost"
