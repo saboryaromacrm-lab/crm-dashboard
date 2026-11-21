@@ -43,6 +43,8 @@ export const provApi = {
   aplicarComision: (id, comision) => httpClient.post(`/productos/comision-proveedor/${id}`, { comision }),
   eliminarProveedor: (id) => httpClient.delete(`/proveedores/${id}`),
   cuentas: (id) => httpClient.get(`/proveedores/${id}/cuentas`),
+  /** Los rubros de gastos (0240): para fijarle a un proveedor el suyo. Sin acceso a Gastos, la ficha no lo muestra. */
+  rubrosGasto: () => httpClient.get('/gastos/categorias'),
   guardarCuentas: (id, cuentas) => httpClient.put(`/proveedores/${id}/cuentas`, { cuentas }),
   /* La migración desde el sistema viejo (26/8): el CSV del padrón entero en
    * una pasada, y el tilde manual de "terminé con este proveedor". */

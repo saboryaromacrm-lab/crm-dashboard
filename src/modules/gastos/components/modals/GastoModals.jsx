@@ -99,7 +99,7 @@ function PorUnidad({ renglon, sinIva, anterior }) {
 export function GastoFormModal({ gastoId, onChange }) {
   const {
     categoriasActivas, proveedores, sucursales, ctx, esJefe, closeModal, toast,
-    nombreSucursal, recargarContadores,
+    nombreSucursal, recargarContadores, recargar,
   } = useGastos();
   const editando = !!gastoId;
 
@@ -246,9 +246,34 @@ export function GastoFormModal({ gastoId, onChange }) {
   const alElegirProveedor = (e) => {
     const id = e.target.value;
     const p = proveedores.find((x) => x.id === Number(id));
-    setF((x) => ({ ...x, proveedorId: id, ...(p?.letraGasto ? { letra: p.letraGasto } : {}) }));
+    /* El rubro también viene del proveedor (0240), si es uno vigente; editable.
+     * Si el que estaba lo había puesto el proveedor anterior, se vacía: no se
+     * hereda (ni se le ofrece fijar) el rubro de otro proveedor. */
+    const rubro = categoriasActivas.some((c) => c.id === p?.rubroGastoId) ? String(p.rubroGastoId) : null;
+    setF((x) => {
+      const anterior = proveedores.find((y) => y.id === Number(x.proveedorId));
+      const heredado = !!anterior?.rubroGastoId && String(anterior.rubroGastoId) === x.categoriaId;
+      const categoriaId = rubro ?? (heredado ? '' : x.categoriaId);
+      return { ...x, proveedorId: id, categoriaId, ...(p?.letraGasto ? { letra: p.letraGasto } : {}) };
+    });
     if (p?.letraGasto) setIvaAparte(p.letraGasto === 'A');
   };
+
+  /*
+   * EL RUBRO DEL PROVEEDOR (0240, pedido del dueño: «que cada proveedor tenga
+   * ya asignado su rubro; si no tiene, que deje elegir y dar el ok desde ahí
+   * para que quede establecido»). En el alta, si el rubro elegido no es el de
+   * la ficha, se ofrece fijarlo: tildado de entrada si el proveedor no tiene
+   * ninguno, sin tildar si tiene otro (cambiarlo es una decisión). Se guarda
+   * en el servidor junto con el gasto.
+   */
+  const provDelGasto = proveedores.find((x) => x.id === Number(f.proveedorId)) ?? null;
+  const rubroElegido = categoriasActivas.find((c) => c.id === Number(f.categoriaId)) ?? null;
+  const rubroDelProv = provDelGasto?.rubroGastoId ? categoriasActivas.find((c) => c.id === provDelGasto.rubroGastoId) ?? null : null;
+  const ofrecerFijar = !editando && !!provDelGasto && !!rubroElegido && provDelGasto.rubroGastoId !== rubroElegido.id;
+  const [fijarRubro, setFijarRubro] = useState({ clave: '', valor: false });
+  const claveFijar = `${f.proveedorId}|${f.categoriaId}`;
+  const fijar = ofrecerFijar && (fijarRubro.clave === claveFijar ? fijarRubro.valor : !provDelGasto.rubroGastoId);
   const alElegirLetra = (e) => {
     const letra = e.target.value;
     setF((x) => ({ ...x, letra }));
@@ -408,6 +433,7 @@ export function GastoFormModal({ gastoId, onChange }) {
       ...(esJefe && (editando || f.periodo) ? { periodo: f.periodo } : {}),
       observaciones: f.observaciones.trim(),
       usuarioId: ctx.usuarioId ?? undefined,
+      ...(fijar ? { rubroDelProveedor: true } : {}),
       /*
        * LA SUCURSAL SOLO SE MANDA SI EL JEFE PUEDE ELEGIRLA. Para el resto es
        * un campo de solo lectura, y mandarlo no agrega nada. Va `null` —y no
@@ -495,6 +521,8 @@ export function GastoFormModal({ gastoId, onChange }) {
       }
     }
     await recargarContadores();
+    /* El proveedor cambió de rubro: la lista del módulo lo tiene que saber para la próxima carga. */
+    if (fijar) await recargar();
     closeModal();
     if (!falloToma) {
       toast(
@@ -571,6 +599,22 @@ export function GastoFormModal({ gastoId, onChange }) {
             <option value="">Elegí el rubro</option>
             {categoriasActivas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
           </select>
+          {!editando && rubroDelProv && rubroElegido?.id === rubroDelProv.id && (
+            <div className={s.hint} style={{ margin: '6px 0 0' }}>Es el rubro de {provDelGasto.nombre}: se eligió solo.</div>
+          )}
+          {ofrecerFijar && (
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 6, fontSize: 13 }}>
+              <input
+                id="gasto-fijar-rubro" type="checkbox" checked={fijar} style={{ marginTop: 2 }}
+                onChange={(e) => setFijarRubro({ clave: claveFijar, valor: e.target.checked })}
+              />
+              <span>
+                {rubroDelProv
+                  ? <>Cambiar el rubro de <strong>{provDelGasto.nombre}</strong> a «{rubroElegido.nombre}» (hoy: «{rubroDelProv.nombre}»)</>
+                  : <>Dejar «{rubroElegido.nombre}» como rubro de <strong>{provDelGasto.nombre}</strong>: la próxima vez se elige solo</>}
+              </span>
+            </label>
+          )}
         </div>
         <div className={s.field}>
           <label>De qué negocio es</label>

@@ -692,6 +692,12 @@ function Disponible({ saldo, importe, fecha }) {
  *   · para un gasto: el gasto queda pagado por transferencia;
  *   · a un proveedor: el paso siguiente es el pago, con este importe, y queda
  *     en su cuenta (lo mismo que «Pagar a un proveedor» por transferencia).
+ *
+ * PAGARLE A UN PROVEEDOR DE GASTOS (21/11/2026, pedido del dueño): al sacar,
+ * el desplegable trae, aparte de los conceptos, a los proveedores de gastos
+ * (los que tienen gastos sin pagar primero, con lo que se les debe). Elegido
+ * uno, el paso siguiente es el pago con este importe, ya con ese proveedor y
+ * sus gastos para tildar: queda pagado en Gastos y en su cuenta.
  */
 export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avisar }) {
   /* Los del Cash Flow (0192: la misma lista sirve también a la caja de los locales). */
@@ -720,10 +726,16 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
   const esCambio = tipo === 'egreso' && como === 'cambio';
   const lista = conceptosDe(como);
   const n = Number(importe);
-  const concepto = lista.find((c) => c.id === Number(conceptoId));
+  /* Los proveedores de gastos, solo al sacar: los que tienen deuda primero. Van con valor «prov:ID» para no chocar con los conceptos.
+   * También uno de mercadería que tenga gastos sin pagar: esa deuda se paga igual. */
+  const { data: provs } = useResource('cashflow:proveedores', () => httpClient.get('/cashflow/proveedores'), { enabled: tipo === 'egreso' });
+  const provsGasto = useMemo(() => (provs ?? []).filter((p) => p.proveeGastos || p.deudaGastos > 0)
+    .sort((a, b) => (b.deudaGastos > 0) - (a.deudaGastos > 0) || a.nombre.localeCompare(b.nombre, 'es')), [provs]);
+  const provGasto = String(conceptoId).startsWith('prov:') ? provsGasto.find((p) => `prov:${p.id}` === conceptoId) ?? null : null;
+  const concepto = provGasto ? null : lista.find((c) => c.id === Number(conceptoId));
   const aplicable = tipo === 'egreso' && !esCambio && !!concepto?.aplicaProveedor;
-  /* Un cambio que va a un proveedor no lleva concepto: es un pago a proveedor, a su cuenta. */
-  const aProv = (aplicable || esCambio) && aProveedor;
+  /* Un cambio que va a un proveedor no lleva concepto: es un pago a proveedor, a su cuenta. Un proveedor de gastos, tampoco. */
+  const aProv = ((aplicable || esCambio) && aProveedor) || !!provGasto;
   const cambioAProv = esCambio && aProveedor;
   /* Al pasar a cambio se propone «Cambio a mi cuenta»; al volver a efectivo, el primero que corresponde. */
   const cambiarComo = (v) => {
@@ -731,19 +743,20 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
     setAProveedor(false);
     const nueva = conceptosDe(v);
     const propuesto = v === 'cambio' ? nueva.find((c) => esConceptoCambio(c.nombre)) : nueva.find((c) => c.id === Number(conceptoId));
-    setConceptoId((propuesto ?? nueva[0])?.id ?? '');
+    /* El proveedor de gastos elegido sigue elegido: se le paga igual, en efectivo o por transferencia. */
+    if (!provGasto) setConceptoId((propuesto ?? nueva[0])?.id ?? '');
   };
   const esAdelanto = !cambioAProv && !!concepto?.esAdelanto;
   const sc = useSegundaConfirmacion(`${conceptoId}|${importe}|${fecha}|${detalle}|${como}|${cambioPor}|${cambioCuenta}|${personalId}`);
   const valido = () => {
     setError('');
-    if (!cambioAProv && !concepto) { setError('Elegí el concepto.'); return false; }
+    if (!cambioAProv && !concepto && !provGasto) { setError('Elegí el concepto o el proveedor de gastos.'); return false; }
     if (esAdelanto && !personalId) { setError('Elegí a qué empleado se le dio el adelanto.'); return false; }
     if (!cambioAProv && concepto?.pideDetalle && !detalle.trim()) { setError(`Escribí el detalle: «${concepto.nombre}» lo pide.`); return false; }
     if (!Number.isFinite(n) || n <= 0) { setError('Escribí el importe.'); return false; }
     if (!fecha || fecha > hoy()) { setError('La fecha tiene que ser hoy o anterior.'); return false; }
     if (esCambio && !cambioPor.trim()) { setError('Escribí quién hizo la transferencia (a quién le diste el efectivo).'); return false; }
-    if (esCambio && !cambioAProv && !cambioCuenta.trim()) { setError('Escribí a qué cuenta transfirió (por ejemplo, tu cuenta del banco).'); return false; }
+    if (esCambio && !cambioAProv && !provGasto && !cambioCuenta.trim()) { setError('Escribí a qué cuenta transfirió (por ejemplo, tu cuenta del banco).'); return false; }
     if (tipo === 'egreso' && fecha === hoy() && n > saldo + 0.009) { setError(`No alcanza: tenés ${money(saldo)} en mano.`); return false; }
     return true;
   };
@@ -766,7 +779,10 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
       <PagoProveedorModal
         {...(esCambio
           ? { cambio: { importe: n, fecha, detalle: detalle.trim(), cambioPor: cambioPor.trim() } }
-          : { egreso: { importe: n, fecha, detalle: detalle.trim(), conceptoId: concepto.id, medio: medioAlProveedor(concepto.nombre) } })}
+          : { egreso: provGasto
+            ? { importe: n, fecha, detalle: detalle.trim(), medio: 'efectivo' }
+            : { importe: n, fecha, detalle: detalle.trim(), conceptoId: concepto.id, medio: medioAlProveedor(concepto.nombre) } })}
+        {...(provGasto ? { inicial: { proveedorId: provGasto.id, destino: 'gastos' } } : {})}
         saldo={saldo} onCerrar={onCerrar} onHecho={onHecho} onVolver={() => setAlProveedor(false)} avisar={avisar}
       />
     );
@@ -775,7 +791,7 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
     <ModalShell title={tipo === 'ingreso' ? 'Registrar un ingreso de efectivo' : 'Sacar efectivo de la caja'} onClose={onCerrar} footer={[
       { texto: 'Cancelar', onClick: onCerrar },
       aProv
-        ? { texto: 'Seguir: elegir el proveedor', clase: 'btn-primary', onClick: () => { if (valido()) setAlProveedor(true); } }
+        ? { texto: provGasto ? 'Seguir: elegir qué gastos pagás' : 'Seguir: elegir el proveedor', clase: 'btn-primary', onClick: () => { if (valido()) setAlProveedor(true); } }
         : { texto: textoBoton(sc, tipo === 'ingreso' ? 'Registrar ingreso' : 'Registrar egreso', 'Sí, confirmar'), clase: 'btn-primary', onClick: confirmar },
     ]}>
       {!opciones.length && <Aviso tono="warn">No hay conceptos de {tipo} activos. Crealos en la pestaña «Conceptos».</Aviso>}
@@ -794,7 +810,7 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
           )}
         </div>
       )}
-      {esCambio && (
+      {esCambio && !provGasto && (
         <div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             <input type="checkbox" checked={aProveedor} onChange={(e) => setAProveedor(e.target.checked)} />
@@ -805,16 +821,43 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
       )}
       <div className={s['form-grid']}>
         {!cambioAProv && (
-          <Campo label="Concepto *">
-            <select value={conceptoId} onChange={(e) => setConceptoId(e.target.value)}>
-              {lista.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.clase === 'gasto' ? ` (gasto · ${c.gastoCategoria})` : ''}</option>)}
+          <Campo label={tipo === 'egreso' ? 'Concepto o proveedor de gastos *' : 'Concepto *'}>
+            <select value={conceptoId} onChange={(e) => { setConceptoId(e.target.value); setAProveedor(false); }}>
+              {/* Sin nada elegido (no hay conceptos) se ve «Elegí…», no el primero de la lista como si estuviera elegido. */}
+              {conceptoId === '' && <option value="" disabled>Elegí…</option>}
+              {tipo === 'egreso' && provsGasto.length ? (
+                <>
+                  <optgroup label="Conceptos">
+                    {lista.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.clase === 'gasto' ? ` (gasto · ${c.gastoCategoria})` : ''}</option>)}
+                  </optgroup>
+                  <optgroup label="Pagarle a un proveedor de gastos">
+                    {provsGasto.map((p) => (
+                      <option key={`prov:${p.id}`} value={`prov:${p.id}`}>
+                        {p.nombre}{p.deudaGastos > 0 ? ` · le debés ${money(p.deudaGastos)}` : ''}{p.aFavorGastos > 0 ? ` · tiene ${money(p.aFavorGastos)} a favor` : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                </>
+              ) : lista.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.clase === 'gasto' ? ` (gasto · ${c.gastoCategoria})` : ''}</option>)}
             </select>
           </Campo>
         )}
         <Campo label="Importe *"><input type="number" min="0" step="0.01" inputMode="decimal" value={importe} onChange={(e) => setImporte(e.target.value)} autoFocus /></Campo>
       </div>
       {esAdelanto && <Campo label="Empleado *"><EmpleadoAdelanto value={personalId} onChange={setPersonalId} /></Campo>}
-      {esCambio && !cambioAProv && (
+      {provGasto && (
+        <Aviso tono="info">
+          Le pagás a <strong>{provGasto.nombre}</strong>{provGasto.deudaGastos > 0 ? <> (le debés {money(provGasto.deudaGastos)} en gastos)</> : ' (no le debés ningún gasto cargado: queda todo a cuenta)'}: en el paso siguiente
+          tildás qué gastos paga este importe; lo que no tildes queda a cuenta. Queda pagado en Gastos y en su cuenta.
+        </Aviso>
+      )}
+      {provGasto?.aFavorGastos > 0 && (
+        <Aviso tono="warn">
+          Ojo: {provGasto.nombre} ya tiene <strong>{money(provGasto.aFavorGastos)} a favor</strong> (pagos a cuenta sin aplicar a ningún gasto).
+          Antes de pagarle de nuevo, fijate si alcanza con aplicar eso desde Gastos.
+        </Aviso>
+      )}
+      {esCambio && !cambioAProv && !provGasto && (
         <Campo label="¿A qué cuenta transfirió? *">
           <input maxLength={120} value={cambioCuenta} onChange={(e) => setCambioCuenta(e.target.value)} placeholder="Ej.: mi cuenta del banco, Mercado Pago…" />
         </Campo>
@@ -858,14 +901,15 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
  * plata» que fue a un proveedor. Igual que el depósito recién cargado: importe
  * fijo, sale de la caja acá, y queda pagado por transferencia con quién la hizo.
  */
-export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar, egreso = null, cambio = null }) {
+export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar, egreso = null, cambio = null, inicial = null }) {
   const { movil } = useModalModo();
   const { data: provs } = useResource('cashflow:proveedores', () => httpClient.get('/cashflow/proveedores'));
   /* Lo que viene de «Sacar plata» (o un egreso ya cargado): el importe es fijo. */
   const fijo = egreso ?? cambio;
   const esDep = egreso?.medio === 'deposito';
-  const [proveedorId, setProveedorId] = useState('');
-  const [destino, setDestino] = useState('mercaderia');
+  /* `inicial` (21/11/2026): el proveedor de gastos elegido en «Sacar plata», con sus gastos para tildar. */
+  const [proveedorId, setProveedorId] = useState(inicial ? String(inicial.proveedorId) : '');
+  const [destino, setDestino] = useState(inicial?.destino ?? 'mercaderia');
   const [medio, setMedio] = useState(egreso ? egreso.medio : cambio ? 'cambio' : 'efectivo');
   const [referencia, setReferencia] = useState('');
   const [cambioPor, setCambioPor] = useState(cambio?.cambioPor ?? '');

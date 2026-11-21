@@ -164,7 +164,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
   const [f, setF] = useState({
     nombre: '', cuit: '', email: '', telefono: '', direccion: '',
     condicionIva: 'responsable_inscripto',
-    proveeMercaderia: true, proveeGastos: false, esLocal: false, letraGasto: '',
+    proveeMercaderia: true, proveeGastos: false, esLocal: false, letraGasto: '', rubroGastoId: '',
     condicionCompra: 'factura', medioHabitual: '', diasPago: '', modoCuenta: 'facturas',
     porcSinFactura: '', facturaMensual: false,
     minimoTransferencia: '',
@@ -180,6 +180,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       proveeMercaderia: !!original.proveeMercaderia, proveeGastos: !!original.proveeGastos,
       esLocal: !!original.esLocal,
       letraGasto: original.letraGasto ?? '',
+      rubroGastoId: original.rubroGastoId ? String(original.rubroGastoId) : '',
       condicionCompra: original.condicionCompra ?? 'factura',
       medioHabitual: original.medioHabitual ?? '',
       diasPago: original.diasPago ?? '',
@@ -190,6 +191,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
     });
   }, [original]);
 
+  const { data: rubros } = useResource('rubros-gasto', provApi.rubrosGasto);
   const { data: cuentasApi } = useResource(
     `prov-cuentas:${proveedorId ?? 'nuevo'}`,
     () => provApi.cuentas(proveedorId),
@@ -225,6 +227,8 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       proveeMercaderia: f.proveeMercaderia, proveeGastos: f.proveeGastos,
       esLocal: f.esLocal,
       letraGasto: f.letraGasto,
+      /* Sin la lista de rubros (rol sin Gastos) no se toca el que tenga. */
+      ...(rubros ? { rubroGastoId: f.rubroGastoId ? Number(f.rubroGastoId) : null } : {}),
       condicionCompra: f.condicionCompra,
       medioHabitual: f.medioHabitual,
       diasPago: f.diasPago === '' ? null : Number(f.diasPago),
@@ -382,6 +386,16 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
             {['A', 'B', 'C', 'X'].map((l) => <option key={l} value={l}>{l}</option>)}
           </select>
         </div>
+        {rubros && (
+          <div className={s.field}>
+            <label htmlFor="ficha-rubro-gasto">Rubro de gastos</label>
+            {/* «Cargar gasto» lo elige solo al elegir este proveedor (0240). */}
+            <select id="ficha-rubro-gasto" value={f.rubroGastoId} onChange={set('rubroGastoId')}>
+              <option value="">Sin rubro (se elige en cada gasto)</option>
+              {rubros.filter((c) => c.activa || String(c.id) === f.rubroGastoId).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+          </div>
+        )}
         <div className={s.field}>
           <label>Dirección</label>
           <input value={f.direccion} onChange={set('direccion')} placeholder="Opcional" />

@@ -332,13 +332,15 @@ export function BorrarRecurrenteModal({ recurrenteId, onChange }) {
  * bandeja de facturas de Compras para reconocer de quién es un comprobante.
  */
 export function ProveedorFormModal({ proveedor: original = null, onChange }) {
-  const { act, closeModal, toast } = useGastos();
+  const { act, closeModal, toast, categoriasActivas } = useGastos();
 
   const [f, setF] = useState({
     nombre: '', cuit: '', condicionIva: 'responsable_inscripto', direccion: '', telefono: '', email: '',
     proveeMercaderia: false, proveeGastos: true,
     /** La letra que factura (0067): la carga de gastos la precarga. '' = sin definir. */
     letraGasto: '',
+    /** El rubro que factura (0240): la carga de gastos lo elige solo. '' = sin rubro. */
+    rubroGastoId: '',
   });
 
   useEffect(() => {
@@ -353,6 +355,7 @@ export function ProveedorFormModal({ proveedor: original = null, onChange }) {
       proveeMercaderia: !!original.proveeMercaderia,
       proveeGastos: !!original.proveeGastos,
       letraGasto: original.letraGasto ?? '',
+      rubroGastoId: original.rubroGastoId ? String(original.rubroGastoId) : '',
     });
   }, [original]);
 
@@ -365,7 +368,7 @@ export function ProveedorFormModal({ proveedor: original = null, onChange }) {
       toast('Marcá al menos qué provee: mercadería, gastos o las dos cosas.', 'err');
       return;
     }
-    const payload = { ...f, nombre: f.nombre.trim(), cuit: f.cuit.trim() };
+    const payload = { ...f, nombre: f.nombre.trim(), cuit: f.cuit.trim(), rubroGastoId: f.rubroGastoId ? Number(f.rubroGastoId) : null };
     const ok = await act(
       original ? gastosApi.editarProveedor(original.id, payload) : gastosApi.crearProveedor(payload),
       original ? 'Proveedor actualizado.' : 'Proveedor creado.',
@@ -405,6 +408,14 @@ export function ProveedorFormModal({ proveedor: original = null, onChange }) {
             <option value="B">Factura B</option>
             <option value="C">Factura C</option>
             <option value="X">X / sin letra</option>
+          </select>
+        </div>
+        <div className={s.field}>
+          <label htmlFor="prov-gasto-rubro">Rubro</label>
+          {/* Como la letra: se contesta una vez y «Cargar gasto» lo elige solo (0240). */}
+          <select id="prov-gasto-rubro" value={f.rubroGastoId} onChange={set('rubroGastoId')}>
+            <option value="">Sin rubro (se elige en cada gasto)</option>
+            {categoriasActivas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
           </select>
         </div>
         <div className={s.field}>
