@@ -184,6 +184,8 @@ export const ventasApi = {
   borradorOfertaVencimiento: (id) => httpClient.get(`/vencimientos/${id}/borrador-oferta`),
   vincularOfertaVencimiento: (id, ofertaId) => httpClient.post(`/vencimientos/${id}/vincular-oferta`, { ofertaId }),
   vencimientosEnOferta: () => httpClient.get('/vencimientos/ofertas'),
+  /** El interruptor de las ofertas automáticas por vencimiento (23/11/2026): lo aplica en el acto. */
+  ofertasAutomaticasVencimiento: (activas) => httpClient.put('/vencimientos/reglas/automaticas', { activas }),
   editarOferta: (id, o) => httpClient.patch('/ofertas/' + id, o),
   borrarOferta: (id) => httpClient.delete('/ofertas/' + id),
 
@@ -271,6 +273,7 @@ export const ventasApi = {
   aceptarOrden: (id, data) => httpClient.post(`/presupuestos/${id}/aceptar`, data),
 
   /* Configuración (la lectura viaja con el bootstrap). */
+  config: () => httpClient.get('/configuracion/ventas'),
   guardarConfig: (patch) => httpClient.put('/configuracion/ventas', patch),
 
   /*

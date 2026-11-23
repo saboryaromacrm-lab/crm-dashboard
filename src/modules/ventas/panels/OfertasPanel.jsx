@@ -19,6 +19,11 @@
  * buscador; cuándo vence o empieza cada una, si hoy aplica, y cuánto se usó
  * desde que existe (unidades, descuento, última venta). Las reglas, en
  * `domain/ofertasLista.js` (con pruebas).
+ *
+ * EL INTERRUPTOR DE LAS AUTOMÁTICAS (23/11/2026, pedido del dueño): prende o
+ * apaga que lo que está por vencer entre solo en oferta (las reglas de Almacén
+ * › Vencimientos). Apagarlo saca en el acto las automáticas; las armadas a mano
+ * no se tocan. Se lee de la config fresca, no de la del arranque del módulo.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -54,6 +59,10 @@ export function OfertasPanel() {
   const [venc, setVenc] = useState(null);
   /** Cuánto se usó cada oferta (por id). Accesorio: sin él, la columna dice «—». */
   const [uso, setUso] = useState(new Map());
+  /** ¿Las reglas de vencimiento arman solas las ofertas? null = todavía sin leer. */
+  const [autoVenc, setAutoVenc] = useState(null);
+  const [cambiandoAuto, setCambiandoAuto] = useState(false);
+  const cambiandoAutoRef = useRef(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -62,7 +71,33 @@ export function OfertasPanel() {
     // El aviso es accesorio: si no se puede leer, la pantalla funciona igual.
     ventasApi.vencimientosEnOferta().then(setVenc).catch(() => setVenc(null));
     ventasApi.ofertasUso().then((l) => setUso(new Map(l.map((u) => [u.ofertaId, u])))).catch(() => setUso(new Map()));
+    ventasApi.config().then((c) => setAutoVenc(c.ofertasVencimientoAuto !== false)).catch(() => setAutoVenc(null));
   }, [toast]);
+
+  /** Prende o apaga las automáticas por vencimiento: cambia precios en todas las cajas, así que se confirma. */
+  const cambiarAutoVenc = async (activas) => {
+    if (cambiandoAutoRef.current) return;
+    const vigentes = (ofertas ?? []).filter((o) => o.autoVencimiento && situacionOferta(o).estado.id === 'vigente').length;
+    const pregunta = activas
+      ? '¿Prender las ofertas automáticas por vencimiento? Lo que está por vencer entra en oferta según las reglas de Almacén › Vencimientos, en todas las cajas y la tienda.'
+      : `¿Apagar las ofertas automáticas por vencimiento? Se sacan ${vigentes ? `las ${vigentes} automáticas vigentes` : 'las automáticas que haya'} y no se arman nuevas. Las armadas a mano siguen.`;
+    if (!window.confirm(pregunta)) return;
+    cambiandoAutoRef.current = true;
+    setCambiandoAuto(true);
+    try {
+      const r = await ventasApi.ofertasAutomaticasVencimiento(activas);
+      setAutoVenc(r.activas);
+      toast(r.activas
+        ? `Ofertas automáticas prendidas: ${r.aplicado.creadas} creada(s), ${r.aplicado.actualizadas} actualizada(s).`
+        : `Ofertas automáticas apagadas: se sacaron ${r.aplicado.quitadas}.`, 'ok');
+      cargar();
+    } catch (e) {
+      toast(errorMsg(e), 'err');
+    } finally {
+      cambiandoAutoRef.current = false;
+      setCambiandoAuto(false);
+    }
+  };
 
   useEffect(() => { cargar(); }, [cargar]);
   useEffect(() => {
@@ -204,7 +239,24 @@ export function OfertasPanel() {
       <PanelHead
         title="Ofertas"
         desc="Las mecánicas por cantidad (3×2, 2ª unidad, pack, combo) se aplican solas en la caja; la de monto del ticket se sugiere y el cajero la aplica con un clic. Por renglón gana UNA sola: la de mayor beneficio."
-        actions={<Btn variant="btn-primary" onClick={() => abrirForm(null)}>+ Oferta</Btn>}
+        actions={(
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {autoVenc !== null && (
+              <label
+                style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, cursor: cambiandoAuto ? 'wait' : 'pointer' }}
+                title="Lo que está por vencer entra solo en oferta, con las reglas de Almacén › Vencimientos › Reglas y rentabilidad. Las ofertas armadas a mano no dependen de esto."
+              >
+                <input
+                  type="checkbox" checked={autoVenc} disabled={cambiandoAuto}
+                  onChange={(e) => cambiarAutoVenc(e.target.checked)}
+                />
+                Ofertas automáticas por vencimiento
+                <span className={s.muted} style={{ fontWeight: 400 }}>{autoVenc ? 'prendidas' : 'apagadas'}</span>
+              </label>
+            )}
+            <Btn variant="btn-primary" onClick={() => abrirForm(null)}>+ Oferta</Btn>
+          </div>
+        )}
       />
 
       {/* Lo único urgente que esta pantalla puede resolver: apagar una oferta
