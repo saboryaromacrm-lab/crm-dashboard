@@ -7,6 +7,7 @@ import { displaysDe, envasesDelRenglon, nombreEnvase } from '../../domain/bulto.
 import { bultoDelRenglon, cargaDelRenglon, nombreDelRenglon } from '../../domain/renglonPapel.js';
 import { deOtraSucursal, esJefeSesion, pagoSeOfrece } from '../../domain/pagosACuenta.js';
 import { emparejarPercepciones, tipoSegunNombre } from '../../domain/percepciones.js';
+import { contraLaOtraMitad } from '../../domain/otraMitad.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { verificadorEan13 } from '@core/services/barcode.js';
 import { ModalShell } from '../Modal.jsx';
@@ -1493,9 +1494,30 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * de distinto tamaño por precio de bolsa miente — $50.000 la de 25 kg contra
    * $42.000 la de 20 kg parece una baja, pero es $2.000/kg vs $2.100/kg.
    */
+  /*
+   * LA OTRA MITAD (21/11/2026): la factura A de esta liquidación o al revés,
+   * del mismo proveedor y a ±7 días. Con ella, «Impacto en precios» avisa si
+   * las dos mitades no cobran lo mismo (cada una pisaría el costo de la otra)
+   * y, si el proveedor trabaja mitad y mitad, se recuerda la que falta. Sin
+   * el permiso de liquidaciones no se pide: la mitad sin factura no se ve.
+   */
+  const claveOtraMitad = puedeNoFiscal && provId && (tipo === 'liquidacion' || (tipo === 'factura' && letra === 'A'))
+    ? JSON.stringify({ proveedorId: String(provId), tipo, letra, fecha }) : '';
+  const [otraMitad, setOtraMitad] = useState({ clave: '', datos: null });
+  useEffect(() => {
+    if (!claveOtraMitad) return undefined;
+    let vigente = true;
+    store.otraMitad(JSON.parse(claveOtraMitad))
+      .then((r) => { if (vigente) setOtraMitad({ clave: claveOtraMitad, datos: r }); })
+      .catch(() => { if (vigente) setOtraMitad({ clave: claveOtraMitad, datos: null }); });
+    return () => { vigente = false; };
+  }, [claveOtraMitad, store]);
+  const datosOtraMitad = claveOtraMitad && otraMitad.clave === claveOtraMitad ? otraMitad.datos : null;
+
   const impacto = useMemo(() => {
     const pid = parseInt(provId, 10);
     if (!pid) return [];
+    const preciosOtra = new Map((datosOtraMitad?.precios ?? []).map((x) => [x.productoId, x]));
     const vistos = new Set();
     const out = [];
     for (const it of items) {
@@ -1570,6 +1592,11 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       const factorSalto = costoCargado > 0 && costo > 0 ? costoComparable / costoCargado : 1;
       const salto = factorSalto > SALTO_COSTO || factorSalto < 1 / SALTO_COSTO;
 
+      /* Contra la otra mitad, neto contra neto: lo que se paga por unidad con descuento y bonificación. */
+      const otra = preciosOtra.get(prodId);
+      const vsOtra = otra ? contraLaOtraMitad(costo * (1 - descFacturaRow / 100), otra.netoUnitario, tipo === 'liquidacion') : null;
+      const papelOtra = vsOtra ? datosOtraMitad.papeles.find((p) => p.id === otra.comprobanteId) : null;
+
       out.push({
         productoId: prodId,
         nombre: prod.nombre,
@@ -1592,14 +1619,16 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         pareceIva,
         salto,
         factorSalto,
+        otraMitad: vsOtra ? { ...vsOtra, netoOtra: otra.netoUnitario, etiqueta: papelOtra?.etiqueta, fecha: papelOtra?.fecha } : null,
         esActivo: store.formatoActivo(prod)?.proveedorId === pid,
         activoNombre: store.getProveedor(store.formatoActivo(prod)?.proveedorId)?.nombre || '—',
       });
     }
     return out;
-  }, [items, provId, store, factorBonif]);
+  }, [items, provId, store, factorBonif, datosOtraMitad, tipo]);
 
   const diferencias = impacto.filter((d) => d.difRelevante);
+  const conOtraMitadDistinta = impacto.filter((d) => d.otraMitad);
   const cambiablesActivo = impacto.filter((d) => !d.esActivo && (d.entry || d.costoFacturado > 0));
 
   // El costo se tilda por defecto: olvidarse de actualizarlo es el error que
@@ -1613,6 +1642,17 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     return next;
   });
   const toggleCosto = toggleEnSet(setCostosOmitidos);
+  /* Si este papel no cobra lo mismo que su otra mitad, no se sabe cuál es el
+   * bueno: su costo arranca destildado (una sola vez; si se tilda, queda). */
+  const omitidosPorOtraMitad = useRef(new Set());
+  useEffect(() => {
+    const nuevos = impacto
+      .filter((d) => d.otraMitad && d.difRelevante && !omitidosPorOtraMitad.current.has(d.productoId))
+      .map((d) => d.productoId);
+    if (!nuevos.length) return;
+    nuevos.forEach((id) => omitidosPorOtraMitad.current.add(id));
+    setCostosOmitidos((prev) => new Set([...prev, ...nuevos]));
+  }, [impacto]);
   const toggleActivar = toggleEnSet(setActivarIds);
 
   /* El traslado del descuento: destildado por defecto — bajar la góndola por
@@ -2228,6 +2268,14 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           <button type="button" className={cx(s.btn, s['btn-sm'])} onClick={irAImpacto}>Ir a Impacto en precios</button>
         </div>
       )}
+      {datosOtraMitad?.mitadYMitad && !datosOtraMitad.papeles.length && (
+        <div className={cx(s.callout, s.info)}>
+          <strong>{provElegido?.nombre || 'Este proveedor'}</strong> trabaja mitad y mitad
+          ({num(datosOtraMitad.porcFicha, 0)}% sin factura) y no tiene cargada{' '}
+          {tipo === 'liquidacion' ? 'una factura A' : 'una liquidación'} entre 7 días antes y 7 después de esta fecha.
+          Acordate de cargar la otra mitad: si no, la mercadería y la deuda quedan con la mitad.
+        </div>
+      )}
       <div className={s['section-title']}>Ítems</div>
 
       {/* LA LECTURA CON IA (0153): lo que leyó del papel, con lo que falta resolver. */}
@@ -2450,7 +2498,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         IMPACTO EN PRECIOS. Las dos decisiones que mueven la góndola, juntas y
         mostrando el número que importa: el precio final que va a quedar.
       */}
-      {(diferencias.length > 0 || cambiablesActivo.length > 0 || conDescuentoDistinto.length > 0) && (
+      {(diferencias.length > 0 || cambiablesActivo.length > 0 || conDescuentoDistinto.length > 0 || conOtraMitadDistinta.length > 0) && (
         <>
           <div ref={impactoRef} className={s['section-title']}>Impacto en precios</div>
           <div className={cx(s.callout, s.warn)}>
@@ -2465,6 +2513,23 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
               La diferencia coincide casi exactamente con una alícuota de IVA. Puede que el costo
               cargado tenga el IVA incluido: los costos se guardan <strong>netos, sin IVA</strong>.
               Verificá antes de actualizar.
+            </div>
+          )}
+
+          {conOtraMitadDistinta.length > 0 && (
+            <div className={cx(s.callout, s.danger)}>
+              <strong>Las dos mitades no cobran lo mismo.</strong> Cada papel pisaría el costo del otro: por eso el costo de estos
+              productos arranca sin actualizar. Tildalo solo si el bueno es este papel.
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                {conOtraMitadDistinta.map((d) => (
+                  <li key={d.productoId}>
+                    <strong>{d.nombre}</strong>: {d.otraMitad.etiqueta} del {fmtFecha(d.otraMitad.fecha)} lo trajo a{' '}
+                    {money(d.otraMitad.netoOtra)} neto por {d.unidad.replace('.', '')}; {tipo === 'liquidacion' ? 'esta liquidación' : 'esta factura'},
+                    a {money(d.otraMitad.netoPapel)} ({d.otraMitad.variacion > 0 ? '+' : ''}{num(d.otraMitad.variacion, 1)}%).
+                    {d.otraMitad.ivaAdentro && ' Es justo el IVA: ¿la liquidación viene con el IVA adentro?'}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -2500,6 +2565,9 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                       <div className={s.hint} style={{ margin: 0 }}>
                         bulto: {num(d.entry?.cantidad || 1, 3)} → {num(d.bultoFacturado, 3)} {d.unidad}
                       </div>
+                    )}
+                    {d.otraMitad && (
+                      <div className={s.hint} style={{ margin: 0, color: 'var(--crm-color-danger)' }}>no coincide con la otra mitad</div>
                     )}
                     {d.esFinal && (
                       <div className={s.hint} style={{ margin: 0 }} title="El formato se carga con lo que se paga por bulto: se compara el costo neto de los dos lados">

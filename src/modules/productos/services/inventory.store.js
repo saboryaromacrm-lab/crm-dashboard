@@ -1095,6 +1095,8 @@ const _qs = (params) => {
   return s ? '?' + s : '';
 };
 const historialFraccionamientos = (params) => _directo(() => httpClient.get('/fraccionamientos' + _qs(params)));
+/** El cuadre semanal: lo armado contra lo que salió de los paquetes (23/11/2026). Solo lectura. */
+const cuadreFraccionado = (params) => _directo(() => httpClient.get('/fraccionamientos/cuadre' + _qs(params)));
 const exportarFraccionamientos = (params) => _directo(() => httpClient.get('/fraccionamientos/exportar' + _qs(params)));
 const operadoresFraccion = (todos = false) => _directo(() => httpClient.get('/fraccionamientos/operadores' + (todos ? '?todos=1' : '')));
 const crearOperadorFraccion = (o) => _directo(() => httpClient.post('/fraccionamientos/operadores', o));
@@ -1323,6 +1325,8 @@ function _cleanComprobante(o) {
 const crearComprobante = (o) => _mutate(() => httpClient.post('/comprobantes', _cleanComprobante(o)));
 /** La góndola que dejaría la factura, calculada por el servidor (26/9/2026). No graba nada. */
 const proyectarPrecios = (body) => httpClient.post('/comprobantes/proyectar-precios', body);
+/** La otra mitad (factura A ↔ liquidación) del papel que se carga, con sus precios (21/11/2026). No graba nada. */
+const otraMitad = (q) => httpClient.get(`/comprobantes/otra-mitad?${new URLSearchParams(q)}`);
 /**
  * LLEGÓ LA FACTURA DE UN REMITO (26/8): el remito PASA A SER la factura, sin
  * volver a mover stock. Los renglones viajan por `itemId` (los del remito) y
@@ -1642,7 +1646,7 @@ export const inventoryStore = {
   listarConteos, crearConteo, conteosOcupados, getConteo, contarItemConteo, cerrarConteo, reabrirConteo,
   marcarRecontarConteo, descartarConteo, aplicarConteo,
   editarItemTransferencia, agregarItemTransferencia, quitarItemTransferencia, confirmarListaTransferencia,
-  historialFraccionamientos, exportarFraccionamientos,
+  historialFraccionamientos, exportarFraccionamientos, cuadreFraccionado,
   operadoresFraccion, crearOperadorFraccion, editarOperadorFraccion,
   pedidosFraccion, guardarPedidoFraccion, descartarPedidoFraccion,
   crearIncidencia, avanzarIncidencia, resolverIncidencia, cerrarIncidenciasAnteriores, anotarPedidoProveedor, ultimoPedido, guardarUltimoPedido, guardarNotaPedido,
@@ -1655,7 +1659,7 @@ export const inventoryStore = {
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,
   guardarFormatosCompra, guardarListasProducto, guardarListasPresentacion,
-  proyectarPrecios, filaPiso, precioGondola, escalaPaquete, costoPrecioPaquete,
+  proyectarPrecios, otraMitad, filaPiso, precioGondola, escalaPaquete, costoPrecioPaquete,
   costoNeto, costoNetoEntry, costoPrecio, costoPrecioEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPaquete,
   precioFinal, redondearPrecio,
   crearComprobante, facturarRemito, anulacionComprobante, anularComprobante, getComprobante, asegurarComprobante, comprobantesDe, cuentaProveedor, saldoTotalProveedores,

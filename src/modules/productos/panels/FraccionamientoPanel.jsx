@@ -29,6 +29,7 @@ import { AyudaEncabezadoNavegador } from '../components/AyudaEncabezado.jsx';
 import { TabHistorial, TabOperadores } from './FraccionamientoHistorial.jsx';
 import { TabPedidosDistribuidora } from './FraccionamientoPedidos.jsx';
 import { TabPedidosCaja } from './FraccionamientoPedidosCaja.jsx';
+import { TabCuadre } from './FraccionamientoCuadre.jsx';
 
 /** Texto comparable: sin mayúsculas ni acentos. */
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
@@ -40,6 +41,7 @@ const PESTANAS = [
   { id: 'historial', label: 'Historial' },
   { id: 'pedidos', label: 'Pedidos Distribuidora' },
   { id: 'caja', label: 'Pedidos de caja' },
+  { id: 'cuadre', label: 'Cuadre semanal' },
   { id: 'catalogo', label: 'Por categoría y gramaje' },
   { id: 'etiquetas', label: 'Etiquetas' },
   { id: 'operadores', label: 'Operadores' },
@@ -119,6 +121,7 @@ export function FraccionamientoPanel() {
       {pestana === 'historial' && <TabHistorial />}
       {pestana === 'pedidos' && <TabPedidosDistribuidora datos={pedidos.datos} error={pedidos.error} recargar={recargarPedidos} />}
       {pestana === 'caja' && <TabPedidosCaja />}
+      {pestana === 'cuadre' && <TabCuadre />}
       {pestana === 'catalogo' && <TabPorCategoria puede={puede} />}
       {pestana === 'etiquetas' && <TabEtiquetas puede={puede} />}
       {pestana === 'operadores' && <TabOperadores />}
