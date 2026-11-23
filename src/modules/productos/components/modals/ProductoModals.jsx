@@ -18,6 +18,47 @@ import { Table, TipoBadge, StockPill, MovTag, Btn, s } from '../ui.jsx';
 /* ---- Alta / edición de producto ---- */
 
 /** Título de sección dentro del formulario. Agrupa sin costar una pestaña. */
+/**
+ * LOS CÓDIGOS DE BARRAS ANTERIORES (0241, 23/11/2026): cuando el fabricante
+ * cambia el código, la mercadería vieja sigue en la góndola con el de antes y
+ * la caja la tiene que encontrar igual. Se ven, se sacan (cuando ya no quede
+ * de la tanda vieja) y se agregan a mano; cambiar el código de barras deja el
+ * que tenía como anterior solo, al guardar (lo hace el servidor).
+ */
+function CodigosAnteriores({ lista, onChange, actual, previo }) {
+  const [nuevo, setNuevo] = useState('');
+  const agregar = () => {
+    const c = nuevo.trim();
+    if (c && c !== actual.trim() && !lista.includes(c)) onChange([...lista, c]);
+    setNuevo('');
+  };
+  const seGuarda = !!previo && actual.trim() !== previo && !lista.includes(previo);
+  return (
+    <div className={s.field}>
+      <label htmlFor="codigo-anterior-nuevo">Códigos de barras anteriores</label>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+        {lista.map((c) => (
+          <span key={c} className={s.badge} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span className={s.mono}>{c}</span>
+            <button type="button" className={s.linkBtn} aria-label={`Sacar el código ${c}`} onClick={() => onChange(lista.filter((x) => x !== c))}>×</button>
+          </span>
+        ))}
+        <input
+          id="codigo-anterior-nuevo" value={nuevo} onChange={(e) => setNuevo(e.target.value)} style={{ width: 230 }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } }}
+          placeholder="Escaneá o tipeá uno para agregar"
+        />
+        <Btn small onClick={agregar} disabled={!nuevo.trim()}>Agregar</Btn>
+      </div>
+      <div className={s.hint}>
+        {seGuarda
+          ? <>Al guardar, <span className={s.mono}>{previo}</span> queda como código anterior: la mercadería con ese código se sigue encontrando en la caja.</>
+          : 'La caja, el control de stock y los buscadores también encuentran el producto por estos códigos. Sacá uno cuando ya no quede mercadería con ese código.'}
+      </div>
+    </div>
+  );
+}
+
 function Seccion({ children }) {
   return <div className={s.seccion}>{children}</div>;
 }
@@ -102,6 +143,7 @@ export function ProductoFormModal({ prodId, inicial = null, alCrear = null, alCe
     descripcion: prod?.descripcion || '',
     codigoPropio: prod?.codigoPropio || '',
     codigoBarras: prod?.codigoBarras || inicial?.codigoBarras || '',
+    codigosAnteriores: prod?.codigosAnteriores ?? [],
     dun: prod?.dun || '',
     unidadesPorBulto: prod?.unidadesPorBulto != null ? String(prod.unidadesPorBulto) : '1',
     stockMin: Number(prod?.stockMin) > 0 ? String(prod.stockMin) : '',
@@ -209,6 +251,7 @@ export function ProductoFormModal({ prodId, inicial = null, alCrear = null, alCe
       descripcion: f.descripcion.trim(),
       codigoPropio: f.codigoPropio.trim(),
       codigoBarras: f.codigoBarras.trim(),
+      codigosAnteriores: f.codigosAnteriores,
       dun: f.dun.trim(),
       unidadesPorBulto: Number(f.unidadesPorBulto) || 1,
       /* Vacío = automático (Almacén › Bajos en stock lo calcula por la venta). */
@@ -446,6 +489,12 @@ export function ProductoFormModal({ prodId, inicial = null, alCrear = null, alCe
           Los tres tienen que ser únicos entre sí y contra los de las presentaciones: si dos cosas
           responden al mismo código, el lector de la caja no tiene con qué desempatar.
         </div>
+        {ed && (
+          <CodigosAnteriores
+            lista={f.codigosAnteriores} onChange={(l) => set('codigosAnteriores', l)}
+            actual={f.codigoBarras} previo={prod.codigoBarras || ''}
+          />
+        )}
 
         <div className={s.field}>
           <label>Concepto <span className={s.req}>*</span></label>

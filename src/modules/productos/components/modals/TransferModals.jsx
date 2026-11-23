@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { fmtFechaHora, money, num } from '../../domain/format.js';
 import { cx } from '@shared/utils/classNames.js';
+import { codigoContiene } from '@shared/utils/codigos.js';
 import { httpClient } from '@core/services/httpClient.js';
 import { imprimirDocumento, abrirVentanaImpresion, cuerpoListaPreparacion, cuerpoRemitoTransferencia } from '@core/services/imprimir.js';
 import { leerSesion } from '@core/auth/sesion.js';
@@ -332,7 +333,7 @@ export function TransferenciaModal({ itemsIniciales, observaciones: obsInicial, 
       if (soloNovedades && !novedades?.mapa?.has(p.id)) continue;
       if (soloConStockOrigen && !hayParaMandar(store, p, origenNum)) continue;
       if (ql && !(normTxt(p.nombre).includes(ql) || normTxt(p.marca).includes(ql)
-        || (p.codigoBarras || '').includes(cod) || (p.codigoPropio || '').includes(cod)
+        || codigoContiene(p, cod) || (p.codigoPropio || '').includes(cod)
         // También por el código del PAQUETE: escanear un 500 g tiene que
         // encontrarlo, y ese código es de la presentación, no de la madre.
         || (p.presentaciones || []).some((pr) => (pr.codigoBarras || '').includes(cod)))) continue;

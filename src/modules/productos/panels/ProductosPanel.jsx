@@ -2,6 +2,7 @@ import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
+import { codigoContiene } from '@shared/utils/codigos.js';
 import { descargarCsv, csvNum } from '@shared/utils/csv.js';
 import { opcionLocales, proveedoresDelFiltro } from '@shared/utils/proveedorLocal.js';
 import { useProductos } from '../context/ProductosContext.jsx';
@@ -213,7 +214,7 @@ function CatalogoProductos() {
       }
       if (!ql) return true;
       return norm(p.nombre).includes(ql) || norm(p.marca).includes(ql)
-        || norm(p.categoria).includes(ql) || (p.codigoBarras || '').includes(q.trim())
+        || norm(p.categoria).includes(ql) || codigoContiene(p, q.trim())
         // También por el código de barras de un fraccionado: cada tamaño lleva
         // etiqueta propia y es lo que la balanza o la caja escanean.
         || (p.presentaciones || []).some((pr) => pr.codigoBarras && pr.codigoBarras.includes(q.trim()));

@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import { cx } from '@shared/utils/classNames.js';
+import { tieneCodigo } from '@shared/utils/codigos.js';
 import { descargarCsv } from '@shared/utils/csv.js';
 /* El motor de ofertas vive en Ventas y es UNO SOLO: de ahí sale también la
  * frase de cada mecánica, para que «3×2» se lea igual en las dos pantallas. */
@@ -196,7 +197,7 @@ function TabControl({ sesion, setSesion, alGuardar }) {
   const porCodigo = useCallback((codigo) => {
     for (const p of store.state.productos) {
       if (!deSaborYAroma(p)) continue;
-      if (p.codigoBarras === codigo) return { prod: p, presId: null };
+      if (tieneCodigo(p, codigo)) return { prod: p, presId: null };
       const pres = (p.presentaciones || []).find((x) => x.codigoBarras === codigo);
       if (pres) return { prod: p, presId: pres.id };
     }

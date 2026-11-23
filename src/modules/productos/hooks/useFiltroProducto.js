@@ -7,6 +7,7 @@
  * botón «Movs.»— pero ofrece solo lo que coincide con la búsqueda y la marca.
  */
 import { useMemo, useState } from 'react';
+import { codigoContiene } from '@shared/utils/codigos.js';
 import { norm } from '../components/CatalogoPicker.jsx';
 
 export function useFiltroProducto(store) {
@@ -32,7 +33,7 @@ export function useFiltroProducto(store) {
       const p = porId.get(productoId);
       const ok = p
         ? norm(p.nombre).includes(ql) || norm(p.marca).includes(ql)
-          || (p.codigoPropio || '').includes(qCod) || (p.codigoBarras || '').includes(qCod)
+          || (p.codigoPropio || '').includes(qCod) || codigoContiene(p, qCod)
           // El código de un fraccionado: cada tamaño lleva su etiqueta.
           || (p.presentaciones || []).some((pr) => pr.codigoBarras && pr.codigoBarras.includes(qCod))
         : norm(nombre).includes(ql);

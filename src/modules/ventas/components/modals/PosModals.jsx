@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
+import { codigoContiene } from '@shared/utils/codigos.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { ventasApi } from '../../services/ventas.api.js';
 import { norm } from '../../domain/constants.js';
@@ -185,7 +186,7 @@ export function BusquedaMasivaModal({ catalogo, listas, onAgregar }) {
       // El campo busca por nombre, código interno o código de barras.
       return norm(i.nombre).includes(ql)
         || (i.codigoPropio && norm(i.codigoPropio).includes(ql))
-        || (digitos && i.codigoBarras && i.codigoBarras.includes(digitos));
+        || codigoContiene(i, digitos);
     }).slice(0, 200);
   }, [catalogo, categoria, marca, texto]);
 

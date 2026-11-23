@@ -501,6 +501,8 @@ export function ConteoModal({ conteoId, alTerminar }) {
     }
     return p?.codigoBarras || p?.codigoPropio || '';
   };
+  /** Los códigos ANTERIORES del producto del renglón (0241): la tanda vieja se escanea igual. El paquete no tiene. */
+  const anterioresDe = (it) => (it.presentacionId ? [] : (store.getProducto(it.productoId)?.codigosAnteriores ?? []));
 
   const visibles = useMemo(() => {
     const ql = norm(q);
@@ -509,7 +511,7 @@ export function ConteoModal({ conteoId, alTerminar }) {
       if (vista === 'contados' && it.contado == null) return false;
       if (!ql) return true;
       return norm(it.nombre).includes(ql) || norm(it.presLabel).includes(ql)
-        || codigoDe(it).includes(q.trim());
+        || codigoDe(it).includes(q.trim()) || anterioresDe(it).some((c) => c.includes(q.trim()));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, q, vista, fijos]);
@@ -558,7 +560,7 @@ export function ConteoModal({ conteoId, alTerminar }) {
     if (e.key !== 'Enter') return;
     const cod = q.trim();
     if (!cod) return;
-    const match = items.filter((it) => codigoDe(it) && codigoDe(it) === cod);
+    const match = items.filter((it) => (codigoDe(it) && codigoDe(it) === cod) || anterioresDe(it).includes(cod));
     if (match.length === 1) {
       const el = inputRefs.current[match[0].id];
       if (el) { delLector.current = true; el.focus(); el.select(); }

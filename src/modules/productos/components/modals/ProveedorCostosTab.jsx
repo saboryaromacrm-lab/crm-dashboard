@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
+import { codigoContiene } from '@shared/utils/codigos.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money } from '../../domain/format.js';
 import { norm } from '../CatalogoPicker.jsx';
@@ -132,7 +133,7 @@ export function ProveedorCostosTab({ prov }) {
       if (marcaId && String(f.p.marcaId ?? '') !== String(marcaId)) return false;
       if (!n) return true;
       return norm(f.p.nombre).includes(n) || norm(f.p.marca).includes(n)
-        || (f.p.codigoBarras || '').includes(q.trim()) || (f.p.codigoPropio || '').includes(q.trim());
+        || codigoContiene(f.p, q.trim()) || (f.p.codigoPropio || '').includes(q.trim());
     });
   }, [filas, q, marcaId, hayFiltro]);
 

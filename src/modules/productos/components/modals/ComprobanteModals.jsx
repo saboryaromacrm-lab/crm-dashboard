@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
+import { codigoContiene } from '@shared/utils/codigos.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFecha, isoDate } from '../../domain/format.js';
 import { TIPOS_COMPROBANTE, ESTADOS_COMPROBANTE, LETRAS_COMPROBANTE, CONDICIONES_PAGO, IVA_OPCIONES } from '../../domain/constants.js';
@@ -389,7 +390,7 @@ function coincideBusqueda(c, texto) {
   const digitos = texto.replace(/\D/g, '');
   return norm(c.prod.nombre).includes(ql)
     || (c.prod.codigoPropio && norm(c.prod.codigoPropio).includes(ql))
-    || (digitos.length >= 4 && c.prod.codigoBarras && c.prod.codigoBarras.includes(digitos))
+    || (digitos.length >= 4 && codigoContiene(c.prod, digitos))
     || coincideCodigoProveedor(c, ql);
 }
 

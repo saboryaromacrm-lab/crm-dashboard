@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { httpClient } from '@core/services/httpClient.js';
 import { cx } from '@shared/utils/classNames.js';
+import { codigoContiene } from '@shared/utils/codigos.js';
 import { money, num, fmtFechaHora } from '@modules/productos/domain/format.js';
 import { labelTipoMov } from '@modules/productos/domain/constants.js';
 import { usePaginado, Paginador } from '@modules/productos/components/ui.jsx';
@@ -423,7 +424,7 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
     const n = norm(f.q);
     const prov = f.proveedor ? Number(f.proveedor) : null;
     const filtrados = items.filter((i) => (
-      (!n || norm(i.nombre).includes(n) || (i.codigoBarras ?? '').includes(f.q) || (i.codigo ?? '').includes(f.q))
+      (!n || norm(i.nombre).includes(n) || codigoContiene(i, f.q) || (i.codigo ?? '').includes(f.q))
       && (!prov || (i.proveedorIds ?? []).includes(prov))
       /* La marca se busca escribiendo (3/11/2026, pedido del dueño): alcanza con una parte del nombre. */
       && (!f.marca || norm(i.marca).includes(norm(f.marca)))

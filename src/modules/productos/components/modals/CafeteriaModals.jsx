@@ -10,6 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
+import { codigoContiene } from '@shared/utils/codigos.js';
 import { esc, imprimirDocumento, abrirVentanaImpresion } from '@core/services/imprimir.js';
 import { pedidosCafe } from '@core/services/pedidosCafe.js';
 import { useProductos } from '../../context/ProductosContext.jsx';
@@ -102,7 +103,7 @@ export function BuscadorCatalogo({ store, onElegir, autoFocus, filtro }) {
     const out = [];
     for (const p of todos) {
       if (norm(p.nombre).includes(ql) || (p.codigoPropio && norm(p.codigoPropio).includes(ql))
-        || (digitos.length >= 4 && p.codigoBarras && p.codigoBarras.includes(digitos))) {
+        || (digitos.length >= 4 && codigoContiene(p, digitos))) {
         out.push({ prod: p, presId: null });
       } else if (digitos.length >= 4) {
         const pres = (p.presentaciones || []).find((x) => x.codigoBarras && x.codigoBarras.includes(digitos));
@@ -213,7 +214,7 @@ function BusquedaGlobalModal({ store, yaCargados, onAgregar, onClose, filtro }) 
       if (!ql) return true;
       return norm(p.nombre).includes(ql)
         || (p.codigoPropio && norm(p.codigoPropio).includes(ql))
-        || (digitos.length >= 4 && p.codigoBarras && p.codigoBarras.includes(digitos));
+        || (digitos.length >= 4 && codigoContiene(p, digitos));
     }).slice(0, 200);
   }, [productos, texto, marca, categoria]);
 

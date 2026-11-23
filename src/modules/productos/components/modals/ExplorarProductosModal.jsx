@@ -26,6 +26,7 @@ import { deSaborYAroma } from '../../domain/exclusivoCoffit.js';
 import { useMemo, useState } from 'react';
 import { useProductos } from '../../context/ProductosContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
+import { codigoContiene } from '@shared/utils/codigos.js';
 import { ModalShell } from '../Modal.jsx';
 import { Table, Btn, Paginador, usePaginado, s } from '../ui.jsx';
 import { hayParaMandar, listaDeProducto, puedeMandar } from '../../domain/pedido.js';
@@ -86,7 +87,7 @@ export function ExplorarProductosModal({ grupo, origenId, destinoId, yaEnPedido,
       if (categoria && p.categoria !== categoria) continue;
       if (provId && !(p.formatosCompra || []).some((e) => e.proveedorId === provId)) continue;
       if (ql && !(norm(p.nombre).includes(ql) || norm(p.marca).includes(ql)
-        || norm(p.categoria).includes(ql) || (p.codigoBarras || '').includes(q.trim())
+        || norm(p.categoria).includes(ql) || codigoContiene(p, q.trim())
         || (p.presentaciones || []).some((pr) => (pr.codigoBarras || '').includes(q.trim())))) continue;
 
       // El filtro de stock mira el ORIGEN: es lo que decide si el pedido tiene

@@ -9,6 +9,7 @@
  * IVA se suma aparte.
  */
 import { norm } from './constants.js';
+import { codigoTerminaEn, tieneCodigo } from '../../../shared/utils/codigos.js';
 import { contextoResolucion, resolverRenglon } from './listas.js';
 
 /** Los orígenes que dicen "el cajero aceptó el aviso": al retomar un ticket, el mayorista sigue aceptado. */
@@ -231,7 +232,8 @@ export function buscarEnCatalogo(catalogo, texto, limite = 8) {
   const q = String(texto || '').trim();
   if (!q) return [];
 
-  const exacto = catalogo.filter((i) => i.codigoBarras && i.codigoBarras === q);
+  /* El código actual o uno ANTERIOR (0241): la tanda vieja sigue en la góndola con el de antes. */
+  const exacto = catalogo.filter((i) => tieneCodigo(i, q));
   if (exacto.length) return exacto;
 
   /*
@@ -251,7 +253,7 @@ export function buscarEnCatalogo(catalogo, texto, limite = 8) {
   }
 
   if (/^\d{3,}$/.test(q)) {
-    const parcial = catalogo.filter((i) => i.codigoBarras && i.codigoBarras.endsWith(q));
+    const parcial = catalogo.filter((i) => codigoTerminaEn(i, q));
     if (parcial.length) return parcial.slice(0, limite);
   }
 
