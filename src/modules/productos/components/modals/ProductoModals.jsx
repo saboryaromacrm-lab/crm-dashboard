@@ -241,20 +241,23 @@ export function ProductoFormModal({ prodId, inicial = null, alCrear = null, alCe
       o.descuento4 = Number(f.d4) || 0;
       o.flete = Number(f.flete) || 0;
     }
-    if (!alCrear || prod) {
+    if (!alCerrar) {
       act(
         prod ? store.editarProducto(prod.id, o) : store.crearProducto(o),
         prod ? 'Producto actualizado.' : 'Producto creado.',
       );
       return;
     }
+    /* Encima de otra ventana (la factura): `act` cerraría la de abajo, así que
+     * se guarda acá y se sigue con `alCrear` (alta) o `alCerrar` (edición). */
     if (enVuelo.current) return;
     enVuelo.current = true;
     try {
-      const r = await store.crearProducto(o);
-      if (!r?.ok) { toast(r?.error || 'No se pudo crear el producto.', 'err'); return; }
-      toast(`${nombre} creado.`, 'ok');
-      await alCrear(r);
+      const r = await (prod ? store.editarProducto(prod.id, o) : store.crearProducto(o));
+      if (!r?.ok) { toast(r?.error || (prod ? 'No se pudo guardar el producto.' : 'No se pudo crear el producto.'), 'err'); return; }
+      toast(prod ? `${nombre} actualizado.` : `${nombre} creado.`, 'ok');
+      if (prod) alCerrar();
+      else await alCrear?.(r);
     } finally { enVuelo.current = false; }
   };
 
@@ -287,10 +290,23 @@ export function ProductoFormModal({ prodId, inicial = null, alCrear = null, alCe
         footer={footer}
       >
         {!ed && <EtapasProducto paso={paso} irA={setPaso} />}
-        {inicial?.renglon && (
+        {inicial?.renglon && !ed && (
           <div className={cx(s.callout, s.info)}>
             Con los datos del renglón de la factura: <strong>{inicial.renglon}</strong>. Revisalos y completá lo que falta;
             al crearlo, seguís con sus formatos y después con la factura.
+          </div>
+        )}
+        {inicial?.renglon && ed && (
+          <div className={cx(s.callout, s.info)}>
+            Renglón de la factura: <strong>{inicial.renglon}</strong>. Cambiá lo que haya cambiado (el código de barras, el concepto
+            con el gramaje nuevo…); al guardar seguís con la factura.
+            {inicial.codigoPapel && inicial.codigoPapel !== f.codigoBarras.trim() && (
+              <div style={{ marginTop: 6 }}>
+                El papel trae el código de barras <span className={s.mono}>{inicial.codigoPapel}</span>
+                {f.codigoBarras.trim() ? <> y el producto tiene <span className={s.mono}>{f.codigoBarras.trim()}</span></> : ' y el producto no tiene'}.{' '}
+                <button type="button" className={s.linkBtn} onClick={() => set('codigoBarras', inicial.codigoPapel)}>Usar el del papel</button>
+              </div>
+            )}
           </div>
         )}
 

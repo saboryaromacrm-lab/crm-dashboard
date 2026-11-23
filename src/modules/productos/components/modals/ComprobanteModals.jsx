@@ -66,7 +66,7 @@ const SEMAFORO = {
  */
 function PanelIa({
   propuesta: d, cargando, leyendo, eligiendo, porRenglon, usados, productos, proveedor,
-  onAplicar, onReleer, onElegir, onAsociar, onAceptarSugerencias, onGuardarCodigo, onUsarEncabezado, onCrearProducto,
+  onAplicar, onReleer, onElegir, onAsociar, onAceptarSugerencias, onGuardarCodigo, onUsarEncabezado, onCrearProducto, onEditarProducto,
 }) {
   /** Qué colores se ven (tocando los contadores): null = todos. */
   const [filtro, setFiltro] = useState(null);
@@ -220,6 +220,10 @@ function PanelIa({
                         <span className={s.mono}>cód prov {codProd || '—'}</span>{' '}
                         <span style={{ color: SEMAFORO[color].color, fontWeight: 600 }}>{coincide ? '✓ ' : ''}{porque}</span>
                       </span>
+                    )}
+                    {/* Cambió el código de barras o el gramaje: se corrige la ficha sin salir de la factura. */}
+                    {prod && onEditarProducto && (
+                      <button type="button" className={s.linkBtn} onClick={() => onEditarProducto(x, prod.id)}>Editar producto</button>
                     )}
                     {!prod && (
                       <span style={{ color: SEMAFORO.rojo.color, fontWeight: 700 }}>
@@ -1299,6 +1303,16 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * Formato de Compra decide bultos y costo, como con cualquier otro).
    */
   const [altaProducto, setAltaProducto] = useState(null); // { renglon, prodId }
+  /* Editar el producto de un renglón (cambió el código de barras o el gramaje), encima de la factura. */
+  const [edicion, setEdicion] = useState(null); // { renglon, prodId }
+  const inicialDeEdicion = (x) => {
+    const codigo = String(x.codigo ?? '').trim();
+    return {
+      renglon: x.descripcion || `cód ${codigo}`,
+      /* Si el código impreso es un EAN-13 válido, se ofrece ponerlo como código de barras. */
+      ...(verificadorEan13(codigo) ? { codigoPapel: codigo } : {}),
+    };
+  };
   const inicialDeRenglon = (x) => {
     const codigo = String(x.codigo ?? '').trim();
     /* El bulto y su costo, como los guarda el Formato de Compra (ver bultoDelRenglon). */
@@ -2288,6 +2302,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           onGuardarCodigo={guardarCodigoRenglon}
           onUsarEncabezado={usarEncabezadoIa}
           onCrearProducto={isAdmin && provId ? (x) => setAltaProducto({ renglon: x, prodId: null }) : null}
+          onEditarProducto={isAdmin ? (x, prodId) => setEdicion({ renglon: x, prodId }) : null}
         />
       )}
       {esConversion ? (
@@ -3369,6 +3384,9 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       )}
       {altaProducto?.prodId && (
         <DetalleProductoModal prodId={altaProducto.prodId} pestana="Formato de Venta" alCerrar={terminarAlta} />
+      )}
+      {edicion && (
+        <ProductoFormModal prodId={edicion.prodId} inicial={inicialDeEdicion(edicion.renglon)} alCerrar={() => setEdicion(null)} />
       )}
     </>
   );
