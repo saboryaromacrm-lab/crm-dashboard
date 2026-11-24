@@ -58,7 +58,6 @@ export const provApi = {
   ingresosProveedor: (id) => httpClient.get(`/pedidos-proveedor/proveedor/${id}/ingresos`),
   ultimoIngreso: (id) => httpClient.get(`/pedidos-proveedor/proveedor/${id}/ultimo-ingreso`),
   statsPedidos: () => httpClient.get('/pedidos-proveedor/stats'),
-  ingresos: (filtros) => httpClient.get(`/pedidos-proveedor/recibidos${qs(filtros)}`),
   solicitarPedidos: (data) => httpClient.post('/pedidos-proveedor', data),
   pedidoDirecto: (data) => httpClient.post('/pedidos-proveedor/directo', data),
   editarPedido: (id, data) => httpClient.patch(`/pedidos-proveedor/${id}`, data),

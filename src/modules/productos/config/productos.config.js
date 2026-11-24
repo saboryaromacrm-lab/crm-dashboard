@@ -26,6 +26,7 @@ import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import SettingsIcon from '@mui/icons-material/Settings';
+import MoveToInboxIcon from '@mui/icons-material/MoveToInbox';
 
 /**
  * Menú interno del módulo COMPRAS.
@@ -103,6 +104,8 @@ export const ALMACEN_PANELS = [
   /* Quiebres de stock (4/11/2026): en un período, cuántas veces y cuántos días
      sin stock cada artículo en cada local, y lo que se dejó de vender. */
   { id: 'quiebres',       label: 'Quiebres de stock', icon: RemoveShoppingCartIcon, permiso: 'almacen.quiebres' },
+  /* Los pedidos a proveedores ya recibidos (24/11/2026): venía de Proveedores › Pedidos. */
+  { id: 'ingresos',       label: 'Ingresos',       icon: MoveToInboxIcon,    permiso: 'almacen.ingresos' },
   // Punto de SALIDA hacia coffit: el ERP no lleva el stock del café. El globito
   // avisa la demanda del café que espera (pedidos pendientes o armándose).
   /* Dos permisos: la distribuidora entra por `almacen.cafeteria` y el rol

@@ -1,4 +1,3 @@
-import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
@@ -6,12 +5,12 @@ import { useResource } from '../hooks/useResource.js';
 import { errorMsg, provApi } from '../services/proveedores.api.js';
 import { BotonesAlta } from '../components/modals/PedidosModals.jsx';
 import { ProveedorMenu } from '../components/ProveedorMenu.jsx';
-import { Btn, PanelHead, Pill, Stat, Table, diasCalendario, fmtFecha, fmtFechaHora, hace, money, s } from '../components/ui.jsx';
+import { Btn, PanelHead, Pill, diasCalendario, fmtFecha, fmtFechaHora, hace, money, s } from '../components/ui.jsx';
 
 /**
  * PEDIDOS — el kanban de la app externa, tal cual: la pizarra entre el admin
  * y el encargado de compras. Columnas Solicitado / Pedido / Para retomar
- * (lo recibido se va al historial de Ingresos). Sin drag & drop a propósito:
+ * (lo recibido se va a Almacén › Ingresos). Sin drag & drop a propósito:
  * los botones dicen exactamente qué pasa, y funcionan igual con el mouse
  * apurado del mostrador.
  */
@@ -40,7 +39,6 @@ const CELESTE = '#0ea5e9';
 
 export function PedidosPanel() {
   const { openModal, toast, recargarContadores, getProveedor, goPanel } = useProveedores();
-  const [vista, setVista] = useState('pizarra');
   /* 0164: la pizarra solo con los proveedores de la localidad. */
   const [soloLocales, setSoloLocales] = useState(false);
   const [filtro, setFiltro] = useState(SIN_FILTROS);
@@ -173,7 +171,7 @@ export function PedidosPanel() {
             )}
             {t.estado === 'pedido' && (
               <>
-                <Btn small variant="btn-primary" onClick={() => mutar(provApi.estadoPedido(t.id, 'recibido'), 'Recibido: pasó al historial de Ingresos.')}>
+                <Btn small variant="btn-primary" onClick={() => mutar(provApi.estadoPedido(t.id, 'recibido'), 'Recibido: pasó a Almacén › Ingresos.')}>
                   ✓ Recibido
                 </Btn>
                 <Btn small onClick={() => mutar(provApi.estadoPedido(t.id, 'solicitado'), 'De vuelta en Solicitado.')}>
@@ -200,105 +198,46 @@ export function PedidosPanel() {
         desc="La pizarra interna: a quién hay que pedirle, qué está pedido, qué llegó. No toca stock ni deuda — eso pasa al cargar la factura en Compras."
         actions={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Btn small variant={vista === 'pizarra' ? 'btn-primary' : undefined} onClick={() => setVista('pizarra')}>Pizarra</Btn>
-            <Btn small variant={vista === 'ingresos' ? 'btn-primary' : undefined} onClick={() => setVista('ingresos')}>Ingresos</Btn>
-            {vista === 'pizarra' && (
-              <label className={s.hint} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                <input id="pedidos-locales" type="checkbox" checked={soloLocales} onChange={(e) => setSoloLocales(e.target.checked)} />
-                Solo proveedores locales
-              </label>
-            )}
-            {vista === 'pizarra' && <BotonesAlta openModal={openModal} onChange={reload} />}
+            <label className={s.hint} style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <input id="pedidos-locales" type="checkbox" checked={soloLocales} onChange={(e) => setSoloLocales(e.target.checked)} />
+              Solo proveedores locales
+            </label>
+            <BotonesAlta openModal={openModal} onChange={reload} />
           </div>
         }
       />
-      {vista === 'pizarra' && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          {Object.entries(FILTROS).map(([clave, opciones]) => (
-            <select
-              key={clave} id={`pedidos-filtro-${clave}`} aria-label={`Filtrar por ${clave}`}
-              className={s['select-inline']} value={filtro[clave]} onChange={elegir(clave)}
-              disabled={clave !== 'estado' && !marcasAplican}
-              title={clave !== 'estado' && !marcasAplican ? 'Enviado y visto son de las tarjetas en Solicitado' : undefined}
-            >
-              {opciones.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-            </select>
-          ))}
-          {(filtro.estado || conMarcas) && <Btn small onClick={() => setFiltro(SIN_FILTROS)}>Ver todo</Btn>}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-            <Btn small disabled={!visibles.length} onClick={() => setAbiertas(new Set(visibles.map((t) => t.id)))}>Desplegar todas</Btn>
-            <Btn small disabled={!abiertas.size} onClick={() => setAbiertas(new Set())}>Plegar todas</Btn>
-          </div>
-        </div>
-      )}
-      {vista === 'pizarra' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
-          {columnas.map((col) => {
-            const filas = visibles.filter((t) => t.estado === col.estado);
-            return (
-              <div key={col.estado}>
-                <div className={s['section-title']}>
-                  {col.titulo} ({filas.length})
-                  <span className={s.hint} style={{ marginLeft: 6, fontWeight: 400 }}>{col.hint}</span>
-                </div>
-                {filas.map((t) => <Tarjeta key={t.id} t={t} />)}
-                {!filas.length && <div className={cx(s.hint)} style={{ padding: 8 }}>Vacío.</div>}
-              </div>
-            );
-          })}
-        </div>
-      ) : <Ingresos />}
-    </div>
-  );
-}
-
-/** El historial de recibidos: cuándo se pidió, cuándo llegó, cuánto tardó. */
-function Ingresos() {
-  const { proveedores } = useProveedores();
-  const [filtro, setFiltro] = useState('mes');
-  const [proveedorId, setProveedorId] = useState('');
-  const [buscar, setBuscar] = useState('');
-  const { data } = useResource(
-    `prov-ingresos:${filtro}:${proveedorId}:${buscar}`,
-    () => provApi.ingresos({ filtro, proveedorId: proveedorId || undefined, buscar: buscar || undefined }),
-  );
-
-  return (
-    <div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
-        <select value={filtro} onChange={(e) => setFiltro(e.target.value)}>
-          <option value="todos">Todos</option>
-          <option value="semana">Última semana</option>
-          <option value="mes">Este mes</option>
-          <option value="mes_ant">Mes anterior</option>
-        </select>
-        <BuscadorOpcion
-          ariaLabel="Proveedor"
-          opciones={proveedores}
-          value={proveedorId} onChange={setProveedorId}
-          todos="Todos los proveedores" placeholder="Escribí el proveedor…"
-        />
-        <input
-          type="search" placeholder="Buscar en notas o proveedor…"
-          value={buscar} onChange={(e) => setBuscar(e.target.value)}
-        />
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 12 }}>
-          <Stat label="Recibidos este mes" value={data?.totalMes ?? 0} />
-          <Stat label="Demora promedio" value={`${data?.promedioDias ?? 0} d`} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        {Object.entries(FILTROS).map(([clave, opciones]) => (
+          <select
+            key={clave} id={`pedidos-filtro-${clave}`} aria-label={`Filtrar por ${clave}`}
+            className={s['select-inline']} value={filtro[clave]} onChange={elegir(clave)}
+            disabled={clave !== 'estado' && !marcasAplican}
+            title={clave !== 'estado' && !marcasAplican ? 'Enviado y visto son de las tarjetas en Solicitado' : undefined}
+          >
+            {opciones.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </select>
+        ))}
+        {(filtro.estado || conMarcas) && <Btn small onClick={() => setFiltro(SIN_FILTROS)}>Ver todo</Btn>}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <Btn small disabled={!visibles.length} onClick={() => setAbiertas(new Set(visibles.map((t) => t.id)))}>Desplegar todas</Btn>
+          <Btn small disabled={!abiertas.size} onClick={() => setAbiertas(new Set())}>Plegar todas</Btn>
         </div>
       </div>
-      <Table cols={[{ h: 'Proveedor' }, { h: 'Pedido' }, { h: 'Recibido' }, { h: 'Días', num: true }, { h: 'Notas' }]}>
-        {(data?.filas ?? []).map((f) => (
-          <tr key={f.id}>
-            <td>{f.proveedorNombre}</td>
-            <td>{f.fechaPedido ? fmtFecha(f.fechaPedido) : '—'}</td>
-            <td>{f.fechaRecepcion ? fmtFecha(f.fechaRecepcion) : '—'}</td>
-            <td className={s.num}>{f.dias ?? '—'}</td>
-            <td className={s.hint}>{f.notas}</td>
-          </tr>
-        ))}
-      </Table>
-      {!(data?.filas ?? []).length && <div className={s['empty-state']}>Sin ingresos en este filtro.</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+        {columnas.map((col) => {
+          const filas = visibles.filter((t) => t.estado === col.estado);
+          return (
+            <div key={col.estado}>
+              <div className={s['section-title']}>
+                {col.titulo} ({filas.length})
+                <span className={s.hint} style={{ marginLeft: 6, fontWeight: 400 }}>{col.hint}</span>
+              </div>
+              {filas.map((t) => <Tarjeta key={t.id} t={t} />)}
+              {!filas.length && <div className={cx(s.hint)} style={{ padding: 8 }}>Vacío.</div>}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
