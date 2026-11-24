@@ -28,6 +28,7 @@ import { money, fmtFecha } from '../domain/format.js';
 import { ESTADOS_LECTURA, TIPOS_COMPROBANTE } from '../domain/constants.js';
 import { Table, PanelHead, Stat, Btn, Pill, usePaginado, s } from '../components/ui.jsx';
 import { TIPOS_ACEPTADOS, MAX_ENTRADA_MB, prepararFactura } from '../domain/leerFactura.js';
+import { imagenesPegadas } from '../domain/pegarFactura.js';
 import { LecturaIaPanel } from './LecturaIaPanel.jsx';
 
 const VISTAS = [
@@ -236,6 +237,27 @@ function BandejaFacturas() {
     subir(ev.dataTransfer?.files);
   };
 
+  /*
+   * PEGAR CON CTRL+V (24/11/2026, pedido del dueño): una captura copiada entra
+   * como un archivo subido y sigue el camino de siempre (la IA la lee). No se
+   * toma si se pega en un campo de texto o con una ventana abierta encima (ahí
+   * el pegado es de otra cosa), ni si no trae imágenes.
+   */
+  const subirRef = useRef(subir);
+  subirRef.current = subir;
+  useEffect(() => {
+    const alPegar = (ev) => {
+      const t = ev.target;
+      if (t?.closest?.('input, textarea, [contenteditable="true"], [role="dialog"]')) return;
+      const imagenes = imagenesPegadas(ev.clipboardData);
+      if (!imagenes.length) return;
+      ev.preventDefault();
+      subirRef.current(imagenes);
+    };
+    document.addEventListener('paste', alPegar);
+    return () => document.removeEventListener('paste', alPegar);
+  }, []);
+
   const descartar = async (l) => {
     try {
       await store.descartarLecturaFactura(l.id, l.duplicadoDe ? 'Duplicada' : '');
@@ -381,7 +403,7 @@ function BandejaFacturas() {
         }}
       >
         <div style={{ fontWeight: 600 }}>
-          {subiendo ? `Guardando… ${subiendo}` : 'Arrastrá acá las facturas (o tocá para elegirlas)'}
+          {subiendo ? `Guardando… ${subiendo}` : 'Arrastrá acá las facturas, tocá para elegirlas o pegá una captura con Ctrl+V'}
         </div>
         <div className={s.hint} style={{ marginTop: 6 }}>
           PDF o fotos JPG/PNG/WebP, hasta {MAX_ENTRADA_MB} MB cada uno, todas juntas si querés. Cada archivo
