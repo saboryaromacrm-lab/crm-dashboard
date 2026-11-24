@@ -22,7 +22,7 @@ import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
-import { FAMILIA, POR_QUE, TIPO_ATADO, cambioDeMedio, estadoDia, mismoImporte, moverMes, nombreMedio, rangoMes, semanasDelMes } from '../domain/conciliacionMp.js';
+import { FAMILIA, POR_QUE, cambioDeMedio, nombreAtado, estadoDia, mismoImporte, moverMes, nombreMedio, rangoMes, semanasDelMes } from '../domain/conciliacionMp.js';
 import { CobroMp, PagoMp } from '../components/modals/ConciliacionMpModals.jsx';
 import { Btn, PanelHead, Stat, Table, fmtFechaHora, isoDate, money, s } from '../components/ui.jsx';
 
@@ -271,6 +271,7 @@ export function ConciliacionMpPanel() {
                   <td className={s['actions-col']}>
                     <div className={s['row-actions']}>
                       <Btn small onClick={() => atar({ cobro: c })}>Buscar el pago</Btn>
+                      <Btn small onClick={() => explicar({ tipo: 'sin_mp', cobro: c, controlado: true })}>Ya lo controlé</Btn>
                       <Btn small variant="btn-ghost" onClick={() => explicar({ tipo: 'sin_mp', cobro: c })}>No entró</Btn>
                     </div>
                   </td>
@@ -320,6 +321,7 @@ export function ConciliacionMpPanel() {
                   <td className={s['actions-col']}>
                     <div className={s['row-actions']}>
                       <Btn small onClick={() => atar({ pago: p })}>Buscar la venta</Btn>
+                      <Btn small onClick={() => explicar({ tipo: 'sin_venta', pago: p, controlado: true })}>Ya lo controlé</Btn>
                       <Btn small variant="btn-ghost" onClick={() => explicar({ tipo: 'sin_venta', pago: p })}>No es venta</Btn>
                     </div>
                   </td>
@@ -340,7 +342,7 @@ export function ConciliacionMpPanel() {
                       <td>{g.cobros.length ? g.cobros.map((c) => <CobroMp key={c.clave} c={c} onVer={() => verComprobante(c)} />) : <span className={s.muted}>—</span>}</td>
                       <td>{g.pagos.length ? g.pagos.map((p) => <PagoMp key={p.id} p={p} />) : <span className={s.muted}>—</span>}</td>
                       <td>
-                        {TIPO_ATADO[g.tipo]}
+                        {nombreAtado(g)}
                         {(g.motivo || g.usuario) && <div className={s.hint} style={{ margin: 0 }}>{[g.motivo, g.usuario].filter(Boolean).join(' · ')}</div>}
                         {diferenciaDe(g) && <div style={{ margin: 0, color: 'var(--crm-color-danger)', fontSize: 12.5 }}>{diferenciaDe(g)}</div>}
                       </td>

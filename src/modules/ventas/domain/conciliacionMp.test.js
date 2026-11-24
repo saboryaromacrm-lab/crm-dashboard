@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  alrededor, cambioDeMedio, comprobanteDe, conQuePago, dondeSeCobro, estadoDia, moverMes, rangoMes, segunMercadoPago, semanasDelMes,
+  alrededor, cambioDeMedio, comprobanteDe, conQuePago, dondeSeCobro, estadoDia, motivoControlado, moverMes, nombreAtado, rangoMes,
+  segunMercadoPago, semanasDelMes,
 } from './conciliacionMp.js';
 
 test('el color del día', () => {
@@ -79,4 +80,13 @@ test('según Mercado Pago: sin atar, «No entró», devuelto y QR del ERP sin co
   assert.equal(erp.fuente, 'Cobrado con el botón QR del ERP (todavía sin conciliar).');
   assert.equal(erp.pagos[0].como, '');
   assert.equal(erp.pagos[0].operacion, '');
+});
+
+test('«Ya lo controlé»: el motivo lleva la observación y el atado se llama «Controlado»', () => {
+  const motivo = motivoControlado('  el cliente pagó de nuevo por transferencia ');
+  assert.equal(motivo, 'Ya controlado: el cliente pagó de nuevo por transferencia');
+  assert.equal(nombreAtado({ tipo: 'sin_mp', motivo }), 'Controlado');
+  assert.equal(nombreAtado({ tipo: 'sin_venta', motivo }), 'Controlado');
+  assert.equal(nombreAtado({ tipo: 'sin_mp', motivo: 'Fue a otra cuenta' }), 'No entró a MP');
+  assert.equal(nombreAtado({ tipo: 'auto', motivo: '' }), 'Solo');
 });

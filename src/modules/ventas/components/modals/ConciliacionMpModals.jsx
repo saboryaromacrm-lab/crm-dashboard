@@ -7,7 +7,8 @@
  *    (3 antes y 1 después: una transferencia llega antes); se tildan uno o
  *    varios de cada lado. Si no suman lo mismo, hay que decir por qué.
  *  · `ExplicarMpModal`: lo que queda de un solo lado. Plata que entró y no es
- *    una venta, o un cobro que no entró a Mercado Pago.
+ *    una venta, o un cobro que no entró a Mercado Pago. Con `controlado`, «Ya
+ *    lo controlé»: se resolvió por otro lado y queda con una observación.
  *
  * Un cobro atado a UN pago toma el medio que dice Mercado Pago (la API lo
  * corrige y guarda el anterior): `cambioDeMedio` lo anuncia antes de confirmar.
@@ -18,7 +19,7 @@ import { OPERACION_MP, TIPO_MP, nombreMp } from '@shared/utils/mercadoPago.js';
 import { useVentas } from '../../context/VentasContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { ventasApi } from '../../services/ventas.api.js';
-import { FAMILIA, MOTIVOS, alrededor, cambioDeMedio, comprobanteDe, nombreMedio } from '../../domain/conciliacionMp.js';
+import { FAMILIA, MOTIVOS, alrededor, cambioDeMedio, comprobanteDe, motivoControlado, nombreMedio } from '../../domain/conciliacionMp.js';
 import { ModalShell, fmtFecha, fmtFechaHora, money, s } from '../ui.jsx';
 
 const EPS = 0.009;
@@ -156,22 +157,26 @@ export function AtarMpModal({ dia, cobro, pago, onListo }) {
   );
 }
 
-export function ExplicarMpModal({ tipo, cobro, pago, onListo }) {
+export function ExplicarMpModal({ tipo, cobro, pago, controlado = false, onListo }) {
   const { closeModal, act } = useVentas();
   const opciones = MOTIVOS[tipo];
   const [eleccion, setEleccion] = useState(opciones[0]);
   const [otro, setOtro] = useState('');
-  const motivo = eleccion === 'otro' ? otro.trim() : eleccion;
+  const [observacion, setObservacion] = useState('');
+  const motivo = controlado
+    ? (observacion.trim() ? motivoControlado(observacion) : '')
+    : eleccion === 'otro' ? otro.trim() : eleccion;
 
   const guardar = () => act(
     ventasApi.conciliacionMpAtar(tipo === 'sin_mp' ? { cobros: [cobro.clave], motivo } : { pagos: [pago.id], motivo }),
-    tipo === 'sin_mp' ? 'Anotado: ese cobro no entró a Mercado Pago.' : 'Anotado: esa plata no es una venta.',
+    controlado ? 'Anotado como controlado.'
+      : tipo === 'sin_mp' ? 'Anotado: ese cobro no entró a Mercado Pago.' : 'Anotado: esa plata no es una venta.',
     { recargar: false },
   ).then((ok) => { if (ok) onListo?.(); });
 
   return (
     <ModalShell
-      title={tipo === 'sin_mp' ? 'Este cobro no entró a Mercado Pago' : 'Esta plata no es una venta'}
+      title={controlado ? 'Ya lo controlé' : tipo === 'sin_mp' ? 'Este cobro no entró a Mercado Pago' : 'Esta plata no es una venta'}
       onClose={closeModal}
       footer={[
         { texto: 'Cancelar', clase: 'btn-ghost', onClick: closeModal },
@@ -179,14 +184,25 @@ export function ExplicarMpModal({ tipo, cobro, pago, onListo }) {
       ]}
     >
       {tipo === 'sin_mp' ? <CobroMp c={cobro} /> : <PagoMp p={pago} />}
-      <div className={s.field}>
-        <label htmlFor="conc-explicar">{tipo === 'sin_mp' ? '¿Qué pasó?' : '¿Qué es?'}</label>
-        <select id="conc-explicar" value={eleccion} onChange={(e) => setEleccion(e.target.value)}>
-          {opciones.map((o) => <option key={o} value={o}>{o}</option>)}
-          <option value="otro">Otra cosa…</option>
-        </select>
-      </div>
-      {eleccion === 'otro' && (
+      {controlado ? (
+        <div className={s.field}>
+          <label htmlFor="conc-observacion">Observación <span className={s.req}>*</span></label>
+          <textarea
+            id="conc-observacion" autoFocus rows={3} maxLength={180} value={observacion}
+            placeholder="Qué controlaste o cómo se resolvió. Ej.: el cliente pagó de nuevo por transferencia a la cuenta de Lucas"
+            onChange={(e) => setObservacion(e.target.value)}
+          />
+        </div>
+      ) : (
+        <div className={s.field}>
+          <label htmlFor="conc-explicar">{tipo === 'sin_mp' ? '¿Qué pasó?' : '¿Qué es?'}</label>
+          <select id="conc-explicar" value={eleccion} onChange={(e) => setEleccion(e.target.value)}>
+            {opciones.map((o) => <option key={o} value={o}>{o}</option>)}
+            <option value="otro">Otra cosa…</option>
+          </select>
+        </div>
+      )}
+      {!controlado && eleccion === 'otro' && (
         <div className={s.field}>
           <label htmlFor="conc-otro">Contalo <span className={s.req}>*</span></label>
           <input id="conc-otro" autoFocus maxLength={200} value={otro} onChange={(e) => setOtro(e.target.value)} />

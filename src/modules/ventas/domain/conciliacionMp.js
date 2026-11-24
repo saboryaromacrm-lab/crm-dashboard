@@ -28,7 +28,18 @@ export const POR_QUE = {
   otro_medio: 'Mismo importe, otro medio',
   monto_distinto: 'Misma hora, otro importe',
 };
-export const TIPO_ATADO = { auto: 'Solo', manual: 'A mano', sin_venta: 'No es venta', sin_mp: 'No entró a MP' };
+const TIPO_ATADO = { auto: 'Solo', manual: 'A mano', sin_venta: 'No es venta', sin_mp: 'No entró a MP' };
+
+/*
+ * «YA LO CONTROLÉ» (24/11/2026, pedido del dueño): lo que se resolvió por
+ * otro lado sale de pendientes con una observación. Es un atado de un solo
+ * lado (como «No entró» o «No es venta») cuyo motivo empieza con este prefijo:
+ * así se distingue en lo ya atado sin otro tipo en la base.
+ */
+const CONTROLADO = 'Ya controlado: ';
+export const motivoControlado = (observacion) => `${CONTROLADO}${String(observacion ?? '').trim()}`;
+/** Cómo se llama un atado en la lista: «Controlado» si se marcó así, si no por su tipo. */
+export const nombreAtado = (g) => (String(g?.motivo ?? '').startsWith(CONTROLADO) ? 'Controlado' : TIPO_ATADO[g?.tipo]);
 /** Lo que se ofrece para explicar lo que quedó de un solo lado (siempre se puede escribir otra cosa). */
 export const MOTIVOS = {
   sin_venta: ['Plata propia / aporte', 'Devolución o reintegro de un proveedor', 'Cobro de algo que no pasa por el ERP', 'Prueba'],

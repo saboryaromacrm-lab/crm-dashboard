@@ -9,6 +9,7 @@ import { bultoDelRenglon, cargaDelRenglon, nombreDelRenglon } from '../../domain
 import { deOtraSucursal, esJefeSesion, pagoSeOfrece } from '../../domain/pagosACuenta.js';
 import { emparejarPercepciones, tipoSegunNombre } from '../../domain/percepciones.js';
 import { contraLaOtraMitad } from '../../domain/otraMitad.js';
+import { dudasDelProducto } from '../../domain/parecidoPapel.js';
 import { preciosConIvaAdentro, sinIva } from '../../domain/ivaAdentro.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { verificadorEan13 } from '@core/services/barcode.js';
@@ -71,7 +72,7 @@ const SEMAFORO = {
 function PanelIa({
   propuesta: d, cargando, leyendo, eligiendo, porRenglon, usados, productos, proveedor, pruebas,
   onAplicar, onReleer, onElegir, onAsociar, onAceptarSugerencias, onGuardarCodigo, onUsarEncabezado, onCrearProducto, onEditarProducto,
-  onPrueba,
+  onPrueba, renderItem, netoPapel, netoDe,
 }) {
   /** Qué colores se ven (tocando los contadores): null = todos. */
   const [filtro, setFiltro] = useState(null);
@@ -113,11 +114,14 @@ function PanelIa({
     const codProd = prod ? codigoDe.get(prod.id) ?? codigoDeFormato(prod, proveedor?.id) : '';
     const coincide = !!(x.codigo && codProd && codProd === String(x.codigo).trim());
     const delServidor = prod && String(x.productoId) === String(prod.id);
+    /* ¿Es el del papel? Con el código que coincide no hay duda; si no, nombre y peso (domain/parecidoPapel.js). */
+    const dudas = prod && !coincide ? dudasDelProducto(x.descripcion, prod.nombre, [proveedor?.nombre, prod.marca]) : [];
     let color;
     let porque;
     if (!prod && pruebas.has(x.i)) { color = 'prueba'; porque = 'De prueba: suma a la factura, no entra al stock ni al catálogo'; }
     else if (!prod) { color = 'rojo'; porque = 'NO está cargado en la factura'; }
     else if (coincide) { color = 'verde'; porque = 'el código coincide'; }
+    else if (dudas.length) { color = 'amarillo'; porque = `¿Es este? ${dudas.join(' y ')}`; }
     else if (delServidor && x.fuente === 'aprendido') { color = 'verde'; porque = 'ya lo asociaste en otra factura'; }
     else if (delServidor && x.fuente === 'catalogo') { color = 'verde'; porque = 'por el código del catálogo'; }
     else if (delServidor && x.fuente === 'parecido') { color = 'amarillo'; porque = 'la IA lo supone por el nombre'; }
@@ -207,39 +211,47 @@ function PanelIa({
             ))}
             Lo que asocies <strong>se aprende al guardar</strong>.
           </div>
-          <ul style={{ listStyle: 'none', margin: '6px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ padding: '6px 8px 0 12px' }}><CabeceraRenglon /></div>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
             {visibles.map(({ x, it, prod, codProd, coincide, color, porque }) => {
               const codigoPapel = String(x.codigo ?? '').trim();
               const otro = codigoPapel ? duenoDe.get(codigoPapel) : null;
+              const papel = netoPapel(x);
+              const cargado = prod ? netoDe(it) : 0;
               return (
                 <li
                   key={x.i}
                   style={{
-                    borderLeft: `4px solid ${SEMAFORO[color].color}`, padding: '4px 8px', borderRadius: 4,
+                    borderLeft: `4px solid ${SEMAFORO[color].color}`, padding: '6px 8px', borderRadius: 4,
                     background: `color-mix(in srgb, ${SEMAFORO[color].color} 9%, transparent)`,
                   }}
                 >
-                  <div>
-                    <span className={s.mono}>cód {codigoPapel || '—'}</span>{' '}
-                    {x.descripcion} — {num(x.cantidad)} × {money(x.costoBulto || x.precioUnitario)}
+                  {/* LO QUE DICE EL PAPEL */}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                    <span className={s['mini-label']}>Papel</span>
+                    <span className={s.mono}>cód {codigoPapel || '—'}</span>
+                    <strong>{x.descripcion}</strong>
+                    <span>{num(x.cantidad)} × {money(x.costoBulto || x.precioUnitario)} = <strong>{money(papel)}</strong></span>
                   </div>
+                  {/* LO CARGADO, en la misma tarjeta: el renglón del alta, con sus casilleros. */}
+                  {prod && <div style={{ marginTop: 6 }}>{renderItem(it)}</div>}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
                     {prod && (
                       <span>
-                        → <strong>{prod.nombre}</strong>{' '}
-                        <span className={s.mono}>cód prov {codProd || '—'}</span>{' '}
-                        <span style={{ color: SEMAFORO[color].color, fontWeight: 600 }}>{coincide ? '✓ ' : ''}{porque}</span>
+                        <span style={{ color: SEMAFORO[color].color, fontWeight: 600 }}>{coincide ? '✓ ' : color === 'amarillo' ? '⚠ ' : ''}{porque}</span>{' '}
+                        <span className={s.mono}>cód prov {codProd || '—'}</span>
+                      </span>
+                    )}
+                    {prod && Math.abs(cargado - papel) > 1 && (
+                      <span style={{ color: 'var(--crm-color-danger)', fontWeight: 600 }}>
+                        Cargado {money(cargado)}: el papel dice {money(papel)}
                       </span>
                     )}
                     {/* Cambió el código de barras o el gramaje: se corrige la ficha sin salir de la factura. */}
                     {prod && onEditarProducto && (
                       <button type="button" className={s.linkBtn} onClick={() => onEditarProducto(x, prod.id)}>Editar producto</button>
                     )}
-                    {!prod && (
-                      <span style={{ color: SEMAFORO[color].color, fontWeight: 700 }}>
-                        {porque} ({money(x.importe || (x.cantidad * (x.costoBulto || x.precioUnitario || 0)))})
-                      </span>
-                    )}
+                    {!prod && <span style={{ color: SEMAFORO[color].color, fontWeight: 700 }}>{porque}</span>}
                     {color === 'prueba' && (
                       <button type="button" className={s.linkBtn} onClick={() => onPrueba(x.i, false)}>No es de prueba</button>
                     )}
@@ -599,6 +611,17 @@ export function ComprobanteFormModal(props) {
  * del formato, el display (0203) o la unidad suelta. La cantidad y el costo del
  * renglón hablan en esa unidad; lo que entra al stock es cantidad × esto.
  */
+/** Los títulos de las columnas del renglón. En el teléfono no se ven: cada casillero lleva su nombre (`data-r`). */
+function CabeceraRenglon() {
+  return (
+    <div className={cx(s.renglon, s.renglonCabeza)} style={{ '--renglon-cols': COLS_RENGLON, marginBottom: 6 }}>
+      {['Producto', 'Cantidad', 'Por bulto', 'Costo', 'Desc%', 'IVA%', 'Subtotal', ''].map((h, i) => (
+        <div key={i} className={s['mini-label']}>{h}</div>
+      ))}
+    </div>
+  );
+}
+
 function tamDelModo(it) {
   if (it.modo === 'unidad') return 1;
   return Number(it.modo === 'display' ? it.porDisplay : it.porBulto) || 0;
@@ -1232,7 +1255,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       codigoProveedor: x.codigoProveedor || '',
       descripcionPapel: x.descripcion || '',
       renglonIa: x.i,
-      guardarCodigo: !!codigo && codigoDeFormato(prod, parseInt(provId, 10)) !== codigo,
+      guardarCodigo: !!codigo && codigoDeFormato(prod, parseInt(provId, 10)) !== codigo
+        && !dudasDelProducto(x.descripcion, prod.nombre, [provElegido?.nombre, prod.marca]).length,
     };
   };
   /** Número de renglón del papel → su fila en el alta (si la borran, el renglón vuelve a «elegir»). */
@@ -2056,6 +2080,180 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     }
   };
 
+  /**
+   * UN RENGLÓN DEL ALTA (producto, cantidad, bulto, costo, descuento, IVA y
+   * subtotal). Con la lectura de la IA va DENTRO de la tarjeta de su renglón
+   * del papel (24/11/2026, pedido del dueño: el papel arriba y lo cargado
+   * abajo, en un solo lugar); los agregados a mano van en su lista.
+   */
+  const filaDeItem = (it, i) => {
+    const prod = it.productoId ? store.getProducto(parseInt(it.productoId, 10)) : null;
+    const r = calcRow(it);
+    const activo = prod ? store.formatoActivo(prod) : null;
+    const pid = parseInt(provId, 10);
+    const u = unidadDe(prod);
+    return (
+      <div key={i} className={s.renglon} style={{ '--renglon-cols': COLS_RENGLON, marginBottom: 8, alignItems: 'start' }}>
+        {prod ? (
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ flex: 1, minWidth: 0, fontWeight: 600 }}>{prod.nombre}</span>
+              {/* En la conversión el producto está clavado: es el que entró. */}
+              {!esConversion && (
+                <button
+                  type="button" className={s['pres-remove']} title="Cambiar producto"
+                  onClick={() => setItem(i, { productoId: '', costoBulto: '', costoAuto: true, modo: 'bulto' })}
+                >×</button>
+              )}
+            </div>
+            <div className={s.hint} style={{ margin: 0 }}>
+              {activo?.proveedorId === pid
+                ? 'activo con este proveedor'
+                : `activo: ${store.getProveedor(activo?.proveedorId)?.nombre || 'sin activo'}`}
+            </div>
+            {/* La cuenta a la vista: total que entra al stock y $/kg real. */}
+            {r.cantidadTotal > 0 && (
+              <div className={s.hint} style={{ margin: 0 }}>
+                <strong>{num(r.cantidadTotal, 3)} {u}</strong>
+                {r.costoUnitario > 0 && <> · <strong>{money(r.costoUnitario)}/{u.replace('.', '')}</strong></>}
+              </div>
+            )}
+            {(() => {
+              /* El tilde se ve siempre; se bloquea cuando lo decide otra cosa. */
+              const marcado = deCoffit(it);
+              const motivo = esConversion ? 'marcado al cargar el remito'
+                : prod.soloCafeteria ? 'uso exclusivo (ficha)'
+                  : heredaDeRef(it) ? 'era de Coffit en la factura que ajusta'
+                    : todoCoffit ? 'todo el comprobante' : '';
+              return (
+                <label
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginTop: 2,
+                    cursor: motivo ? 'default' : 'pointer',
+                    color: marcado ? 'var(--crm-color-primary, #2e7d32)' : 'var(--crm-color-text-secondary)',
+                  }}
+                  title={motivo ? `Para Coffit: ${motivo}` : 'Este renglón se le carga a Coffit'}
+                >
+                  <input
+                    type="checkbox" checked={marcado} disabled={!!motivo}
+                    onChange={(e) => setItem(i, { paraCafeteria: e.target.checked })}
+                  />
+                  <span>Para Coffit{motivo ? <span className={s.muted}> · {motivo}</span> : null}</span>
+                </label>
+              );
+            })()}
+          </div>
+        ) : (
+          <BuscadorProducto
+            candidatos={candidatos}
+            proveedorNombre={provElegido?.nombre || 'este proveedor'}
+            onElegir={(p) => onProducto(i, p)}
+            autoFocus={i > 0}
+          />
+        )}
+        <div data-r={{ unidad: 'Unidades', display: 'Displays' }[it.modo] ?? 'Bultos'}>
+          <input
+            type="number" min="0" step="any" value={it.bultos}
+            disabled={esConversion}
+            title={esConversion
+              ? 'La cantidad es la del remito: es lo que entró al depósito'
+              : { unidad: 'Cuántas unidades sueltas llegaron', display: 'Cuántos displays llegaron' }[it.modo] ?? 'Cuántos bultos llegaron'}
+            onChange={(e) => setItem(i, { bultos: e.target.value })}
+          />
+          {/* El modo suelto es SOLO de los enteros (el dueño, 25/8): en el
+              granel el bulto es la bolsa y su tamaño ya es editable por
+              entrega — "kg sueltos" no agregaba nada y confundía. */}
+          {/* "1 · bultos · 12" se leía como tres números sueltos y no se
+              sabía si entraban 1, 12 o 13 (el dueño, 25/8). La respuesta
+              es la cuenta YA HECHA debajo de la cantidad: "= 12 u.", lo
+              que entra al stock. Va acá y no solo en el pie del producto
+              porque el ojo está en el casillero que se tipea. OJO: el
+              tamaño NO va dentro de la opción del select ("bultos ×12"):
+              en el ancho real de la columna se trunca a "bultos ×1", que
+              es peor que la ambigüedad que se quería arreglar. */}
+          {/* En la conversión el modo tampoco se elige: la cantidad ya
+              está clavada y cambiar el modo solo re-expresaría el costo. */}
+          {prod && prod.tipo === 'entero' && !esConversion && (
+            <>
+              <select
+                value={it.modo || 'bulto'}
+                style={{ marginTop: 2, fontSize: 12, width: '100%' }}
+                title="¿La entrega vino en bultos cerrados, en displays o suelta, sin completar el bulto?"
+                onChange={(e) => cambiarModo(i, e.target.value)}
+              >
+                <option value="bulto">bultos</option>
+                {/* Solo si el formato de este proveedor declara el display (0203). */}
+                {Number(it.porDisplay) > 0 && <option value="display">displays</option>}
+                <option value="unidad">u. sueltas</option>
+              </select>
+              {/* En los dos modos: la negrita de abajo SIEMPRE es lo que
+                  entra al stock, una sola regla para leer el renglón. */}
+              {r.cantidadTotal > 0 && (
+                <div className={s.hint} style={{ margin: 0, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                  = <strong>{num(r.cantidadTotal, 0)} u.</strong>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        {/* El tamaño del bulto es INFO, no un casillero (el dueño, 25/8):
+            vive en el Formato de compra del producto y se cambia ahí. Un
+            campo editable acá invitaba a "corregir" el bulto en cada
+            factura — y ese número, junto con el costo, es el que define
+            el $/u del catálogo: tipearlo distinto en un renglón dejaba
+            la góndola colgada de un dato de paso. */}
+        {it.modo === 'unidad' ? (
+          <div
+            className={s.hint} data-r="Por bulto"
+            style={{ margin: 0, textAlign: 'center', alignSelf: 'center' }}
+            title="Vino suelto: no cambia el tamaño del bulto que tiene el proveedor"
+          >—</div>
+        ) : (
+          <div
+            data-r={it.modo === 'display' ? 'Por display' : 'Por bulto'}
+            style={{ textAlign: 'center', paddingTop: 8 }}
+            title={`El tamaño del ${it.modo === 'display' ? 'display' : 'bulto'} viene del Formato de compra del producto: se cambia ahí, no en la factura`}
+          >
+            <div style={{ fontWeight: 600 }}>{prod ? ((it.modo === 'display' ? it.porDisplay : it.porBulto) || '—') : ''}</div>
+            {prod && <div className={s.hint} style={{ margin: 0 }}>{u}/{it.modo === 'display' ? 'display' : 'bulto'}</div>}
+          </div>
+        )}
+        <div data-r="Costo">
+          <input
+            type="number" min="0" step="any" value={it.costoBulto}
+            title={`Costo ${{ unidad: 'por unidad', display: 'del display' }[it.modo] ?? 'del bulto'}, como figura en la factura`}
+            onChange={(e) => setItem(i, { costoBulto: e.target.value, costoAuto: false })}
+          />
+          {(it.modo === 'unidad' || it.modo === 'display') && (
+            <div className={s.hint} style={{ margin: 0, textAlign: 'center' }}>{it.modo === 'display' ? '$/display' : '$/u'}</div>
+          )}
+        </div>
+        <div data-r="Desc. %">
+          <input type="number" min="0" step="any" value={it.descuento} onChange={(e) => setItem(i, { descuento: e.target.value })} />
+        </div>
+        {discriminaIva ? (
+          <div data-r="IVA">
+            <select value={String(Number(it.iva) || 0)} onChange={(e) => setItem(i, { iva: e.target.value })}>
+              {ALICUOTAS.map((a) => <option key={a} value={String(a)}>{String(a).replace('.', ',')}%</option>)}
+            </select>
+          </div>
+        ) : (
+          <span className={s.muted} data-r="IVA" style={{ alignSelf: 'center', textAlign: 'center' }} title="Esta letra no discrimina IVA: el precio del papel ya lo incluye">incl.</span>
+        )}
+        <div className={cx(s.mono, s.num)} data-r="Subtotal" style={{ fontWeight: 700, alignSelf: 'center' }}>{money(r.neto)}</div>
+        {/* Quitar o agregar renglones cambiaría QUÉ entró — y eso ya pasó. */}
+        {esConversion
+          ? <span />
+          : <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>}
+      </div>
+    );
+  };
+  /** ¿Los renglones del papel van en tarjetas? Con la lectura de la IA lista. */
+  const enTarjetas = conIa && propuestaIa?.estado === 'lista' && (propuestaIa.renglones?.length ?? 0) > 0;
+  const renglonesDelPapel = new Set(enTarjetas ? propuestaIa.renglones.map((x) => x.i) : []);
+  /** Las filas que no están en una tarjeta del papel: todas sin IA; con IA, las agregadas a mano. */
+  const filasSueltas = items.map((it, i) => ({ it, i })).filter(({ it }) => !renglonesDelPapel.has(it.renglonIa));
+
   const footer = paso < 3
     ? [
       paso === 1
@@ -2372,6 +2570,9 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           onEditarProducto={isAdmin ? (x, prodId) => setEdicion({ renglon: x, prodId }) : null}
           pruebas={idsPrueba}
           onPrueba={tipo === 'factura' || tipo === 'liquidacion' ? marcarPrueba : null}
+          renderItem={(it) => filaDeItem(it, items.indexOf(it))}
+          netoPapel={netoDelPapel}
+          netoDe={(it) => calcRow(it).neto}
         />
       )}
       {esConversion ? (
@@ -2401,174 +2602,10 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           </span>
         </label>
       )}
-      {/* En el teléfono cada renglón es una tarjeta y cada casillero lleva su nombre (`data-r`): este encabezado no se ve. */}
-      <div className={cx(s.renglon, s.renglonCabeza)} style={{ '--renglon-cols': COLS_RENGLON, marginBottom: 6 }}>
-        {['Producto', 'Cantidad', 'Por bulto', 'Costo', 'Desc%', 'IVA%', 'Subtotal', ''].map((h, i) => (
-          <div key={i} className={s['mini-label']}>{h}</div>
-        ))}
-      </div>
-      {items.map((it, i) => {
-        const prod = it.productoId ? store.getProducto(parseInt(it.productoId, 10)) : null;
-        const r = calcRow(it);
-        const activo = prod ? store.formatoActivo(prod) : null;
-        const pid = parseInt(provId, 10);
-        const u = unidadDe(prod);
-        return (
-          <div key={i} className={s.renglon} style={{ '--renglon-cols': COLS_RENGLON, marginBottom: 8, alignItems: 'start' }}>
-            {prod ? (
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ flex: 1, minWidth: 0, fontWeight: 600 }}>{prod.nombre}</span>
-                  {/* En la conversión el producto está clavado: es el que entró. */}
-                  {!esConversion && (
-                    <button
-                      type="button" className={s['pres-remove']} title="Cambiar producto"
-                      onClick={() => setItem(i, { productoId: '', costoBulto: '', costoAuto: true, modo: 'bulto' })}
-                    >×</button>
-                  )}
-                </div>
-                <div className={s.hint} style={{ margin: 0 }}>
-                  {activo?.proveedorId === pid
-                    ? 'activo con este proveedor'
-                    : `activo: ${store.getProveedor(activo?.proveedorId)?.nombre || 'sin activo'}`}
-                </div>
-                {/* La cuenta a la vista: total que entra al stock y $/kg real. */}
-                {r.cantidadTotal > 0 && (
-                  <div className={s.hint} style={{ margin: 0 }}>
-                    <strong>{num(r.cantidadTotal, 3)} {u}</strong>
-                    {r.costoUnitario > 0 && <> · <strong>{money(r.costoUnitario)}/{u.replace('.', '')}</strong></>}
-                  </div>
-                )}
-                {(() => {
-                  /* El tilde se ve siempre; se bloquea cuando lo decide otra cosa. */
-                  const marcado = deCoffit(it);
-                  const motivo = esConversion ? 'marcado al cargar el remito'
-                    : prod.soloCafeteria ? 'uso exclusivo (ficha)'
-                      : heredaDeRef(it) ? 'era de Coffit en la factura que ajusta'
-                        : todoCoffit ? 'todo el comprobante' : '';
-                  return (
-                    <label
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginTop: 2,
-                        cursor: motivo ? 'default' : 'pointer',
-                        color: marcado ? 'var(--crm-color-primary, #2e7d32)' : 'var(--crm-color-text-secondary)',
-                      }}
-                      title={motivo ? `Para Coffit: ${motivo}` : 'Este renglón se le carga a Coffit'}
-                    >
-                      <input
-                        type="checkbox" checked={marcado} disabled={!!motivo}
-                        onChange={(e) => setItem(i, { paraCafeteria: e.target.checked })}
-                      />
-                      <span>Para Coffit{motivo ? <span className={s.muted}> · {motivo}</span> : null}</span>
-                    </label>
-                  );
-                })()}
-              </div>
-            ) : (
-              <BuscadorProducto
-                candidatos={candidatos}
-                proveedorNombre={provElegido?.nombre || 'este proveedor'}
-                onElegir={(p) => onProducto(i, p)}
-                autoFocus={i > 0}
-              />
-            )}
-            <div data-r={{ unidad: 'Unidades', display: 'Displays' }[it.modo] ?? 'Bultos'}>
-              <input
-                type="number" min="0" step="any" value={it.bultos}
-                disabled={esConversion}
-                title={esConversion
-                  ? 'La cantidad es la del remito: es lo que entró al depósito'
-                  : { unidad: 'Cuántas unidades sueltas llegaron', display: 'Cuántos displays llegaron' }[it.modo] ?? 'Cuántos bultos llegaron'}
-                onChange={(e) => setItem(i, { bultos: e.target.value })}
-              />
-              {/* El modo suelto es SOLO de los enteros (el dueño, 25/8): en el
-                  granel el bulto es la bolsa y su tamaño ya es editable por
-                  entrega — "kg sueltos" no agregaba nada y confundía. */}
-              {/* "1 · bultos · 12" se leía como tres números sueltos y no se
-                  sabía si entraban 1, 12 o 13 (el dueño, 25/8). La respuesta
-                  es la cuenta YA HECHA debajo de la cantidad: "= 12 u.", lo
-                  que entra al stock. Va acá y no solo en el pie del producto
-                  porque el ojo está en el casillero que se tipea. OJO: el
-                  tamaño NO va dentro de la opción del select ("bultos ×12"):
-                  en el ancho real de la columna se trunca a "bultos ×1", que
-                  es peor que la ambigüedad que se quería arreglar. */}
-              {/* En la conversión el modo tampoco se elige: la cantidad ya
-                  está clavada y cambiar el modo solo re-expresaría el costo. */}
-              {prod && prod.tipo === 'entero' && !esConversion && (
-                <>
-                  <select
-                    value={it.modo || 'bulto'}
-                    style={{ marginTop: 2, fontSize: 12, width: '100%' }}
-                    title="¿La entrega vino en bultos cerrados, en displays o suelta, sin completar el bulto?"
-                    onChange={(e) => cambiarModo(i, e.target.value)}
-                  >
-                    <option value="bulto">bultos</option>
-                    {/* Solo si el formato de este proveedor declara el display (0203). */}
-                    {Number(it.porDisplay) > 0 && <option value="display">displays</option>}
-                    <option value="unidad">u. sueltas</option>
-                  </select>
-                  {/* En los dos modos: la negrita de abajo SIEMPRE es lo que
-                      entra al stock, una sola regla para leer el renglón. */}
-                  {r.cantidadTotal > 0 && (
-                    <div className={s.hint} style={{ margin: 0, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                      = <strong>{num(r.cantidadTotal, 0)} u.</strong>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-            {/* El tamaño del bulto es INFO, no un casillero (el dueño, 25/8):
-                vive en el Formato de compra del producto y se cambia ahí. Un
-                campo editable acá invitaba a "corregir" el bulto en cada
-                factura — y ese número, junto con el costo, es el que define
-                el $/u del catálogo: tipearlo distinto en un renglón dejaba
-                la góndola colgada de un dato de paso. */}
-            {it.modo === 'unidad' ? (
-              <div
-                className={s.hint} data-r="Por bulto"
-                style={{ margin: 0, textAlign: 'center', alignSelf: 'center' }}
-                title="Vino suelto: no cambia el tamaño del bulto que tiene el proveedor"
-              >—</div>
-            ) : (
-              <div
-                data-r={it.modo === 'display' ? 'Por display' : 'Por bulto'}
-                style={{ textAlign: 'center', paddingTop: 8 }}
-                title={`El tamaño del ${it.modo === 'display' ? 'display' : 'bulto'} viene del Formato de compra del producto: se cambia ahí, no en la factura`}
-              >
-                <div style={{ fontWeight: 600 }}>{prod ? ((it.modo === 'display' ? it.porDisplay : it.porBulto) || '—') : ''}</div>
-                {prod && <div className={s.hint} style={{ margin: 0 }}>{u}/{it.modo === 'display' ? 'display' : 'bulto'}</div>}
-              </div>
-            )}
-            <div data-r="Costo">
-              <input
-                type="number" min="0" step="any" value={it.costoBulto}
-                title={`Costo ${{ unidad: 'por unidad', display: 'del display' }[it.modo] ?? 'del bulto'}, como figura en la factura`}
-                onChange={(e) => setItem(i, { costoBulto: e.target.value, costoAuto: false })}
-              />
-              {(it.modo === 'unidad' || it.modo === 'display') && (
-                <div className={s.hint} style={{ margin: 0, textAlign: 'center' }}>{it.modo === 'display' ? '$/display' : '$/u'}</div>
-              )}
-            </div>
-            <div data-r="Desc. %">
-              <input type="number" min="0" step="any" value={it.descuento} onChange={(e) => setItem(i, { descuento: e.target.value })} />
-            </div>
-            {discriminaIva ? (
-              <div data-r="IVA">
-                <select value={String(Number(it.iva) || 0)} onChange={(e) => setItem(i, { iva: e.target.value })}>
-                  {ALICUOTAS.map((a) => <option key={a} value={String(a)}>{String(a).replace('.', ',')}%</option>)}
-                </select>
-              </div>
-            ) : (
-              <span className={s.muted} data-r="IVA" style={{ alignSelf: 'center', textAlign: 'center' }} title="Esta letra no discrimina IVA: el precio del papel ya lo incluye">incl.</span>
-            )}
-            <div className={cx(s.mono, s.num)} data-r="Subtotal" style={{ fontWeight: 700, alignSelf: 'center' }}>{money(r.neto)}</div>
-            {/* Quitar o agregar renglones cambiaría QUÉ entró — y eso ya pasó. */}
-            {esConversion
-              ? <span />
-              : <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>}
-          </div>
-        );
-      })}
+      {/* Con la lectura de la IA, los renglones del papel van en sus tarjetas (arriba): acá, lo agregado a mano. */}
+      {enTarjetas && filasSueltas.length > 0 && <div className={s['section-title']}>Agregados a mano (no vienen del papel)</div>}
+      {(!enTarjetas || filasSueltas.length > 0) && <CabeceraRenglon />}
+      {filasSueltas.map(({ it, i }) => filaDeItem(it, i))}
       {!esConversion && (
         <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" className={cx(s.btn, s['btn-ghost'], s['btn-sm'])} onClick={addItem}>+ Agregar ítem</button>
