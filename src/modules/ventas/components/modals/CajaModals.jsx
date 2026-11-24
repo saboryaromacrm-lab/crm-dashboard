@@ -248,7 +248,8 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
   const [motivo, setMotivo] = useState('');
 
   // Campos del pago a proveedor.
-  const [tipoProveedor, setTipoProveedor] = useState('');
+  /** Solo para el proveedor que es de mercadería Y de gastos: qué se le paga ('' = mercadería). */
+  const [destinoAmbos, setDestinoAmbos] = useState('');
   const [proveedorId, setProveedorId] = useState('');
   const [referencia, setReferencia] = useState('');
   const [esFlete, setEsFlete] = useState(false);
@@ -276,15 +277,17 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
   const esAdelanto = !esPagoProveedor && !!concepto?.esAdelanto;
 
   /**
-   * Primero el TIPO, después el proveedor: la lista se pide filtrada
-   * (mercadería o gastos) y el que provee las dos cosas aparece en ambas. La
-   * elección queda GRABADA en el pago como su `destino` — decide en qué
-   * bandeja cae (Compras o Gastos) y contra qué documentos podrá aplicarse.
+   * UN SOLO BUSCADOR CON TODOS LOS PROVEEDORES (24/11/2026, pedido del dueño):
+   * antes había que elegir primero el tipo (mercadería o gastos). El tipo sale
+   * de la ficha del proveedor —la misma regla que el resto del ERP: solo de
+   * gastos → Gastos; si no, Compras— y queda GRABADO en el pago como su
+   * `destino`: decide en qué bandeja cae y contra qué documentos se aplica. Solo
+   * el que es de las dos cosas pregunta qué se le paga.
    */
   const { data, loading, error } = useResource(
-    `padron-proveedores:${tipoProveedor}`,
-    () => ventasApi.proveedoresPadron(tipoProveedor),
-    { enabled: esPagoProveedor && !!tipoProveedor },
+    'padron-proveedores:todos',
+    () => ventasApi.proveedoresPadron(),
+    { enabled: esPagoProveedor },
   );
   const proveedores = data ?? [];
 
@@ -311,17 +314,14 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
     if (texto.trim() && lista.length === 1) setProveedorId(String(lista[0].id));
   };
 
-  const elegirTipo = (valor) => {
-    setTipoProveedor(valor);
-    // El proveedor elegido puede no existir en la lista nueva: se limpia.
-    setProveedorId('');
-    setBuscarProv('');
-    // El flete que el proveedor descuenta solo existe del lado de mercadería:
-    // el que se le paga a un fletero propio es un gasto y va por su módulo.
-    if (valor !== 'mercaderia') setEsFlete(false);
-  };
-
   const elegido = proveedores.find((pv) => pv.id === Number(proveedorId));
+  const deLosDos = !!(elegido?.proveeMercaderia && elegido?.proveeGastos);
+  const tipoProveedor = !elegido ? ''
+    : deLosDos ? (destinoAmbos || 'mercaderia')
+      : elegido.proveeGastos && !elegido.proveeMercaderia ? 'gastos' : 'mercaderia';
+  /* El flete que el proveedor descuenta solo existe del lado de mercadería:
+   * el que se le paga a un fletero propio es un gasto y va por su módulo. */
+  const fleteVale = esFlete && tipoProveedor === 'mercaderia';
 
   /*
    * SE CONFIRMA DOS VECES (25/9/2026, pedido del dueño). Un ingreso o egreso
@@ -336,7 +336,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
    * pago igual al mismo proveedor; el siguiente "Sí" lo confirma a propósito. */
   const [gemelo, setGemelo] = useState(null);
   const enviando = useRef(false);
-  const firma = [tipo, destino, importe, motivo, conceptoId, alProveedor, tipoProveedor, proveedorId, referencia, esFlete, personalId].join('|');
+  const firma = [tipo, destino, importe, motivo, conceptoId, alProveedor, tipoProveedor, proveedorId, referencia, fleteVale, personalId].join('|');
   const firmaConfirmada = useRef('');
   if (confirmando && firmaConfirmada.current !== firma) { setConfirmando(false); setGemelo(null); }
 
@@ -344,7 +344,6 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
     if (!(Number(importe) > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return false; }
     if (conConcepto && concepto?.pideDetalle && !motivo.trim()) { toast(`Escribí la descripción: «${concepto.nombre}» la pide.`, 'err'); return false; }
     if (esPagoProveedor) {
-      if (!tipoProveedor) { toast('Elegí el tipo de proveedor: mercadería o gastos.', 'err'); return false; }
       if (!proveedorId) { toast('Elegí a qué proveedor se le pagó.', 'err'); return false; }
     } else {
       if (!concepto) { toast('Elegí el concepto.', 'err'); return false; }
@@ -386,10 +385,10 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
           operadorId: operadorId ?? undefined,
           concepto: textoPago,
           referencia: referencia.trim(),
-          esFlete: esFlete || undefined,
+          esFlete: fleteVale || undefined,
           confirmarDuplicado: gemelo != null || undefined,
         }),
-        esFlete
+        fleteVale
           ? 'Flete registrado. Se le descuenta de su factura cuando se cargue.'
           : tipoProveedor === 'mercaderia'
             ? 'Pago registrado. Queda a cuenta en Compras › Pagos en sucursal hasta que se cargue la factura.'
@@ -437,7 +436,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
           </div>
           <div>
             {esPagoProveedor
-              ? <>{esFlete ? 'Flete' : 'Pago'} en efectivo a <strong>{elegido?.nombre ?? 'el proveedor'}</strong>{textoPago ? <> · {textoPago}</> : null}</>
+              ? <>{fleteVale ? 'Flete' : 'Pago'} en efectivo a <strong>{elegido?.nombre ?? 'el proveedor'}</strong>{textoPago ? <> · {textoPago}</> : null}</>
               : <>
                 Concepto: <strong>{concepto?.nombre}</strong>{motivo.trim() ? <> · {motivo.trim()}</> : null}
                 {concepto?.clase === 'gasto' && <> · se carga también como <strong>gasto pagado</strong> en Gastos ({concepto.gastoCategoria})</>}
@@ -510,31 +509,16 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
         <>
           {error && <div className={cx(s.callout, s.warn)}>No se pudo cargar el padrón: <strong>{error}</strong></div>}
 
-          <div className={s['form-grid']}>
-            <div className={s.field}>
-              <label>Tipo de proveedor <span className={s.req}>*</span></label>
-              <select value={tipoProveedor} onChange={(e) => elegirTipo(e.target.value)}>
-                <option value="">Elegí el tipo</option>
-                <option value="mercaderia">Mercadería (trae stock)</option>
-                <option value="gastos">Gastos (servicios)</option>
-              </select>
-              <div className={s.hint} style={{ margin: '6px 0 0' }}>
-                Define en qué bandeja cae el pago: Compras o Gastos. Un proveedor que es las dos
-                cosas aparece en las dos listas.
-              </div>
-            </div>
-          </div>
-
           <div className={s.field}>
             <label htmlFor="caja-prov-buscar">Proveedor <span className={s.req}>*</span></label>
             <input
               id="caja-prov-buscar" type="search" value={buscarProv} onChange={(e) => buscarProveedor(e.target.value)}
-              placeholder={tipoProveedor ? 'Buscar por nombre o CUIT…' : 'Primero elegí el tipo'} disabled={!tipoProveedor || loading}
+              placeholder="Buscar por nombre o CUIT…" disabled={loading}
               style={{ marginBottom: 6 }} autoComplete="off"
             />
-            <select id="caja-prov" aria-label="Proveedor" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)} disabled={!tipoProveedor || loading}>
+            <select id="caja-prov" aria-label="Proveedor" value={proveedorId} onChange={(e) => { setProveedorId(e.target.value); setDestinoAmbos(''); }} disabled={loading}>
               <option value="">
-                {!tipoProveedor ? 'Primero elegí el tipo' : loading ? 'Cargando…'
+                {loading ? 'Cargando…'
                   : buscarProv.trim() && !visiblesProv.length ? 'Ningún proveedor con esa búsqueda'
                     : buscarProv.trim() ? `Elegí el proveedor (${visiblesProv.length})` : 'Elegí el proveedor'}
               </option>
@@ -547,6 +531,16 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
               egreso no se puede aplicar después a una factura.
             </div>
           </div>
+
+          {deLosDos && (
+            <div className={s.field}>
+              <label htmlFor="caja-prov-destino">{elegido.nombre} es de mercadería y de gastos: ¿qué le pagás?</label>
+              <select id="caja-prov-destino" value={tipoProveedor} onChange={(e) => setDestinoAmbos(e.target.value)}>
+                <option value="mercaderia">Mercadería (va a Compras)</option>
+                <option value="gastos">Un gasto o servicio (va a Gastos)</option>
+              </select>
+            </div>
+          )}
 
           {/* EL FLETE QUE EL PROVEEDOR DESCUENTA. Llega la mercadería por
               $100.000, el flete sale $20.000 y se le paga al fletero del cajón:
@@ -599,7 +593,7 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
         <input
           value={motivo}
           maxLength={300}
-          placeholder={esFlete
+          placeholder={fleteVale
             ? 'Ej: flete del pedido del martes · transportista'
             : esPagoProveedor ? 'Ej: pedido de gaseosas · arreglo del baño' : concepto?.pideDetalle ? 'Obligatoria: qué fue' : 'Opcional: qué fue, a quién'}
           onChange={(e) => setMotivo(e.target.value)}
@@ -609,11 +603,11 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
       {esPagoProveedor && (
         <div className={s.callout}>
           Se registra el <strong>egreso de caja</strong> con la hora exacta y tu nombre, y queda
-          {esFlete ? ' como flete a cuenta de ' : ' como pago a cuenta de '}
+          {fleteVale ? ' como flete a cuenta de ' : ' como pago a cuenta de '}
           {elegido ? <strong>{elegido.nombre}</strong> : 'ese proveedor'}
           {tipoProveedor === 'mercaderia' && <> en <strong>Compras › Pagos en sucursal</strong></>}
           {tipoProveedor === 'gastos' && <> en <strong>Gastos › Pagos en sucursal</strong></>}.
-          {esFlete
+          {fleteVale
             ? ' Al cargar la factura de esa entrega se toma este flete y el proveedor queda debiendo el resto.'
             : ` El administrador lo aplica cuando carga ${tipoProveedor === 'gastos' ? 'el comprobante del gasto' : 'la factura'}.`}
         </div>

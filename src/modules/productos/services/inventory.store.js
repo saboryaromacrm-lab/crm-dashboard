@@ -1251,6 +1251,8 @@ function _cleanComprobante(o) {
         base: p.base === 'total' ? 'total' : 'neto',
         importe: Number(p.importe) || 0,
       })),
+    /* Los renglones del papel marcados «de prueba» (0242): suman al total, no son productos. */
+    renglonesPrueba: o.renglonesPrueba?.length ? o.renglonesPrueba : undefined,
     /*
      * Costos que el usuario aceptó actualizar desde "Impacto en precios".
      * `cantidad` es el tamaño del bulto de ESTA entrega (kg o unidades) y viaja

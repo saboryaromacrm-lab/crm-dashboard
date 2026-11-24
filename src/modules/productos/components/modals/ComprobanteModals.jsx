@@ -58,6 +58,8 @@ const SEMAFORO = {
   verde: { color: 'var(--crm-color-success)', titulo: 'listos', explica: 'cargados y con el código que coincide (o ya asociados)' },
   amarillo: { color: 'var(--crm-color-warning)', titulo: 'a revisar', explica: 'cargados con lo que la IA supuso por el nombre' },
   rojo: { color: 'var(--crm-color-danger)', titulo: 'faltan cargar', explica: 'NO están en la factura: aceptá la sugerencia o elegí el producto' },
+  /* Los de prueba (0242): se pidieron para probar y no se dan de alta. */
+  prueba: { color: 'var(--crm-color-info)', titulo: 'de prueba', explica: 'suman a la factura; no entran al stock ni al catálogo' },
 };
 
 /**
@@ -67,8 +69,9 @@ const SEMAFORO = {
  * que sugiera la IA— y el detalle completo de lo leído.
  */
 function PanelIa({
-  propuesta: d, cargando, leyendo, eligiendo, porRenglon, usados, productos, proveedor,
+  propuesta: d, cargando, leyendo, eligiendo, porRenglon, usados, productos, proveedor, pruebas,
   onAplicar, onReleer, onElegir, onAsociar, onAceptarSugerencias, onGuardarCodigo, onUsarEncabezado, onCrearProducto, onEditarProducto,
+  onPrueba,
 }) {
   /** Qué colores se ven (tocando los contadores): null = todos. */
   const [filtro, setFiltro] = useState(null);
@@ -112,7 +115,8 @@ function PanelIa({
     const delServidor = prod && String(x.productoId) === String(prod.id);
     let color;
     let porque;
-    if (!prod) { color = 'rojo'; porque = 'NO está cargado en la factura'; }
+    if (!prod && pruebas.has(x.i)) { color = 'prueba'; porque = 'De prueba: suma a la factura, no entra al stock ni al catálogo'; }
+    else if (!prod) { color = 'rojo'; porque = 'NO está cargado en la factura'; }
     else if (coincide) { color = 'verde'; porque = 'el código coincide'; }
     else if (delServidor && x.fuente === 'aprendido') { color = 'verde'; porque = 'ya lo asociaste en otra factura'; }
     else if (delServidor && x.fuente === 'catalogo') { color = 'verde'; porque = 'por el código del catálogo'; }
@@ -121,8 +125,12 @@ function PanelIa({
     return { x, it, prod, codProd, coincide, color, porque };
   });
   const cuenta = (c) => filas.filter((f) => f.color === c).length;
-  const pendientesIa = filas.some((f) => !f.prod && f.x.candidatos?.length && !f.x.sugerido);
-  const sugeridos = filas.filter((f) => !f.prod && f.x.sugerido).map((f) => f.x);
+  const pendientesIa = filas.some((f) => f.color === 'rojo' && f.x.candidatos?.length && !f.x.sugerido);
+  const sugeridos = filas.filter((f) => f.color === 'rojo' && f.x.sugerido).map((f) => f.x);
+  /* El aviso del servidor de «renglones sin producto» se calla cuando ya no queda ninguno en rojo (asociados o de prueba). */
+  const avisos = (d?.avisos ?? []).filter((a) => cuenta('rojo') > 0 || !/sin producto reconocido/.test(a));
+  /* El contador «de prueba» solo aparece si hay alguno. */
+  const colores = cuenta('prueba') ? ['verde', 'amarillo', 'rojo', 'prueba'] : ['verde', 'amarillo', 'rojo'];
   const visibles = filtro ? filas.filter((f) => f.color === filtro) : filas;
   /** Lo que ya está elegido en otro renglón no se vuelve a ofrecer (sí el propio). */
   const libre = (it) => (p) => !usados.has(String(p.id)) || String(p.id) === String(it?.productoId);
@@ -165,7 +173,7 @@ function PanelIa({
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             {/* Los tres estados, tocables: filtran la lista (otro toque, se ven todos). */}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
-              {['verde', 'amarillo', 'rojo'].map((c) => {
+              {colores.map((c) => {
                 const n = cuenta(c);
                 const activo = filtro === c;
                 return (
@@ -194,7 +202,7 @@ function PanelIa({
             {pendientesIa && <Btn small onClick={onElegir} disabled={eligiendo}>{eligiendo ? 'Pensando…' : 'Que la IA elija'}</Btn>}
           </div>
           <div className={s.hint} style={{ margin: '4px 0 0' }}>
-            {['verde', 'amarillo', 'rojo'].map((c) => (
+            {colores.map((c) => (
               <span key={c} style={{ marginRight: 10 }}><strong style={{ color: SEMAFORO[c].color }}>● {SEMAFORO[c].titulo}</strong>: {SEMAFORO[c].explica}.</span>
             ))}
             Lo que asocies <strong>se aprende al guardar</strong>.
@@ -228,23 +236,30 @@ function PanelIa({
                       <button type="button" className={s.linkBtn} onClick={() => onEditarProducto(x, prod.id)}>Editar producto</button>
                     )}
                     {!prod && (
-                      <span style={{ color: SEMAFORO.rojo.color, fontWeight: 700 }}>
+                      <span style={{ color: SEMAFORO[color].color, fontWeight: 700 }}>
                         {porque} ({money(x.importe || (x.cantidad * (x.costoBulto || x.precioUnitario || 0)))})
                       </span>
                     )}
-                    {!prod && x.sugerido && (
+                    {color === 'prueba' && (
+                      <button type="button" className={s.linkBtn} onClick={() => onPrueba(x.i, false)}>No es de prueba</button>
+                    )}
+                    {/* Lo que se pidió poco para probar no se da de alta: suma a la factura y listo. */}
+                    {color === 'rojo' && onPrueba && (
+                      <button type="button" className={s.linkBtn} onClick={() => onPrueba(x.i, true)}>Es de prueba: no darlo de alta</button>
+                    )}
+                    {color === 'rojo' && x.sugerido && (
                       <span>
                         La IA sugiere <strong>{x.sugerido.nombre}</strong>{' '}
                         <button type="button" className={s.linkBtn} onClick={() => onAsociar(x, x.sugerido.id)}>Aceptar</button>
                       </span>
                     )}
                     {/* También en amarillo: la IA pudo suponer uno parecido y el de verdad no estar cargado. */}
-                    {color !== 'verde' && onCrearProducto && (
+                    {(color === 'rojo' || color === 'amarillo') && onCrearProducto && (
                       <button type="button" className={s.linkBtn} onClick={() => onCrearProducto(x)}>
                         {prod ? 'No es ese: crear uno nuevo' : '+ Crear este producto'}
                       </button>
                     )}
-                    {color !== 'verde' && (
+                    {(color === 'rojo' || color === 'amarillo') && (
                       <select
                         key={it?.productoId ?? 'nuevo'}
                         style={{ maxWidth: 300 }}
@@ -291,9 +306,9 @@ function PanelIa({
         </div>
       )}
 
-      {d?.avisos?.length > 0 && (
+      {avisos.length > 0 && (
         <div style={{ marginTop: 6, color: 'var(--crm-color-warning)' }}>
-          {d.avisos.map((a, i) => <div key={i}>· {a}</div>)}
+          {avisos.map((a, i) => <div key={i}>· {a}</div>)}
         </div>
       )}
 
@@ -709,6 +724,15 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * PROPUESTA —renglones con su producto, candidatos de los desconocidos y lo
    * que sugirió la IA— y se precarga. La persona revisa y confirma. */
   const [propuestaIa, setPropuestaIa] = useState(null);
+  /** Los precios de este papel traen el IVA adentro y ya se pasaron a netos (ver domain/ivaAdentro.js). */
+  const [ivaAdentro, setIvaAdentro] = useState(false);
+  /** Los renglones del papel marcados «de prueba» (0242), por número de renglón. */
+  const [pruebas, setPruebas] = useState(() => new Set());
+  const marcarPrueba = (i, si) => setPruebas((prev) => {
+    const n = new Set(prev);
+    if (si) n.add(i); else n.delete(i);
+    return n;
+  });
   const [cargandoIa, setCargandoIa] = useState(false);
   const [eligiendoIa, setEligiendoIa] = useState(false);
   /** CAE leído por la IA (cuando el QR no se leyó y la lectura no lo trae). */
@@ -1003,7 +1027,26 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * y las PERCEPCIONES se suman al final (no son IVA: son pago a cuenta de otro
    * impuesto). Sin esto el total del sistema no cerraba con el del proveedor.
    */
-  const bruto = items.reduce((a, it) => a + calcRow(it).neto, 0);
+  /** El neto de un renglón del papel, como lo leyó la IA (sin el IVA si el papel lo trae adentro). */
+  const netoDelPapel = (x) => {
+    const importe = Number(x.importe) || (Number(x.cantidad) || 0) * (Number(x.costoBulto ?? x.precioUnitario) || 0) * (1 - (Number(x.dto) || 0) / 100);
+    return r2(ivaAdentro ? sinIva(importe, x.iva ?? 21) : importe);
+  };
+  /*
+   * LOS RENGLONES DE PRUEBA (0242, pedido del dueño): lo que se pidió poco para
+   * probar y no se da de alta. Suman al pie como un renglón más (neto, IVA,
+   * total); no entran al stock ni tocan costos. Solo en factura o liquidación,
+   * y solo mientras el renglón no tenga producto.
+   */
+  const papelDePrueba = (tipo === 'factura' || tipo === 'liquidacion') && propuestaIa?.estado === 'lista'
+    ? (propuestaIa.renglones || []).filter((x) => pruebas.has(x.i) && !items.some((it) => it.renglonIa === x.i))
+    : [];
+  const idsPrueba = new Set(papelDePrueba.map((x) => x.i));
+  const renglonesPrueba = papelDePrueba.map((x) => ({
+    descripcion: x.descripcion || 'Renglón de prueba', codigo: String(x.codigo ?? ''),
+    cantidad: Number(x.cantidad) || 0, neto: netoDelPapel(x), iva: x.iva ?? undefined,
+  }));
+  const bruto = items.reduce((a, it) => a + calcRow(it).neto, 0) + renglonesPrueba.reduce((a, p) => a + p.neto, 0);
 
   /** % del papel; el importe se puede corregir porque el proveedor redondea a su modo. */
   const [bonifPct, setBonifPct] = useState('');
@@ -1059,6 +1102,10 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       const neto = calcRow(it).neto * factorBonif;
       const al = discriminaIva ? (Number(it.iva) || 0) : 0;
       porAlicuota.set(al, (porAlicuota.get(al) || 0) + neto);
+    }
+    for (const p of renglonesPrueba) {
+      const al = discriminaIva ? Number(p.iva ?? 21) : 0;
+      porAlicuota.set(al, (porAlicuota.get(al) || 0) + p.neto * factorBonif);
     }
     let neto = 0;
     let iva = 0;
@@ -1160,8 +1207,6 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * producto (12/10/2026). Por defecto tildado si el papel trae un código
    * distinto del que tiene el producto.
    */
-  /** Los precios de este papel traen el IVA adentro y ya se pasaron a netos (ver domain/ivaAdentro.js). */
-  const [ivaAdentro, setIvaAdentro] = useState(false);
   const filaDeRenglon = (x, prod, porBulto) => {
     const codigo = String(x.codigo ?? '').trim();
     const entry = (prod.formatosCompra || []).find((e) => e.proveedorId === parseInt(provId, 10));
@@ -1401,11 +1446,9 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   const porQueNoCierra = (() => {
     if (!conIa || propuestaIa?.estado !== 'lista' || !(totalPapel > 0) || cierraConPapel || pareceIvaAdentro) return null;
     const rs = propuestaIa.renglones || [];
-    const importePapel = (x) => Number(x.importe) || (Number(x.cantidad) || 0) * (Number(x.costoBulto ?? x.precioUnitario) || 0) * (1 - (Number(x.dto) || 0) / 100);
-    const netoPapel = (x) => r2(ivaAdentro ? sinIva(importePapel(x), x.iva ?? 21) : importePapel(x));
-    const sinCargar = rs.filter((x) => !porRenglon.has(x.i));
+    const sinCargar = rs.filter((x) => !porRenglon.has(x.i) && !idsPrueba.has(x.i));
     const distintos = rs.filter((x) => porRenglon.has(x.i))
-      .map((x) => ({ x, papel: netoPapel(x), cargado: r2(calcRow(porRenglon.get(x.i)).neto) }))
+      .map((x) => ({ x, papel: netoDelPapel(x), cargado: r2(calcRow(porRenglon.get(x.i)).neto) }))
       .filter((dif) => Math.abs(dif.cargado - dif.papel) > 1);
     const deMas = items.filter((it) => it.productoId && it.renglonIa == null);
     const pie = propuestaIa.pie || {};
@@ -1418,7 +1461,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       !sinCargar.length && !distintos.length ? comparar('IVA', sumaDe(pie.ivas), r2(tot.iva)) : null,
     ].filter(Boolean);
     return {
-      sinCargar, netoSinCargar: r2(sinCargar.reduce((a, x) => a + netoPapel(x), 0)),
+      sinCargar, netoSinCargar: r2(sinCargar.reduce((a, x) => a + netoDelPapel(x), 0)),
       distintos, deMas, netoDeMas: r2(deMas.reduce((a, it) => a + calcRow(it).neto, 0)), pieDistinto,
     };
   })();
@@ -1936,6 +1979,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       percepciones: percCalculadas
         .filter((p) => p.aplicar && p.importe > 0.009)
         .map((p) => ({ nombre: p.nombre, alicuota: Number(p.alicuota) || 0, base: p.base, importe: r2(p.importe), tipo: p.tipo || '' })),
+      renglonesPrueba: renglonesPrueba.length ? renglonesPrueba : undefined,
       // Costo del bulto y tamaño del bulto viajan JUNTOS: son un solo hecho
       // ("la bolsa de 20 kg sale $40.000") y por separado el $/kg mentiría.
       actualizarCostos: payloadCostos,
@@ -2326,6 +2370,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           onUsarEncabezado={usarEncabezadoIa}
           onCrearProducto={isAdmin && provId ? (x) => setAltaProducto({ renglon: x, prodId: null }) : null}
           onEditarProducto={isAdmin ? (x, prodId) => setEdicion({ renglon: x, prodId }) : null}
+          pruebas={idsPrueba}
+          onPrueba={tipo === 'factura' || tipo === 'liquidacion' ? marcarPrueba : null}
         />
       )}
       {esConversion ? (
@@ -2975,8 +3021,14 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         ) : (
           <div className={cx(s.callout, s.info)}>
             {itemsValidos === 1 ? 'El ítem' : `Los ${itemsValidos} ítems`} de este comprobante{' '}
-            <strong>entran al stock de {store.getSucursal(parseInt(sucId, 10))?.nombre || 'la sucursal elegida'}</strong>.
+            <strong>{itemsValidos === 1 ? 'entra' : 'entran'} al stock de {store.getSucursal(parseInt(sucId, 10))?.nombre || 'la sucursal elegida'}</strong>.
             {' '}Si la mercadería llegó a otra sucursal, cambiala en el paso 1.
+            {renglonesPrueba.length > 0 && (
+              <> {renglonesPrueba.length === 1
+                ? <>El renglón de prueba ({money(renglonesPrueba[0].neto)} neto) suma al total pero <strong>no entra al stock</strong>.</>
+                : <>Los {renglonesPrueba.length} renglones de prueba ({money(renglonesPrueba.reduce((a, p) => a + p.neto, 0))} neto) suman al total pero <strong>no entran al stock</strong>.</>}
+              </>
+            )}
           </div>
         )
       )}
@@ -3913,6 +3965,18 @@ export function ComprobanteDetalleModal({ id, soloLectura = false }) {
       <h3 className={s['card-title']}>Ítems</h3>
       <Table cols={[{ h: 'Producto' }, { h: 'Present.' }, { h: 'Cant.', num: true }, { h: 'Costo', num: true }, { h: 'Desc.', num: true }, { h: 'IVA', num: true }, { h: 'Subtotal', num: true }]}>
         {filas}
+        {/* Los de prueba (0242): están en el total, pero no son productos ni entraron al stock. */}
+        {(c.renglonesPrueba ?? []).map((p, i) => (
+          <tr key={`prueba-${i}`}>
+            <td>{p.descripcion} <span className={s.hint} style={{ margin: 0 }}> · de prueba</span></td>
+            <td className={s.muted}>no entró al stock</td>
+            <td className={s.num}>{num(p.cantidad, 3)}</td>
+            <td className={s.num}>—</td>
+            <td className={s.num}>—</td>
+            <td className={s.num}>{num(p.iva, 1)}%</td>
+            <td className={cx(s.num, s.mono)}>{money(p.neto)}</td>
+          </tr>
+        ))}
       </Table>
       {/* El pie, como lo lee el papel: así se puede cuadrar contra la factura. */}
       <div className={cx(s.callout, s.ok)} style={{ marginTop: 12 }}>
