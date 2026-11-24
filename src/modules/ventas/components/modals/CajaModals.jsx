@@ -503,6 +503,8 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
               Es un pago a un proveedor: queda a su cuenta
             </label>
           )}
+        </div>
+      )}
 
       {esPagoProveedor && (
         <>
@@ -566,9 +568,6 @@ export function MovimientoCajaModal({ cajaSesionId, onChange }) {
             </div>
           )}
         </>
-      )}
-
-        </div>
       )}
 
       <div className={s['form-grid']}>
