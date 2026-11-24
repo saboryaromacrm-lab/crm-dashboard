@@ -9,6 +9,7 @@ import { bultoDelRenglon, cargaDelRenglon, nombreDelRenglon } from '../../domain
 import { deOtraSucursal, esJefeSesion, pagoSeOfrece } from '../../domain/pagosACuenta.js';
 import { emparejarPercepciones, tipoSegunNombre } from '../../domain/percepciones.js';
 import { contraLaOtraMitad } from '../../domain/otraMitad.js';
+import { preciosConIvaAdentro, sinIva } from '../../domain/ivaAdentro.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { verificadorEan13 } from '@core/services/barcode.js';
 import { ModalShell } from '../Modal.jsx';
@@ -1159,6 +1160,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * producto (12/10/2026). Por defecto tildado si el papel trae un código
    * distinto del que tiene el producto.
    */
+  /** Los precios de este papel traen el IVA adentro y ya se pasaron a netos (ver domain/ivaAdentro.js). */
+  const [ivaAdentro, setIvaAdentro] = useState(false);
   const filaDeRenglon = (x, prod, porBulto) => {
     const codigo = String(x.codigo ?? '').trim();
     const entry = (prod.formatosCompra || []).find((e) => e.proveedorId === parseInt(provId, 10));
@@ -1174,7 +1177,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       modo: carga.modo,
       porDisplay: porDisplayDe(entry),
       // El costo vino del papel: que el catálogo no lo pise al re-elegir.
-      costoBulto: carga.costoBulto != null ? String(carga.costoBulto) : '',
+      costoBulto: carga.costoBulto == null ? ''
+        : String(ivaAdentro ? sinIva(carga.costoBulto, x.iva ?? prod.iva ?? 21) : carga.costoBulto),
       descuento: String(x.dto || 0),
       iva: String(x.iva ?? prod.iva ?? 21),
       costoAuto: false,
@@ -1372,15 +1376,33 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   const tolerancia = Math.max(1, items.length * 0.05);
   const cierraConPapel = totalPapel > 0 && Math.abs(difPapel) <= tolerancia;
   /*
+   * FACTURA A CON LOS PRECIOS CON IVA (24/11/2026): lo cargado como neto ya da
+   * el total del papel. Un clic pasa a netos los costos que vinieron del papel
+   * (los del catálogo ya son netos) y los renglones que se asocien después.
+   */
+  const percPapel = propuestaIa?.estado === 'lista'
+    ? (propuestaIa.pie?.percepciones || []).reduce((a, x) => a + (Number(x.importe) || 0), 0)
+    : percTotal;
+  const pareceIvaAdentro = discriminaIva && !ivaAdentro && !cierraConPapel
+    && preciosConIvaAdentro({ neto: tot.neto, iva: tot.iva, percepciones: percPapel, totalPapel, tolerancia });
+  const pasarANetos = () => {
+    setIvaAdentro(true);
+    setItems((rows) => rows.map((it) => (it.costoAuto || it.costoBulto === ''
+      ? it
+      : { ...it, costoBulto: String(sinIva(it.costoBulto, it.iva)) })));
+    toast('Costos pasados a netos: el IVA ahora se suma una sola vez.', 'ok');
+  };
+  /*
    * ¿POR QUÉ NO CIERRA? (12/10/2026, pedido del dueño): con la lectura de la
    * IA se puede decir DÓNDE está la diferencia, renglón por renglón, en vez de
    * un «faltan $X» a secas: lo que no se cargó, lo cargado distinto del papel,
    * lo cargado de más, y el pie (bonificación, percepciones, IVA).
    */
   const porQueNoCierra = (() => {
-    if (!conIa || propuestaIa?.estado !== 'lista' || !(totalPapel > 0) || cierraConPapel) return null;
+    if (!conIa || propuestaIa?.estado !== 'lista' || !(totalPapel > 0) || cierraConPapel || pareceIvaAdentro) return null;
     const rs = propuestaIa.renglones || [];
-    const netoPapel = (x) => r2(Number(x.importe) || (Number(x.cantidad) || 0) * (Number(x.costoBulto ?? x.precioUnitario) || 0) * (1 - (Number(x.dto) || 0) / 100));
+    const importePapel = (x) => Number(x.importe) || (Number(x.cantidad) || 0) * (Number(x.costoBulto ?? x.precioUnitario) || 0) * (1 - (Number(x.dto) || 0) / 100);
+    const netoPapel = (x) => r2(ivaAdentro ? sinIva(importePapel(x), x.iva ?? 21) : importePapel(x));
     const sinCargar = rs.filter((x) => !porRenglon.has(x.i));
     const distintos = rs.filter((x) => porRenglon.has(x.i))
       .map((x) => ({ x, papel: netoPapel(x), cargado: r2(calcRow(porRenglon.get(x.i)).neto) }))
@@ -2808,6 +2830,21 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                 ? 'cierra'
                 : `${difPapel > 0 ? 'sobran' : 'faltan'} ${money(Math.abs(difPapel))}`}
             </strong>
+          </div>
+        )}
+        {pareceIvaAdentro && (
+          <div className={cx(s.callout, s.danger)} style={{ marginTop: 8, fontSize: 13 }}>
+            <strong>Este proveedor pone los precios con el IVA incluido.</strong> Es factura A, pero los renglones
+            ya suman el total del papel ({money(totalPapel)}): el IVA se está sumando dos veces y los costos
+            quedarían más caros de lo que son.
+            <div style={{ marginTop: 6 }}>
+              <Btn small onClick={pasarANetos}>Pasarlos a netos</Btn>
+            </div>
+          </div>
+        )}
+        {ivaAdentro && (
+          <div className={s.hint} style={{ marginTop: 6 }}>
+            Los precios de este papel vienen con IVA incluido: se cargaron sin IVA.
           </div>
         )}
         {porQueNoCierra && (
