@@ -15,6 +15,7 @@ import { CuentasAPagarPanel } from '../panels/CuentasAPagarPanel.jsx';
 import { CategoriasPanel } from '../panels/CategoriasPanel.jsx';
 import { ProveedoresPanel } from '../panels/ProveedoresPanel.jsx';
 import { ResumenPanel } from '../panels/ResumenPanel.jsx';
+import { FletesPanel } from '../panels/FletesPanel.jsx';
 
 /** Los `id` coinciden con `GASTOS_PANELS` (config/gastos.config.js). La ficha
  *  completa del proveedor vive en el módulo Proveedores (0068); acá, los de gastos. */
@@ -23,6 +24,7 @@ const PANEL_COMPONENTS = {
   cuentas: CuentasAPagarPanel,
   categorias: CategoriasPanel,
   proveedores: ProveedoresPanel,
+  fletes: FletesPanel,
   resumen: ResumenPanel,
 };
 

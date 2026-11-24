@@ -13,6 +13,11 @@ import {
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
 import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
 import { textoReparto } from '../../domain/reparto.js';
+import {
+  RENGLON_VACIO, conceptoDeFila, etiquetaPapel, faltaEnFleteDe, filaDeRenglon, fleteDeFila,
+} from '../../domain/fletes.js';
+import { TIPOS_COMPROBANTE } from '@modules/productos/domain/constants.js';
+import { FleteRenglon } from './FleteRenglon.jsx';
 
 /* ==================================================================== *
  * Alta y edición del gasto
@@ -64,7 +69,6 @@ function DescuentaDeGasto({ f, setF, opciones, setProvNc, gastoId, original }) {
   );
 }
 
-const RENGLON_VACIO = { concepto: '', monto: '', cantidad: '' };
 const claveConcepto = (c) => (c ?? '').trim().toLowerCase();
 const conIva = (sinIva) => (sinIva ? ' sin IVA' : '');
 
@@ -202,7 +206,7 @@ export function GastoFormModal({ gastoId, onChange }) {
     /* Un gasto viejo no tiene renglones: se le arma UNO con su descripción y
      * su total, así editarlo lo migra al formato nuevo sin perder nada. */
     setItems(original.items?.length
-      ? original.items.map((i) => ({ concepto: i.concepto, monto: String(i.monto), cantidad: i.cantidad ? String(i.cantidad) : '' }))
+      ? original.items.map(filaDeRenglon)
       : [{ ...RENGLON_VACIO, concepto: original.descripcion || 'Gasto', monto: String(Math.abs(original.total || 0) || '') }]);
     /* El modo no se guarda: SE DEDUCE. Si el neto guardado coincide con la
      * suma de los renglones y hay IVA, se cargaron netos (factura A). El gasto
@@ -220,15 +224,29 @@ export function GastoFormModal({ gastoId, onChange }) {
   }, [original]);
 
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
-  const setItem = (i, k) => (e) => setItems((xs) => xs.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)));
-  const filasValidas = items.filter((i) => i.concepto.trim() && Number(i.monto) > 0);
+  const cambiarItem = (i, patch) => setItems((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const setItem = (i, k) => (e) => cambiarItem(i, { [k]: e.target.value });
+  /*
+   * EL TRANSPORTE (0244): si el proveedor trae mercadería de otros, cada renglón dice
+   * de quién trajo (o «otra cosa») y el concepto del de un proveedor se escribe solo.
+   * Una NC del transporte no lo pide.
+   */
+  const esTransporte = !!proveedores.find((x) => x.id === Number(f.proveedorId))?.traeMercaderia && f.tipoDoc !== 'nota_credito';
+  const deMercaderia = useMemo(
+    () => proveedores.filter((p) => p.proveeMercaderia && !p.traeMercaderia).map((p) => ({ id: p.id, nombre: p.nombre })),
+    [proveedores],
+  );
+  const nombreDe = (id) => proveedores.find((p) => p.id === id)?.nombre ?? '';
+  const conceptoDe = (it) => (esTransporte ? conceptoDeFila(it, nombreDe) : it.concepto.trim());
+  const faltaFlete = esTransporte ? items.map(faltaEnFleteDe).find(Boolean) ?? null : null;
+  const filasValidas = items.filter((i) => conceptoDe(i) && Number(i.monto) > 0);
   /**
    * UN IMPORTE SIN CONCEPTO NO SE SUMA — y hasta hoy no lo decía nadie: el
    * renglón se descartaba en silencio, el Neto se quedaba en $0,00 y el que
    * cargaba no tenía forma de saber por qué. Es el caso real que reportó el
    * dueño. Ahora se avisa al lado del Neto y el guardado se planta.
    */
-  const importeSinConcepto = items.some((i) => !i.concepto.trim() && Number(i.monto) > 0);
+  const importeSinConcepto = !esTransporte && items.some((i) => !i.concepto.trim() && Number(i.monto) > 0);
   /** La suma de los renglones: el TOTAL en modo final, el NETO en modo aparte. */
   const suma = r2(filasValidas.reduce((a, i) => a + Number(i.monto), 0));
   /** El pie: impuestos internos + percepciones. SIEMPRE suma, en los dos modos. */
@@ -257,6 +275,11 @@ export function GastoFormModal({ gastoId, onChange }) {
       return { ...x, proveedorId: id, categoriaId, ...(p?.letraGasto ? { letra: p.letraGasto } : {}) };
     });
     if (p?.letraGasto) setIvaAparte(p.letraGasto === 'A');
+    if (!p?.traeMercaderia) {
+      setItems((xs) => xs.map((x) => (x.fleteOrigen
+        ? { ...x, fleteOrigen: '', fleteProveedorId: '', fleteComprobanteId: '', fleteReferencia: '', concepto: conceptoDeFila(x, nombreDe) }
+        : x)));
+    }
   };
 
   /*
@@ -405,6 +428,7 @@ export function GastoFormModal({ gastoId, onChange }) {
       toast('Hay un importe sin concepto: escribí de qué es o el renglón no se suma.', 'err');
       return;
     }
+    if (faltaFlete && !bloqueado) { toast(faltaFlete, 'err'); return; }
     if (!filasValidas.length) { toast('Cargá al menos un concepto con su monto.', 'err'); return; }
     if (!(total > 0)) { toast('El importe tiene que ser mayor a 0.', 'err'); return; }
     // En modo aparte el IVA CAMBIA el total, así que el error corta antes de
@@ -462,7 +486,9 @@ export function GastoFormModal({ gastoId, onChange }) {
         /* Los RENGLONES mandan (0067): el servidor suma, arma la descripción
          * con los conceptos, y `ivaAparte` le dice cómo leer los montos —
          * finales (IVA adentro, acotado) o netos de factura A (IVA sumado). */
-        items: filasValidas.map((i) => ({ concepto: i.concepto.trim(), monto: r2(i.monto), cantidad: Number(i.cantidad) > 0 ? Number(i.cantidad) : null })),
+        items: filasValidas.map((i) => ({
+          concepto: conceptoDe(i), monto: r2(i.monto), cantidad: Number(i.cantidad) > 0 ? Number(i.cantidad) : null, ...fleteDeFila(i),
+        })),
         iva: r2(f.iva),
         ivaAparte,
         /* El pie abierto (0071). Van SIEMPRE los cuatro, incluso en 0: si un
@@ -687,7 +713,14 @@ export function GastoFormModal({ gastoId, onChange }) {
       </div>
 
       {/* ---- Los renglones: concepto + monto, como se lee del papel ---- */}
-      <div className={s['section-title']}>Conceptos</div>
+      <div className={s['section-title']}>{esTransporte ? 'Qué trajo' : 'Conceptos'}</div>
+      {esTransporte && (
+        <div className={s.callout}>
+          <strong>{provDelGasto?.nombre}</strong> es un transporte: en cada renglón decí <strong>de qué proveedor trajo</strong> la
+          mercadería —y su factura o remito, si ya está cargado— o marcalo como <strong>otra cosa</strong>.
+          {bloqueado && ' Este gasto ya tiene pagos: para corregir de quién trajo, usá «De quién trajo» en su detalle.'}
+        </div>
+      )}
       {/* El MODO lo trae la letra (A → netos) y acá se corrige si el papel
           dice otra cosa. Es UNA decisión para todos los renglones: las
           facturas no mezclan renglones netos con finales. */}
@@ -705,7 +738,14 @@ export function GastoFormModal({ gastoId, onChange }) {
       <datalist id="gasto-conceptos">
         {(conceptosUsados ?? []).map((c) => <option key={c.concepto} value={c.concepto} />)}
       </datalist>
-      {items.map((it, i) => (
+      {esTransporte && items.map((it, i) => (
+        <FleteRenglon
+          key={i} n={i} fila={it} cambiar={(patch) => cambiarItem(i, patch)}
+          quitar={items.length > 1 ? () => setItems((xs) => xs.filter((_, j) => j !== i)) : null}
+          proveedores={deMercaderia} nombreDe={nombreDe} ivaAparte={ivaAparte} disabled={bloqueado}
+        />
+      ))}
+      {!esTransporte && items.map((it, i) => (
         <div key={i} style={{ marginBottom: 6 }}>
           {/* En el celular el concepto toma el renglón entero y cantidad + monto bajan. */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
@@ -747,7 +787,7 @@ export function GastoFormModal({ gastoId, onChange }) {
       {!bloqueado && (
         <div style={{ marginBottom: 4 }}>
           <Btn small onClick={() => setItems((xs) => [...xs, RENGLON_VACIO])}>
-            + Agregar concepto
+            {esTransporte ? '+ Agregar renglón' : '+ Agregar concepto'}
           </Btn>
         </div>
       )}
@@ -1070,6 +1110,11 @@ export function DetalleGastoModal({ gastoId, onChange }) {
 
   const cat = getCategoria(g.categoriaId);
   const vivo = g.estado !== 'anulado';
+  /* El transporte (0244): de dónde vino cada renglón, y corregirlo aunque tenga pagos. */
+  const conFlete = (g.items ?? []).length > 0 && (
+    !!proveedores.find((p) => p.id === g.proveedorId)?.traeMercaderia || g.items.some((i) => i.fleteOrigen)
+  );
+  const nombreDe = (id) => proveedores.find((p) => p.id === id)?.nombre ?? `#${id}`;
 
   return (
     <ModalShell
@@ -1082,6 +1127,7 @@ export function DetalleGastoModal({ gastoId, onChange }) {
           { texto: 'Aplicar un pago existente', clase: 'btn-ghost', onClick: () => openModal('aplicarAGasto', { gastoId: g.id, onChange }) },
           { texto: 'Pagar', clase: 'btn-primary', onClick: () => openModal('pagarGasto', { gastoId: g.id, onChange }) },
         ] : []),
+        ...(vivo && conFlete ? [{ texto: 'De quién trajo', clase: 'btn-ghost', onClick: () => openModal('fletesGasto', { gastoId: g.id, onChange, alDetalle: true }) }] : []),
         ...(vivo ? [{ texto: 'Editar', clase: 'btn-edit', onClick: () => openModal('gastoForm', { gastoId: g.id, onChange }) }] : []),
         ...(vivo && g.pagado <= 0.009 ? [{ texto: 'Anular', clase: 'btn-delete', onClick: () => openModal('anularGasto', { gastoId: g.id, onChange }) }] : []),
         { texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal },
@@ -1136,6 +1182,31 @@ export function DetalleGastoModal({ gastoId, onChange }) {
         </div>
       )}
 
+      {conFlete && (
+        <>
+          <div className={s['section-title']}>De dónde vino</div>
+          <Table cols={[{ h: 'Renglón' }, { h: 'De' }, { h: 'Su factura o remito' }, { h: 'Monto', num: true }]} empty="">
+            {g.items.map((i) => (
+              <tr key={i.id}>
+                <td>{i.concepto}</td>
+                <td>
+                  {i.fleteOrigen === 'proveedor' ? nombreDe(i.fleteProveedorId)
+                    : i.fleteOrigen === 'otro' ? 'Otra cosa'
+                      : <span style={{ color: 'var(--crm-color-danger)', fontWeight: 600 }}>Sin decir</span>}
+                </td>
+                <td>
+                  {i.fletePapel ? `${etiquetaPapel(i.fletePapel, TIPOS_COMPROBANTE)} · ${fmtFecha(i.fletePapel.fecha)}`
+                    : i.fleteOrigen === 'proveedor'
+                      ? <span className={s.muted}>Sin cargar todavía{i.fleteReferencia ? ` (nº ${i.fleteReferencia})` : ''}</span>
+                      : <span className={s.muted}>—</span>}
+                </td>
+                <td className={s.num}>{money(i.monto)}</td>
+              </tr>
+            ))}
+          </Table>
+        </>
+      )}
+
       <div className={s['section-title']}>Pagos aplicados</div>
       <Table
         cols={[
@@ -1176,6 +1247,69 @@ export function DetalleGastoModal({ gastoId, onChange }) {
         <strong>Quitar</strong> desaplica el pago: la plata que salió sigue registrada y vuelve a
         la bandeja de pagos sin aplicar. No devuelve dinero a la caja.
       </div>
+    </ModalShell>
+  );
+}
+
+/* ==================================================================== *
+ * De quién trajo (0244): corregir de dónde vino cada renglón del transporte
+ * ==================================================================== */
+
+/**
+ * Solo el origen de cada renglón —proveedor, su factura o remito, u otra cosa—: no
+ * toca importes, así que vale con el gasto ya pagado. Lo abre el detalle del gasto
+ * (y vuelve a él) y Gastos › Fletes para las cargas viejas sin asignar.
+ */
+export function FletesGastoModal({ gastoId, onChange, alDetalle = false }) {
+  const { closeModal, openModal, proveedores, act, toast } = useGastos();
+  const { data: g, loading } = useResource(`gasto-fletes:${gastoId}`, () => gastosApi.gasto(gastoId));
+  const [filas, setFilas] = useState([]);
+  useEffect(() => { if (g) setFilas((g.items ?? []).map(filaDeRenglon)); }, [g]);
+  const deMercaderia = useMemo(
+    () => proveedores.filter((p) => p.proveeMercaderia && !p.traeMercaderia).map((p) => ({ id: p.id, nombre: p.nombre })),
+    [proveedores],
+  );
+  const nombreDe = (id) => proveedores.find((p) => p.id === id)?.nombre ?? '';
+  const [guardando, setGuardando] = useState(false);
+  const terminar = () => (alDetalle ? openModal('detalleGasto', { gastoId, onChange }) : closeModal());
+
+  const guardar = async () => {
+    const falta = filas.map(faltaEnFleteDe).find(Boolean);
+    if (falta) { toast(falta, 'err'); return; }
+    setGuardando(true);
+    const ok = await act(
+      gastosApi.asignarFletes({ renglones: filas.map((f, idx) => ({ itemId: g.items[idx].id, ...fleteDeFila(f) })) }),
+      'Listo: quedó de dónde vino cada renglón.',
+    );
+    setGuardando(false);
+    if (ok) { onChange?.(); terminar(); }
+  };
+
+  return (
+    <ModalShell
+      title={g ? `De quién trajo · gasto #${g.id}` : 'De quién trajo'}
+      subtitle={g ? `${nombreProveedor(g, proveedores)} · ${TIPOS_DOC_GASTO[g.tipoDoc] || g.tipoDoc} ${g.letra} ${g.numero || ''} · ${fmtFecha(g.fecha)}` : ''}
+      wide
+      onClose={terminar}
+      footer={[
+        { texto: 'Cancelar', clase: 'btn-ghost', onClick: terminar },
+        ...(filas.length ? [{ texto: guardando ? 'Guardando…' : 'Guardar', clase: 'btn-primary', onClick: guardar, disabled: guardando }] : []),
+      ]}
+    >
+      {loading && <div className={s['empty-state']}>Cargando…</div>}
+      {g && !filas.length && (
+        <div className={cx(s.callout, s.warn)}>Este gasto no tiene renglones: editalo para cargarlos y después decí de dónde vino cada uno.</div>
+      )}
+      {filas.map((fila, i) => (
+        <FleteRenglon
+          key={g.items[i].id} n={i} fila={fila} soloOrigen
+          cambiar={(patch) => setFilas((xs) => xs.map((x, j) => (j === i ? { ...x, ...patch } : x)))}
+          proveedores={deMercaderia} nombreDe={nombreDe}
+        />
+      ))}
+      {filas.length > 0 && (
+        <div className={s.hint}>Los importes no cambian: solo de dónde vino cada renglón. Vale aunque el gasto ya esté pagado.</div>
+      )}
     </ModalShell>
   );
 }

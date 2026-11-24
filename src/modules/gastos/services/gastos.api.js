@@ -49,6 +49,11 @@ export const gastosApi = {
   conceptosUsados: (proveedorId) => httpClient.get(`/gastos/conceptos${qs({ proveedorId })}`),
   resumen: (filtros) => httpClient.get(`/gastos/resumen${qs(filtros)}`),
 
+  /* Fletes de mercadería (0244): el reporte, los papeles de un proveedor y de dónde vino cada renglón. */
+  fletes: (filtros) => httpClient.get(`/gastos/fletes${qs(filtros)}`),
+  papelesParaFlete: (proveedorId) => httpClient.get(`/gastos/fletes/papeles/${proveedorId}`),
+  asignarFletes: (data) => httpClient.put('/gastos/fletes', data),
+
   /* Pagar un gasto (crea el pago al proveedor y lo imputa de una) */
   pagarGasto: (id, data) => httpClient.post(`/gastos/${id}/pagos`, data),
   /* Usar un pago a cuenta que ya existía */

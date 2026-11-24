@@ -16,6 +16,7 @@ import { verificadorEan13 } from '@core/services/barcode.js';
 import { ModalShell } from '../Modal.jsx';
 import { DetalleProductoModal, ProductoFormModal } from './ProductoModals.jsx';
 import { LecturaIaRenglones } from './LecturaIaRenglones.jsx';
+import { FleteDelComprobante, FletesSinPapel } from './FletesSinPapel.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
 import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
@@ -486,6 +487,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * en la bandeja hasta que alguien se acuerde.
    */
   const [pagosACuenta, setPagosACuenta] = useState([]);
+  /** Los fletes del transporte que se vinculan a este papel (0244): ver `FletesSinPapel`. */
+  const [fletesTildados, setFletesTildados] = useState([]);
   useEffect(() => {
     let vivo = true;
     const pid = parseInt(provId, 10);
@@ -1713,6 +1716,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       // ("la bolsa de 20 kg sale $40.000") y por separado el $/kg mentiría.
       actualizarCostos: payloadCostos,
       ventaPorBulto: payloadVentaPorBulto.length ? payloadVentaPorBulto : undefined,
+      fletes: permiteRecepcion && fletesTildados.length ? fletesTildados : undefined,
       activarProveedor: aActivar.map((d) => d.productoId),
       confirmarSaltos,
       /*
@@ -1744,6 +1748,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     if (costosAActualizar.length) partes.push(`${costosAActualizar.length} costo(s)`);
     if (aActivar.length) partes.push(`${aActivar.length} activo(s)`);
     if (tomarPagos.length) partes.push(`${tomarPagos.length} pago(s) de sucursal aplicado(s)`);
+    if (permiteRecepcion && fletesTildados.length) partes.push(`${fletesTildados.length} flete(s) vinculado(s)`);
     if (echeqs.length) partes.push(`${echeqs.length} echeq(s) imputado(s)`);
     if (ahora > 0) partes.push(`${money(ahora)} pagados`);
     toast(partes.length ? `Comprobante registrado · ${partes.join(' · ')}.` : 'Comprobante registrado.', 'ok');
@@ -2999,6 +3004,10 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         </>
       )}
 
+      {permiteRecepcion && (
+        <FletesSinPapel proveedorId={parseInt(provId, 10) || 0} puntoVenta={puntoVenta} numero={numero} onChange={setFletesTildados} />
+      )}
+
       {!generaDeuda && (
         <div className={cx(s.callout, s.info)}>
           {TIPOS_COMPROBANTE[tipo]?.label || 'Este comprobante'} no genera deuda: no hay nada que
@@ -3777,6 +3786,9 @@ export function ComprobanteDetalleModal({ id, soloLectura = false }) {
         <Di label="Total">{money(c.total)}</Di>
       </div>
       {c.observaciones && <div className={s.callout}>{c.observaciones}</div>}
+
+      {/* ---- Lo que costó traerla (0244): los fletes del transporte vinculados a este papel ---- */}
+      <FleteDelComprobante id={c.id} />
 
       {/* ---- De dónde salió la plata ----
           Solo para documentos que GENERAN deuda: un remito o una orden de

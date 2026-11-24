@@ -341,6 +341,8 @@ export function ProveedorFormModal({ proveedor: original = null, onChange }) {
     letraGasto: '',
     /** El rubro que factura (0240): la carga de gastos lo elige solo. '' = sin rubro. */
     rubroGastoId: '',
+    /** Es un transporte (0244): cada renglón de su factura dice de qué proveedor trajo. */
+    traeMercaderia: false,
   });
 
   useEffect(() => {
@@ -356,6 +358,7 @@ export function ProveedorFormModal({ proveedor: original = null, onChange }) {
       proveeGastos: !!original.proveeGastos,
       letraGasto: original.letraGasto ?? '',
       rubroGastoId: original.rubroGastoId ? String(original.rubroGastoId) : '',
+      traeMercaderia: !!original.traeMercaderia,
     });
   }, [original]);
 
@@ -368,7 +371,10 @@ export function ProveedorFormModal({ proveedor: original = null, onChange }) {
       toast('Marcá al menos qué provee: mercadería, gastos o las dos cosas.', 'err');
       return;
     }
-    const payload = { ...f, nombre: f.nombre.trim(), cuit: f.cuit.trim(), rubroGastoId: f.rubroGastoId ? Number(f.rubroGastoId) : null };
+    const payload = {
+      ...f, nombre: f.nombre.trim(), cuit: f.cuit.trim(), rubroGastoId: f.rubroGastoId ? Number(f.rubroGastoId) : null,
+      traeMercaderia: f.proveeGastos && f.traeMercaderia,
+    };
     const ok = await act(
       original ? gastosApi.editarProveedor(original.id, payload) : gastosApi.crearProveedor(payload),
       original ? 'Proveedor actualizado.' : 'Proveedor creado.',
@@ -455,6 +461,18 @@ export function ProveedorFormModal({ proveedor: original = null, onChange }) {
           <input type="checkbox" checked={f.proveeGastos} onChange={setBool('proveeGastos')} />
           Gastos (aparece en Gastos)
         </label>
+        {f.proveeGastos && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+            <input id="prov-gasto-transporte" type="checkbox" checked={f.traeMercaderia} onChange={setBool('traeMercaderia')} />
+            Es un transporte: trae mercadería de otros proveedores
+          </label>
+        )}
+        {f.traeMercaderia && f.proveeGastos && (
+          <div className={s.hint} style={{ margin: '6px 0 0' }}>
+            Al cargar su factura, cada renglón pide de qué proveedor trajo (y su factura o remito) o si fue otra cosa. Lo que
+            cuesta traer la mercadería de cada uno se ve en Gastos › Fletes.
+          </div>
+        )}
         <div className={s.hint} style={{ margin: '8px 0 0' }}>
           Pueden estar las dos tildadas: el que trae la mercadería y además te cobra el flete es
           un solo proveedor, con un solo CUIT y una sola cuenta corriente.

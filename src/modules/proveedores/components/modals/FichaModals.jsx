@@ -164,7 +164,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
   const [f, setF] = useState({
     nombre: '', cuit: '', email: '', telefono: '', direccion: '',
     condicionIva: 'responsable_inscripto',
-    proveeMercaderia: true, proveeGastos: false, esLocal: false, letraGasto: '', rubroGastoId: '',
+    proveeMercaderia: true, proveeGastos: false, esLocal: false, letraGasto: '', rubroGastoId: '', traeMercaderia: false,
     condicionCompra: 'factura', medioHabitual: '', diasPago: '', modoCuenta: 'facturas',
     porcSinFactura: '', facturaMensual: false,
     minimoTransferencia: '',
@@ -181,6 +181,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       esLocal: !!original.esLocal,
       letraGasto: original.letraGasto ?? '',
       rubroGastoId: original.rubroGastoId ? String(original.rubroGastoId) : '',
+      traeMercaderia: !!original.traeMercaderia,
       condicionCompra: original.condicionCompra ?? 'factura',
       medioHabitual: original.medioHabitual ?? '',
       diasPago: original.diasPago ?? '',
@@ -229,6 +230,7 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
       letraGasto: f.letraGasto,
       /* Sin la lista de rubros (rol sin Gastos) no se toca el que tenga. */
       ...(rubros ? { rubroGastoId: f.rubroGastoId ? Number(f.rubroGastoId) : null } : {}),
+      traeMercaderia: f.proveeGastos && f.traeMercaderia,
       condicionCompra: f.condicionCompra,
       medioHabitual: f.medioHabitual,
       diasPago: f.diasPago === '' ? null : Number(f.diasPago),
@@ -363,6 +365,13 @@ export function FichaProveedorModal({ proveedorId, onChange }) {
             <input type="checkbox" checked={f.proveeGastos} onChange={setBool('proveeGastos')} />
             Factura gastos (aparece en Gastos)
           </label>
+          {/* 0244: el transporte. Al cargar su factura, cada renglón dice de qué proveedor trajo. */}
+          {f.proveeGastos && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input id="prov-trae-mercaderia" type="checkbox" checked={f.traeMercaderia} onChange={setBool('traeMercaderia')} />
+              Es un transporte: trae mercadería de otros proveedores
+            </label>
+          )}
           {/* 0164: solo una marca para filtrar (Proveedores, Pedidos, Productos, Existencias, Bajos en stock). */}
           <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input id="prov-es-local" type="checkbox" checked={f.esLocal} onChange={setBool('esLocal')} />

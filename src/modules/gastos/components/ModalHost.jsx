@@ -1,6 +1,6 @@
 import { useGastos } from '../context/GastosContext.jsx';
 import {
-  GastoFormModal, DetalleGastoModal, PagarGastoModal, AplicarAGastoModal, AnularGastoModal,
+  GastoFormModal, DetalleGastoModal, PagarGastoModal, AplicarAGastoModal, AnularGastoModal, FletesGastoModal,
 } from './modals/GastoModals.jsx';
 import {
   PagoFormModal, DetallePagoModal, AnularPagoModal, CuentaProveedorModal,
@@ -18,6 +18,7 @@ const REGISTRY = {
   pagarGasto: PagarGastoModal,
   aplicarAGasto: AplicarAGastoModal,
   anularGasto: AnularGastoModal,
+  fletesGasto: FletesGastoModal,
   pagoForm: PagoFormModal,
   detallePago: DetallePagoModal,
   anularPago: AnularPagoModal,

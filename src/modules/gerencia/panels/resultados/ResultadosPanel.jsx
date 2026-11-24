@@ -131,7 +131,16 @@ export function ResultadosPanel() {
                 <>
                   <TarjetasEstado col={vistaArmada.principal} contra={vistaArmada.contra} contraTxt={vistaArmada.contraTxt} objetivo={objetivo} esEmpresa={vistaArmada.empresa} />
                   {(data.avisos ?? []).map((a, i) => <Aviso key={i} tono={a.tono}>{a.texto}</Aviso>)}
-                  <CasillaDiferencias cuenta={data.config?.diferenciasInventario !== false} alCambiar={() => setVersion((v) => v + 1)} />
+                  <CasillaConfig
+                    id="resultados-diferencias" clave="diferenciasInventario" valor={data.config?.diferenciasInventario !== false}
+                    texto="Contar las diferencias de inventario (ajustes y controles de stock)" alCambiar={() => setVersion((v) => v + 1)}
+                  />
+                  {/* 0244: el flete de mercadería que ya está en el costo (flete % del formato) no es un gasto más. */}
+                  <CasillaConfig
+                    id="resultados-fletes" clave="fletesEnCosto" valor={data.config?.fletesEnCosto === true}
+                    texto="No contar como gasto el flete de mercadería de los proveedores que ya lo tienen en el costo (flete % de su formato)"
+                    alCambiar={() => setVersion((v) => v + 1)}
+                  />
                   <TablaEstado datos={data} columnas={vistaArmada.columnas} mesesOrigen={vistaArmada.meses} abiertos={abiertos} alternar={alternar} />
                   <div className={cx(s.hint)} style={{ margin: 0 }}>
                     Todo en neto, sin IVA (salvo el de lo vendido sin factura, que queda en la casa). Los costos van en negativo y abajo de cada importe, su % sobre las ventas netas. Tocá los grupos con ▸ para ver cada rubro.
@@ -156,15 +165,19 @@ export function ResultadosPanel() {
  * «muchas veces son ajustes que así nomás hago»). La elección se guarda en la
  * configuración de Resultados, así el margen, Ganancias y el Asesor cuentan lo
  * mismo en todos lados. Las mermas, vencidos y defectuosos se cuentan siempre.
+ *
+ * Y EL FLETE DE MERCADERÍA (0244): el que ya está en el costo por el flete % del
+ * formato de compra se puede sacar de los gastos, para no contarlo dos veces.
+ * Cada casilla se guarda al tocarla y recalcula el cuadro.
  */
-function CasillaDiferencias({ cuenta, alCambiar }) {
+function CasillaConfig({ id, clave, valor, texto, alCambiar }) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
-  const cambiar = async (valor) => {
+  const cambiar = async (nuevo) => {
     setGuardando(true);
     setError('');
     try {
-      await resultadosApi.guardarConfig({ diferenciasInventario: valor });
+      await resultadosApi.guardarConfig({ [clave]: nuevo });
       alCambiar();
     } catch (e) {
       setError(e?.message || 'No se pudo guardar.');
@@ -175,8 +188,8 @@ function CasillaDiferencias({ cuenta, alCambiar }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: guardando ? 'wait' : 'pointer', width: 'fit-content' }}>
-        <input id="resultados-diferencias" type="checkbox" checked={cuenta} disabled={guardando} onChange={(e) => cambiar(e.target.checked)} />
-        Contar las diferencias de inventario (ajustes y controles de stock)
+        <input id={id} type="checkbox" checked={valor} disabled={guardando} onChange={(e) => cambiar(e.target.checked)} />
+        {texto}
       </label>
       {error && <Aviso tono="warn">{error}</Aviso>}
     </div>

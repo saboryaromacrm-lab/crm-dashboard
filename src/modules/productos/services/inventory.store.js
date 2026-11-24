@@ -1255,6 +1255,8 @@ function _cleanComprobante(o) {
     renglonesPrueba: o.renglonesPrueba?.length ? o.renglonesPrueba : undefined,
     /* La venta por bulto cerrado que pasa al bulto nuevo (0243): viaja con el costo del formato. */
     ventaPorBulto: o.ventaPorBulto?.length ? o.ventaPorBulto : undefined,
+    /* Los fletes del transporte que trajo esta mercadería (0244): quedan vinculados a este papel. */
+    fletes: o.fletes?.length ? o.fletes.map(Number).filter(Boolean) : undefined,
     /*
      * Costos que el usuario aceptó actualizar desde "Impacto en precios".
      * `cantidad` es el tamaño del bulto de ESTA entrega (kg o unidades) y viaja
@@ -1392,6 +1394,10 @@ const facturarRemito = (remitoId, o) => _mutate(() => httpClient.post(`/comproba
 }));
 /** Las facturas de este proveedor que una NC/ND puede ajustar, con su saldo real. */
 const facturasReferenciables = (proveedorId) => httpClient.get('/comprobantes/referenciables/' + proveedorId);
+/** Los fletes de un transporte que esperan la factura o el remito de este proveedor (0244). */
+const fletesSinPapel = (proveedorId) => httpClient.get('/comprobantes/fletes-sin-papel/' + proveedorId);
+/** Los fletes vinculados a un comprobante: lo que costó traer esa mercadería (0244). */
+const fletesDelComprobante = (id) => httpClient.get(`/comprobantes/${id}/fletes`);
 
 /* ---- Pagos en sucursal (plata a cuenta de proveedores de MERCADERÍA) ---- */
 /**
@@ -1667,7 +1673,7 @@ export const inventoryStore = {
   costoNeto, costoNetoEntry, costoPrecio, costoPrecioEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPaquete,
   precioFinal, redondearPrecio,
   crearComprobante, facturarRemito, anulacionComprobante, anularComprobante, getComprobante, asegurarComprobante, comprobantesDe, cuentaProveedor, saldoTotalProveedores,
-  facturasReferenciables,
+  facturasReferenciables, fletesSinPapel, fletesDelComprobante,
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
   papelFactura, iaFacturas, iaConfigFacturas, leerFacturasConIa, propuestaIa, elegirConIa, espacioFacturas, liberarFacturas,
