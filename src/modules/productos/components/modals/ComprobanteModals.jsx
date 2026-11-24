@@ -9,7 +9,7 @@ import { bultoDelRenglon, cargaDelRenglon, codigoDeFormato, nombreDelRenglon } f
 import { deOtraSucursal, esJefeSesion, pagoSeOfrece } from '../../domain/pagosACuenta.js';
 import { emparejarPercepciones, tipoSegunNombre } from '../../domain/percepciones.js';
 import { contraLaOtraMitad } from '../../domain/otraMitad.js';
-import { dudasDelProducto } from '../../domain/parecidoPapel.js';
+import { dudasDelProducto, pesoDe } from '../../domain/parecidoPapel.js';
 import { preciosConIvaAdentro, sinIva } from '../../domain/ivaAdentro.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { verificadorEan13 } from '@core/services/barcode.js';
@@ -1428,6 +1428,10 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     return next;
   });
   const toggleCosto = toggleEnSet(setCostosOmitidos);
+  /* CAMBIÓ EL BULTO: el costo viaja sí o sí (24/11/2026). El formato no puede
+   * quedar con el bulto viejo y el stock entrar con el nuevo, ni el bulto
+   * nuevo con el precio de antes: el $/kg (y la góndola) mentirían. */
+  const omitido = (d) => costosOmitidos.has(d.productoId) && !d.bultoCambio;
   /* Si este papel no cobra lo mismo que su otra mitad, no se sabe cuál es el
    * bueno: su costo arranca destildado (una sola vez; si se tilda, queda). */
   const omitidosPorOtraMitad = useRef(new Set());
@@ -1450,9 +1454,9 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * (si se tildó trasladarlo). Trasladar sin tocar el costo manda el costo
    * que el formato ya tiene. */
   const costosAActualizar = impacto
-    .filter((d) => (d.difRelevante && !costosOmitidos.has(d.productoId)) || (d.descDistinto && trasladarIds.has(d.productoId)))
+    .filter((d) => (d.difRelevante && !omitido(d)) || (d.descDistinto && trasladarIds.has(d.productoId)))
     .map((d) => {
-      const usaCosto = d.difRelevante && !costosOmitidos.has(d.productoId);
+      const usaCosto = d.difRelevante && !omitido(d);
       return {
         ...d,
         costoBultoFacturado: usaCosto || !d.entry ? d.costoBultoFacturado : d.entry.costo,
@@ -1464,10 +1468,29 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   /* Los saltos confirmados: destildados por defecto — el punto es que alguien lo mire. */
   const [saltosOk, setSaltosOk] = useState(() => new Set());
   const toggleSalto = toggleEnSet(setSaltosOk);
-  const saltosSinConfirmar = costosAActualizar.filter((d) => d.salto && d.difRelevante && !costosOmitidos.has(d.productoId) && !saltosOk.has(d.productoId));
+  const saltosSinConfirmar = costosAActualizar.filter((d) => d.salto && d.difRelevante && !omitido(d) && !saltosOk.has(d.productoId));
   const confirmarSaltos = costosAActualizar.filter((d) => d.salto && saltosOk.has(d.productoId)).map((d) => d.productoId);
   // En B o C el costo SUBE lo que era el IVA, y es lo correcto: ese IVA no se recupera.
-  const hayAvisoIva = discriminaIva && diferencias.some((d) => d.pareceIva && !costosOmitidos.has(d.productoId));
+  const hayAvisoIva = discriminaIva && diferencias.some((d) => d.pareceIva && !omitido(d));
+
+  /*
+   * LA VENTA POR BULTO CERRADO (0243, 24/11/2026): si cambió el bulto, las
+   * listas que vendían el bulto viejo (la mayorista vende la bolsa de 30 kg:
+   * «unidades» = 30) pasan al nuevo. Tildadas de entrada; se destilda la que
+   * tiene que seguir como estaba (si todavía quedan bolsas viejas). Los
+   * paquetes fraccionados no se tocan: su costo sale del kilo.
+   */
+  const [ventasQueSiguen, setVentasQueSiguen] = useState(() => new Set());
+  const toggleVenta = toggleEnSet(setVentasQueSiguen);
+  const bultosCambiados = impacto.filter((d) => d.bultoCambio).map((d) => ({
+    d,
+    listas: (d.entry?.cantidad || 0) > 1
+      ? (d.prod.listas || []).filter((l) => Math.abs(Number(l.unidades) - d.entry.cantidad) < 0.0005)
+      : [],
+  }));
+  const payloadVentaPorBulto = bultosCambiados
+    .map(({ d, listas }) => ({ productoId: d.productoId, listas: listas.filter((l) => !ventasQueSiguen.has(`${d.productoId}:${l.listaId}`)).map((l) => l.listaId) }))
+    .filter((v) => v.listas.length);
 
   /*
    * LO QUE VIAJA COMO "ACTUALIZAR COSTOS", armado UNA vez: lo usan el registro
@@ -1689,6 +1712,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       // Costo del bulto y tamaño del bulto viajan JUNTOS: son un solo hecho
       // ("la bolsa de 20 kg sale $40.000") y por separado el $/kg mentiría.
       actualizarCostos: payloadCostos,
+      ventaPorBulto: payloadVentaPorBulto.length ? payloadVentaPorBulto : undefined,
       activarProveedor: aActivar.map((d) => d.productoId),
       confirmarSaltos,
       /*
@@ -1800,6 +1824,24 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       onChange={(e) => setItem(i, { costoBulto: e.target.value, costoAuto: false })}
     />
   );
+  /* EL TAMAÑO DEL BULTO DE ESTA ENTREGA (24/11/2026, pedido del dueño: la avena
+   * venía en bolsa de 30 kg y llegó de 20). Si cambia, al registrar cambian el
+   * formato de compra (con su costo) y la venta por bulto cerrado: ver
+   * «Cambió el tamaño del bulto» en Impacto en precios. */
+  const formatoDe = (prod) => (prod?.formatosCompra || []).find((e) => e.proveedorId === parseInt(provId, 10)) || null;
+  const inputPorBulto = (it, i, prod) => (
+    <input
+      type="number" min="0" step="any" value={it.porBulto} disabled={esConversion}
+      aria-label={`${unidadDe(prod) === 'kg' ? 'Kilos' : 'Unidades'} por bulto`}
+      title="Lo que trae el bulto de esta entrega. Si cambió, al registrar cambia el formato de compra junto con el costo."
+      onChange={(e) => setItem(i, { porBulto: e.target.value })}
+    />
+  );
+  /** «era 30»: el bulto de esta entrega no es el del formato. */
+  const bultoAntes = (it, prod) => {
+    const antes = Number(formatoDe(prod)?.cantidad) || 0;
+    return it.modo !== 'unidad' && it.modo !== 'display' && antes > 0 && Math.abs((Number(it.porBulto) || 0) - antes) > 0.0005 ? antes : null;
+  };
   const inputDescuento = (it, i) => (
     <input type="number" min="0" step="any" value={it.descuento} aria-label="Descuento %" onChange={(e) => setItem(i, { descuento: e.target.value })} />
   );
@@ -1838,7 +1880,9 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     const prod = store.getProducto(parseInt(it.productoId, 10));
     const r = calcRow(it);
     const u = unidadDe(prod);
-    const como = it.modo === 'unidad' ? 'sueltas' : it.modo === 'display' ? `displays × ${it.porDisplay || '—'}` : `bultos × ${it.porBulto || '—'}`;
+    const antes = bultoAntes(it, prod);
+    const como = it.modo === 'unidad' ? 'sueltas' : it.modo === 'display' ? `displays × ${it.porDisplay || '—'}`
+      : `bultos × ${it.porBulto || '—'}${antes != null ? ` (era ${num(antes, 3)})` : ''}`;
     return (
       <>
         <div>
@@ -1852,7 +1896,31 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       </>
     );
   };
-  /** Lo que se toca poco, en el detalle de la fila de la lectura: cómo vino, descuento, IVA y Coffit. */
+  /**
+   * EL BULTO EN LA FILA DE LA LECTURA: si cambió, lo dice; si es granel y el
+   * papel dice otro peso («Avena x 20 kgs» con el formato en 30 kg), lo
+   * ofrece con un clic.
+   */
+  const avisoDeBulto = (x, it) => {
+    const i = items.indexOf(it);
+    const prod = store.getProducto(parseInt(it.productoId, 10));
+    if (!prod || it.modo === 'unidad' || it.modo === 'display') return null;
+    const u = unidadDe(prod);
+    const antes = bultoAntes(it, prod);
+    if (antes != null) {
+      return <>Bulto nuevo: {num(Number(it.porBulto), 3)} {u} (era {num(antes, 3)}): cambia el formato al registrar</>;
+    }
+    const peso = prod.tipo === 'granel' ? pesoDe(x.descripcion) : null;
+    const kg = peso?.unidad === 'g' ? peso.valor / 1000 : null;
+    if (kg == null || Math.abs(kg - (Number(it.porBulto) || 0)) < 0.0005) return null;
+    return (
+      <>
+        El papel dice {num(kg, 3)} kg y el bulto es de {num(Number(it.porBulto) || 0, 3)} kg
+        <button type="button" className={s.iaBoton} onClick={() => setItem(i, { porBulto: String(kg) })}>Usar {num(kg, 3)} kg</button>
+      </>
+    );
+  };
+  /** Lo que se toca poco, en el detalle de la fila de la lectura: cómo vino, el bulto, descuento, IVA y Coffit. */
   const detalleDeLectura = (it) => {
     const i = items.indexOf(it);
     const prod = store.getProducto(parseInt(it.productoId, 10));
@@ -1860,6 +1928,9 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     return (
       <>
         {modo && <label className={s.iaCampo}><span>Vino en</span>{modo}</label>}
+        {it.modo !== 'unidad' && it.modo !== 'display' && (
+          <label className={s.iaCampo}><span>{unidadDe(prod) === 'kg' ? 'Kilos' : 'Unidades'} por bulto</span>{inputPorBulto(it, i, prod)}</label>
+        )}
         <label className={s.iaCampo}><span>Descuento %</span>{inputDescuento(it, i)}</label>
         <label className={s.iaCampo}><span>IVA</span>{campoIva(it, i)}</label>
         {marcaCoffit(it, i, prod)}
@@ -1939,13 +2010,17 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
             title="Vino suelto: no cambia el tamaño del bulto que tiene el proveedor"
           >—</div>
         ) : (
-          <div
-            data-r={it.modo === 'display' ? 'Por display' : 'Por bulto'}
-            style={{ textAlign: 'center', paddingTop: 8 }}
-            title={`El tamaño del ${it.modo === 'display' ? 'display' : 'bulto'} viene del Formato de compra del producto: se cambia ahí, no en la factura`}
-          >
-            <div style={{ fontWeight: 600 }}>{prod ? ((it.modo === 'display' ? it.porDisplay : it.porBulto) || '—') : ''}</div>
-            {prod && <div className={s.hint} style={{ margin: 0 }}>{u}/{it.modo === 'display' ? 'display' : 'bulto'}</div>}
+          <div data-r={it.modo === 'display' ? 'Por display' : 'Por bulto'} style={{ textAlign: 'center' }}>
+            {prod && it.modo === 'display' && (
+              <div style={{ fontWeight: 600, paddingTop: 8 }} title="El tamaño del display viene del Formato de compra del producto">{it.porDisplay || '—'}</div>
+            )}
+            {prod && it.modo !== 'display' && inputPorBulto(it, i, prod)}
+            {prod && (
+              <div className={s.hint} style={{ margin: 0 }}>
+                {u}/{it.modo === 'display' ? 'display' : 'bulto'}
+                {bultoAntes(it, prod) != null && <strong> · era {num(bultoAntes(it, prod), 3)}</strong>}
+              </div>
+            )}
           </div>
         )}
         <div data-r="Costo">
@@ -2288,6 +2363,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           onPrueba={tipo === 'factura' || tipo === 'liquidacion' ? marcarPrueba : null}
           campos={camposDeLectura}
           detalle={detalleDeLectura}
+          avisoDe={avisoDeBulto}
           netoPapel={netoDelPapel}
           netoDe={(it) => calcRow(it).neto}
         />
@@ -2346,6 +2422,39 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
             automático.
           </div>
 
+          {bultosCambiados.length > 0 && (
+            <div className={cx(s.callout, s.info)}>
+              <strong>Cambió el tamaño del bulto.</strong> Al registrar, el formato de compra queda con el bulto
+              nuevo y su costo (van juntos: ese costo se actualiza sí o sí), el stock entra con lo que trae el
+              bulto nuevo y los <strong>paquetes fraccionados siguen igual</strong>: su costo sale del {bultosCambiados.some(({ d }) => d.unidad === 'kg') ? 'kilo' : 'costo por unidad'}.
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                {bultosCambiados.map(({ d, listas }) => (
+                  <li key={d.productoId} style={{ marginBottom: 4 }}>
+                    <strong>{d.nombre}</strong>: bulto de {num(d.entry.cantidad, 3)} {d.unidad} → <strong>{num(d.bultoFacturado, 3)} {d.unidad}</strong>
+                    {d.costoCargado > 0 && (
+                      <> · costo por {d.unidad.replace('.', '')} {money(d.costoCargado)} → <strong>{money(d.costoFacturado)}</strong>
+                        {d.variacion != null && ` (${d.variacion > 0 ? '+' : ''}${num(d.variacion, 1)}%)`}</>
+                    )}
+                    {listas.map((l) => (
+                      <label key={l.listaId} style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={!ventasQueSiguen.has(`${d.productoId}:${l.listaId}`)} onChange={() => toggleVenta(`${d.productoId}:${l.listaId}`)} />
+                        <span>
+                          En <strong>{l.nombre}</strong> se vende por bulto cerrado de {num(d.entry.cantidad, 3)} {d.unidad}: pasa a <strong>{num(d.bultoFacturado, 3)} {d.unidad}</strong>
+                        </span>
+                      </label>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+              {bultosCambiados.some(({ listas }) => listas.length) && (
+                <div className={s.hint} style={{ margin: '4px 0 0' }}>
+                  Si todavía quedan bultos del tamaño viejo para vender cerrados, destildá esa lista y cambiala cuando se
+                  terminen (ficha del producto › Formatos de venta). Si se anula esta factura, todo vuelve como estaba.
+                </div>
+              )}
+            </div>
+          )}
+
           {hayAvisoIva && (
             <div className={cx(s.callout, s.danger)}>
               La diferencia coincide casi exactamente con una alícuota de IVA. Puede que el costo
@@ -2380,7 +2489,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
             ]}
           >
             {impacto.map((d) => {
-              const incluirCosto = d.difRelevante && !costosOmitidos.has(d.productoId);
+              const incluirCosto = d.difRelevante && !omitido(d);
               const activar = activarIds.has(d.productoId);
               const subio = d.variacion != null && d.variacion > 0;
               const pr = proyeccionAlDia ? proyeccion.porId.get(d.productoId) : null;
@@ -2391,6 +2500,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                       <input
                         type="checkbox"
                         checked={incluirCosto}
+                        disabled={d.bultoCambio}
+                        title={d.bultoCambio ? 'Cambió el bulto: el costo se actualiza junto con él' : undefined}
                         aria-label={`Actualizar el costo de ${d.nombre}`}
                         onChange={() => toggleCosto(d.productoId)}
                       />
@@ -3944,6 +4055,15 @@ export function AnularComprobanteModal({ id }) {
               <li>
                 Vuelve el costo anterior: {vuelven.map((x, i) => <span key={i}>{i > 0 ? ' · ' : ''}{x.producto} {money(x.de)} → <strong>{money(x.a)}</strong>{x.bultoDe != null && <> (bulto {num(x.bultoDe, 3)} → <strong>{num(x.bultoA, 3)}</strong>)</>}</span>)}
                 <span className={s.muted}> (y con él, el precio de góndola).</span>
+              </li>
+            )}
+            {/* La venta por bulto cerrado que la factura cambió (0243): vuelve con el bulto. */}
+            {(plan.ventasPorBulto ?? []).length > 0 && (
+              <li>
+                Vuelve la venta por bulto cerrado: {plan.ventasPorBulto.map((v, i) => (
+                  <span key={i}>{i > 0 ? ' · ' : ''}{v.producto} en {store.state.listasCatalogo?.listas?.find((l) => l.id === v.listaId)?.nombre ?? `la lista ${v.listaId}`} {num(v.despues, 3)} → <strong>{num(v.antes, 3)}</strong></span>
+                ))}
+                <span className={s.muted}> (si su bulto vuelve).</span>
               </li>
             )}
             {quedan.length > 0 && (

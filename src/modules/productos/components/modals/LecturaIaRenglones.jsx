@@ -49,7 +49,7 @@ const usd = (n) => `USD ${Number(n || 0).toLocaleString('es-AR', { maximumFracti
 export function LecturaIaRenglones({
   propuesta: d, cargando, leyendo, eligiendo, porRenglon, usados, productos, proveedor, pruebas,
   onAplicar, onReleer, onElegir, onAsociar, onAceptarSugerencias, onGuardarCodigo, onUsarEncabezado,
-  onCrearProducto, onEditarProducto, onPrueba, campos, detalle, netoPapel, netoDe,
+  onCrearProducto, onEditarProducto, onPrueba, campos, detalle, avisoDe, netoPapel, netoDe,
 }) {
   const [filtro, setFiltro] = useState(null);
   const [abiertos, setAbiertos] = useState(() => new Set());
@@ -160,6 +160,8 @@ export function LecturaIaRenglones({
                   <button type="button" className={s.iaBoton} onClick={() => alternar(setAbiertos, x.i)}>Cambiar</button>
                 )}
               </div>
+              {/* Lo que el alta tenga para decir de este renglón (el bulto que cambió, o que el papel dice otro). */}
+              {avisoDe(x, it) && <div className={s.iaEstado} style={{ '--ia-estado': 'var(--crm-color-info)' }}>{avisoDe(x, it)}</div>}
             </>
           ) : color === 'prueba' ? (
             <div className={s.iaEstado}>

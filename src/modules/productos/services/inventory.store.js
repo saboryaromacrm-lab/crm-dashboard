@@ -1253,6 +1253,8 @@ function _cleanComprobante(o) {
       })),
     /* Los renglones del papel marcados «de prueba» (0242): suman al total, no son productos. */
     renglonesPrueba: o.renglonesPrueba?.length ? o.renglonesPrueba : undefined,
+    /* La venta por bulto cerrado que pasa al bulto nuevo (0243): viaja con el costo del formato. */
+    ventaPorBulto: o.ventaPorBulto?.length ? o.ventaPorBulto : undefined,
     /*
      * Costos que el usuario aceptó actualizar desde "Impacto en precios".
      * `cantidad` es el tamaño del bulto de ESTA entrega (kg o unidades) y viaja
