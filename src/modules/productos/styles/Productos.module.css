@@ -905,3 +905,90 @@
   }
   .filaNumeroComprobante { grid-template-columns: 1fr 1fr; }
 }
+
+/* ---------------- La lectura de la IA en el alta de una compra (24/11/2026) ----------------
+ * Una tabla neutra: el color es SOLO estado (la barra de la izquierda y la
+ * línea corta debajo del producto). El papel a la izquierda, el ERP a la
+ * derecha; lo que se toca poco, en el detalle de la fila. */
+.ia {
+  --ia-cols: minmax(0, 1.2fr) minmax(0, 1.45fr) 104px 116px 112px 30px;
+  border: 1px solid var(--crm-color-border);
+  border-radius: 10px;
+  background: var(--crm-color-surface);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.iaHead { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 16px; padding: 12px 14px; }
+.iaTitulo { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.iaTitulo > strong { font-size: 15px; color: var(--crm-color-text); }
+.iaAcciones { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.iaBarra {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 10px 14px; border-top: 1px solid var(--crm-color-border); background: var(--crm-color-surface-2);
+}
+.iaFiltros { display: flex; flex-wrap: wrap; gap: 6px; }
+.iaFiltro {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px;
+  border: 1px solid var(--crm-color-border); background: var(--crm-color-surface);
+  color: var(--crm-color-text-secondary); font-size: 12.5px; font-weight: 600; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.iaFiltro[aria-pressed='true'] { background: var(--crm-color-text); border-color: var(--crm-color-text); color: var(--crm-color-surface); }
+.iaPunto { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.iaAviso { padding: 8px 14px; font-size: 12.5px; color: var(--crm-color-warning); border-top: 1px solid var(--crm-color-border); }
+.iaCab, .iaFila { display: grid; grid-template-columns: var(--ia-cols); gap: 12px; padding: 10px 14px 10px 11px; }
+.iaCab {
+  border-top: 1px solid var(--crm-color-border); border-bottom: 1px solid var(--crm-color-border);
+  border-left: 3px solid transparent; padding-top: 7px; padding-bottom: 7px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--crm-color-text-muted);
+}
+.iaFila { align-items: start; border-left: 3px solid var(--ia-estado); border-bottom: 1px solid var(--crm-color-border); }
+.iaFila:last-child { border-bottom: 0; }
+.iaFila:hover { background: var(--crm-color-surface-2); }
+.iaNombre { font-size: 13.5px; font-weight: 600; color: var(--crm-color-text); line-height: 1.3; }
+.iaPapel .iaNombre { font-weight: 500; }
+.iaSub { font-size: 12px; color: var(--crm-color-text-muted); margin-top: 2px; line-height: 1.35; font-variant-numeric: tabular-nums; }
+.iaEstado { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--ia-estado); }
+.iaBoton {
+  background: none; border: 0; padding: 0; cursor: pointer; font-size: 12px; font-weight: 600;
+  color: var(--crm-color-text-secondary); text-decoration: underline; text-underline-offset: 2px;
+}
+.iaBoton:hover { color: var(--crm-color-text); }
+.iaTotal { text-align: right; font-weight: 700; font-size: 13.5px; padding-top: 7px; font-variant-numeric: tabular-nums; color: var(--crm-color-text); }
+.iaMal { color: var(--crm-color-danger); }
+.iaMas { display: flex; justify-content: flex-end; padding-top: 4px; }
+.iaMas button {
+  width: 26px; height: 26px; border-radius: 6px; cursor: pointer; font-size: 12px;
+  border: 1px solid var(--crm-color-border); background: var(--crm-color-surface); color: var(--crm-color-text-secondary);
+}
+.iaMas button[aria-expanded='true'] { background: var(--crm-color-text); color: var(--crm-color-surface); border-color: var(--crm-color-text); }
+.iaDetalle {
+  grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 18px;
+  padding: 12px; border-radius: 8px; background: var(--crm-color-surface-2); border: 1px solid var(--crm-color-border);
+}
+.iaCampo { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--crm-color-text-muted); }
+.iaCampo > :not(span) { text-transform: none; letter-spacing: normal; }
+.iaTilde { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--crm-color-text-secondary); flex-basis: 100%; }
+.iaVacio { padding: 18px 14px; font-size: 13px; color: var(--crm-color-text-muted); }
+.iaPie { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; padding: 10px 14px; border-top: 1px solid var(--crm-color-border); font-size: 12.5px; }
+.iaPie summary { cursor: pointer; color: var(--crm-color-text-secondary); }
+/* Los casilleros, compactos: en la tabla pesan menos que el papel y el producto. */
+.ia input:not([type='checkbox']), .ia select {
+  width: 100%; height: 32px; padding: 4px 8px; font-size: 13.5px; font-family: inherit;
+  border: 1px solid var(--crm-color-border); border-radius: 6px;
+  background: var(--crm-color-surface); color: var(--crm-color-text);
+}
+.ia input:focus, .ia select:focus { outline: none; border-color: var(--crm-color-text-secondary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--crm-color-text) 10%, transparent); }
+.iaFila input[type='number'] { text-align: right; font-variant-numeric: tabular-nums; }
+.iaDetalle .iaCampo input, .iaDetalle .iaCampo select { width: auto; min-width: 90px; }
+.iaDetalle .iaAcciones select { width: 260px; max-width: 100%; }
+
+/* En el teléfono: el papel y el producto a lo ancho; cantidad, costo y subtotal de a tres. */
+@media (max-width: 767px) {
+  .iaCab { display: none; }
+  .iaFila { position: relative; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 10px; }
+  .iaFila > .iaPapel, .iaFila > .iaProducto { grid-column: 1 / -1; padding-right: 34px; }
+  .iaMas { position: absolute; top: 10px; right: 10px; padding: 0; }
+  .iaTotal { padding-top: 7px; }
+}
+.iaSub .iaBoton { margin-left: 8px; }

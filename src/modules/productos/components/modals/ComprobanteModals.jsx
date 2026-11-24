@@ -5,7 +5,7 @@ import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num, fmtFecha, isoDate } from '../../domain/format.js';
 import { TIPOS_COMPROBANTE, ESTADOS_COMPROBANTE, LETRAS_COMPROBANTE, CONDICIONES_PAGO, IVA_OPCIONES } from '../../domain/constants.js';
 import { displaysDe, envasesDelRenglon, nombreEnvase } from '../../domain/bulto.js';
-import { bultoDelRenglon, cargaDelRenglon, nombreDelRenglon } from '../../domain/renglonPapel.js';
+import { bultoDelRenglon, cargaDelRenglon, codigoDeFormato, nombreDelRenglon } from '../../domain/renglonPapel.js';
 import { deOtraSucursal, esJefeSesion, pagoSeOfrece } from '../../domain/pagosACuenta.js';
 import { emparejarPercepciones, tipoSegunNombre } from '../../domain/percepciones.js';
 import { contraLaOtraMitad } from '../../domain/otraMitad.js';
@@ -15,6 +15,7 @@ import { leerSesion } from '@core/auth/sesion.js';
 import { verificadorEan13 } from '@core/services/barcode.js';
 import { ModalShell } from '../Modal.jsx';
 import { DetalleProductoModal, ProductoFormModal } from './ProductoModals.jsx';
+import { LecturaIaRenglones } from './LecturaIaRenglones.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
 import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
@@ -42,325 +43,6 @@ const COLS_RENGLON = '2fr .6fr .8fr .9fr .6fr .6fr 1fr auto';
 
 /** Tres decimales: los kg de una bolsa vienen con coma (22,68 kg). */
 const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
-/** El «código de proveedor» del producto con ESE proveedor (el del formato que fija el precio, o el primero que tenga). */
-const codigoDeFormato = (prod, provId) => {
-  const suyos = (prod?.formatosCompra || []).filter((e) => e.proveedorId === provId && String(e.codigoProveedor ?? '').trim());
-  return String((suyos.find((e) => e.usarParaPrecio) || suyos[0])?.codigoProveedor ?? '').trim();
-};
-
-/*
- * EL SEMÁFORO DE LA FACTURA LEÍDA (12/10/2026, pedido del dueño): verde, está
- * cargado y el código del papel coincide con el del producto (o ya se asoció
- * antes, o lo eligió quien carga); amarillo, está cargado con lo que la IA
- * supuso por el nombre: revisarlo; rojo, NO está cargado (falta su importe en
- * la factura): aceptar la sugerencia o elegir el producto.
- */
-const SEMAFORO = {
-  verde: { color: 'var(--crm-color-success)', titulo: 'listos', explica: 'cargados y con el código que coincide (o ya asociados)' },
-  amarillo: { color: 'var(--crm-color-warning)', titulo: 'a revisar', explica: 'cargados con lo que la IA supuso por el nombre' },
-  rojo: { color: 'var(--crm-color-danger)', titulo: 'faltan cargar', explica: 'NO están en la factura: aceptá la sugerencia o elegí el producto' },
-  /* Los de prueba (0242): se pidieron para probar y no se dan de alta. */
-  prueba: { color: 'var(--crm-color-info)', titulo: 'de prueba', explica: 'suman a la factura; no entran al stock ni al catálogo' },
-};
-
-/**
- * LO QUE LEYÓ LA IA, EN EL PASO 2 DEL ALTA (0153): el resumen (renglones, con
- * producto, si la cuenta cierra, modelo y costo), el encabezado leído, los
- * renglones sin producto para asociar a mano —con los parecidos primero y lo
- * que sugiera la IA— y el detalle completo de lo leído.
- */
-function PanelIa({
-  propuesta: d, cargando, leyendo, eligiendo, porRenglon, usados, productos, proveedor, pruebas,
-  onAplicar, onReleer, onElegir, onAsociar, onAceptarSugerencias, onGuardarCodigo, onUsarEncabezado, onCrearProducto, onEditarProducto,
-  onPrueba, renderItem, netoPapel, netoDe,
-}) {
-  /** Qué colores se ven (tocando los contadores): null = todos. */
-  const [filtro, setFiltro] = useState(null);
-  const estado = d?.estado ?? '';
-  const renglones = d?.renglones ?? [];
-  /*
-   * SOLO LOS PRODUCTOS DEL PROVEEDOR DE LA FACTURA (12/10/2026, pedido del
-   * dueño): la lista entera hacía buscar entre miles. Lo de otros proveedores
-   * queda a un clic («ver todos»), para el artículo que se le compra a este
-   * por primera vez. Si el proveedor todavía no tiene productos, van todos.
-   */
-  const [verTodos, setVerTodos] = useState(false);
-  const activos = useMemo(
-    () => productos.filter((p) => (p.estado || 'activo') === 'activo').slice().sort((a, b) => a.nombre.localeCompare(b.nombre)),
-    [productos],
-  );
-  const delProveedor = useMemo(
-    () => (proveedor ? activos.filter((p) => (p.formatosCompra || []).some((e) => e.proveedorId === proveedor.id)) : []),
-    [activos, proveedor],
-  );
-  const todos = verTodos || !delProveedor.length;
-  const opciones = todos ? activos : delProveedor;
-  const idsProveedor = useMemo(() => new Set(delProveedor.map((p) => p.id)), [delProveedor]);
-  /** Los parecidos, también solo del proveedor (salvo «ver todos»). */
-  const parecidos = (x) => (todos ? x.candidatos ?? [] : (x.candidatos ?? []).filter((c) => idsProveedor.has(c.id)));
-  /* El código de proveedor de cada producto, y de quién es cada código (para avisar si pasa de uno a otro). */
-  const codigoDe = useMemo(() => new Map(activos.map((p) => [p.id, codigoDeFormato(p, proveedor?.id)])), [activos, proveedor]);
-  const duenoDe = useMemo(() => {
-    const m = new Map();
-    for (const p of delProveedor) { const c = codigoDe.get(p.id); if (c && !m.has(c)) m.set(c, p); }
-    return m;
-  }, [delProveedor, codigoDe]);
-  const etiqueta = (p) => (codigoDe.get(p.id) ? `${p.nombre} · cód ${codigoDe.get(p.id)}` : p.nombre);
-
-  /** El color de cada renglón y con qué producto quedó (el del alta manda: si se borró la fila, vuelve a pendiente). */
-  const filas = renglones.map((x) => {
-    const it = porRenglon.get(x.i);
-    const prod = it ? productos.find((p) => String(p.id) === String(it.productoId)) : null;
-    const codProd = prod ? codigoDe.get(prod.id) ?? codigoDeFormato(prod, proveedor?.id) : '';
-    const coincide = !!(x.codigo && codProd && codProd === String(x.codigo).trim());
-    const delServidor = prod && String(x.productoId) === String(prod.id);
-    /* ¿Es el del papel? Con el código que coincide no hay duda; si no, nombre y peso (domain/parecidoPapel.js). */
-    const dudas = prod && !coincide ? dudasDelProducto(x.descripcion, prod.nombre, [proveedor?.nombre, prod.marca]) : [];
-    let color;
-    let porque;
-    if (!prod && pruebas.has(x.i)) { color = 'prueba'; porque = 'De prueba: suma a la factura, no entra al stock ni al catálogo'; }
-    else if (!prod) { color = 'rojo'; porque = 'NO está cargado en la factura'; }
-    else if (coincide) { color = 'verde'; porque = 'el código coincide'; }
-    else if (dudas.length) { color = 'amarillo'; porque = `¿Es este? ${dudas.join(' y ')}`; }
-    else if (delServidor && x.fuente === 'aprendido') { color = 'verde'; porque = 'ya lo asociaste en otra factura'; }
-    else if (delServidor && x.fuente === 'catalogo') { color = 'verde'; porque = 'por el código del catálogo'; }
-    else if (delServidor && x.fuente === 'parecido') { color = 'amarillo'; porque = 'la IA lo supone por el nombre'; }
-    else { color = 'verde'; porque = 'lo elegiste vos'; }
-    return { x, it, prod, codProd, coincide, color, porque };
-  });
-  const cuenta = (c) => filas.filter((f) => f.color === c).length;
-  const pendientesIa = filas.some((f) => f.color === 'rojo' && f.x.candidatos?.length && !f.x.sugerido);
-  const sugeridos = filas.filter((f) => f.color === 'rojo' && f.x.sugerido).map((f) => f.x);
-  /* El aviso del servidor de «renglones sin producto» se calla cuando ya no queda ninguno en rojo (asociados o de prueba). */
-  const avisos = (d?.avisos ?? []).filter((a) => cuenta('rojo') > 0 || !/sin producto reconocido/.test(a));
-  /* El contador «de prueba» solo aparece si hay alguno. */
-  const colores = cuenta('prueba') ? ['verde', 'amarillo', 'rojo', 'prueba'] : ['verde', 'amarillo', 'rojo'];
-  const visibles = filtro ? filas.filter((f) => f.color === filtro) : filas;
-  /** Lo que ya está elegido en otro renglón no se vuelve a ofrecer (sí el propio). */
-  const libre = (it) => (p) => !usados.has(String(p.id)) || String(p.id) === String(it?.productoId);
-  const usd = (n) => `USD ${Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 4 })}`;
-  const modelo = (m) => (/haiku/.test(m || '') ? 'Haiku' : /sonnet/.test(m || '') ? 'Sonnet' : m || '');
-  const tono = estado === 'lista' ? (d.cierra ? s.ok : s.warn) : estado === 'error' || estado === 'tope' ? s.warn : s.info;
-  return (
-    <div className={cx(s.callout, tono)} style={{ marginBottom: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ flex: 1, minWidth: 220 }}>
-          {!d && cargando && 'Trayendo lo que leyó la IA…'}
-          {leyendo && <><strong>La IA está leyendo esta factura…</strong> se precarga sola en unos segundos.</>}
-          {estado === '' && d && 'Esta factura todavía no se leyó con la IA.'}
-          {(estado === 'error' || estado === 'tope') && <><strong>La IA no pudo leerla:</strong> {d.error || 'error desconocido'}</>}
-          {estado === 'lista' && (
-            <>
-              <strong>{renglones.length} renglones leídos por la IA</strong>
-              {' · '}{d.cierra ? 'lo leído suma igual que el papel' : <strong>lo leído NO suma igual que el papel: revisá</strong>}
-              <span className={s.muted}> · {modelo(d.modelo)} · {usd(d.costoUsd)}</span>
-            </>
-          )}
-        </span>
-        {estado === 'lista' && <Btn small onClick={onAplicar} disabled={cargando}>Volver a precargar</Btn>}
-        {!leyendo && d && <Btn small onClick={onReleer}>{estado === 'lista' ? 'Leer de nuevo' : 'Leer con IA'}</Btn>}
-      </div>
-
-      {estado === 'lista' && d.encabezado?.numero && (
-        <div style={{ marginTop: 4 }}>
-          La IA leyó: <strong>
-            {TIPOS_COMPROBANTE[d.encabezado.tipo]?.label || d.encabezado.tipo}{' '}
-            {d.encabezado.letra} {d.encabezado.puntoVenta}-{d.encabezado.numero}
-          </strong>{d.encabezado.fecha && <> · {d.encabezado.fecha.split('-').reverse().map(Number).join('/')}</>}
-          {d.encabezado.cae && <> · CAE <span className={s.mono}>{d.encabezado.cae}</span></>}
-          <button type="button" className={s.linkBtn} style={{ marginLeft: 8 }} onClick={onUsarEncabezado}>usar este encabezado</button>
-        </div>
-      )}
-
-      {estado === 'lista' && renglones.length > 0 && (
-        <div style={{ marginTop: 6 }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            {/* Los tres estados, tocables: filtran la lista (otro toque, se ven todos). */}
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
-              {colores.map((c) => {
-                const n = cuenta(c);
-                const activo = filtro === c;
-                return (
-                  <button
-                    key={c} type="button" disabled={!n && !activo} onClick={() => setFiltro(activo ? null : c)}
-                    title={SEMAFORO[c].explica}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 999, cursor: n ? 'pointer' : 'default',
-                      border: `2px solid ${SEMAFORO[c].color}`, fontWeight: 700, fontSize: 13, opacity: n || activo ? 1 : 0.45,
-                      background: activo ? SEMAFORO[c].color : `color-mix(in srgb, ${SEMAFORO[c].color} 10%, var(--crm-color-surface))`,
-                      color: activo ? '#fff' : SEMAFORO[c].color,
-                    }}
-                  >
-                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: activo ? '#fff' : SEMAFORO[c].color }} />
-                    {n} {SEMAFORO[c].titulo}
-                  </button>
-                );
-              })}
-              {filtro && <button type="button" className={s.linkBtn} onClick={() => setFiltro(null)}>ver todos</button>}
-            </div>
-            {sugeridos.length > 0 && (
-              <Btn small variant="btn-primary" onClick={() => onAceptarSugerencias(sugeridos)}>
-                Aceptar las {sugeridos.length} sugerencias de la IA
-              </Btn>
-            )}
-            {pendientesIa && <Btn small onClick={onElegir} disabled={eligiendo}>{eligiendo ? 'Pensando…' : 'Que la IA elija'}</Btn>}
-          </div>
-          <div className={s.hint} style={{ margin: '4px 0 0' }}>
-            {colores.map((c) => (
-              <span key={c} style={{ marginRight: 10 }}><strong style={{ color: SEMAFORO[c].color }}>● {SEMAFORO[c].titulo}</strong>: {SEMAFORO[c].explica}.</span>
-            ))}
-            Lo que asocies <strong>se aprende al guardar</strong>.
-          </div>
-          <div style={{ padding: '6px 8px 0 12px' }}><CabeceraRenglon /></div>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {visibles.map(({ x, it, prod, codProd, coincide, color, porque }) => {
-              const codigoPapel = String(x.codigo ?? '').trim();
-              const otro = codigoPapel ? duenoDe.get(codigoPapel) : null;
-              const papel = netoPapel(x);
-              const cargado = prod ? netoDe(it) : 0;
-              return (
-                <li
-                  key={x.i}
-                  style={{
-                    borderLeft: `4px solid ${SEMAFORO[color].color}`, padding: '6px 8px', borderRadius: 4,
-                    background: `color-mix(in srgb, ${SEMAFORO[color].color} 9%, transparent)`,
-                  }}
-                >
-                  {/* LO QUE DICE EL PAPEL */}
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
-                    <span className={s['mini-label']}>Papel</span>
-                    <span className={s.mono}>cód {codigoPapel || '—'}</span>
-                    <strong>{x.descripcion}</strong>
-                    <span>{num(x.cantidad)} × {money(x.costoBulto || x.precioUnitario)} = <strong>{money(papel)}</strong></span>
-                  </div>
-                  {/* LO CARGADO, en la misma tarjeta: el renglón del alta, con sus casilleros. */}
-                  {prod && <div style={{ marginTop: 6 }}>{renderItem(it)}</div>}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
-                    {prod && (
-                      <span>
-                        <span style={{ color: SEMAFORO[color].color, fontWeight: 600 }}>{coincide ? '✓ ' : color === 'amarillo' ? '⚠ ' : ''}{porque}</span>{' '}
-                        <span className={s.mono}>cód prov {codProd || '—'}</span>
-                      </span>
-                    )}
-                    {prod && Math.abs(cargado - papel) > 1 && (
-                      <span style={{ color: 'var(--crm-color-danger)', fontWeight: 600 }}>
-                        Cargado {money(cargado)}: el papel dice {money(papel)}
-                      </span>
-                    )}
-                    {/* Cambió el código de barras o el gramaje: se corrige la ficha sin salir de la factura. */}
-                    {prod && onEditarProducto && (
-                      <button type="button" className={s.linkBtn} onClick={() => onEditarProducto(x, prod.id)}>Editar producto</button>
-                    )}
-                    {!prod && <span style={{ color: SEMAFORO[color].color, fontWeight: 700 }}>{porque}</span>}
-                    {color === 'prueba' && (
-                      <button type="button" className={s.linkBtn} onClick={() => onPrueba(x.i, false)}>No es de prueba</button>
-                    )}
-                    {/* Lo que se pidió poco para probar no se da de alta: suma a la factura y listo. */}
-                    {color === 'rojo' && onPrueba && (
-                      <button type="button" className={s.linkBtn} onClick={() => onPrueba(x.i, true)}>Es de prueba: no darlo de alta</button>
-                    )}
-                    {color === 'rojo' && x.sugerido && (
-                      <span>
-                        La IA sugiere <strong>{x.sugerido.nombre}</strong>{' '}
-                        <button type="button" className={s.linkBtn} onClick={() => onAsociar(x, x.sugerido.id)}>Aceptar</button>
-                      </span>
-                    )}
-                    {/* También en amarillo: la IA pudo suponer uno parecido y el de verdad no estar cargado. */}
-                    {(color === 'rojo' || color === 'amarillo') && onCrearProducto && (
-                      <button type="button" className={s.linkBtn} onClick={() => onCrearProducto(x)}>
-                        {prod ? 'No es ese: crear uno nuevo' : '+ Crear este producto'}
-                      </button>
-                    )}
-                    {(color === 'rojo' || color === 'amarillo') && (
-                      <select
-                        key={it?.productoId ?? 'nuevo'}
-                        style={{ maxWidth: 300 }}
-                        defaultValue=""
-                        onChange={(e) => { if (e.target.value) onAsociar(x, e.target.value); }}
-                      >
-                        <option value="">{prod ? 'Cambiar por…' : x.sugerido ? 'O elegí otro…' : 'Elegí el producto…'}</option>
-                        {parecidos(x).filter(libre(it)).length > 0 && (
-                          <optgroup label="Parecidos">
-                            {parecidos(x).filter(libre(it)).map((c) => {
-                              const pc = productos.find((p) => p.id === c.id);
-                              return <option key={c.id} value={c.id}>{pc ? etiqueta(pc) : c.nombre}</option>;
-                            })}
-                          </optgroup>
-                        )}
-                        <optgroup label={todos ? 'Todos los productos' : `Productos de ${proveedor.nombre}`}>
-                          {opciones.filter(libre(it)).map((p) => <option key={p.id} value={p.id}>{etiqueta(p)}</option>)}
-                        </optgroup>
-                      </select>
-                    )}
-                    {color === 'verde' && !coincide && (
-                      <button type="button" className={s.linkBtn} onClick={() => onAsociar(x, null)}>cambiar</button>
-                    )}
-                  </div>
-                  {/* El código del papel al producto: así la próxima llega en verde. */}
-                  {prod && codigoPapel && !coincide && (
-                    <label className={s.hint} style={{ margin: '2px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <input type="checkbox" checked={!!it.guardarCodigo} onChange={(e) => onGuardarCodigo(x.i, e.target.checked)} />
-                      Al guardar, poner «{codigoPapel}» como código de proveedor de este producto
-                      {codProd ? ` (hoy tiene ${codProd})` : ' (hoy no tiene)'}
-                      {otro && otro.id !== prod.id ? ` · ⚠ hoy lo tiene ${otro.nombre}: se le saca` : ''}
-                    </label>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-          {delProveedor.length > 0 && (
-            <label className={s.hint} style={{ margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input type="checkbox" checked={verTodos} onChange={(e) => setVerTodos(e.target.checked)} />
-              Mostrar también productos de otros proveedores (para uno que le comprás por primera vez)
-            </label>
-          )}
-        </div>
-      )}
-
-      {avisos.length > 0 && (
-        <div style={{ marginTop: 6, color: 'var(--crm-color-warning)' }}>
-          {avisos.map((a, i) => <div key={i}>· {a}</div>)}
-        </div>
-      )}
-
-      {estado === 'lista' && (
-        <details style={{ marginTop: 6 }}>
-          <summary className={s.hint} style={{ cursor: 'pointer', margin: 0 }}>Ver todo lo que leyó la IA</summary>
-          <div className={s.tblScroll}>
-            <table className={s.table} style={{ fontSize: 12, marginTop: 6 }}>
-              <thead>
-                <tr><th>#</th><th>Código</th><th>Descripción</th><th className={s.num}>Cant.</th><th className={s.num}>Precio</th><th className={s.num}>Dto. %</th><th className={s.num}>Importe</th><th>Producto</th></tr>
-              </thead>
-              <tbody>
-                {renglones.map((x) => (
-                  <tr key={x.i} style={x.cierra ? undefined : { background: 'color-mix(in srgb, var(--crm-color-warning) 14%, transparent)' }}>
-                    <td>{x.i + 1}{!x.cierra && ' ⚠'}</td>
-                    <td className={s.mono}>{x.codigo || '—'}</td>
-                    <td>{x.descripcion}</td>
-                    <td className={s.num}>{num(x.cantidad)} {x.unidad}</td>
-                    <td className={s.num}>{money(x.precioUnitario)}</td>
-                    <td className={s.num}>{x.dto ? num(x.dto, 2) : '—'}</td>
-                    <td className={s.num}>{money(x.importe)}</td>
-                    <td>{productos.find((p) => String(p.id) === String(porRenglon.get(x.i)?.productoId))?.nombre || <span className={s.muted}>—</span>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className={s.hint} style={{ margin: '4px 0 0' }}>
-            Pie leído: subtotal {money(d.pie?.subtotal)}
-            {d.pie?.bonifImporte > 0 && <> · bonificación {money(d.pie.bonifImporte)}</>}
-            {(d.pie?.ivas || []).map((x, i) => <span key={i}> · IVA {num(x.alicuota)} % {money(x.importe)}</span>)}
-            {(d.pie?.percepciones || []).map((x, i) => <span key={`p${i}`}> · {x.nombre} {money(x.importe)}</span>)}
-            {' · '}total <strong>{money(d.pie?.total)}</strong>
-          </div>
-        </details>
-      )}
-    </div>
-  );
-}
-
 /** Dos decimales: los importes de dinero. */
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -2080,11 +1762,114 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     }
   };
 
+  /*
+   * LOS CASILLEROS DE UN RENGLÓN DEL ALTA, en piezas: los usan la fila completa
+   * (lo agregado a mano, o todo cuando no hay lectura de la IA) y la tabla de
+   * la lectura de la IA (`campos` y `detalle`, 24/11/2026), que los acomoda a
+   * su manera. Una sola definición de cada regla.
+   */
+  const inputCantidad = (it, i) => (
+    <input
+      type="number" min="0" step="any" value={it.bultos} aria-label="Cantidad"
+      disabled={esConversion}
+      title={esConversion
+        ? 'La cantidad es la del remito: es lo que entró al depósito'
+        : { unidad: 'Cuántas unidades sueltas llegaron', display: 'Cuántos displays llegaron' }[it.modo] ?? 'Cuántos bultos llegaron'}
+      onChange={(e) => setItem(i, { bultos: e.target.value })}
+    />
+  );
+  /* El modo suelto es SOLO de los enteros (el dueño, 25/8): en el granel el
+   * bulto es la bolsa y su tamaño ya es editable por entrega. En la conversión
+   * tampoco se elige: la cantidad ya está clavada. */
+  const selectModo = (it, i, prod) => (prod?.tipo === 'entero' && !esConversion ? (
+    <select
+      value={it.modo || 'bulto'} aria-label="Cómo vino"
+      title="¿La entrega vino en bultos cerrados, en displays o suelta, sin completar el bulto?"
+      onChange={(e) => cambiarModo(i, e.target.value)}
+    >
+      <option value="bulto">bultos</option>
+      {/* Solo si el formato de este proveedor declara el display (0203). */}
+      {Number(it.porDisplay) > 0 && <option value="display">displays</option>}
+      <option value="unidad">u. sueltas</option>
+    </select>
+  ) : null);
+  const inputCosto = (it, i) => (
+    <input
+      type="number" min="0" step="any" value={it.costoBulto} aria-label="Costo"
+      title={`Costo ${{ unidad: 'por unidad', display: 'del display' }[it.modo] ?? 'del bulto'}, como figura en la factura`}
+      onChange={(e) => setItem(i, { costoBulto: e.target.value, costoAuto: false })}
+    />
+  );
+  const inputDescuento = (it, i) => (
+    <input type="number" min="0" step="any" value={it.descuento} aria-label="Descuento %" onChange={(e) => setItem(i, { descuento: e.target.value })} />
+  );
+  const campoIva = (it, i) => (discriminaIva ? (
+    <select value={String(Number(it.iva) || 0)} aria-label="IVA" onChange={(e) => setItem(i, { iva: e.target.value })}>
+      {ALICUOTAS.map((a) => <option key={a} value={String(a)}>{String(a).replace('.', ',')}%</option>)}
+    </select>
+  ) : (
+    <span className={s.muted} title="Esta letra no discrimina IVA: el precio del papel ya lo incluye">incl.</span>
+  ));
+  /* El tilde de Coffit se ve siempre; se bloquea cuando lo decide otra cosa. */
+  const marcaCoffit = (it, i, prod) => {
+    const marcado = deCoffit(it);
+    const motivo = esConversion ? 'marcado al cargar el remito'
+      : prod.soloCafeteria ? 'uso exclusivo (ficha)'
+        : heredaDeRef(it) ? 'era de Coffit en la factura que ajusta'
+          : todoCoffit ? 'todo el comprobante' : '';
+    return (
+      <label
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginTop: 2,
+          cursor: motivo ? 'default' : 'pointer',
+          color: marcado ? 'var(--crm-color-primary, #2e7d32)' : 'var(--crm-color-text-secondary)',
+        }}
+        title={motivo ? `Para Coffit: ${motivo}` : 'Este renglón se le carga a Coffit'}
+      >
+        <input type="checkbox" checked={marcado} disabled={!!motivo} onChange={(e) => setItem(i, { paraCafeteria: e.target.checked })} />
+        <span>Para Coffit{motivo ? <span className={s.muted}> · {motivo}</span> : null}</span>
+      </label>
+    );
+  };
+
+  /** Cantidad y costo en la tabla de la lectura de la IA, con la cuenta hecha debajo (lo que entra al stock y el $/u). */
+  const camposDeLectura = (it) => {
+    const i = items.indexOf(it);
+    const prod = store.getProducto(parseInt(it.productoId, 10));
+    const r = calcRow(it);
+    const u = unidadDe(prod);
+    const como = it.modo === 'unidad' ? 'sueltas' : it.modo === 'display' ? `displays × ${it.porDisplay || '—'}` : `bultos × ${it.porBulto || '—'}`;
+    return (
+      <>
+        <div>
+          {inputCantidad(it, i)}
+          <div className={s.iaSub} style={{ textAlign: 'right' }}>{como} = {num(r.cantidadTotal, 3)} {u}</div>
+        </div>
+        <div>
+          {inputCosto(it, i)}
+          <div className={s.iaSub} style={{ textAlign: 'right' }}>{money(r.costoUnitario)}/{u.replace('.', '')}</div>
+        </div>
+      </>
+    );
+  };
+  /** Lo que se toca poco, en el detalle de la fila de la lectura: cómo vino, descuento, IVA y Coffit. */
+  const detalleDeLectura = (it) => {
+    const i = items.indexOf(it);
+    const prod = store.getProducto(parseInt(it.productoId, 10));
+    const modo = selectModo(it, i, prod);
+    return (
+      <>
+        {modo && <label className={s.iaCampo}><span>Vino en</span>{modo}</label>}
+        <label className={s.iaCampo}><span>Descuento %</span>{inputDescuento(it, i)}</label>
+        <label className={s.iaCampo}><span>IVA</span>{campoIva(it, i)}</label>
+        {marcaCoffit(it, i, prod)}
+      </>
+    );
+  };
+
   /**
-   * UN RENGLÓN DEL ALTA (producto, cantidad, bulto, costo, descuento, IVA y
-   * subtotal). Con la lectura de la IA va DENTRO de la tarjeta de su renglón
-   * del papel (24/11/2026, pedido del dueño: el papel arriba y lo cargado
-   * abajo, en un solo lugar); los agregados a mano van en su lista.
+   * LA FILA COMPLETA DEL ALTA (producto, cantidad, bulto, costo, descuento, IVA
+   * y subtotal): lo agregado a mano, o todo cuando no hay lectura de la IA.
    */
   const filaDeItem = (it, i) => {
     const prod = it.productoId ? store.getProducto(parseInt(it.productoId, 10)) : null;
@@ -2118,30 +1903,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                 {r.costoUnitario > 0 && <> · <strong>{money(r.costoUnitario)}/{u.replace('.', '')}</strong></>}
               </div>
             )}
-            {(() => {
-              /* El tilde se ve siempre; se bloquea cuando lo decide otra cosa. */
-              const marcado = deCoffit(it);
-              const motivo = esConversion ? 'marcado al cargar el remito'
-                : prod.soloCafeteria ? 'uso exclusivo (ficha)'
-                  : heredaDeRef(it) ? 'era de Coffit en la factura que ajusta'
-                    : todoCoffit ? 'todo el comprobante' : '';
-              return (
-                <label
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginTop: 2,
-                    cursor: motivo ? 'default' : 'pointer',
-                    color: marcado ? 'var(--crm-color-primary, #2e7d32)' : 'var(--crm-color-text-secondary)',
-                  }}
-                  title={motivo ? `Para Coffit: ${motivo}` : 'Este renglón se le carga a Coffit'}
-                >
-                  <input
-                    type="checkbox" checked={marcado} disabled={!!motivo}
-                    onChange={(e) => setItem(i, { paraCafeteria: e.target.checked })}
-                  />
-                  <span>Para Coffit{motivo ? <span className={s.muted}> · {motivo}</span> : null}</span>
-                </label>
-              );
-            })()}
+            {marcaCoffit(it, i, prod)}
           </div>
         ) : (
           <BuscadorProducto
@@ -2152,42 +1914,14 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           />
         )}
         <div data-r={{ unidad: 'Unidades', display: 'Displays' }[it.modo] ?? 'Bultos'}>
-          <input
-            type="number" min="0" step="any" value={it.bultos}
-            disabled={esConversion}
-            title={esConversion
-              ? 'La cantidad es la del remito: es lo que entró al depósito'
-              : { unidad: 'Cuántas unidades sueltas llegaron', display: 'Cuántos displays llegaron' }[it.modo] ?? 'Cuántos bultos llegaron'}
-            onChange={(e) => setItem(i, { bultos: e.target.value })}
-          />
-          {/* El modo suelto es SOLO de los enteros (el dueño, 25/8): en el
-              granel el bulto es la bolsa y su tamaño ya es editable por
-              entrega — "kg sueltos" no agregaba nada y confundía. */}
-          {/* "1 · bultos · 12" se leía como tres números sueltos y no se
-              sabía si entraban 1, 12 o 13 (el dueño, 25/8). La respuesta
-              es la cuenta YA HECHA debajo de la cantidad: "= 12 u.", lo
-              que entra al stock. Va acá y no solo en el pie del producto
-              porque el ojo está en el casillero que se tipea. OJO: el
-              tamaño NO va dentro de la opción del select ("bultos ×12"):
-              en el ancho real de la columna se trunca a "bultos ×1", que
-              es peor que la ambigüedad que se quería arreglar. */}
-          {/* En la conversión el modo tampoco se elige: la cantidad ya
-              está clavada y cambiar el modo solo re-expresaría el costo. */}
-          {prod && prod.tipo === 'entero' && !esConversion && (
+          {inputCantidad(it, i)}
+          {/* "1 · bultos · 12" se leía como tres números sueltos (el dueño,
+              25/8): debajo va la cuenta YA HECHA, "= 12 u.", lo que entra al
+              stock. El tamaño NO va dentro de la opción del select: en el
+              ancho real de la columna se trunca. */}
+          {selectModo(it, i, prod) && (
             <>
-              <select
-                value={it.modo || 'bulto'}
-                style={{ marginTop: 2, fontSize: 12, width: '100%' }}
-                title="¿La entrega vino en bultos cerrados, en displays o suelta, sin completar el bulto?"
-                onChange={(e) => cambiarModo(i, e.target.value)}
-              >
-                <option value="bulto">bultos</option>
-                {/* Solo si el formato de este proveedor declara el display (0203). */}
-                {Number(it.porDisplay) > 0 && <option value="display">displays</option>}
-                <option value="unidad">u. sueltas</option>
-              </select>
-              {/* En los dos modos: la negrita de abajo SIEMPRE es lo que
-                  entra al stock, una sola regla para leer el renglón. */}
+              <div style={{ marginTop: 2, fontSize: 12 }}>{selectModo(it, i, prod)}</div>
               {r.cantidadTotal > 0 && (
                 <div className={s.hint} style={{ margin: 0, textAlign: 'center', whiteSpace: 'nowrap' }}>
                   = <strong>{num(r.cantidadTotal, 0)} u.</strong>
@@ -2196,12 +1930,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
             </>
           )}
         </div>
-        {/* El tamaño del bulto es INFO, no un casillero (el dueño, 25/8):
-            vive en el Formato de compra del producto y se cambia ahí. Un
-            campo editable acá invitaba a "corregir" el bulto en cada
-            factura — y ese número, junto con el costo, es el que define
-            el $/u del catálogo: tipearlo distinto en un renglón dejaba
-            la góndola colgada de un dato de paso. */}
+        {/* El tamaño del bulto es INFO, no un casillero (el dueño, 25/8): vive
+            en el Formato de compra del producto y se cambia ahí. */}
         {it.modo === 'unidad' ? (
           <div
             className={s.hint} data-r="Por bulto"
@@ -2219,27 +1949,13 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           </div>
         )}
         <div data-r="Costo">
-          <input
-            type="number" min="0" step="any" value={it.costoBulto}
-            title={`Costo ${{ unidad: 'por unidad', display: 'del display' }[it.modo] ?? 'del bulto'}, como figura en la factura`}
-            onChange={(e) => setItem(i, { costoBulto: e.target.value, costoAuto: false })}
-          />
+          {inputCosto(it, i)}
           {(it.modo === 'unidad' || it.modo === 'display') && (
             <div className={s.hint} style={{ margin: 0, textAlign: 'center' }}>{it.modo === 'display' ? '$/display' : '$/u'}</div>
           )}
         </div>
-        <div data-r="Desc. %">
-          <input type="number" min="0" step="any" value={it.descuento} onChange={(e) => setItem(i, { descuento: e.target.value })} />
-        </div>
-        {discriminaIva ? (
-          <div data-r="IVA">
-            <select value={String(Number(it.iva) || 0)} onChange={(e) => setItem(i, { iva: e.target.value })}>
-              {ALICUOTAS.map((a) => <option key={a} value={String(a)}>{String(a).replace('.', ',')}%</option>)}
-            </select>
-          </div>
-        ) : (
-          <span className={s.muted} data-r="IVA" style={{ alignSelf: 'center', textAlign: 'center' }} title="Esta letra no discrimina IVA: el precio del papel ya lo incluye">incl.</span>
-        )}
+        <div data-r="Desc. %">{inputDescuento(it, i)}</div>
+        <div data-r="IVA" style={discriminaIva ? undefined : { alignSelf: 'center', textAlign: 'center' }}>{campoIva(it, i)}</div>
         <div className={cx(s.mono, s.num)} data-r="Subtotal" style={{ fontWeight: 700, alignSelf: 'center' }}>{money(r.neto)}</div>
         {/* Quitar o agregar renglones cambiaría QUÉ entró — y eso ya pasó. */}
         {esConversion
@@ -2248,10 +1964,10 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       </div>
     );
   };
-  /** ¿Los renglones del papel van en tarjetas? Con la lectura de la IA lista. */
+  /** ¿Los renglones del papel van en la tabla de la lectura? Con la lectura de la IA lista. */
   const enTarjetas = conIa && propuestaIa?.estado === 'lista' && (propuestaIa.renglones?.length ?? 0) > 0;
   const renglonesDelPapel = new Set(enTarjetas ? propuestaIa.renglones.map((x) => x.i) : []);
-  /** Las filas que no están en una tarjeta del papel: todas sin IA; con IA, las agregadas a mano. */
+  /** Las filas que no están en la tabla de la lectura: todas sin IA; con IA, las agregadas a mano. */
   const filasSueltas = items.map((it, i) => ({ it, i })).filter(({ it }) => !renglonesDelPapel.has(it.renglonIa));
 
   const footer = paso < 3
@@ -2559,7 +2275,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
 
       {/* LA LECTURA CON IA (0153): lo que leyó del papel, con lo que falta resolver. */}
       {conIa && (
-        <PanelIa
+        <LecturaIaRenglones
           propuesta={propuestaIa} cargando={cargandoIa} leyendo={iaLeyendo} eligiendo={eligiendoIa}
           porRenglon={porRenglon} usados={usados} productos={store.state.productos} proveedor={provElegido}
           onAplicar={() => cargarPropuesta({ aplicar: true, preguntar: true })}
@@ -2570,7 +2286,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           onEditarProducto={isAdmin ? (x, prodId) => setEdicion({ renglon: x, prodId }) : null}
           pruebas={idsPrueba}
           onPrueba={tipo === 'factura' || tipo === 'liquidacion' ? marcarPrueba : null}
-          renderItem={(it) => filaDeItem(it, items.indexOf(it))}
+          campos={camposDeLectura}
+          detalle={detalleDeLectura}
           netoPapel={netoDelPapel}
           netoDe={(it) => calcRow(it).neto}
         />
@@ -2602,7 +2319,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           </span>
         </label>
       )}
-      {/* Con la lectura de la IA, los renglones del papel van en sus tarjetas (arriba): acá, lo agregado a mano. */}
+      {/* Con la lectura de la IA, los renglones del papel van en su tabla (arriba): acá, lo agregado a mano. */}
       {enTarjetas && filasSueltas.length > 0 && <div className={s['section-title']}>Agregados a mano (no vienen del papel)</div>}
       {(!enTarjetas || filasSueltas.length > 0) && <CabeceraRenglon />}
       {filasSueltas.map(({ it, i }) => filaDeItem(it, i))}

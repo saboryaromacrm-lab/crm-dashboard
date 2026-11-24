@@ -88,3 +88,9 @@ export function nombreDelRenglon(descripcion) {
     .replace(/\s+\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/, '')
     .trim();
 }
+
+/** El «código de proveedor» del producto con ESE proveedor (el del formato que fija el precio, o el primero que tenga). */
+export function codigoDeFormato(prod, provId) {
+  const suyos = (prod?.formatosCompra || []).filter((e) => e.proveedorId === provId && String(e.codigoProveedor ?? '').trim());
+  return String((suyos.find((e) => e.usarParaPrecio) || suyos[0])?.codigoProveedor ?? '').trim();
+}
