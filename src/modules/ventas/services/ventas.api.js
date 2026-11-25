@@ -156,6 +156,12 @@ export const ventasApi = {
   /* Una «Transferencia» ya cobrada que fue a una cuenta disponible (21/11/2026): solo el superadmin. */
   cuentasDisponiblesTodas: () => httpClient.get('/cuentas-disponibles?estado=todas'),
   corregirTransferencia: (cuentaId, data) => httpClient.post(`/cuentas-disponibles/${cuentaId}/corregir-transferencia`, data),
+  /* La que fue directo a un proveedor, sin cuenta disponible (0246): registrarla y deshacerla. */
+  transferenciaDirecta: (data) => httpClient.post('/cuentas-disponibles/transferencia-directa', data),
+  deshacerTransferenciaDirecta: (data) => httpClient.post('/cuentas-disponibles/transferencia-directa/deshacer', data),
+  /* Lo que se le debe a un proveedor (lo mismo que ofrece «Pagarle») y el saldo de su cuenta. */
+  pendientesProveedor: (proveedorId) => httpClient.get(`/pagos-proveedor/pendientes/${proveedorId}`),
+  cuentaProveedor: (proveedorId) => httpClient.get(`/pagos-proveedor/cuenta/${proveedorId}`),
 
   /**
    * Todo lo vendible de una sucursal:

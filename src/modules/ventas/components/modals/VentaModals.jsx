@@ -23,6 +23,7 @@ import { segunMercadoPago } from '../../domain/conciliacionMp.js';
 import { useSegundaConfirmacion, AvisoSegundaConfirmacion, textoBoton } from '@modules/gastos/components/segundaConfirmacion.jsx';
 import { avisarCuentasCompletas } from '@core/layout/components/cuentasCompletas.js';
 import { comprobante, mediosDe } from '../../domain/notasCredito.js';
+import { DeshacerTransferenciaDirecta, PERMISO_CORREGIR_TRANSFERENCIA, TransferenciaAProveedor } from './TransferenciaAProveedor.jsx';
 import {
   ModalShell, Table, Pill, VentaEstadoPill, VentaTag, Di, SaldoMonto, Btn,
   money, num, fmtFechaHora, s,
@@ -59,8 +60,6 @@ function SegunMp({ info }) {
   );
 }
 
-/** Llave fuera del catálogo: solo el superadmin (`*`). La misma que exige la API. */
-const PERMISO_CORREGIR_TRANSFERENCIA = 'ventas.corregir-transferencia';
 /** Cómo se lee una cuenta disponible, igual que la referencia del renglón: proveedor · titular · alias. */
 const refCuenta = (c) => `${c.proveedorNombre} · ${c.titular} · ${c.cbuAlias}`;
 const estadoCuenta = (c) => (c.estado === 'cortada' ? 'cortada' : c.falta > 0.009 ? `faltan ${money(c.falta)}` : c.pasado > 0.009 ? `pasada por ${money(c.pasado)}` : 'cubierta');
@@ -170,7 +169,11 @@ export function DetalleVentaModal({ ventaId, onCambio, volver }) {
   const { can } = usePermissions();
   const [imprimiendo, setImprimiendo] = useState(false);
   const { data: v, loading, error, reload } = useResource(`venta:${ventaId}`, () => ventasApi.venta(ventaId));
-  /** El renglón «Transferencia» que se está corrigiendo (21/11/2026). */
+  /**
+   * El renglón de pago que se está corrigiendo y cómo: `cuenta` (fue a una
+   * cuenta disponible, 21/11/2026), `proveedor` (fue directo a un proveedor,
+   * 0246) o `deshacer` (la directa no fue a ese proveedor).
+   */
   const [corrigiendo, setCorrigiendo] = useState(null);
 
   /** Reimprime con el formato de Sistema › Impresión (rollo 80 por defecto). */
@@ -357,10 +360,14 @@ export function DetalleVentaModal({ ventaId, onCambio, volver }) {
                   fechaVenta: v.fecha, nombreDelMedio: (m) => MEDIOS_COBRADOS[m] || m,
                 })]));
                 const conMp = [...segun.values()].some(Boolean);
-                /* Una «Transferencia» sin atar a Mercado Pago se puede corregir: fue a una cuenta disponible. */
-                const corregible = (p) => p.medio === 'transferencia' && !p.mp && ['confirmada', 'pendiente_cae'].includes(v.estado)
-                  && can(PERMISO_CORREGIR_TRANSFERENCIA);
-                const conAccion = v.pagos.some(corregible);
+                /* Una «Transferencia» sin atar a Mercado Pago se puede corregir: fue a una cuenta disponible o
+                 * directo a un proveedor (0246). La directa se puede deshacer. */
+                const vigente = ['confirmada', 'pendiente_cae'].includes(v.estado) && can(PERMISO_CORREGIR_TRANSFERENCIA);
+                const corregible = (p) => vigente && p.medio === 'transferencia' && !p.mp;
+                const deshacible = (p) => vigente && !!p.directoA;
+                const conAccion = v.pagos.some((p) => corregible(p) || deshacible(p));
+                const hecho = () => { setCorrigiendo(null); reload(); onCambio?.(); };
+                const cancelar = () => setCorrigiendo(null);
                 return (
                   <>
                     <Table cols={[
@@ -376,9 +383,19 @@ export function DetalleVentaModal({ ventaId, onCambio, volver }) {
                           <td className={s.num}>{money(p.importe)}</td>
                           {conAccion && (
                             <td>
-                              {corregible(p) && !corrigiendo && (
-                                <Btn small onClick={() => setCorrigiendo(p)} title="El cliente le transfirió al proveedor: pasarlo a «Transf. a proveedor»">
-                                  Fue a una cuenta disponible
+                              {!corrigiendo && corregible(p) && (
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                  <Btn small onClick={() => setCorrigiendo({ como: 'cuenta', pago: p })} title="El cliente le transfirió al proveedor: pasarlo a «Transf. a proveedor»">
+                                    Fue a una cuenta disponible
+                                  </Btn>
+                                  <Btn small onClick={() => setCorrigiendo({ como: 'proveedor', pago: p })} title="El cliente le transfirió a un proveedor sin cuenta disponible">
+                                    Fue a un proveedor
+                                  </Btn>
+                                </div>
+                              )}
+                              {!corrigiendo && deshacible(p) && (
+                                <Btn small onClick={() => setCorrigiendo({ como: 'deshacer', pago: p })} title={`Se anula el pago a ${p.directoA} y vuelve a «Transferencia»`}>
+                                  No fue a {p.directoA}
                                 </Btn>
                               )}
                             </td>
@@ -386,12 +403,9 @@ export function DetalleVentaModal({ ventaId, onCambio, volver }) {
                         </tr>
                       ))}
                     </Table>
-                    {corrigiendo && (
-                      <CorregirTransferencia
-                        venta={v} pago={corrigiendo} onCancelar={() => setCorrigiendo(null)}
-                        onHecho={() => { setCorrigiendo(null); reload(); onCambio?.(); }}
-                      />
-                    )}
+                    {corrigiendo?.como === 'cuenta' && <CorregirTransferencia venta={v} pago={corrigiendo.pago} onCancelar={cancelar} onHecho={hecho} />}
+                    {corrigiendo?.como === 'proveedor' && <TransferenciaAProveedor pago={corrigiendo.pago} onCancelar={cancelar} onHecho={hecho} />}
+                    {corrigiendo?.como === 'deshacer' && <DeshacerTransferenciaDirecta pago={corrigiendo.pago} onCancelar={cancelar} onHecho={hecho} />}
                   </>
                 );
               })() : (

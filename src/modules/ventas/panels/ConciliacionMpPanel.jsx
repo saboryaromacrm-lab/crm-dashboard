@@ -18,12 +18,14 @@
  * La cuenta la hace la API (`crm-api/src/mercadopago/conciliacion*.ts`).
  */
 import { useState } from 'react';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { cx } from '@shared/utils/classNames.js';
 import { useVentas } from '../context/VentasContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { ventasApi, errorMsg } from '../services/ventas.api.js';
-import { FAMILIA, POR_QUE, cambioDeMedio, nombreAtado, estadoDia, mismoImporte, moverMes, nombreMedio, rangoMes, semanasDelMes } from '../domain/conciliacionMp.js';
+import { FAMILIA, POR_QUE, cambioDeMedio, comprobanteDe, nombreAtado, estadoDia, mismoImporte, moverMes, nombreMedio, rangoMes, semanasDelMes } from '../domain/conciliacionMp.js';
 import { CobroMp, PagoMp } from '../components/modals/ConciliacionMpModals.jsx';
+import { PERMISO_CORREGIR_TRANSFERENCIA } from '../components/modals/TransferenciaAProveedor.jsx';
 import { Btn, PanelHead, Stat, Table, fmtFechaHora, isoDate, money, s } from '../components/ui.jsx';
 
 const COLOR = { ok: 'var(--crm-color-success)', revisar: 'var(--crm-color-warning)', falta: 'var(--crm-color-danger)' };
@@ -89,6 +91,9 @@ function Seccion({ color, titulo, desc, n, children }) {
 
 export function ConciliacionMpPanel() {
   const { openModal, toast } = useVentas();
+  const { can } = usePermissions();
+  /* La «Transferencia» de una venta que fue directo a un proveedor (0246): solo el superadmin. */
+  const fueAProveedor = (c) => c.origen === 'venta' && c.medio === 'transferencia' && can(PERMISO_CORREGIR_TRANSFERENCIA);
   const hoy = isoDate(new Date());
   const [mes, setMes] = useState(hoy.slice(0, 7));
   /* Un día elegido, o null = todo el mes. Arranca en hoy. */
@@ -273,6 +278,16 @@ export function ConciliacionMpPanel() {
                       <Btn small onClick={() => atar({ cobro: c })}>Buscar el pago</Btn>
                       <Btn small onClick={() => explicar({ tipo: 'sin_mp', cobro: c, controlado: true })}>Ya lo controlé</Btn>
                       <Btn small variant="btn-ghost" onClick={() => explicar({ tipo: 'sin_mp', cobro: c })}>No entró</Btn>
+                      {fueAProveedor(c) && (
+                        <Btn
+                          small title="El cliente le transfirió a un proveedor: pagárselo y aplicarlo"
+                          onClick={() => openModal('transferenciaAProveedor', {
+                            pago: { id: Number(c.clave.slice(1)), importe: c.importe }, documento: comprobanteDe(c), onListo: recargar,
+                          })}
+                        >
+                          Fue a un proveedor
+                        </Btn>
+                      )}
                     </div>
                   </td>
                 </tr>

@@ -20,6 +20,7 @@ import {
 import { OfertaFormModal, BorrarOfertaModal } from './modals/OfertaModals.jsx';
 import { DetalleVentaModal, AnularVentaModal, NotaCreditoModal } from './modals/VentaModals.jsx';
 import { AtarMpModal, ExplicarMpModal } from './modals/ConciliacionMpModals.jsx';
+import { TransferenciaAProveedorModal } from './modals/TransferenciaAProveedor.jsx';
 import { RelevoModal } from './modals/RelevoModal.jsx';
 import { MinimosMarcaModal } from './modals/MinimosMarcaModal.jsx';
 import { PedirFraccionadoModal } from './modals/PedirFraccionadoModal.jsx';
@@ -52,6 +53,8 @@ const REGISTRY = {
   // Conciliación MP (18/11/2026): atar a mano y explicar lo que queda de un solo lado.
   atarMp: AtarMpModal,
   explicarMp: ExplicarMpModal,
+  // La «Transferencia» que fue directo a un proveedor (0246).
+  transferenciaAProveedor: TransferenciaAProveedorModal,
   anularVenta: AnularVentaModal,
   notaCredito: NotaCreditoModal,
   verLogica: VerLogicaModal,
