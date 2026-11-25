@@ -3,6 +3,7 @@ import { leerSesion } from '@core/auth/sesion.js';
 import { useProveedores } from '../../context/ProveedoresContext.jsx';
 import { errorMsg, provApi } from '../../services/proveedores.api.js';
 import { Btn, ModalShell, Table, fmtFechaHora, money, num, s } from '../ui.jsx';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 /**
  * CAMBIOS DE MERCADERÍA CON EL PROVEEDOR (0202, 26/10/2026, pedido del dueño):
@@ -180,10 +181,7 @@ export function MandarReposicionModal({ proveedorId: inicial, onChange }) {
       <div className={s['form-grid']}>
         <div className={s.field}>
           <label htmlFor="repos-prov">Proveedor</label>
-          <select id="repos-prov" value={proveedorId} onChange={(e) => { setProveedorId(e.target.value); setRenglones([]); }} autoFocus>
-            <option value="">Elegí el proveedor</option>
-            {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          <BuscadorProveedor id="repos-prov" proveedores={proveedores} value={proveedorId} onChange={(v) => { setProveedorId(v); setRenglones([]); }} autoFocus />
         </div>
         <div className={s.field}>
           <label htmlFor="repos-nota">Nota</label>

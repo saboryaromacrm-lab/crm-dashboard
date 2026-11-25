@@ -7,6 +7,7 @@ import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '@m
 import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
 import { PARTE_VACIA } from '../../domain/partesPago.js';
 import { PartesPago } from '../PartesPago.jsx';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -52,10 +53,7 @@ export function CompromisoModal({ compromiso, onChange }) {
       {!editando && (
         <div className={s.field}>
           <label>Proveedor</label>
-          <select value={f.proveedorId} onChange={set('proveedorId')} autoFocus>
-            <option value="">Elegí el proveedor</option>
-            {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          <BuscadorProveedor proveedores={proveedores} value={f.proveedorId} onChange={(v) => setF((x) => ({ ...x, proveedorId: v }))} autoFocus />
         </div>
       )}
       <div className={s['form-grid']}>

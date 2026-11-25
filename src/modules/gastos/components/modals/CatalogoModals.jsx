@@ -7,6 +7,7 @@ import { ModalShell, money, s } from '../ui.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
 import { REPARTO, repartoAEnviar } from '../../domain/reparto.js';
 import { RepartoLocales } from '../RepartoLocales.jsx';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 /* ==================================================================== *
  * Rubros
@@ -213,10 +214,7 @@ export function RecurrenteFormModal({ recurrenteId, onChange }) {
         </div>
         <div className={s.field}>
           <label>Proveedor</label>
-          <select value={f.proveedorId} onChange={set('proveedorId')}>
-            <option value="">Sin proveedor</option>
-            {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          <BuscadorProveedor proveedores={proveedores} value={f.proveedorId} onChange={(v) => setF((x) => ({ ...x, proveedorId: v }))} vacio="Sin proveedor" />
         </div>
         <div className={s.field}>
           <label>Sucursal</label>

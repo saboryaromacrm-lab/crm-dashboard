@@ -14,11 +14,12 @@ const norm = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toL
  * `value` y `onChange` funcionan igual que en el <select> que reemplaza: el id
  * como texto, y '' para «todos». `extras` son opciones especiales que van
  * arriba de todo, después de «todos» (p. ej. «Solo proveedores locales»).
- * `disabled` lo bloquea como a un <select> deshabilitado.
+ * `disabled` lo bloquea como a un <select> deshabilitado; `autoFocus`, con foco
+ * al abrir (la lista se despliega: es la primera decisión del formulario).
  */
 export function BuscadorOpcion({
   opciones, value, onChange, todos = 'Todos', placeholder = 'Escribí para buscar…',
-  extras = [], className, style, id, ariaLabel, disabled = false,
+  extras = [], className, style, id, ariaLabel, disabled = false, autoFocus = false,
 }) {
   const [texto, setTexto] = useState('');
   const [abierto, setAbierto] = useState(false);
@@ -64,7 +65,7 @@ export function BuscadorOpcion({
   return (
     <div style={{ position: 'relative', display: 'inline-flex', minWidth: 260, ...style }}>
       <input
-        ref={inputRef} id={id} type="text" autoComplete="off" role="combobox" disabled={disabled}
+        ref={inputRef} id={id} type="text" autoComplete="off" role="combobox" disabled={disabled} autoFocus={autoFocus}
         aria-label={ariaLabel} aria-expanded={abierto} aria-autocomplete="list"
         className={className}
         style={{ width: '100%', paddingRight: value ? 30 : undefined }}

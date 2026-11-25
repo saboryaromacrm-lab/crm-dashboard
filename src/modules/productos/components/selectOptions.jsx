@@ -84,16 +84,6 @@ export function usuarioOptions(store) {
     ));
 }
 
-export function proveedorOptions(store) {
-  // Solo los de MERCADERÍA: en el subsistema de inventario, un proveedor que
-  // únicamente factura gastos (el plomero) no tiene nada que elegir.
-  return [<option key="_none" value="">— Sin proveedor —</option>].concat(
-    store.state.proveedores
-      .filter((p) => p.proveeMercaderia !== false)
-      .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>),
-  );
-}
-
 export function presentacionOptions(prod, incBase) {
   const arr = [];
   if (incBase) arr.push(<option key="_base" value="">{prod.tipo === 'granel' ? 'Granel (kg)' : 'Unidad'}</option>);

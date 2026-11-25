@@ -39,6 +39,7 @@ import { MisCuentas } from './MisCuentas.jsx';
 import { EmpleadoAdelanto } from '@shared/components/EmpleadoAdelanto.jsx';
 import { useTildeControlar, useUmbralControlar } from './tildeControlar.js';
 import { ANULABLES, DENOMINACIONES, DENOMINACIONES_A_CONTAR, FILTROS_REPORTE_VACIOS, conSigno, aplicableAProveedor, DONDE, DONDE_A_CAMPOS, donde, esConceptoCambio, esDeposito, medioAlProveedor, MEDIO, NOTA_ESTA_TODO, ORIGENES_REPORTE, hayFiltrosReporte, qsFiltrosReporte, textoFiltrosReporte, ORIGEN, diasDesde, etiquetaPeriodo, fechaCorta, fechaHora, fechaHoraSinDia, fechaIso, hoy, primerDiaMes, queEs, textoAnular, tituloPeriodo } from './formato.js';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 export { Diferencia } from './Diferencia.jsx';
 const Campo = ({ label, hint, children }) => (
@@ -731,6 +732,14 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
   const { data: provs } = useResource('cashflow:proveedores', () => httpClient.get('/cashflow/proveedores'), { enabled: tipo === 'egreso' });
   const provsGasto = useMemo(() => (provs ?? []).filter((p) => p.proveeGastos || p.deudaGastos > 0)
     .sort((a, b) => (b.deudaGastos > 0) - (a.deudaGastos > 0) || a.nombre.localeCompare(b.nombre, 'es')), [provs]);
+  /* El concepto o el proveedor de gastos se eligen escribiendo (25/11/2026). */
+  const opcionesConcepto = [
+    ...lista.map((c) => ({ id: c.id, nombre: `${c.nombre}${c.clase === 'gasto' ? ` (gasto · ${c.gastoCategoria})` : ''}` })),
+    ...(tipo === 'egreso' ? provsGasto.map((p) => ({
+      id: `prov:${p.id}`,
+      nombre: `Pagarle a ${p.nombre}${p.deudaGastos > 0 ? ` · le debés ${money(p.deudaGastos)}` : ''}${p.aFavorGastos > 0 ? ` · tiene ${money(p.aFavorGastos)} a favor` : ''}`,
+    })) : []),
+  ];
   const provGasto = String(conceptoId).startsWith('prov:') ? provsGasto.find((p) => `prov:${p.id}` === conceptoId) ?? null : null;
   const concepto = provGasto ? null : lista.find((c) => c.id === Number(conceptoId));
   const aplicable = tipo === 'egreso' && !esCambio && !!concepto?.aplicaProveedor;
@@ -822,24 +831,11 @@ export function MovimientoModal({ tipo, conceptos, saldo, onCerrar, onHecho, avi
       <div className={s['form-grid']}>
         {!cambioAProv && (
           <Campo label={tipo === 'egreso' ? 'Concepto o proveedor de gastos *' : 'Concepto *'}>
-            <select value={conceptoId} onChange={(e) => { setConceptoId(e.target.value); setAProveedor(false); }}>
-              {/* Sin nada elegido (no hay conceptos) se ve «Elegí…», no el primero de la lista como si estuviera elegido. */}
-              {conceptoId === '' && <option value="" disabled>Elegí…</option>}
-              {tipo === 'egreso' && provsGasto.length ? (
-                <>
-                  <optgroup label="Conceptos">
-                    {lista.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.clase === 'gasto' ? ` (gasto · ${c.gastoCategoria})` : ''}</option>)}
-                  </optgroup>
-                  <optgroup label="Pagarle a un proveedor de gastos">
-                    {provsGasto.map((p) => (
-                      <option key={`prov:${p.id}`} value={`prov:${p.id}`}>
-                        {p.nombre}{p.deudaGastos > 0 ? ` · le debés ${money(p.deudaGastos)}` : ''}{p.aFavorGastos > 0 ? ` · tiene ${money(p.aFavorGastos)} a favor` : ''}
-                      </option>
-                    ))}
-                  </optgroup>
-                </>
-              ) : lista.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.clase === 'gasto' ? ` (gasto · ${c.gastoCategoria})` : ''}</option>)}
-            </select>
+            <BuscadorProveedor
+              proveedores={opcionesConcepto} value={conceptoId} vacio="Elegí…" ariaLabel="Concepto"
+              placeholder={tipo === 'egreso' && provsGasto.length ? 'Escribí el concepto o el proveedor…' : 'Escribí el concepto…'}
+              onChange={(v) => { setConceptoId(v); setAProveedor(false); }}
+            />
           </Campo>
         )}
         <Campo label="Importe *"><input type="number" min="0" step="0.01" inputMode="decimal" value={importe} onChange={(e) => setImporte(e.target.value)} autoFocus /></Campo>
@@ -980,10 +976,7 @@ export function PagoProveedorModal({ saldo, onCerrar, onHecho, onVolver, avisar,
     >
       <div className={s['form-grid']}>
         <Campo label="Proveedor *">
-          <select value={proveedorId} onChange={(e) => { setProveedorId(e.target.value); setTildes({}); }} autoFocus>
-            <option value="">— Elegí —</option>
-            {(provs ?? []).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          <BuscadorProveedor proveedores={provs ?? []} value={proveedorId} onChange={(v) => { setProveedorId(v); setTildes({}); }} autoFocus />
         </Campo>
         <Campo label="Qué pagás">
           <select value={destino} onChange={(e) => { setDestino(e.target.value); setTildes({}); }}>

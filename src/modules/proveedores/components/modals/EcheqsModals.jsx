@@ -8,6 +8,7 @@ import { provApi } from '../../services/proveedores.api.js';
 import {
   Btn, EcheqsDeFactura, FilaTilde, ModalShell, Table, cajaTildes, echeqsDeFactura, fmtFecha, money, s,
 } from '../ui.jsx';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -113,9 +114,9 @@ export function EcheqModal({ echeq, pagoDe, onChange }) {
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const setFecha = (k) => (e) => setF((x) => conPlazo(x, { [k]: e.target.value }));
   const prov = !editando && aProveedor ? proveedores.find((p) => p.id === Number(f.proveedorId)) : null;
-  const elegirProveedor = (e) => {
-    const p = proveedores.find((x) => x.id === Number(e.target.value));
-    setF((x) => conPlazo({ ...x, proveedorId: e.target.value }, p?.diasPago > 0 ? { plazo: String(p.diasPago) } : {}));
+  const elegirProveedor = (id) => {
+    const p = proveedores.find((x) => x.id === Number(id));
+    setF((x) => conPlazo({ ...x, proveedorId: id }, p?.diasPago > 0 ? { plazo: String(p.diasPago) } : {}));
     setTildadas(new Set());
     setImporteAMano(false);
   };
@@ -189,10 +190,7 @@ export function EcheqModal({ echeq, pagoDe, onChange }) {
       {!editando && aProveedor && (
         <div className={s.field}>
           <label>Proveedor</label>
-          <select value={f.proveedorId} onChange={elegirProveedor} disabled={!!pagoDe} autoFocus={!pagoDe}>
-            <option value="">Elegí el proveedor</option>
-            {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          <BuscadorProveedor proveedores={proveedores} value={String(f.proveedorId)} onChange={elegirProveedor} disabled={!!pagoDe} autoFocus={!pagoDe} />
           <DatosParaElBanco prov={prov} />
         </div>
       )}

@@ -31,6 +31,7 @@ import { ModalShell } from '../Modal.jsx';
 import { Table, Btn, Paginador, usePaginado, s } from '../ui.jsx';
 import { hayParaMandar, listaDeProducto, puedeMandar } from '../../domain/pedido.js';
 import c from '../../styles/Explorar.module.css';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 /** Texto comparable: sin mayúsculas ni acentos. */
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
@@ -172,10 +173,7 @@ export function ExplorarProductosModal({ grupo, origenId, destinoId, yaEnPedido,
           </div>
           <div className={c.campo}>
             <label htmlFor="expl-prov">Proveedor</label>
-            <select id="expl-prov" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-              <option value="">Todos</option>
-              {store.state.proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-            </select>
+            <BuscadorProveedor id="expl-prov" proveedores={store.state.proveedores} value={proveedorId} onChange={setProveedorId} vacio="Todos" />
           </div>
           <div className={c.campo}>
             <label htmlFor="expl-cat">Categoría</label>

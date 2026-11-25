@@ -20,6 +20,7 @@ import { FleteDelComprobante, FletesSinPapel } from './FletesSinPapel.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
 import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
@@ -2000,7 +2001,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
               <div style={{ marginTop: 2, fontSize: 12 }}>{selectModo(it, i, prod)}</div>
               {r.cantidadTotal > 0 && (
                 <div className={s.hint} style={{ margin: 0, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                  = <strong>{num(r.cantidadTotal, 0)} u.</strong>
+                  = <strong>{num(r.cantidadTotal, 3)} u.</strong>
                 </div>
               )}
             </>
@@ -2158,10 +2159,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
               </div>
             </>
           ) : (
-            <select value={provId} onChange={(e) => onProveedor(e.target.value)}>
-              <option value="" disabled>Elegí el proveedor…</option>
-              {productoProveedorOptions(store)}
-            </select>
+            /* Solo los que traen mercadería: al plomero no se le compra stock (sus facturas van por Gastos). */
+            <BuscadorProveedor proveedores={store.state.proveedores.filter((p) => p.proveeMercaderia !== false)} value={provId} onChange={onProveedor} />
           )}
         </div>
       </div>
@@ -3630,13 +3629,6 @@ function BusquedaLoteModal({ candidatos, proveedorNombre, yaCargados, onAgregar,
       </Table>
     </ModalShell>
   );
-}
-function productoProveedorOptions(store) {
-  // El padrón es UNO, pero acá solo tienen sentido los que traen mercadería:
-  // al plomero no se le compra stock (sus facturas van por el módulo Gastos).
-  return store.state.proveedores
-    .filter((p) => p.proveeMercaderia !== false)
-    .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>);
 }
 
 /* ============================== DETALLE DE COMPROBANTE ============================== */

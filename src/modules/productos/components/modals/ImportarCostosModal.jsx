@@ -25,6 +25,7 @@ import { mismoNombreProveedor, proveedoresParecidos } from '@modules/proveedores
 import { ModalShell } from '../Modal.jsx';
 import { CostosVariosProveedores } from './CostosVariosProveedores.jsx';
 import { Btn, Table, s } from '../ui.jsx';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 const ETIQUETA_ESTADO = {
   actualiza: { texto: 'Actualiza el costo', color: 'var(--crm-color-success)' },
@@ -302,14 +303,10 @@ export function ImportarCostosModal({ proveedorId: proveedorInicial = null }) {
 
           {!varios && <div className={s.field}>
             <label>Proveedor de estos costos <span className={s.req}>*</span></label>
-            <select
-              value={proveedorId}
-              onChange={(e) => setProveedorId(e.target.value)}
-              disabled={deteccion && !deteccion.exacto && modoProveedor === 'nuevo'}
-            >
-              <option value="">Elegí el proveedor</option>
-              {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-            </select>
+            <BuscadorProveedor
+              proveedores={proveedores} value={proveedorId} onChange={setProveedorId}
+              disabled={!!(deteccion && !deteccion.exacto && modoProveedor === 'nuevo')}
+            />
             {deteccion?.exacto && (
               <div className={s.hint} style={{ margin: '6px 0 0' }}>Detectado del archivo: <strong>«{deteccion.nombre}»</strong>.</div>
             )}

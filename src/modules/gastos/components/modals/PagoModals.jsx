@@ -10,6 +10,7 @@ import {
 import { AvisoSegundaConfirmacion, textoBoton, useSegundaConfirmacion } from '../segundaConfirmacion.jsx';
 import { OpcionSucursalGuardada } from '@shared/components/OpcionSucursalGuardada.jsx';
 import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 /* ==================================================================== *
  * Registrar un pago (desde el módulo, no desde la caja)
@@ -96,12 +97,10 @@ export function PagoFormModal({ proveedorId: proveedorFijo, onChange }) {
           <label>Proveedor <span className={s.req}>*</span></label>
           {/* Solo los de GASTOS: este pago nace con destino gastos y solo va a
               poder aplicarse a gastos. Para mercadería está Compras. */}
-          <select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)} disabled={!!proveedorFijo}>
-            <option value="">Elegí el proveedor</option>
-            {proveedores
-              .filter((p) => p.proveeGastos || p.id === Number(proveedorFijo))
-              .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          <BuscadorProveedor
+            proveedores={proveedores.filter((p) => p.proveeGastos || p.id === Number(proveedorFijo))}
+            value={proveedorId} onChange={setProveedorId} disabled={!!proveedorFijo}
+          />
         </div>
         <div className={s.field}>
           <label>Importe <span className={s.req}>*</span></label>

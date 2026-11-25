@@ -32,6 +32,7 @@ import { norm } from '../CatalogoPicker.jsx';
 import { ModalShell } from '../Modal.jsx';
 import { Table, Btn, s } from '../ui.jsx';
 import { fechaHoraAr } from '@shared/utils/hora.js';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 /* ------------------------------------------------------------------ *
  * Alta: el alcance
@@ -239,11 +240,10 @@ export function ConteoNuevoModal({ alCrear }) {
         </div>
         <div className={s.field}>
           <label htmlFor="conteo-proveedor">Proveedor</label>
-          <select id="conteo-proveedor" value={f.proveedorId} onChange={(e) => set({ proveedorId: e.target.value })}>
-            <option value="">Todos</option>
-            {store.state.proveedores.filter((p) => p.proveeMercaderia !== false)
-              .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          <BuscadorProveedor
+            id="conteo-proveedor" proveedores={store.state.proveedores.filter((p) => p.proveeMercaderia !== false)}
+            value={f.proveedorId} onChange={(v) => set({ proveedorId: v })} vacio="Todos"
+          />
         </div>
         <div className={s.field}>
           <label htmlFor="conteo-tipo">Tipo</label>

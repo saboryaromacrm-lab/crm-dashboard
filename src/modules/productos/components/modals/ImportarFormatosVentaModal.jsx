@@ -23,6 +23,7 @@ import {
 } from '../../domain/importarFormatosVenta.js';
 import { ModalShell } from '../Modal.jsx';
 import { Btn, Table, usePaginado, s } from '../ui.jsx';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 const normNombre = (x) => String(x ?? '').toUpperCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[^A-Z0-9]/g, '');
 
@@ -282,12 +283,10 @@ export function ImportarFormatosVentaModal({ proveedorId: proveedorInicial = nul
           {!varios && (
             <div className={s.field} style={{ marginBottom: 14 }}>
               <label htmlFor="fv-proveedor">Proveedor</label>
-              <select id="fv-proveedor" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-                <option value="">— Elegí el proveedor —</option>
-                {proveedores.slice().sort((a, b) => a.nombre.localeCompare(b.nombre)).map((p) => (
-                  <option key={p.id} value={p.id}>{p.nombre}</option>
-                ))}
-              </select>
+              <BuscadorProveedor
+                id="fv-proveedor" proveedores={proveedores.slice().sort((a, b) => a.nombre.localeCompare(b.nombre))}
+                value={proveedorId} onChange={setProveedorId}
+              />
             </div>
           )}
 

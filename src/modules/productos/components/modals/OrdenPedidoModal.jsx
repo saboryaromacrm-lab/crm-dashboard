@@ -13,6 +13,7 @@ import { ModalShell } from '../Modal.jsx';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Btn, s } from '../ui.jsx';
 import { fechaHoraAr } from '@shared/utils/hora.js';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 /**
  * ORDEN DE PEDIDO A UN PROVEEDOR (12/10/2026, pedido del dueño)
@@ -407,10 +408,10 @@ export function OrdenPedidoModal({ proveedorId: provInicial = '', sucursalId: su
       {/* En pantalla grande la lista scrollea sola y el pedido queda al costado; en una chica va todo junto, uno abajo del otro. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 16, flex: 1, minHeight: 0, overflow: isDesktop ? 'hidden' : 'auto' }}>
         <div className={s.toolbar}>
-          <select id="orden-proveedor" className={s['select-inline']} value={provId} onChange={(e) => cambiarProveedor(e.target.value)} aria-label="Proveedor">
-            <option value="">Elegí el proveedor…</option>
-            {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          <BuscadorProveedor
+            id="orden-proveedor" className={s['select-inline']} proveedores={proveedores} value={provId} onChange={cambiarProveedor}
+            style={{ width: 'auto', minWidth: 260 }}
+          />
           <select id="orden-sucursal" className={s['select-inline']} value={sucId} onChange={(e) => setSucId(e.target.value)} aria-label="Sucursal">
             {sucursalOptions(store, false)}
           </select>

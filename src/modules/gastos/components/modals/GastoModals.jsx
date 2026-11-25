@@ -18,6 +18,7 @@ import {
 } from '../../domain/fletes.js';
 import { TIPOS_COMPROBANTE } from '@modules/productos/domain/constants.js';
 import { FleteRenglon } from './FleteRenglon.jsx';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 /* ==================================================================== *
  * Alta y edición del gasto
@@ -261,8 +262,7 @@ export function GastoFormModal({ gastoId, onChange }) {
    * La letra arrastra el MODO de los montos (A → netos con IVA aparte), acá
    * y en el select de Letra: cambiar cualquiera de los dos lo re-decide.
    */
-  const alElegirProveedor = (e) => {
-    const id = e.target.value;
+  const alElegirProveedor = (id) => {
     const p = proveedores.find((x) => x.id === Number(id));
     /* El rubro también viene del proveedor (0240), si es uno vigente; editable.
      * Si el que estaba lo había puesto el proveedor anterior, se vacía: no se
@@ -605,16 +605,12 @@ export function GastoFormModal({ gastoId, onChange }) {
               Compras. Elegirlo precarga la LETRA de arriba con la de su ficha
               (editable — la excepción existe). */}
           {/* Con foco al abrir: es la primera decisión del formulario. */}
-          <select value={f.proveedorId} onChange={alElegirProveedor} disabled={bloqueado} autoFocus={!editando}>
-            <option value="">Sin proveedor del padrón</option>
-            {proveedores
+          <BuscadorProveedor
+            proveedores={proveedores
               .filter((p) => p.proveeGastos || p.id === Number(f.proveedorId))
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre}{p.letraGasto ? ` · factura ${p.letraGasto}` : ''}{p.proveeGastos ? '' : ' (mercadería)'}
-                </option>
-              ))}
-          </select>
+              .map((p) => ({ id: p.id, nombre: `${p.nombre}${p.letraGasto ? ` · factura ${p.letraGasto}` : ''}${p.proveeGastos ? '' : ' (mercadería)'}` }))}
+            value={f.proveedorId} onChange={alElegirProveedor} disabled={bloqueado} autoFocus={!editando} vacio="Sin proveedor del padrón"
+          />
           <div className={s.hint} style={{ margin: '6px 0 0' }}>
             ¿Falta uno? Tildale «provee gastos» en Proveedores — y ahí se le define qué factura hace.
           </div>

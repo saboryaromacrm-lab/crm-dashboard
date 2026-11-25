@@ -36,6 +36,7 @@ import { useProductos } from '../../context/ProductosContext.jsx';
 import { money, num } from '../../domain/format.js';
 import { displaysDe } from '../../domain/bulto.js';
 import { Btn, s } from '../ui.jsx';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 /** Fila de la cadena derivada. `fuerte` marca los dos números que importan. */
 function Paso({ label, valor, fuerte, tenue }) {
@@ -179,13 +180,11 @@ function FormatoCard({ prod, fila, i, onChange, onQuitar, onActivar, proveedores
           <span>Fija el precio</span>
         </label>
 
-        <select
-          value={fila.proveedorId}
-          disabled={!esAdmin}
-          onChange={(e) => setProveedor(Number(e.target.value))}
-        >
-          {proveedores.map((pv) => <option key={pv.id} value={pv.id}>{pv.nombre}</option>)}
-        </select>
+        {/* Siempre tiene proveedor: la × no lo deja vacío. */}
+        <BuscadorProveedor
+          proveedores={proveedores} value={String(fila.proveedorId ?? '')} disabled={!esAdmin}
+          onChange={(v) => { if (v) setProveedor(Number(v)); }}
+        />
 
         <input
           value={fila.codigoProveedor}

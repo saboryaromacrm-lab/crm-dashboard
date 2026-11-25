@@ -27,6 +27,7 @@ import { usePaginado, Paginador } from '@modules/productos/components/ui.jsx';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { PERMISO_FICHA } from './DetalleDesdeConsulta.jsx';
 import c from './Consultas.module.css';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 /** Texto comparable: sin acentos ni mayúsculas. */
 const norm = (v) => (v || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
@@ -487,10 +488,7 @@ export function ExistenciasVista({ compacto = false, onAbrirFicha = null }) {
           />
         </Campo>
         <Campo label="Proveedor">
-          <select value={f.proveedor} onChange={(e) => set({ proveedor: e.target.value })}>
-            <option value="">Todos</option>
-            {provConArticulos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          <BuscadorProveedor proveedores={provConArticulos} value={f.proveedor} onChange={(v) => set({ proveedor: v })} vacio="Todos" />
         </Campo>
         <Campo label="Categoría">
           <select value={f.categoria} onChange={(e) => set({ categoria: e.target.value })}>

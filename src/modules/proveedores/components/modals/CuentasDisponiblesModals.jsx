@@ -9,6 +9,7 @@ import { fmt, saldoCuenta, textoResumenCuenta } from '@modules/ventas/domain/cue
 import { Di, ModalShell, Pill, Table, fmtFecha, fmtFechaHora, money, s } from '../ui.jsx';
 import { CuentaPropiaSelect } from '@shared/components/CuentaPropiaSelect.jsx';
 import { avisarCuentasCompletas } from '@core/layout/components/cuentasCompletas.js';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 const hoyISO = () => {
   const d = new Date(); const p = (x) => String(x).padStart(2, '0');
@@ -131,10 +132,7 @@ export function CuentaDisponibleModal({ cuenta, sugerida, onChange }) {
         <>
           <div className={s.field}>
             <label>Proveedor <span className={s.req}>*</span></label>
-            <select value={f.proveedorId} onChange={(e) => setF((x) => ({ ...x, proveedorId: e.target.value, bancaria: '' }))} autoFocus>
-              <option value="">Elegí el proveedor</option>
-              {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-            </select>
+            <BuscadorProveedor proveedores={proveedores} value={f.proveedorId} onChange={(v) => setF((x) => ({ ...x, proveedorId: v, bancaria: '' }))} autoFocus />
             {proveedor && Number(proveedor.minimoTransferencia) > 0 && (
               <div className={s.hint} style={{ margin: '4px 0 0' }}>
                 Este proveedor no recibe transferencias menores a <strong>{money(proveedor.minimoTransferencia)}</strong> (salvo la que cierra la cuenta).

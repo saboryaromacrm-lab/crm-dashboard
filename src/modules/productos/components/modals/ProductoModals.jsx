@@ -14,6 +14,7 @@ import { CatalogoAdmin } from '../CatalogoAdmin.jsx';
 import { FormatoCompraTab } from './FormatoCompraTab.jsx';
 import { TiendaProductoTab } from './TiendaProductoTab.jsx';
 import { Table, TipoBadge, StockPill, MovTag, Btn, s } from '../ui.jsx';
+import { BuscadorProveedor } from '@shared/components/BuscadorProveedor.jsx';
 
 /* ---- Alta / edición de producto ---- */
 
@@ -659,12 +660,10 @@ export function ProductoFormModal({ prodId, inicial = null, alCrear = null, alCe
             <div className={s['form-grid']}>
               <div className={s.field}>
                 <label>Con quién llega</label>
-                <select value={f.proveedorId} onChange={(e) => set('proveedorId', e.target.value)}>
-                  <option value="">Elegir después (Formato de Compra)</option>
-                  {store.state.proveedores
-                    .filter((p) => p.proveeMercaderia !== false)
-                    .map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                </select>
+                <BuscadorProveedor
+                  proveedores={store.state.proveedores.filter((p) => p.proveeMercaderia !== false)}
+                  value={f.proveedorId} onChange={(v) => set('proveedorId', v)} vacio="Elegir después (Formato de Compra)"
+                />
               </div>
               <div className={s.field}>
                 <label>Código del proveedor</label>
