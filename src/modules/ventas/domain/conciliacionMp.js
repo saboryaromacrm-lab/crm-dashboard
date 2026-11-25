@@ -26,6 +26,7 @@ export const cambioDeMedio = (cobro, pago) => (cobro && pago?.medioErp && pago.m
 export const POR_QUE = {
   varios: 'Hay más de uno posible',
   otro_medio: 'Mismo importe, otro medio',
+  otra_hora: 'Mismo importe, otra hora del día',
   monto_distinto: 'Misma hora, otro importe',
 };
 const TIPO_ATADO = { auto: 'Solo', manual: 'A mano', sin_venta: 'No es venta', sin_mp: 'No entró a MP' };

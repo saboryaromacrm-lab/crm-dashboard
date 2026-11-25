@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import { registerModules } from './modules';
 import { iniciarApp } from '@core/pwa/app.js';
+import { aceptarComaDecimal } from '@shared/utils/comaDecimal.js';
 
 // Global stylesheets. Order matters: reset -> design tokens -> base -> utilities.
 import '@styles/reset.css';
@@ -17,6 +18,9 @@ registerModules();
 
 // Instalable como app (ícono propio, ventana sin barra del navegador). Ver core/pwa/app.js.
 iniciarApp();
+
+// En los casilleros de números, la coma decimal entra como punto. Ver shared/utils/comaDecimal.js.
+aceptarComaDecimal();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
