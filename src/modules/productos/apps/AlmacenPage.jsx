@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { ProductosProvider } from '../context/ProductosContext.jsx';
 import { InventoryShell } from '../pages/InventoryShell.jsx';
-import { ALMACEN_PANELS } from '../config/productos.config.js';
+import { ALMACEN_ENTRADA, ALMACEN_PANELS } from '../config/productos.config.js';
 import { esVozDelCafe } from '../domain/cafeteria.voz.js';
 
 /**
@@ -30,7 +30,8 @@ export function AlmacenPage() {
       .map((p) => (cafe && p.labelCafe ? { ...p, label: p.labelCafe } : p));
   }, [can]);
   const pedido = params.get('panel');
-  const inicial = panels.some((p) => p.id === pedido) ? pedido : panels[0]?.id;
+  const entrada = [pedido, ALMACEN_ENTRADA].find((id) => panels.some((p) => p.id === id));
+  const inicial = entrada ?? panels[0]?.id;
 
   return (
     <ProductosProvider panels={panels} defaultPanel={inicial}>

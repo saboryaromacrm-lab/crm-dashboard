@@ -69,8 +69,14 @@ export const COMPRAS_PANELS = [
   { id: 'historial',      label: 'Historial',      icon: HistoryIcon,        permiso: 'compras.historial' },
 ];
 
+/** La sección en la que abre Almacén si el rol la ve (si no, la primera que vea). */
+export const ALMACEN_ENTRADA = 'existencias';
+
 /** Menú interno del módulo ALMACÉN. */
 export const ALMACEN_PANELS = [
+  /* Los pedidos a proveedores ya recibidos (24/11/2026): venía de Proveedores › Pedidos.
+     Primera del menú por pedido del dueño; Almacén igual abre en Existencias (ver ALMACEN_ENTRADA). */
+  { id: 'ingresos',       label: 'Ingresos',       icon: MoveToInboxIcon,    permiso: 'almacen.ingresos' },
   /*
    * Existencias trae adentro la pestaña Movimientos (27/8, pedido del dueño):
    * la película de la foto, sin cruzar a Compras › Historial ni gastar una
@@ -104,8 +110,6 @@ export const ALMACEN_PANELS = [
   /* Quiebres de stock (4/11/2026): en un período, cuántas veces y cuántos días
      sin stock cada artículo en cada local, y lo que se dejó de vender. */
   { id: 'quiebres',       label: 'Quiebres de stock', icon: RemoveShoppingCartIcon, permiso: 'almacen.quiebres' },
-  /* Los pedidos a proveedores ya recibidos (24/11/2026): venía de Proveedores › Pedidos. */
-  { id: 'ingresos',       label: 'Ingresos',       icon: MoveToInboxIcon,    permiso: 'almacen.ingresos' },
   // Punto de SALIDA hacia coffit: el ERP no lleva el stock del café. El globito
   // avisa la demanda del café que espera (pedidos pendientes o armándose).
   /* Dos permisos: la distribuidora entra por `almacen.cafeteria` y el rol

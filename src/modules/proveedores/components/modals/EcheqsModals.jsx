@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { hoyISO } from '@modules/gastos/domain/constants.js';
 import { diasDe, sumarDias } from '@modules/gerencia/panels/metricas/formato.js';
+import { fmtFechaVenc } from '@modules/productos/domain/format.js';
 import { useProveedores } from '../../context/ProveedoresContext.jsx';
 import { useResource } from '../../hooks/useResource.js';
 import { provApi } from '../../services/proveedores.api.js';
@@ -49,14 +50,20 @@ export function DatoCopiable({ etiqueta, valor, copiar = valor }) {
  * LO QUE PIDE EL HOME BANKING PARA HACER EL ECHEQ (27/10 y 7/11/2026, pedido
  * del dueño): el CUIT —se copia sin guiones— y el correo del proveedor, a
  * mano donde se elige pagar con echeq, donde se hace y donde se confirma.
+ *
+ * Con `desde` (25/11/2026, pedido del dueño) también la FECHA DE COBRO que pide
+ * el banco: `desde` + los días de pago de la ficha, lista para copiar.
  */
-export function DatosParaElBanco({ prov }) {
+export function DatosParaElBanco({ prov, desde }) {
   if (!prov) return null;
+  const cobro = desde && prov.diasPago > 0 ? fmtFechaVenc(sumarDias(desde, prov.diasPago)) : '';
   return (
     <div className={s.hint} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 16px', margin: '8px 0 0' }}>
       <DatoCopiable etiqueta="CUIT" valor={prov.cuit} copiar={String(prov.cuit ?? '').replace(/\D/g, '')} />
       <DatoCopiable etiqueta="Correo" valor={prov.email} />
-      <span>Plazo de pago: {prov.diasPago > 0 ? `${prov.diasPago} días` : <em>sin cargar</em>}</span>
+      {cobro
+        ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><DatoCopiable etiqueta="Fecha de cobro" valor={cobro} /> (a {prov.diasPago} días)</span>
+        : <span>Plazo de pago: {prov.diasPago > 0 ? `${prov.diasPago} días` : <em>sin cargar en la ficha</em>}</span>}
     </div>
   );
 }

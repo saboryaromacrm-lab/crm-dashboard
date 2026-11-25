@@ -86,6 +86,9 @@ export function PagoProveedorModal({ proveedor, docs: todosLosDocs = [], presele
   const [desdeCaja, setDesdeCaja] = useState(true);
   const esCambio = modo === 'simple' && medio === CAMBIO;
   const conEcheq = modo === 'echeq';
+  /* La ficha completa (CUIT, correo, días de pago) para hacer el echeq en el home banking. */
+  const ficha = proveedores.find((p) => p.id === proveedor.id) ?? proveedor;
+  const parteEcheq = modo === 'mixto' ? formas.find((x) => x.medio === 'echeq') : null;
 
   const { data: caja } = useResource(
     `caja-prov:${ctx.sucursalId}`,
@@ -508,7 +511,7 @@ export function PagoProveedorModal({ proveedor, docs: todosLosDocs = [], presele
               <div className={s.hint} style={{ margin: '6px 0 0' }}>
                 Hoy no sale plata: se hace el echeq{elegidos.length ? ' cubriendo lo tildado' : ' (a cuenta)'} y el pago se registra cuando el banco lo debita.
               </div>
-              <DatosParaElBanco prov={proveedores.find((p) => p.id === proveedor.id) ?? proveedor} />
+              <DatosParaElBanco prov={ficha} desde={hoyISO()} />
             </>
           )}
         </div>
@@ -527,6 +530,7 @@ export function PagoProveedorModal({ proveedor, docs: todosLosDocs = [], presele
                   este importe, así no se le cobra. Si pagaron entre los dos, registrá un pago para cada uno.
                 </div>
               )}
+              {medio === 'echeq' && <DatosParaElBanco prov={ficha} desde={fecha} />}
             </div>
             {medio === 'transferencia' && (
               <div className={s.field}>
@@ -552,6 +556,7 @@ export function PagoProveedorModal({ proveedor, docs: todosLosDocs = [], presele
       {modo === 'mixto' && (
         <>
           <PartesPago formas={formas} setFormas={setFormas} total={importe} />
+          {parteEcheq && <DatosParaElBanco prov={ficha} desde={parteEcheq.fecha || fecha} />}
         </>
       )}
 
