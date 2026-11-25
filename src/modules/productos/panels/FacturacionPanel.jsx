@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BuscadorOpcion } from '@shared/components/BuscadorOpcion.jsx';
 import { Tabs, Tab } from '@mui/material';
 import { cx } from '@shared/utils/classNames.js';
@@ -129,8 +129,29 @@ export function FacturacionPanel() {
     .filter((c) => c.tipo === 'remito' && c.estado === 'confirmado'
       && (!provF || c.proveedorId === parseInt(provF, 10)))
     .sort((a, b) => b.id - a.id);
-  // Si el último remito se facturó con la pestaña abierta, se vuelve a Facturas.
-  const tabEfectiva = tab === 'remitos' && !remitosPendientes.length ? 'facturas' : tab;
+
+  /*
+   * MITADES SIN CARGAR (25/11/2026, pedido del dueño): de un proveedor mitad y
+   * mitad, la factura A sin su liquidación (o al revés) a ±7 días, de los
+   * últimos 60 días. El costo no lo nota —lo mezcla el «Sin factura %» del
+   * formato—, pero la mercadería, la deuda y el IVA quedan con la mitad. Lo
+   * calcula la API (acá solo están los últimos 300 comprobantes) y se vuelve a
+   * pedir cada vez que cambian los comprobantes (se cargó uno).
+   */
+  const [mitades, setMitades] = useState([]);
+  useEffect(() => {
+    if (!verNoFiscal) return undefined;
+    let vigente = true;
+    store.mitadesSinCargar()
+      .then((r) => { if (vigente) setMitades(Array.isArray(r) ? r : []); })
+      .catch(() => { if (vigente) setMitades([]); });
+    return () => { vigente = false; };
+  }, [verNoFiscal, store, store.state.comprobantes]);
+  const mitadesVisibles = mitades.filter((m) => !provF || m.proveedorId === parseInt(provF, 10));
+
+  // Si el último remito se facturó (o la última mitad se cargó) con la pestaña abierta, se vuelve a Facturas.
+  const tabEfectiva = (tab === 'remitos' && !remitosPendientes.length) || (tab === 'mitades' && !mitadesVisibles.length)
+    ? 'facturas' : tab;
 
   // "Facturado" es SOLO lo facturado: la liquidación no entra ni con el permiso
   // puesto. Es el número que se compara contra el libro de IVA.
@@ -191,7 +212,7 @@ export function FacturacionPanel() {
         </span>
       </div>
 
-      {(verPagos || remitosPendientes.length > 0) ? (
+      {(verPagos || remitosPendientes.length > 0 || mitadesVisibles.length > 0) ? (
         <Tabs
           value={tabEfectiva}
           onChange={(e, v) => setTab(v)}
@@ -202,6 +223,9 @@ export function FacturacionPanel() {
           {/* Solo existe mientras haya remitos esperando: un "⚠ (0)" fijo no avisa nada. */}
           {remitosPendientes.length > 0 && (
             <Tab value="remitos" label={`⚠ Remitos sin facturar (${remitosPendientes.length})`} sx={{ minHeight: 40 }} />
+          )}
+          {mitadesVisibles.length > 0 && (
+            <Tab value="mitades" label={`⚠ Mitades sin cargar (${mitadesVisibles.length})`} sx={{ minHeight: 40 }} />
           )}
         </Tabs>
       ) : null}
@@ -246,6 +270,47 @@ export function FacturacionPanel() {
           <div className={s.hint}>
             El total es <strong>estimado</strong>: el remito entró con los costos de catálogo. El
             número real lo trae la factura, y se corrige al facturarlo.
+          </div>
+        </>
+      ) : tabEfectiva === 'mitades' && mitadesVisibles.length > 0 ? (
+        <>
+          <div className={s.callout}>
+            Proveedores que trabajan <strong>mitad y mitad</strong> (factura A + liquidación): estos papeles no tienen
+            cargada su otra mitad entre 7 días antes y 7 después. <strong>El costo de los productos no depende de esto</strong> (lo
+            mezcla el «Sin factura %» de cada uno), pero la mercadería, la deuda con el proveedor y la parte sin factura
+            del IVA quedan con la mitad. Cuando la cargues, el papel sale solo de esta lista.
+          </div>
+          <Table
+            cols={[
+              { h: 'Fecha' }, { h: 'Cargado' }, { h: 'Proveedor' }, { h: 'Falta' },
+              { h: 'Total', num: true }, { h: 'Acciones', cls: 'actions-col' },
+            ]}
+          >
+            {mitadesVisibles.map((m) => (
+              <tr key={m.id} className={s.clickable} onClick={() => openModal('comprobanteDetalle', { id: m.id })}>
+                <td>{fmtFecha(m.fecha)}</td>
+                <td className={s.mono}>{m.etiqueta}</td>
+                <td>{m.proveedor} <span className={s.muted}>({m.porcFicha.toLocaleString('es-AR')} % sin factura)</span></td>
+                <td>La {m.falta}</td>
+                <td className={s.num}>{money(m.total)}</td>
+                <td className={s['actions-col']}>
+                  <div className={s['row-actions']} onClick={(e) => e.stopPropagation()}>
+                    {puedeCargar && (
+                      <Btn
+                        small variant="btn-primary"
+                        onClick={() => openModal('comprobanteForm', { proveedorId: m.proveedorId, tipo: m.tipo === 'liquidacion' ? 'factura' : 'liquidacion' })}
+                      >
+                        Cargar la {m.falta}
+                      </Btn>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </Table>
+          <div className={s.hint}>
+            Se miran los últimos 60 días. Si esa vez el proveedor facturó todo (o no facturó nada), no hay otra mitad que
+            cargar: el papel sale de la lista solo cuando pasen los 60 días.
           </div>
         </>
       ) : tabEfectiva === 'pagos' && verPagos ? (

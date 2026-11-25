@@ -21,3 +21,16 @@ export function contraLaOtraMitad(netoPapel, netoOtra, esLiquidacion) {
   const ivaAdentro = [21, 10.5].some((a) => Math.abs(sobre - a) < 0.6);
   return { netoPapel, variacion, ivaAdentro };
 }
+
+/**
+ * EL «SIN FACTURA %» DE UN PRODUCTO CONTRA EL DE SU PROVEEDOR (25/11/2026,
+ * pedido del dueño). El costo lo mezcla el % del formato de compra, no el de la
+ * ficha (que solo precarga los formatos nuevos): un producto que quedó en 0 %
+ * con el proveedor en 50 % sale con el IVA entero, se carguen bien o no los
+ * dos papeles. `null` si dan igual (cinco centésimos de tolerancia).
+ */
+export function porcDistintoDeLaFicha(porcFormato, porcFicha) {
+  const formato = Number(porcFormato) || 0;
+  const ficha = Number(porcFicha) || 0;
+  return Math.abs(formato - ficha) > 0.05 ? { formato, ficha } : null;
+}

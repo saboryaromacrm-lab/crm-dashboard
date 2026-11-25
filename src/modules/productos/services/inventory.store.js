@@ -1210,6 +1210,20 @@ const _echeqsImputados = (o) => (o.echeqs || [])
   .map((x) => ({ echeqId: Number(x.echeqId), importe: Number(x.importe) || 0 }))
   .filter((x) => x.echeqId && x.importe > 0);
 
+/**
+ * UN COSTO A ACTUALIZAR DESDE «IMPACTO EN PRECIOS». Hasta el 25/11/2026 acá se
+ * perdían `descuento` (trasladar el descuento del papel al formato) y
+ * `descuentoPapel` (el neto del papel en un formato en precio final), y también
+ * `confirmarSaltos`: la pantalla los armaba y la API nunca los recibía.
+ */
+const _costoPedido = (x) => ({
+  productoId: Number(x.productoId),
+  costo: Number(x.costo) || 0,
+  cantidad: Number(x.cantidad) > 0 ? Number(x.cantidad) : undefined,
+  descuento: x.descuento != null && x.descuento !== '' ? Number(x.descuento) : undefined,
+  descuentoPapel: Number(x.descuentoPapel) > 0 ? Number(x.descuentoPapel) : undefined,
+});
+
 function _cleanComprobante(o) {
   return {
     tipo: o.tipo, letra: o.letra, puntoVenta: o.puntoVenta,
@@ -1264,11 +1278,9 @@ function _cleanComprobante(o) {
      * $40.000". Mandar el precio nuevo con los kilos viejos dejaría el $/kg
      * —que es lo que fija la góndola— mintiendo.
      */
-    actualizarCostos: (o.actualizarCostos || []).map((x) => ({
-      productoId: Number(x.productoId),
-      costo: Number(x.costo) || 0,
-      cantidad: Number(x.cantidad) > 0 ? Number(x.cantidad) : undefined,
-    })),
+    actualizarCostos: (o.actualizarCostos || []).map(_costoPedido),
+    /* Los saltos de costo de más de ×3 que se tildaron «Es correcto» (sin esto la API los frena siempre). */
+    confirmarSaltos: o.confirmarSaltos?.length ? o.confirmarSaltos.map(Number).filter(Boolean) : undefined,
     /** Productos cuyo proveedor activo pasa a ser el de este comprobante. */
     activarProveedor: (o.activarProveedor || []).map(Number).filter(Boolean),
     /**
@@ -1333,6 +1345,8 @@ const crearComprobante = (o) => _mutate(() => httpClient.post('/comprobantes', _
 const proyectarPrecios = (body) => httpClient.post('/comprobantes/proyectar-precios', body);
 /** La otra mitad (factura A ↔ liquidación) del papel que se carga, con sus precios (21/11/2026). No graba nada. */
 const otraMitad = (q) => httpClient.get(`/comprobantes/otra-mitad?${new URLSearchParams(q)}`);
+/** Facturas A y liquidaciones de proveedores mitad y mitad sin su otra mitad a ±7 días (25/11/2026). */
+const mitadesSinCargar = () => httpClient.get('/comprobantes/mitades-sin-cargar');
 /**
  * LLEGÓ LA FACTURA DE UN REMITO (26/8): el remito PASA A SER la factura, sin
  * volver a mover stock. Los renglones viajan por `itemId` (los del remito) y
@@ -1361,11 +1375,8 @@ const facturarRemito = (remitoId, o) => _mutate(() => httpClient.post(`/comproba
       base: p.base === 'total' ? 'total' : 'neto',
       importe: Number(p.importe) || 0,
     })),
-  actualizarCostos: (o.actualizarCostos || []).map((x) => ({
-    productoId: Number(x.productoId),
-    costo: Number(x.costo) || 0,
-    cantidad: Number(x.cantidad) > 0 ? Number(x.cantidad) : undefined,
-  })),
+  actualizarCostos: (o.actualizarCostos || []).map(_costoPedido),
+  confirmarSaltos: o.confirmarSaltos?.length ? o.confirmarSaltos.map(Number).filter(Boolean) : undefined,
   activarProveedor: (o.activarProveedor || []).map(Number).filter(Boolean),
   tomarPagos: (o.tomarPagos || [])
     .map((x) => ({ pagoId: Number(x.pagoId), importe: Number(x.importe) || 0 }))
@@ -1669,7 +1680,7 @@ export const inventoryStore = {
   crearProveedor, editarProveedor, eliminarProveedor,
   percepcionesProveedor, guardarPercepcionesProveedor,
   guardarFormatosCompra, guardarListasProducto, guardarListasPresentacion,
-  proyectarPrecios, otraMitad, filaPiso, precioGondola, escalaPaquete, costoPrecioPaquete,
+  proyectarPrecios, otraMitad, mitadesSinCargar, filaPiso, precioGondola, escalaPaquete, costoPrecioPaquete,
   costoNeto, costoNetoEntry, costoPrecio, costoPrecioEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPaquete,
   precioFinal, redondearPrecio,
   crearComprobante, facturarRemito, anulacionComprobante, anularComprobante, getComprobante, asegurarComprobante, comprobantesDe, cuentaProveedor, saldoTotalProveedores,

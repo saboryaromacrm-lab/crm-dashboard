@@ -8,8 +8,9 @@ import { displaysDe, envasesDelRenglon, nombreEnvase } from '../../domain/bulto.
 import { bultoDelRenglon, cargaDelRenglon, codigoDeFormato, nombreDelRenglon } from '../../domain/renglonPapel.js';
 import { deOtraSucursal, esJefeSesion, pagoSeOfrece } from '../../domain/pagosACuenta.js';
 import { emparejarPercepciones, tipoSegunNombre } from '../../domain/percepciones.js';
-import { contraLaOtraMitad } from '../../domain/otraMitad.js';
+import { contraLaOtraMitad, porcDistintoDeLaFicha } from '../../domain/otraMitad.js';
 import { dudasDelProducto, pesoDe } from '../../domain/parecidoPapel.js';
+import { kgPorUnidadDe, unidadesAlPeso, unidadesSugeridas, vieneAlPeso, yaEntraronSegunHistorial } from '../../domain/alPeso.js';
 import { preciosConIvaAdentro, sinIva } from '../../domain/ivaAdentro.js';
 import { leerSesion } from '@core/auth/sesion.js';
 import { verificadorEan13 } from '@core/services/barcode.js';
@@ -308,6 +309,12 @@ function CabeceraRenglon() {
 
 function tamDelModo(it) {
   if (it.modo === 'unidad') return 1;
+  /* Al peso (25/11/2026): la cantidad son kg y lo que se graba son unidades (hormas). Ver domain/alPeso.js. */
+  if (it.modo === 'peso') {
+    const kg = Number(it.bultos) || 0;
+    const u = unidadesAlPeso(it);
+    return kg > 0 && u > 0 ? u / kg : 0;
+  }
   return Number(it.modo === 'display' ? it.porDisplay : it.porBulto) || 0;
 }
 
@@ -663,8 +670,19 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    * significado ($/bulto ↔ $/display ↔ $/unidad), así que se convierte solo con
    * los tamaños a la vista — el $/u. real no se mueve.
    */
+  /** Lo que un renglón necesita para ir al peso: los kg de la unidad (del nombre) y si ya entraron (del historial). */
+  const camposAlPeso = (row) => {
+    const prod = store.getProducto(parseInt(row.productoId, 10));
+    return {
+      kgPorUnidad: row.kgPorUnidad || String(kgPorUnidadDe(prod?.nombre) ?? ''),
+      yaEntraron: row.yaEntraron ?? yaEntraronSegunHistorial(store.state.comprobantes, row.productoId, parseInt(provId, 10)),
+      unidadesPeso: '',
+    };
+  };
   const cambiarModo = (i, modo) => setItems((rows) => rows.map((row, j) => {
     if (j !== i || (row.modo || 'bulto') === modo) return row;
+    /* Al peso, el costo tipeado es el $/kg del papel: no se convierte. */
+    if (modo === 'peso' || row.modo === 'peso') return { ...row, modo, ...(modo === 'peso' ? camposAlPeso(row) : {}) };
     const antes = tamDelModo(row);
     const despues = tamDelModo({ ...row, modo });
     const c = Number(row.costoBulto) || 0;
@@ -725,8 +743,11 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     const porBulto = tamDelModo(it);
     const costoBulto = Number(it.costoBulto) || 0;
     const desc = Number(it.descuento) || 0;
-    const cantidadTotal = r3(bultos * porBulto);
-    const costoUnitario = porBulto > 0 ? costoBulto / porBulto : 0;
+    /* Al peso: el costo por unidad es el importe repartido, así unidades × costo = kg × $/kg al centavo. */
+    const alPeso = it.modo === 'peso';
+    const cantidadTotal = alPeso ? unidadesAlPeso(it) : r3(bultos * porBulto);
+    const costoUnitario = alPeso ? (cantidadTotal > 0 ? (bultos * costoBulto) / cantidadTotal : 0)
+      : porBulto > 0 ? costoBulto / porBulto : 0;
     const neto = bultos * costoBulto * (1 - desc / 100);
     return { cantidadTotal, costoUnitario, neto, iva: neto * (discriminaIva ? Number(it.iva) || 0 : 0) / 100 };
   };
@@ -756,6 +777,18 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     cantidad: Number(x.cantidad) || 0, neto: netoDelPapel(x), iva: x.iva ?? undefined,
   }));
   const bruto = items.reduce((a, it) => a + calcRow(it).neto, 0) + renglonesPrueba.reduce((a, p) => a + p.neto, 0);
+
+  /*
+   * HORMAS AL PESO QUE YA ENTRARON (25/11/2026): el papel de los kilos llega
+   * después de la factura que trajo las hormas a $0. Ese papel pone el precio
+   * y la deuda, pero NO vuelve a sumar las hormas. Como el stock entra por
+   * comprobante, el papel tiene que ser todo de esas hormas.
+   */
+  const conCantidad = items.filter((it) => it.productoId && Number(it.bultos) > 0 && tamDelModo(it) > 0);
+  const yaEntro = (it) => it.modo === 'peso' && !!it.yaEntraron;
+  const soloPrecio = permiteRecepcion && !esConversion && conCantidad.length > 0 && conCantidad.every(yaEntro);
+  const mezclaYaEntraron = !soloPrecio && conCantidad.some(yaEntro);
+  const ingresaMercaderia = permiteRecepcion && !soloPrecio;
 
   /** % del papel; el importe se puede corregir porque el proveedor redondea a su modo. */
   const [bonifPct, setBonifPct] = useState('');
@@ -924,7 +957,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       { cantidad: x.cantidad, costoPapel: x.costoBulto, bultosPapel: x.bultosPapel },
       { porBulto: porBulto || entry?.cantidad, costoFormato: entry?.costo },
     );
-    return {
+    const fila = {
       productoId: String(prod.id),
       bultos: String(carga.bultos),
       porBulto: String(carga.porBulto),
@@ -943,6 +976,17 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       renglonIa: x.i,
       guardarCodigo: !!codigo && codigoDeFormato(prod, parseInt(provId, 10)) !== codigo
         && !dudasDelProducto(x.descripcion, prod.nombre, [provElegido?.nombre, prod.marca]).length,
+    };
+    /* La horma cobrada en kilos («18,53 × $12.321,60»): al peso, con el $/kg del papel. */
+    const precioKg = Number(x.costoBulto) || 0;
+    if (!vieneAlPeso(prod, x.cantidad) || !(precioKg > 0)) return fila;
+    return {
+      ...fila,
+      modo: 'peso',
+      bultos: String(Number(x.cantidad)),
+      porBulto: String(entry?.cantidad || 1),
+      costoBulto: String(ivaAdentro ? sinIva(precioKg, x.iva ?? prod.iva ?? 21) : precioKg),
+      ...camposAlPeso({ productoId: String(prod.id) }),
     };
   };
   /** Número de renglón del papel → su fila en el alta (si la borran, el renglón vuelve a «elegir»). */
@@ -1313,7 +1357,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     for (const it of items) {
       const prodId = parseInt(it.productoId, 10);
       /* Suelto o por display (0203): la entrega no dice nada del tamaño del BULTO del proveedor. */
-      const sinBulto = it.modo === 'unidad' || it.modo === 'display';
+      const sinBulto = it.modo === 'unidad' || it.modo === 'display' || it.modo === 'peso';
       const porBulto = Number(it.porBulto) || 0;
       const tam = tamDelModo(it);
       const costoBulto = Number(it.costoBulto) || 0;
@@ -1409,6 +1453,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         pareceIva,
         salto,
         factorSalto,
+        alPeso: it.modo === 'peso' ? { kgPorUnidad: Number(it.kgPorUnidad) || 0, precioKg: Number(it.costoBulto) || 0 } : null,
         otraMitad: vsOtra ? { ...vsOtra, netoOtra: otra.netoUnitario, etiqueta: papelOtra?.etiqueta, fecha: papelOtra?.fecha } : null,
         esActivo: store.formatoActivo(prod)?.proveedorId === pid,
         activoNombre: store.getProveedor(store.formatoActivo(prod)?.proveedorId)?.nombre || '—',
@@ -1419,6 +1464,12 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
 
   const diferencias = impacto.filter((d) => d.difRelevante);
   const conOtraMitadDistinta = impacto.filter((d) => d.otraMitad);
+  /* El % sin factura de cada producto contra el del proveedor (25/11/2026): es el
+   * que arma el costo, así que si quedó distinto se avisa al cargar. Sin el permiso
+   * de liquidaciones no se muestra; el de «factura a fin de mes» (0158) no va por mitades. */
+  const conPorcDistinto = puedeNoFiscal && provElegido && !provElegido.facturaMensual
+    ? impacto.filter((d) => d.entry && porcDistintoDeLaFicha(d.entry.porcSinFactura, provElegido.porcSinFactura))
+    : [];
   const cambiablesActivo = impacto.filter((d) => !d.esActivo && (d.entry || d.costoFacturado > 0));
 
   // El costo se tilda por defecto: olvidarse de actualizarlo es el error que
@@ -1472,8 +1523,9 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   /* Los saltos confirmados: destildados por defecto — el punto es que alguien lo mire. */
   const [saltosOk, setSaltosOk] = useState(() => new Set());
   const toggleSalto = toggleEnSet(setSaltosOk);
-  const saltosSinConfirmar = costosAActualizar.filter((d) => d.salto && d.difRelevante && !omitido(d) && !saltosOk.has(d.productoId));
-  const confirmarSaltos = costosAActualizar.filter((d) => d.salto && saltosOk.has(d.productoId)).map((d) => d.productoId);
+  /* Al peso, el salto no es un cero de más: es el $/kg pasado a la horma, con la cuenta a la vista. */
+  const saltosSinConfirmar = costosAActualizar.filter((d) => d.salto && d.difRelevante && !omitido(d) && !d.alPeso && !saltosOk.has(d.productoId));
+  const confirmarSaltos = costosAActualizar.filter((d) => d.salto && (d.alPeso || saltosOk.has(d.productoId))).map((d) => d.productoId);
   // En B o C el costo SUBE lo que era el IVA, y es lo correcto: ese IVA no se recupera.
   const hayAvisoIva = discriminaIva && diferencias.some((d) => d.pareceIva && !omitido(d));
 
@@ -1522,7 +1574,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   const cuerpoProyeccion = impacto.length && provId ? {
     proveedorId: parseInt(provId, 10),
     // Solo lo que INGRESA mercadería crea el formato que falte.
-    recepcion: !esConversion && !esNotaCredito && permiteRecepcion,
+    recepcion: !esConversion && !esNotaCredito && ingresaMercaderia,
     items: esConversion ? [] : items
       .filter((it) => it.productoId)
       .map((it) => ({ productoId: parseInt(it.productoId, 10), costoUnitario: calcRow(it).costoUnitario })),
@@ -1578,6 +1630,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   const guardarUnaVez = async () => {
     if (venc && fecha && venc < fecha) { toast('El vencimiento del pago no puede ser anterior a la fecha del comprobante.', 'err'); return; }
     if (saltosSinConfirmar.length) { frenarPorSalto(); return; }
+    if (mezclaYaEntraron) { frenarPorMezcla(); return; }
     const parsed = items
       .filter((it) => it.productoId && Number(it.bultos) > 0 && tamDelModo(it) > 0)
       .map((it) => {
@@ -1698,7 +1751,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       // En factura/liquidacion/remito sale del TIPO (entra siempre); en una NC es
       // la decision de quien carga el papel: `recepcion` ahi significa "esta NC
       // devuelve mercaderia" y la API la usa para SACAR stock.
-      recepcion: esNotaCredito ? devuelveMercaderia : permiteRecepcion,
+      recepcion: esNotaCredito ? devuelveMercaderia : ingresaMercaderia,
       vencimientoPago: venc || null, observaciones: obs.trim(), items: parsed,
       // De la bandeja: el CAE del QR (o el leído del PDF, si el QR no se pudo)
       // y la lectura que este comprobante cierra en la misma transacción.
@@ -1759,6 +1812,10 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   /** Renglones completos: producto + cantidad (+ tamaño del bulto si va por bultos). */
   const itemsValidos = items.filter((it) => it.productoId && Number(it.bultos) > 0 && tamDelModo(it) > 0).length;
 
+  const frenarPorMezcla = () => toast(
+    'Este papel tiene hormas al peso que ya entraron y otros renglones que entran ahora. El stock entra por comprobante: '
+    + 'o es todo de hormas que ya entraron (no suma nada), o destildá «ya entraron» y suma todo.', 'err',
+  );
   const continuar = () => {
     if (paso === 1) {
       if (!tipo) { toast('Elegí el tipo de comprobante.', 'err'); return; }
@@ -1788,6 +1845,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     } else if (paso === 2) {
       if (!itemsValidos) { toast('Agregá al menos un ítem completo: cantidad y, si va por bultos, el tamaño del bulto.', 'err'); return; }
       if (saltosSinConfirmar.length) { frenarPorSalto(); return; }
+      if (mezclaYaEntraron) { frenarPorMezcla(); return; }
       setPaso(3);
     }
   };
@@ -1804,7 +1862,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       disabled={esConversion}
       title={esConversion
         ? 'La cantidad es la del remito: es lo que entró al depósito'
-        : { unidad: 'Cuántas unidades sueltas llegaron', display: 'Cuántos displays llegaron' }[it.modo] ?? 'Cuántos bultos llegaron'}
+        : { unidad: 'Cuántas unidades sueltas llegaron', display: 'Cuántos displays llegaron', peso: 'Cuántos kg dice el papel' }[it.modo] ?? 'Cuántos bultos llegaron'}
       onChange={(e) => setItem(i, { bultos: e.target.value })}
     />
   );
@@ -1821,12 +1879,13 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       {/* Solo si el formato de este proveedor declara el display (0203). */}
       {Number(it.porDisplay) > 0 && <option value="display">displays</option>}
       <option value="unidad">u. sueltas</option>
+      <option value="peso">kg (al peso)</option>
     </select>
   ) : null);
   const inputCosto = (it, i) => (
     <input
       type="number" min="0" step="any" value={it.costoBulto} aria-label="Costo"
-      title={`Costo ${{ unidad: 'por unidad', display: 'del display' }[it.modo] ?? 'del bulto'}, como figura en la factura`}
+      title={`Costo ${{ unidad: 'por unidad', display: 'del display', peso: 'por kg' }[it.modo] ?? 'del bulto'}, como figura en la factura`}
       onChange={(e) => setItem(i, { costoBulto: e.target.value, costoAuto: false })}
     />
   );
@@ -1887,7 +1946,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     const r = calcRow(it);
     const u = unidadDe(prod);
     const antes = bultoAntes(it, prod);
-    const como = it.modo === 'unidad' ? 'sueltas' : it.modo === 'display' ? `displays × ${it.porDisplay || '—'}`
+    const como = it.modo === 'peso' ? 'kg al peso' : it.modo === 'unidad' ? 'sueltas' : it.modo === 'display' ? `displays × ${it.porDisplay || '—'}`
       : `bultos × ${it.porBulto || '—'}${antes != null ? ` (era ${num(antes, 3)})` : ''}`;
     return (
       <>
@@ -1910,6 +1969,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   const avisoDeBulto = (x, it) => {
     const i = items.indexOf(it);
     const prod = store.getProducto(parseInt(it.productoId, 10));
+    if (prod && it.modo === 'peso') return controlesAlPeso(it, i);
     if (!prod || it.modo === 'unidad' || it.modo === 'display') return null;
     const u = unidadDe(prod);
     const antes = bultoAntes(it, prod);
@@ -1926,6 +1986,48 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       </>
     );
   };
+  /**
+   * AL PESO, A LA VISTA: los kg de cada unidad, si ya entraron (no suma stock)
+   * o cuántas llegaron, y lo que queda por unidad y por kg.
+   */
+  const controlesAlPeso = (it, i) => {
+    const kg = Number(it.bultos) || 0;
+    const kgU = Number(it.kgPorUnidad) || 0;
+    const r = calcRow(it);
+    return (
+      <span style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+        <span>Al peso: {num(kg, 3)} kg, unidad de</span>
+        <input
+          type="number" min="0" step="any" value={it.kgPorUnidad ?? ''} aria-label="Kilos por unidad" style={{ width: 64 }}
+          title="Lo que pesa una unidad (sale del nombre del producto)"
+          onChange={(e) => setItem(i, { kgPorUnidad: e.target.value })}
+        />
+        <span>kg ·</span>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+          <input type="checkbox" checked={!!it.yaEntraron} onChange={(e) => setItem(i, { yaEntraron: e.target.checked, unidadesPeso: '' })} />
+          <span>ya entraron (vinieron a $0 en otra factura)</span>
+        </label>
+        {!it.yaEntraron && kgU > 0 && (
+          <>
+            <span>· llegaron</span>
+            <input
+              type="number" min="1" step="1" value={it.unidadesPeso || String(unidadesSugeridas(kg, kgU) || '')}
+              aria-label="Unidades que llegaron" style={{ width: 56 }}
+              onChange={(e) => setItem(i, { unidadesPeso: e.target.value })}
+            />
+            <span>u.</span>
+          </>
+        )}
+        {kgU > 0 && r.costoUnitario > 0 && (
+          <span>
+            → <strong>{money(r.costoUnitario)}</strong> por unidad ({money(r.costoUnitario / kgU)}/kg)
+            {it.yaEntraron ? ' · no suma stock' : ''}
+          </span>
+        )}
+        {!(kgU > 0) && <strong style={{ color: 'var(--crm-color-danger)' }}>Poné cuántos kg pesa una unidad</strong>}
+      </span>
+    );
+  };
   /** Lo que se toca poco, en el detalle de la fila de la lectura: cómo vino, el bulto, descuento, IVA y Coffit. */
   const detalleDeLectura = (it) => {
     const i = items.indexOf(it);
@@ -1934,7 +2036,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     return (
       <>
         {modo && <label className={s.iaCampo}><span>Vino en</span>{modo}</label>}
-        {it.modo !== 'unidad' && it.modo !== 'display' && (
+        {it.modo !== 'unidad' && it.modo !== 'display' && it.modo !== 'peso' && (
           <label className={s.iaCampo}><span>{unidadDe(prod) === 'kg' ? 'Kilos' : 'Unidades'} por bulto</span>{inputPorBulto(it, i, prod)}</label>
         )}
         <label className={s.iaCampo}><span>Descuento %</span>{inputDescuento(it, i)}</label>
@@ -1990,7 +2092,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
             autoFocus={i > 0}
           />
         )}
-        <div data-r={{ unidad: 'Unidades', display: 'Displays' }[it.modo] ?? 'Bultos'}>
+        <div data-r={{ unidad: 'Unidades', display: 'Displays', peso: 'Kilos' }[it.modo] ?? 'Bultos'}>
           {inputCantidad(it, i)}
           {/* "1 · bultos · 12" se leía como tres números sueltos (el dueño,
               25/8): debajo va la cuenta YA HECHA, "= 12 u.", lo que entra al
@@ -2009,7 +2111,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         </div>
         {/* El tamaño del bulto es INFO, no un casillero (el dueño, 25/8): vive
             en el Formato de compra del producto y se cambia ahí. */}
-        {it.modo === 'unidad' ? (
+        {it.modo === 'unidad' || it.modo === 'peso' ? (
           <div
             className={s.hint} data-r="Por bulto"
             style={{ margin: 0, textAlign: 'center', alignSelf: 'center' }}
@@ -2031,8 +2133,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         )}
         <div data-r="Costo">
           {inputCosto(it, i)}
-          {(it.modo === 'unidad' || it.modo === 'display') && (
-            <div className={s.hint} style={{ margin: 0, textAlign: 'center' }}>{it.modo === 'display' ? '$/display' : '$/u'}</div>
+          {(it.modo === 'unidad' || it.modo === 'display' || it.modo === 'peso') && (
+            <div className={s.hint} style={{ margin: 0, textAlign: 'center' }}>{{ display: '$/display', peso: '$/kg' }[it.modo] ?? '$/u'}</div>
           )}
         </div>
         <div data-r="Desc. %">{inputDescuento(it, i)}</div>
@@ -2042,6 +2144,10 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         {esConversion
           ? <span />
           : <button type="button" className={s['pres-remove']} onClick={() => delItem(i)}>×</button>}
+        {/* Al peso: los kg de la unidad, si ya entraron y lo que queda por unidad, a lo ancho del renglón. */}
+        {prod && it.modo === 'peso' && (
+          <div className={s.hint} style={{ gridColumn: '1 / -1', margin: 0 }}>{controlesAlPeso(it, i)}</div>
+        )}
       </div>
     );
   };
@@ -2350,6 +2456,23 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           Acordate de cargar la otra mitad: si no, la mercadería y la deuda quedan con la mitad.
         </div>
       )}
+      {conPorcDistinto.length > 0 && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>
+            {conPorcDistinto.length === 1 ? 'Un producto tiene' : `${conPorcDistinto.length} productos tienen`} otro «Sin factura %»
+            que {provElegido.nombre} ({num(Number(provElegido.porcSinFactura) || 0, 2)} %).
+          </strong>{' '}
+          El costo de cada producto se arma con el % de su formato de compra, no con el de la ficha: si es un error, ese
+          costo queda mal aunque cargues bien los dos papeles.
+          <ul style={{ margin: '6px 0' }}>
+            {conPorcDistinto.map((d) => (
+              <li key={d.productoId}><strong>{d.nombre}</strong>: {num(Number(d.entry.porcSinFactura) || 0, 2)} %</li>
+            ))}
+          </ul>
+          Para emparejarlos: ficha del proveedor › Sin factura % › <strong>Aplicar a todos sus productos</strong> (o el
+          Formato de compra de cada uno). Esta factura no cambia el %.
+        </div>
+      )}
       <div className={s['section-title']}>Ítems</div>
 
       {/* LA LECTURA CON IA (0153): lo que leyó del papel, con lo que falta resolver. */}
@@ -2527,7 +2650,12 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
                         formato en precio final · se compara neto
                       </div>
                     )}
-                    {d.salto && incluirCosto && (
+                    {d.alPeso && (
+                      <div className={s.hint} style={{ margin: 0 }}>
+                        al peso: {money(d.alPeso.precioKg)}/kg × {num(d.alPeso.kgPorUnidad, 3)} kg por unidad
+                      </div>
+                    )}
+                    {d.salto && incluirCosto && !d.alPeso && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', color: 'var(--crm-color-danger)', fontWeight: 600 }}>
                         <input
                           type="checkbox"
@@ -2879,7 +3007,13 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           </strong>: es mercadería que volvió al proveedor.
         </div>
       )}
-      {permiteRecepcion && itemsValidos > 0 && (
+      {soloPrecio && (
+        <div className={cx(s.callout, s.info)}>
+          <strong>El stock no se mueve</strong>: {conCantidad.length === 1 ? 'las unidades de este papel ya entraron' : 'las unidades de estos renglones ya entraron'}{' '}
+          con la factura que las trajo a $0. Este papel pone el precio por kg y la deuda con el proveedor.
+        </div>
+      )}
+      {ingresaMercaderia && itemsValidos > 0 && (
         esConversion ? (
           <div className={cx(s.callout, s.info)}>
             <strong>El stock no se mueve</strong>: la mercadería ya ingresó a{' '}
