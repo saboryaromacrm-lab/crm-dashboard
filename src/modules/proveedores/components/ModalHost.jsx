@@ -10,6 +10,7 @@ import { PagoProveedorModal, AnularPagoModal, AplicarPagoModal, EditarPagoModal 
 import { AnularPagoPropioModal, CuentaDisponibleModal, PagoPropioModal, ResumenCuentaModal } from './modals/CuentasDisponiblesModals.jsx';
 import { StockProveedorModal, IngresosProveedorModal } from './ProveedorMenu.jsx';
 import { DetalleReposicionModal, MandarReposicionModal, RecibirReposicionModal } from './modals/ReposicionesModals.jsx';
+import { ResolverDiferenciaModal } from './modals/DiferenciasModals.jsx';
 
 /** Un solo host: el contexto dice qué modal está abierto y con qué props.
  *  El estado de cuenta ya NO es un modal: es la pantalla EdocProveedorPage. */
@@ -45,6 +46,7 @@ const MODALS = {
   mandarReposicion: MandarReposicionModal,
   recibirReposicion: RecibirReposicionModal,
   reposicion: DetalleReposicionModal,
+  resolverDiferencia: ResolverDiferenciaModal,
 };
 
 export function ModalHost() {

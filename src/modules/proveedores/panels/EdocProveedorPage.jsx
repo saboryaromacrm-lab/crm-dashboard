@@ -4,6 +4,7 @@ import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { ModalDesdeAfuera } from '@modules/productos/components/ModalDesdeAfuera.jsx';
 import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
+import { cantTxt, queTxt } from '../domain/diferencias.js';
 import { provApi, CONDICIONES_COMPRA, MEDIOS_HABITUALES, MEDIOS_PAGO_REAL } from '../services/proveedores.api.js';
 import {
   Btn, Di, EcheqCubre, EstadoEcheqPill, ImporteCompromiso, PanelHead, Pill, Saldo, Stat, Table, VencePill,
@@ -127,6 +128,28 @@ function FleteDeLaEntrega({ f }) {
             f.enCosto > 0 ? `en el costo: ${pctTxt(f.enCosto)}` : null,
           ].filter(Boolean).join(' · ')}
           {' — informativo: lo factura el transporte, no suma a esta cuenta'}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+/**
+ * LO QUE FALTÓ O VINO DE MÁS EN ESA ENTREGA (0248): debajo de su papel, solo a
+ * la vista. La deuda sigue al papel; esto dice qué queda por arreglar con el proveedor.
+ */
+function DiferenciasDeLaEntrega({ difs }) {
+  const pendiente = difs.some((d) => d.estado === 'pendiente');
+  return (
+    <tr className={s.muted} style={{ background: 'var(--crm-color-surface-2)' }}>
+      <td />
+      <td />
+      <td colSpan={5}>
+        <span title="Solo informativo: no suma ni resta a esta cuenta">📦 Diferencias de la entrega:</span>{' '}
+        {difs.map((d) => `${queTxt(d)} de ${d.producto}${d.estado === 'pendiente' ? ` (pendiente ${cantTxt(d.pendiente, d.tipoProducto)}, ${money(d.valorPendiente)})` : ' (resuelta)'}`).join(' · ')}
+        <div className={s.hint} style={{ margin: 0 }}>
+          {pendiente ? 'Se arreglan en Cambios de mercadería' : 'Todas resueltas'}
+          {' — informativo: la deuda sigue al papel, esto no suma ni resta a esta cuenta'}
         </div>
       </td>
     </tr>
@@ -555,6 +578,7 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
               </div></td>
             </tr>
             {m.flete && <FleteDeLaEntrega f={m.flete} />}
+            {m.diferencias && <DiferenciasDeLaEntrega difs={m.diferencias} />}
             </Fragment>
           );
         })}

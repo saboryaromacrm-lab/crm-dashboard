@@ -1271,6 +1271,11 @@ function _cleanComprobante(o) {
     ventaPorBulto: o.ventaPorBulto?.length ? o.ventaPorBulto : undefined,
     /* Los fletes del transporte que trajo esta mercadería (0244): quedan vinculados a este papel. */
     fletes: o.fletes?.length ? o.fletes.map(Number).filter(Boolean) : undefined,
+    /* Lo que llegó de lo que se contó, la otra mitad que se sumó y las diferencias que este papel cubre (0248). */
+    llegaron: o.llegaron?.length ? o.llegaron.map((x) => ({ productoId: Number(x.productoId), cantidad: Number(x.cantidad) })) : undefined,
+    otraMitadId: o.otraMitadId ? Number(o.otraMitadId) : undefined,
+    cubreDiferencias: o.cubreDiferencias?.length
+      ? o.cubreDiferencias.map((x) => ({ diferenciaId: Number(x.diferenciaId), cantidad: Number(x.cantidad) })) : undefined,
     /*
      * Costos que el usuario aceptó actualizar desde "Impacto en precios".
      * `cantidad` es el tamaño del bulto de ESTA entrega (kg o unidades) y viaja
@@ -1407,6 +1412,10 @@ const facturarRemito = (remitoId, o) => _mutate(() => httpClient.post(`/comproba
 const facturasReferenciables = (proveedorId) => httpClient.get('/comprobantes/referenciables/' + proveedorId);
 /** Los fletes de un transporte que esperan la factura o el remito de este proveedor (0244). */
 const fletesSinPapel = (proveedorId) => httpClient.get('/comprobantes/fletes-sin-papel/' + proveedorId);
+/** Las diferencias de entrega pendientes de un proveedor (0248): 'faltante' o 'sobrante'. */
+const diferenciasPendientes = (proveedorId, tipo) => httpClient.get(`/comprobantes/diferencias-pendientes?proveedorId=${proveedorId}&tipo=${tipo}`);
+/** Lo que llegó distinto de un papel y lo que cubrió de otros (0248). */
+const diferenciasDelComprobante = (id) => httpClient.get(`/comprobantes/${id}/diferencias`);
 /** Los fletes vinculados a un comprobante: lo que costó traer esa mercadería (0244). */
 const fletesDelComprobante = (id) => httpClient.get(`/comprobantes/${id}/fletes`);
 
@@ -1684,7 +1693,7 @@ export const inventoryStore = {
   costoNeto, costoNetoEntry, costoPrecio, costoPrecioEntry, costosFormato, descuentoEfectivo, formatoActivo, preciosVenta, ventaFormato, precioBaseVenta, precioPaquete,
   precioFinal, redondearPrecio,
   crearComprobante, facturarRemito, anulacionComprobante, anularComprobante, getComprobante, asegurarComprobante, comprobantesDe, cuentaProveedor, saldoTotalProveedores,
-  facturasReferenciables, fletesSinPapel, fletesDelComprobante,
+  facturasReferenciables, fletesSinPapel, fletesDelComprobante, diferenciasPendientes, diferenciasDelComprobante,
   lecturasFactura, lecturaFactura, subirFactura, agregarPaginaFactura, borrarPaginaFactura,
   guardarLecturaFactura, descartarLecturaFactura, recuperarLecturaFactura, vincularLecturaFactura,
   papelFactura, iaFacturas, iaConfigFacturas, leerFacturasConIa, propuestaIa, elegirConIa, espacioFacturas, liberarFacturas,

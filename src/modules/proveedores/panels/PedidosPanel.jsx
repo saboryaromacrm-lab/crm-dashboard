@@ -130,7 +130,8 @@ export function PedidosPanel() {
                   type="button" onClick={() => goPanel('reposiciones', { proveedorId: t.proveedorId })}
                   style={{ display: 'block', margin: '4px 0', padding: '3px 8px', border: '1px solid #fde68a', borderRadius: 999, background: '#fffbeb', color: '#92400e', font: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                 >
-                  🔄 Te debe {money(c.debe)} en cambios
+                  {c.debe > 0 ? `🔄 Te debe ${money(c.debe)}${c.faltantes > 0 ? ' (cambios y faltantes)' : ' en cambios'}` : `Le debés ${money(c.sobrantes)}: vino de más`}
+                  {c.debe > 0 && c.sobrantes > 0 && ` · le debés ${money(c.sobrantes)}: vino de más`}
                 </button>
               );
             })()}

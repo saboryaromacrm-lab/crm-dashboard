@@ -4,6 +4,7 @@ import { useProveedores } from '../context/ProveedoresContext.jsx';
 import { useResource } from '../hooks/useResource.js';
 import { errorMsg, provApi } from '../services/proveedores.api.js';
 import { Btn, PanelHead, Pill, Stat, Table, fmtFecha, money, s } from '../components/ui.jsx';
+import { DiferenciasEntrega } from './DiferenciasEntrega.jsx';
 
 const FILTROS = [['pendientes', 'Pendientes'], ['completos', 'Completos'], ['todos', 'Todos']];
 const ESTADO = {
@@ -42,7 +43,7 @@ export function ReposicionesPanel() {
     <div>
       <PanelHead
         title="Cambios de mercadería"
-        desc="Lo que le mandás al proveedor para que te lo reponga (vencidos, fallados) y lo que va reponiendo. Se mide a costo: puede reponer con otro producto o sabor, en partes o en otro envío."
+        desc="Lo que le mandás al proveedor para que te lo reponga (vencidos, fallados) y lo que va reponiendo, y lo que faltó o vino de más en una entrega. Se mide a costo: puede reponer con otro producto o sabor, en partes o en otro envío."
         actions={<Btn variant="btn-primary" onClick={() => openModal('mandarReposicion', { proveedorId: proveedorId || undefined, onChange: reload })}>+ Mandar al proveedor</Btn>}
       />
 
@@ -93,6 +94,8 @@ export function ReposicionesPanel() {
           </tr>
         ))}
       </Table>
+
+      <DiferenciasEntrega filtro={filtro} proveedorId={proveedorId} />
     </div>
   );
 }

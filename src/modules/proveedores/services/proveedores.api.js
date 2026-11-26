@@ -95,6 +95,10 @@ export const provApi = {
   mandarReposicion: (data) => httpClient.post('/reposiciones', data),
   recibirReposicion: (id, data) => httpClient.post(`/reposiciones/${id}/recibir`, data),
   anularReposicion: (id) => httpClient.post(`/reposiciones/${id}/anular`, {}),
+  /* Diferencias de entrega (0248): lo que faltó o vino de más en una entrega, y cómo se resolvió. */
+  diferenciasEntrega: (filtros) => httpClient.get(`/diferencias-entrega${qs(filtros)}`),
+  resolverDiferencia: (id, data) => httpClient.post(`/diferencias-entrega/${id}/resolver`, data),
+  deshacerResolucion: (id) => httpClient.post(`/diferencias-entrega/resoluciones/${id}/deshacer`, {}),
 
   /* Estado de cuenta */
   edoc: () => httpClient.get('/proveedores-edoc'),

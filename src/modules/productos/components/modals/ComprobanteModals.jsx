@@ -18,6 +18,8 @@ import { ModalShell } from '../Modal.jsx';
 import { DetalleProductoModal, ProductoFormModal } from './ProductoModals.jsx';
 import { LecturaIaRenglones } from './LecturaIaRenglones.jsx';
 import { FleteDelComprobante, FletesSinPapel } from './FletesSinPapel.jsx';
+import { DiferenciasDelPapel, FaltantesDeLaNota, LoQueLlego, usePendientes } from './LoQueLlego.jsx';
+import { armarLlegada, porProducto } from '../../domain/llegada.js';
 import { sucursalOptions } from '../selectOptions.jsx';
 import { Table, Btn, Pill, s } from '../ui.jsx';
 import { CuentaPropiaSelect, cuentaDelPago } from '@shared/components/CuentaPropiaSelect.jsx';
@@ -347,6 +349,9 @@ function filaDesdeItemRemito(it, entry) {
   };
 }
 
+/** «¿Llegó todo?» sin contestar: llegó como dice el papel (0248). */
+const LLEGADA_VACIA = { hay: false, conteo: {}, extras: [], cubre: {} };
+
 function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) {
   const { store, closeModal, toast, sucOperativa, can, openModal, isAdmin } = useProductos();
 
@@ -472,6 +477,9 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    */
   const esNotaCredito = tipo === 'nota_credito';
   const [devuelveMercaderia, setDevuelveMercaderia] = useState(false);
+  /* Lo que llegó distinto del papel y lo que vino de más que este papel cobra (0248); en una NC, el faltante que cubre. */
+  const [llegada, setLlegada] = useState(LLEGADA_VACIA);
+  const [cubreFaltantes, setCubreFaltantes] = useState({});
   const provElegido = store.getProveedor(parseInt(provId, 10));
 
   /**
@@ -649,6 +657,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     setCostosOmitidos(new Set());
     setActivarIds(new Set());
     setTrasladarIds(new Set());
+    setLlegada(LLEGADA_VACIA);
+    setCubreFaltantes({});
   };
 
   /** Cuánto se demoró en cargarse el comprobante. Null si alguna fecha falta. */
@@ -1348,6 +1358,37 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
   }, [claveOtraMitad, store]);
   const datosOtraMitad = claveOtraMitad && otraMitad.clave === claveOtraMitad ? otraMitad.datos : null;
 
+  /*
+   * LO QUE LLEGÓ (0248): en un papel que ingresa mercadería, lo que vino
+   * distinto de lo que dice; en una NC, el faltante que cubre. Ver LoQueLlego.jsx.
+   */
+  const cuentaLlegada = ingresaMercaderia && !esConversion;
+  const sobrantesPendientes = usePendientes(parseInt(provId, 10), 'sobrante', cuentaLlegada);
+  const faltantesPendientes = usePendientes(parseInt(provId, 10), 'faltante', esNotaCredito);
+  const filasLlegada = porProducto(conCantidad.map((it) => {
+    const prod = store.getProducto(parseInt(it.productoId, 10));
+    return { productoId: parseInt(it.productoId, 10), nombre: prod?.nombre ?? '', unidad: prod?.tipo === 'granel' ? 'kg' : 'u', cantidad: calcRow(it).cantidadTotal };
+  }));
+  const otraLlegada = datosOtraMitad?.llegada && !datosOtraMitad.llegada.conDiferencias
+    ? { ...datosOtraMitad.llegada, porProducto: new Map(datosOtraMitad.llegada.porProducto.filter((x) => !x.presentacionId).map((x) => [x.productoId, x.entro])) }
+    : null;
+  /* Lo que antes vino de más y este papel cobra, por producto (solo de productos que están en el papel). */
+  const cobradosDeMas = sobrantesPendientes.filter((d) => llegada.cubre[d.id] != null && filasLlegada.some((f) => f.productoId === d.productoId));
+  const cubiertos = new Map();
+  for (const d of cobradosDeMas) cubiertos.set(d.productoId, (cubiertos.get(d.productoId) ?? 0) + (Number(llegada.cubre[d.id]) || 0));
+  const resultadoLlegada = cuentaLlegada ? armarLlegada({
+    filas: filasLlegada, cubiertos,
+    ...(llegada.hay ? { conteo: llegada.conteo, extras: llegada.extras, otraMitad: otraLlegada?.porProducto } : {}),
+  }) : null;
+  /** Lo que un papel cubre de diferencias pendientes, validado contra lo que queda de cada una. */
+  const cubreDe = (pendientes, elegidas) => pendientes.filter((d) => elegidas[d.id] != null).map((d) => {
+    const cantidad = Number(String(elegidas[d.id]).replace(',', '.'));
+    return { diferenciaId: d.id, cantidad, error: cantidad > 0 && cantidad <= d.pendiente + 1e-6 ? '' : `${d.producto}: lo que cubre va de más de 0 a ${d.pendiente}.` };
+  });
+  const cubreLlegada = cuentaLlegada ? cubreDe(cobradosDeMas, llegada.cubre) : [];
+  const cubreNota = esNotaCredito ? cubreDe(faltantesPendientes, cubreFaltantes) : [];
+  const erroresLlegada = [...(resultadoLlegada?.errores ?? []), ...cubreLlegada.map((x) => x.error), ...cubreNota.map((x) => x.error)].filter(Boolean);
+
   const impacto = useMemo(() => {
     const pid = parseInt(provId, 10);
     if (!pid) return [];
@@ -1631,6 +1672,11 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
     if (venc && fecha && venc < fecha) { toast('El vencimiento del pago no puede ser anterior a la fecha del comprobante.', 'err'); return; }
     if (saltosSinConfirmar.length) { frenarPorSalto(); return; }
     if (mezclaYaEntraron) { frenarPorMezcla(); return; }
+    if (erroresLlegada.length) { toast(erroresLlegada[0], 'err'); setPaso(2); return; }
+    if (cubreNota.length && devuelveMercaderia) {
+      toast('Una nota de crédito por lo que faltó no saca stock (nunca entró): destildá «Esta nota devuelve mercadería».', 'err');
+      return;
+    }
     const parsed = items
       .filter((it) => it.productoId && Number(it.bultos) > 0 && tamDelModo(it) > 0)
       .map((it) => {
@@ -1771,6 +1817,10 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
       actualizarCostos: payloadCostos,
       ventaPorBulto: payloadVentaPorBulto.length ? payloadVentaPorBulto : undefined,
       fletes: permiteRecepcion && fletesTildados.length ? fletesTildados : undefined,
+      // Lo que llegó distinto del papel y las diferencias pendientes que este papel cubre (0248).
+      llegaron: llegada.hay && resultadoLlegada?.llegaron.length ? resultadoLlegada.llegaron : undefined,
+      otraMitadId: llegada.hay && otraLlegada && resultadoLlegada?.llegaron.length ? otraLlegada.id : undefined,
+      cubreDiferencias: [...cubreLlegada, ...cubreNota].map(({ diferenciaId, cantidad }) => ({ diferenciaId, cantidad })),
       activarProveedor: aActivar.map((d) => d.productoId),
       confirmarSaltos,
       /*
@@ -2534,6 +2584,14 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           </button>
         </div>
       )}
+
+      {cuentaLlegada && filasLlegada.length > 0 && (
+        <LoQueLlego
+          filas={filasLlegada} otraMitad={otraLlegada} sobrantes={sobrantesPendientes} candidatos={candidatos}
+          valor={llegada} onChange={setLlegada} resultado={resultadoLlegada}
+        />
+      )}
+      {esNotaCredito && <FaltantesDeLaNota faltantes={faltantesPendientes} cubre={cubreFaltantes} onChange={(c) => { setCubreFaltantes(c); if (Object.keys(c).length) setDevuelveMercaderia(false); }} />}
 
       {/*
         IMPACTO EN PRECIOS. Las dos decisiones que mueven la góndola, juntas y
@@ -3915,6 +3973,8 @@ export function ComprobanteDetalleModal({ id, soloLectura = false }) {
 
       {/* ---- Lo que costó traerla (0244): los fletes del transporte vinculados a este papel ---- */}
       <FleteDelComprobante id={c.id} />
+      {/* ---- Lo que llegó distinto del papel (0248) ---- */}
+      <DiferenciasDelPapel id={c.id} />
 
       {/* ---- De dónde salió la plata ----
           Solo para documentos que GENERAN deuda: un remito o una orden de
