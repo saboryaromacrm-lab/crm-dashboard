@@ -1861,8 +1861,9 @@ export function PosPanel() {
         )}
 
         {errorCatalogo && (
-          <div className={cx(s.callout, s.warn)} style={{ margin: 0 }}>
-            No se pudo cargar el catálogo: <strong>{errorCatalogo}</strong>
+          <div className={cx(s.callout, s.warn)} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ flex: 1 }}>No se pudo cargar el catálogo: <strong>{errorCatalogo}</strong></span>
+            <Btn small onClick={recargarCatalogo} disabled={cargandoCatalogo}>{cargandoCatalogo ? 'Cargando…' : 'Reintentar'}</Btn>
           </div>
         )}
 

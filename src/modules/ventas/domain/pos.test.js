@@ -448,3 +448,17 @@ test('contexto: el renglón toma el stock del catálogo nuevo (lo que fraccionad
   assert.equal(nuevo.renglones[0].stock, 3);
   assert.equal(nuevo.renglones[1].stock, 5, 'lo que no está en el catálogo nuevo queda como estaba');
 });
+
+test('una venta abierta sin el catálogo en memoria se completa cuando el catálogo llega (26/11/2026)', () => {
+  const borrador = { items: [{ id: 7, productoId: 2553, presentacionId: null, cantidad: 1, precioLista: 100, precioUnitario: 100, iva: 21, listaOrigen: 'manual' }] };
+  const { renglones } = ticketDesdeBorrador(borrador, []);
+  assert.equal(renglones[0].nombre, 'Producto #2553');
+  assert.equal(renglones[0].sinCatalogo, true);
+  const cat = { key: 'k2553', productoId: 2553, presentacionId: null, nombre: 'Pasta de maní', detalle: '450 g', unidad: 'u', stock: 4 };
+  const t = ticketReducer({ ...ticketInicial, renglones }, { tipo: 'contexto', ctx: { catalogo: { items: [cat], listas: [] } } });
+  assert.equal(t.renglones[0].nombre, 'Pasta de maní');
+  assert.equal(t.renglones[0].stock, 4);
+  assert.equal(t.renglones[0].key, 'k2553');
+  assert.equal(t.renglones[0].sinCatalogo, false);
+  assert.equal(t.renglones[0].precioUnitario, 100, 'el precio guardado no se toca');
+});

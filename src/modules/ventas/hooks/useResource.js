@@ -19,17 +19,24 @@ export function useResource(key, fetcher, { enabled = true } = {}) {
   const [state, setState] = useState({ data: null, loading: enabled, error: null });
   const fetcherRef = useRef(fetcher);
   const runId = useRef(0);
+  const keyRef = useRef(key);
+  /** La key del dato en memoria: una recarga que falla no borra lo que ya se tenía de ESA key. */
+  const keyDelDato = useRef(null);
 
   fetcherRef.current = fetcher;
+  keyRef.current = key;
 
   const load = useCallback(async () => {
     const id = ++runId.current;
+    const k = keyRef.current;
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       const data = await fetcherRef.current();
-      if (id === runId.current) setState({ data, loading: false, error: null });
+      if (id === runId.current) { keyDelDato.current = k; setState({ data, loading: false, error: null }); }
     } catch (e) {
-      if (id === runId.current) setState({ data: null, loading: false, error: errorMsg(e) });
+      /* 26/11/2026: un corte al recargar el catálogo de la caja (después de cada venta) lo dejaba vacío,
+       * y la venta siguiente se abría con «Producto #… · sin stock». Se queda lo último bueno, con el error a la vista. */
+      if (id === runId.current) setState((s) => ({ data: keyDelDato.current === k ? s.data : null, loading: false, error: errorMsg(e) }));
     }
   }, []);
 
@@ -39,6 +46,7 @@ export function useResource(key, fetcher, { enabled = true } = {}) {
     const corrida = runId;
     if (!enabled) {
       corrida.current++;
+      keyDelDato.current = null;
       setState({ data: null, loading: false, error: null });
       return undefined;
     }

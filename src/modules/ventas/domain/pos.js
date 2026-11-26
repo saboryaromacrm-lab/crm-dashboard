@@ -548,8 +548,14 @@ export function ticketReducer(estado, accion) {
      * que fraccionado terminó para esta venta deja de frenar el cobro).
      */
     case 'contexto': {
-      const porKey = new Map((accion.ctx.catalogo?.items ?? []).map((i) => [i.key, i]));
+      const items = accion.ctx.catalogo?.items ?? [];
+      const porKey = new Map(items.map((i) => [i.key, i]));
+      const porClave = new Map(items.map((i) => [claveCatalogo(i), i]));
       const renglones = estado.renglones.map((r) => {
+        /* La venta se abrió sin el catálogo en memoria (26/11/2026: «Producto #2553 · sin stock» en la caja):
+         * cuando llega, el renglón toma nombre, unidad y stock. */
+        const cat = r.sinCatalogo ? porClave.get(claveCatalogo(r)) : null;
+        if (cat) return { ...r, ...datosDeCatalogo(cat), sinCatalogo: false };
         const stock = porKey.get(r.key)?.stock;
         return stock == null || stock === r.stock ? r : { ...r, stock };
       });
@@ -1100,33 +1106,49 @@ export function extrasParaApi(extras) {
  * de existir en el catálogo, el renglón igual se muestra —con lo que se sabe—
  * en vez de desaparecer sin aviso.
  */
+const claveCatalogo = (x) => `${x.productoId}:${x.presentacionId ?? ''}`;
+
+/** Lo que un renglón toma del catálogo: el borrador guarda ids y precios, no esto. */
+function datosDeCatalogo(cat) {
+  return {
+    key: cat.key,
+    nombre: cat.nombre,
+    detalle: cat.detalle ?? '—',
+    unidad: cat.unidad ?? 'u',
+    fraccionable: cat.fraccionable ?? false,
+    /** El bulto de la ficha, para el botón de bultos en mostrador (0 = no tiene). */
+    unidadesPorBulto: cat.unidadesPorBulto ?? 0,
+    bolsaKg: cat.bolsaKg ?? 0,
+    stockLibre: !!cat.stockLibre,
+    stock: cat.stock ?? 0,
+    marca: cat.marca ?? '',
+    marcaId: cat.marcaId ?? null,
+    categoriaId: cat.categoriaId ?? null,
+    etiquetas: cat.etiquetas ?? [],
+  };
+}
+
+/** Un artículo que no está en el catálogo en memoria: se muestra con lo que se sabe, y lo completa el catálogo cuando llega. */
+const sinDatosDeCatalogo = (it) => ({
+  key: `x${it.id}`, nombre: `Producto #${it.productoId}`, detalle: '—', unidad: 'u', fraccionable: false,
+  unidadesPorBulto: 0, bolsaKg: 0, stockLibre: false, stock: 0, marca: '', marcaId: null, categoriaId: null, etiquetas: [],
+  sinCatalogo: true,
+});
+
 export function ticketDesdeBorrador(borrador, catalogo) {
-  const porClave = new Map(catalogo.map((c) => [`${c.productoId}:${c.presentacionId ?? ''}`, c]));
+  const porClave = new Map(catalogo.map((c) => [claveCatalogo(c), c]));
   /* Lo que cubre el precio garantizado de un presupuesto, por artículo (6/11/2026). */
   const cotizados = new Map((borrador.cotizados ?? []).map((c) => [c.clave, Number(c.cantidad) || 0]));
   let uid = 1;
 
   const renglones = (borrador.items ?? []).map((it) => {
-    const cat = porClave.get(`${it.productoId}:${it.presentacionId ?? ''}`);
+    const cat = porClave.get(claveCatalogo(it));
     return {
       uid: uid++,
-      key: cat?.key ?? `x${it.id}`,
       productoId: it.productoId,
       presentacionId: it.presentacionId ?? null,
-      nombre: cat?.nombre ?? `Producto #${it.productoId}`,
-      detalle: cat?.detalle ?? '—',
-      unidad: cat?.unidad ?? 'u',
-      fraccionable: cat?.fraccionable ?? false,
-      /** El bulto de la ficha, para el botón de bultos en mostrador (0 = no tiene). */
-      unidadesPorBulto: cat?.unidadesPorBulto ?? 0,
-      bolsaKg: cat?.bolsaKg ?? 0,
-      stockLibre: !!cat?.stockLibre,
+      ...(cat ? datosDeCatalogo(cat) : sinDatosDeCatalogo(it)),
       iva: it.iva,
-      stock: cat?.stock ?? 0,
-      marca: cat?.marca ?? '',
-      marcaId: cat?.marcaId ?? null,
-      categoriaId: cat?.categoriaId ?? null,
-      etiquetas: cat?.etiquetas ?? [],
       listaId: it.listaId ?? null,
       lista: it.lista || '',
       listaOrigen: it.listaOrigen || 'base',
