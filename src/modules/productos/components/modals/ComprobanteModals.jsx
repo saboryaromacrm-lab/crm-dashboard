@@ -1651,6 +1651,22 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
    */
   const impactoRef = useRef(null);
   const irAImpacto = () => setTimeout(() => impactoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  /*
+   * AGREGAR A MANO CON LA LECTURA DE LA IA (26/11/2026, pedido del dueño): lo
+   * que la IA no leyó del papel. El botón está arriba de la tabla de la lectura
+   * (el de abajo quedaba tras todos los renglones); el renglón va en «Agregados
+   * a mano» y la pantalla baja sola hasta su buscador.
+   */
+  const aManoRef = useRef(null);
+  const agregarAMano = () => {
+    addItem();
+    setTimeout(() => {
+      const filas = aManoRef.current?.querySelectorAll(`.${s.renglon}`);
+      const nueva = filas?.[filas.length - 1];
+      nueva?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      nueva?.querySelector('input')?.focus({ preventScroll: true });
+    }, 50);
+  };
   const nombresSalto = saltosSinConfirmar.map((d) => d.nombre).join(', ');
   const frenarPorSalto = () => {
     toast(`Confirmá el costo de ${nombresSalto} en «Impacto en precios» (el aviso en rojo).`, 'err');
@@ -2538,6 +2554,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           onEditarProducto={isAdmin ? (x, prodId) => setEdicion({ renglon: x, prodId }) : null}
           pruebas={idsPrueba}
           onPrueba={tipo === 'factura' || tipo === 'liquidacion' ? marcarPrueba : null}
+          onAgregar={esConversion ? null : agregarAMano}
           campos={camposDeLectura}
           detalle={detalleDeLectura}
           avisoDe={avisoDeBulto}
@@ -2573,9 +2590,18 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         </label>
       )}
       {/* Con la lectura de la IA, los renglones del papel van en su tabla (arriba): acá, lo agregado a mano. */}
-      {enTarjetas && filasSueltas.length > 0 && <div className={s['section-title']}>Agregados a mano (no vienen del papel)</div>}
-      {(!enTarjetas || filasSueltas.length > 0) && <CabeceraRenglon />}
-      {filasSueltas.map(({ it, i }) => filaDeItem(it, i))}
+      <div ref={aManoRef}>
+        {enTarjetas && filasSueltas.length > 0 && (
+          <>
+            <div className={s['section-title']}>Agregados a mano</div>
+            <div className={s.hint} style={{ marginTop: 0 }}>
+              Lo que la IA no leyó del papel: suma a la factura y entra al stock como cualquier renglón.
+            </div>
+          </>
+        )}
+        {(!enTarjetas || filasSueltas.length > 0) && <CabeceraRenglon />}
+        {filasSueltas.map(({ it, i }) => filaDeItem(it, i))}
+      </div>
       {!esConversion && (
         <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" className={cx(s.btn, s['btn-ghost'], s['btn-sm'])} onClick={addItem}>+ Agregar ítem</button>
@@ -2966,7 +2992,7 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
               ))}
               {porQueNoCierra.distintos.length > 8 && <li>… y {porQueNoCierra.distintos.length - 8} renglón(es) más con importe distinto.</li>}
               {porQueNoCierra.deMas.length > 0 && (
-                <li>{porQueNoCierra.deMas.length} renglón(es) cargados a mano que no vienen de la factura: {money(porQueNoCierra.netoDeMas)}.</li>
+                <li>{porQueNoCierra.deMas.length} renglón(es) agregados a mano, que la IA no leyó del papel: {money(porQueNoCierra.netoDeMas)}. Si no están en la factura, sacalos.</li>
               )}
               {porQueNoCierra.pieDistinto.map((p) => (
                 <li key={p.nombre}>{p.nombre}: en la factura {money(p.papel)}, cargado {money(p.cargado)}.</li>

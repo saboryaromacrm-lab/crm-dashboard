@@ -49,7 +49,7 @@ const usd = (n) => `USD ${Number(n || 0).toLocaleString('es-AR', { maximumFracti
 export function LecturaIaRenglones({
   propuesta: d, cargando, leyendo, eligiendo, porRenglon, usados, productos, proveedor, pruebas,
   onAplicar, onReleer, onElegir, onAsociar, onAceptarSugerencias, onGuardarCodigo, onUsarEncabezado,
-  onCrearProducto, onEditarProducto, onPrueba, campos, detalle, avisoDe, netoPapel, netoDe,
+  onCrearProducto, onEditarProducto, onPrueba, onAgregar, campos, detalle, avisoDe, netoPapel, netoDe,
 }) {
   const [filtro, setFiltro] = useState(null);
   const [abiertos, setAbiertos] = useState(() => new Set());
@@ -285,6 +285,11 @@ export function LecturaIaRenglones({
               {supuestos.length > 0 && (
                 <Btn small onClick={() => setConfirmados((prev) => new Set([...prev, ...supuestos]))}>
                   Confirmar {supuestos.length} supuestos por la IA
+                </Btn>
+              )}
+              {onAgregar && (
+                <Btn small onClick={onAgregar} title="Un producto que la IA no leyó del papel: va abajo de la tabla, en «Agregados a mano»">
+                  + Agregar a mano
                 </Btn>
               )}
             </div>
