@@ -24,6 +24,8 @@ import { Barras, Columnas } from '../metricas/graficos.jsx';
 import { compacto } from '../metricas/formato.js';
 import { Linea } from './Linea.jsx';
 import { armarVista, pct } from './vista.js';
+import { usePermissions } from '@core/permissions/PermissionContext.jsx';
+import { DondeEstaMiPlata } from './DondeEstaMiPlata.jsx';
 
 const pesos = (v) => money(Math.round(v ?? 0)).replace(/,00$/, '');
 const pctTxt = (v) => (v == null ? '—' : `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 1 })} %`);
@@ -41,7 +43,35 @@ function QueEs({ children }) {
   );
 }
 
+/**
+ * LA VISTA PROFESIONAL tiene dos secciones (26/11/2026): los números del
+ * negocio y «¿Dónde está mi plata?», que muestra la caja central y por eso es
+ * solo del dueño (gerencia.cashflow).
+ */
 export function VistaProfesionalPanel() {
+  const { can } = usePermissions();
+  const vePlata = can('gerencia.cashflow');
+  const [seccion, setSeccion] = useState('numeros');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {vePlata && (
+        <div role="group" aria-label="Sección" style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+          {[['numeros', 'Ventas y resultados'], ['plata', '¿Dónde está mi plata?']].map(([k, t]) => (
+            <button
+              key={k} type="button" onClick={() => setSeccion(k)} aria-pressed={seccion === k}
+              className={cx(s.btn, seccion === k ? s['btn-primary'] : s['btn-ghost'])}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+      {vePlata && seccion === 'plata' ? <DondeEstaMiPlata /> : <Numeros />}
+    </div>
+  );
+}
+
+function Numeros() {
   const [unidad, setUnidad] = useState('mes');
   const [sucursalId, setSucursalId] = useState('');
   const { data, loading, error } = useResource(`vista-profesional:${unidad}`, () => httpClient.get(`/gerencia/vista-profesional?unidad=${unidad}`));

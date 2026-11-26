@@ -40,3 +40,23 @@ export const diasDelTurno = (apertura, cierre) => {
   const [a, c] = [apertura, cierre].map((v) => new Date(v).toLocaleDateString('sv-SE'));
   return a === c ? '' : `del ${a.slice(8, 10)}/${a.slice(5, 7)} al ${c.slice(8, 10)}/${c.slice(5, 7)}`;
 };
+
+/**
+ * RENDIR TODO, DESDE Y HASTA (26/11/2026, pedido del dueño). El 25/11 una
+ * cajera de un Express (cierre los miércoles) contó al cerrar solo el cajón:
+ * la plata de los días anteriores la había sacado cada noche, como cuando
+ * cerraba todos los días, y el cierre dio −$625.311 (después la rindió). Por
+ * eso un turno que viene de otro día dice, con fechas, desde cuándo hasta
+ * cuándo hay que rendir. `apertura`: instante de apertura; `hasta`: día
+ * 'AAAA-MM-DD' (hoy al cerrar, el día de cierre en el arqueo). null si el
+ * turno abrió ese mismo día: no hay nada de otros días que juntar.
+ */
+export const rendirDesdeHasta = (apertura, hasta) => {
+  if (!apertura || !hasta) return null;
+  const desde = new Date(apertura).toLocaleDateString('sv-SE');
+  if (desde >= hasta) return null;
+  return { desde: diaEnPalabras(desde), hasta: diaEnPalabras(hasta) };
+};
+
+/** Hoy, 'AAAA-MM-DD' en la hora de la computadora (la del local). */
+export const hoyLocal = () => new Date().toLocaleDateString('sv-SE');

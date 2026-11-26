@@ -14,7 +14,7 @@ import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { httpClient } from '@core/services/httpClient.js';
 import { TildeControlar } from '@modules/gerencia/panels/cashflow/CajasAControlar.jsx';
 import { useTildeControlar, useUmbralControlar } from '@modules/gerencia/panels/cashflow/tildeControlar.js';
-import { diaEnPalabras } from '@shared/utils/plazoCaja.js';
+import { diaEnPalabras, hoyLocal, rendirDesdeHasta } from '@shared/utils/plazoCaja.js';
 import { EmpleadoAdelanto } from '@shared/components/EmpleadoAdelanto.jsx';
 import { horaAr } from '@shared/utils/hora.js';
 
@@ -1476,6 +1476,9 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
   const conDeMas = deMas > 0.009;
   const [reconto, setReconto] = useState(false);
   useEffect(() => { setReconto(false); }, [queda]);
+  /* Turno que viene de otro día (26/11/2026): se rinde todo, desde la apertura hasta hoy, y se confirma con un tilde. */
+  const rendir = rendirDesdeHasta(turno?.sesion?.apertura, hoyLocal());
+  const [juntoTodo, setJuntoTodo] = useState(false);
   const proponer = () => setDejar(separarEnvio(billetesLimpios(billetes), debeQuedar).queda);
   /* A ciegas salvo que la configuración deje ver lo que tiene que haber: ahí el
    * servidor manda el arqueo completo y se muestra el detalle. Apagada, ni
@@ -1575,9 +1578,21 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
         onClose={closeModal}
         footer={[
           { texto: 'Volver a contar', clase: 'btn-ghost', onClick: () => setPaso('contar'), disabled: enviando },
-          { texto: enviando ? 'Enviando…' : `Sí, enviar ${money(envio)} y cerrar`, clase: 'btn-delete', onClick: enviar, disabled: enviando || (conDeMas && !reconto) },
+          { texto: enviando ? 'Enviando…' : `Sí, enviar ${money(envio)} y cerrar`, clase: 'btn-delete', onClick: enviar, disabled: enviando || (conDeMas && !reconto) || (!!rendir && !juntoTodo) },
         ]}
       >
+        {rendir && (
+          <div className={cx(s.callout, s.warn)} style={{ display: 'grid', gap: 8 }}>
+            <span>
+              <strong>Este cierre rinde todo el efectivo desde el {rendir.desde} hasta hoy {rendir.hasta}.</strong>{' '}
+              Si guardaste plata aparte algún día, tiene que estar contada acá.
+            </span>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontWeight: 600 }}>
+              <input id="cierre-junto-todo" type="checkbox" checked={juntoTodo} onChange={(e) => setJuntoTodo(e.target.checked)} />
+              Junté y conté la plata de todos los días, del {rendir.desde} a hoy.
+            </label>
+          </div>
+        )}
         {conDeMas && (
           <div className={cx(s.callout, s.warn)} style={{ display: 'grid', gap: 8 }}>
             <span>
@@ -1613,6 +1628,13 @@ function CerrarCajaEnvioModal({ cajaSesionId, onChange }) {
         { texto: `Continuar: sobre de ${money(envio)}`, clase: 'btn-primary', onClick: aConfirmar, disabled: !identificado || !conto || quedaPoco },
       ]}
     >
+      {rendir && (
+        <div className={cx(s.callout, s.warn)}>
+          <strong>Rendí todo el dinero desde el {rendir.desde} hasta hoy {rendir.hasta}.</strong>{' '}
+          Antes de contar, juntá en el cajón la plata de <strong>todos esos días</strong>, también la que hayas guardado aparte:
+          se cuenta todo junto y va en un solo sobre.
+        </div>
+      )}
       <QuienFirma
         q={q}
         pregunta="¿Quién cierra la caja?"
@@ -1653,6 +1675,7 @@ export function ArqueoDiaModal({ cajaSesionId, cerrarHasta, onChange }) {
   const { can } = usePermissions();
   const dueno = can('gerencia.cashflow');
   const tilde = useTildeControlar(ve && conto ? [r2(contado - (Number(turno.esperadoEfectivo) || 0))] : [], useUmbralControlar(dueno));
+  const rendir = rendirDesdeHasta(turno?.sesion?.apertura, cerrarHasta);
 
   const guardar = async () => {
     if (guardando) return;
@@ -1683,9 +1706,12 @@ export function ArqueoDiaModal({ cajaSesionId, cerrarHasta, onChange }) {
       ]}
     >
       <div className={cx(s.callout, s.info)}>
-        Hoy no es día de cierre: <strong>la caja no se cierra</strong>. Contá todo el efectivo del cajón, billete por billete:
-        queda registrado con tu firma y <strong>la plata queda en la caja</strong>. El sobre sale el{' '}
-        <strong>{diaEnPalabras(cerrarHasta)}</strong>, con todo junto.
+        Hoy no es día de cierre: <strong>la caja no se cierra</strong>. Contá todo el efectivo del cajón, billete por billete
+        (lo de hoy y lo de los días anteriores): queda registrado con tu firma.
+      </div>
+      <div className={cx(s.callout, s.warn)}>
+        <strong>No saques plata del cajón.</strong> El <strong>{diaEnPalabras(cerrarHasta)}</strong> se rinde todo el dinero
+        {rendir ? <> desde el <strong>{rendir.desde}</strong> hasta el <strong>{rendir.hasta}</strong></> : ' de la semana'}, en un solo sobre.
       </div>
       <QuienFirma q={q} pregunta="¿Quién cuenta la caja?" ayuda="Firma quien cuenta, con la contraseña con la que entra al sistema: es lo que ve el administrador." />
       <ConteoBilletes cant={billetes} setCant={setBilletes} />

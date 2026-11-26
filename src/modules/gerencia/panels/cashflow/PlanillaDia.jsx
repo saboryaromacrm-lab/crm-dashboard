@@ -18,7 +18,7 @@ import { useResource } from '@modules/ventas/hooks/useResource.js';
 import { money } from '@modules/productos/domain/format.js';
 import { s } from '@modules/productos/components/ui.jsx';
 import { Aviso, Cargando } from '../metricas/piezas.jsx';
-import { fechaIso, fechaIsoSinDia, horaCorta, hoy } from './formato.js';
+import { fechaHora, fechaIso, fechaIsoSinDia, horaCorta, hoy } from './formato.js';
 import { diaEnPalabras, diasDelTurno } from '@shared/utils/plazoCaja.js';
 
 /** Cómo se ve cada estado: texto y color (tokens del tema, andan en claro y en oscuro). También lo usa la Conciliación. */
@@ -100,6 +100,19 @@ function Turno({ t, onControlar }) {
             )}
           </span>
         )}
+        {/* Lo que tiene que haber AHORA (26/11/2026): el efectivo esperado del arqueo del
+            turno, solo hoy y solo en las abiertas. Al lado, lo que contaron en el último
+            arqueo de la noche (si no es el de hoy, que ya se ve arriba). */}
+        {t.ahora && (
+          <span style={{ fontVariantNumeric: 'tabular-nums' }} title="Fondo + cobrado en efectivo + otros ingresos − egresos del turno, según el sistema. Solo para mirar.">
+            Ahora debería haber <strong>{money(t.ahora.esperado)}</strong>
+            {t.ahora.ultimoArqueo && !t.arqueoDia && (
+              <span className={s.muted}>
+                {' '}· último arqueo {fechaHora(t.ahora.ultimoArqueo.fecha)}: {money(t.ahora.ultimoArqueo.contado)}
+              </span>
+            )}
+          </span>
+        )}
         {t.envio > 0 && (
           <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
             {money(t.envio)}
@@ -154,6 +167,9 @@ export function PlanillaDia({ dia, setDia, version, onControlar }) {
             />
             <Cuenta n={r.rendidas} texto={r.rendidas === 1 ? 'Rendida' : 'Rendidas'} detalle="Sobre controlado" />
             <Cuenta n={r.sinCaja} texto="Sin caja" detalle={esHoy ? 'Todavía no abrieron' : 'No abrieron'} />
+            {esHoy && r.efectivoEnLocales != null && r.abiertas > 0 && (
+              <Cuenta n={money(r.efectivoEnLocales)} texto="En las cajas abiertas" detalle="lo que tendría que haber ahora · los sobres van aparte" />
+            )}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
