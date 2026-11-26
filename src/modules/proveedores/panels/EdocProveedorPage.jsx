@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { Fragment, useCallback, useMemo, useState } from 'react';
 import { cx } from '@shared/utils/classNames.js';
 import { usePermissions } from '@core/permissions/PermissionContext.jsx';
 import { ModalDesdeAfuera } from '@modules/productos/components/ModalDesdeAfuera.jsx';
@@ -92,6 +92,46 @@ const partirEtiqueta = (etiqueta) => {
   const i = e.indexOf(' ');
   return i < 0 ? [e, ''] : [e.slice(0, i), e.slice(i + 1)];
 };
+
+/** «7,7 %» con coma, un decimal y sin el «,0». */
+const pctTxt = (n) => `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 1 })} %`;
+
+/**
+ * EL FLETE QUE TRAJO ESTA ENTREGA (26/11/2026, pedido del dueño): un renglón
+ * gris debajo de la factura, SOLO PARA MIRAR. Lo factura el transporte (es un
+ * gasto en SU cuenta), así que acá no tiene debe, haber ni saldo. El % es contra
+ * toda la entrega (los papeles del proveedor de ese día), el mismo de Gastos ›
+ * Fletes. Va solo en pantalla: esta hoja no se imprime ni se le manda al proveedor.
+ */
+function FleteDeLaEntrega({ f }) {
+  const transportes = [...new Set(f.items.map((x) => x.transporte).filter(Boolean))].join(', ');
+  const papeles = f.items.map((x) => [
+    `${x.numero ? `FC ${x.numero}` : `Gasto #${x.gastoId}`} del ${fmtFecha(x.fecha)}`,
+    x.concepto || null,
+    f.items.length > 1 ? money(x.neto) : null,
+  ].filter(Boolean).join(' · ')).join(' + ');
+  return (
+    <tr className={s.muted} style={{ background: 'var(--crm-color-surface-2)' }}>
+      {/* Sin fecha propia: es parte de la entrega de arriba (la del transporte va en el texto). */}
+      <td />
+      <td />
+      <td colSpan={5}>
+        <span title="Solo informativo: no suma ni resta a esta cuenta">🚚 Flete</span>{' '}
+        <strong>{money(f.neto)}</strong> sin IVA
+        {f.pct != null && <> · <strong>{pctTxt(f.pct)}</strong> del pedido</>}
+        <div className={s.hint} style={{ margin: 0 }}>
+          {[
+            transportes,
+            papeles,
+            f.netoEntrega > 0 ? `pedido ${money(f.netoEntrega)} sin IVA` : null,
+            f.enCosto > 0 ? `en el costo: ${pctTxt(f.enCosto)}` : null,
+          ].filter(Boolean).join(' · ')}
+          {' — informativo: lo factura el transporte, no suma a esta cuenta'}
+        </div>
+      </td>
+    </tr>
+  );
+}
 
 /** Los grupos del filtro, en palabras del negocio y no del esquema. */
 const FILTROS = [
@@ -210,7 +250,8 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
       if (hasta && dia > hasta) return false;
       if (t) {
         const texto = `${KIND[m.kind]?.label ?? m.kind} ${m.etiqueta} ${m.detalle ?? ''} `
-          + `${m.usuarioNombre ?? ''} ${m.referencia ?? ''}`;
+          + `${m.usuarioNombre ?? ''} ${m.referencia ?? ''} `
+          + (m.flete ? `flete ${m.flete.items.map((x) => `${x.transporte} ${x.numero} ${x.concepto}`).join(' ')}` : '');
         if (!texto.toLowerCase().includes(t)) return false;
       }
       return true;
@@ -437,8 +478,8 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
           const esAjuste = m.kind === 'ajuste_debe' || m.kind === 'ajuste_haber';
           const [tag, resto] = partirEtiqueta(m.etiqueta);
           return (
+            <Fragment key={`${m.kind}-${m.id}`}>
             <tr
-              key={`${m.kind}-${m.id}`}
               {...(seAbre(m) && { className: s.clickable, title: 'Ver el comprobante', onClick: () => setVerComp(m.id) })}
             >
               {/* Solo el día, también en los pagos: el formulario manda la FECHA
@@ -513,6 +554,8 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
                 )}
               </div></td>
             </tr>
+            {m.flete && <FleteDeLaEntrega f={m.flete} />}
+            </Fragment>
           );
         })}
       </Table>
