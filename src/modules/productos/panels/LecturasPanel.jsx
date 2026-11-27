@@ -144,6 +144,13 @@ function BandejaFacturas() {
   const { store, isAdmin, openModal, toast } = useProductos();
 
   const [vista, setVista] = useState('pendiente');
+  /* Buscar por proveedor (27/11/2026): filtra en la API, así encuentra también las viejas de «Cargadas». */
+  const [q, setQ] = useState('');
+  const [qBuscada, setQBuscada] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setQBuscada(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
   const [lecturas, setLecturas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [subiendo, setSubiendo] = useState(null);
@@ -153,13 +160,13 @@ function BandejaFacturas() {
   const cargar = useCallback(async ({ callado = false } = {}) => {
     if (!callado) setCargando(true);
     try {
-      setLecturas(await store.lecturasFactura(vista));
+      setLecturas(await store.lecturasFactura(vista, qBuscada));
     } catch {
       if (!callado) toast('No se pudo cargar la bandeja de facturas.', 'err');
     } finally {
       if (!callado) setCargando(false);
     }
-  }, [store, vista, toast]);
+  }, [store, vista, qBuscada, toast]);
   useEffect(() => { cargar(); }, [cargar]);
 
   /* Mientras la IA lee (en cola o leyendo), la bandeja se actualiza sola cada 4 s. */
@@ -228,6 +235,7 @@ function BandejaFacturas() {
       toast(`Listo: ${leidas + sinQr} factura(s) subida(s). La IA las lee en segundo plano.`, 'ok');
     }
     setVista('pendiente');
+    setQ('');
     cargar();
   };
 
@@ -285,7 +293,7 @@ function BandejaFacturas() {
     importe: lecturas.reduce((a, l) => a + (Number(l.total) || 0), 0),
   }), [lecturas]);
 
-  const pag = usePaginado(lecturas, 'lecturas', vista);
+  const pag = usePaginado(lecturas, 'lecturas', `${vista}|${qBuscada}`);
   const stop = (ev) => ev.stopPropagation();
 
   const filas = pag.visibles.map((l) => {
@@ -438,6 +446,15 @@ function BandejaFacturas() {
             {v.label}
           </button>
         ))}
+        <input
+          id="facturas-buscar-proveedor"
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar proveedor o CUIT…"
+          aria-label="Buscar proveedor o CUIT"
+          style={{ minWidth: 220, flex: '0 1 280px' }}
+        />
         <Btn small onClick={cargar} disabled={cargando}>{cargando ? 'Cargando…' : 'Actualizar'}</Btn>
       </div>
 
@@ -449,7 +466,7 @@ function BandejaFacturas() {
           { h: 'Total del papel', num: true }, { h: 'Recibió' }, { h: 'Estado' },
           { h: 'Acciones', cls: 'actions-col' },
         ]}
-        empty={cargando ? 'Cargando…' : ({
+        empty={cargando ? 'Cargando…' : qBuscada ? `Ninguna factura de un proveedor que coincida con «${qBuscada}».` : ({
           pendiente: 'No hay facturas esperando. Subilas y la IA las lee sola.',
           cargada: 'Todavía no se procesó ninguna factura de la bandeja.',
           descartada: 'Nada descartado.',

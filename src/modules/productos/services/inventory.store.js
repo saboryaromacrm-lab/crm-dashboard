@@ -1553,7 +1553,13 @@ const volverAReglaVencimiento = (id) => _sinRecargar(() => httpClient.post(`/ven
  * abajo el catálogo por nada. El que sí lo hace es `crearComprobante`, y ahí el
  * `lecturaId` cierra la bandeja del lado de la API.
  */
-const lecturasFactura = (estado) => httpClient.get('/facturas/lecturas' + (estado ? `?estado=${estado}` : ''));
+const lecturasFactura = (estado, q = '') => {
+  const p = new URLSearchParams();
+  if (estado) p.set('estado', estado);
+  if (q.trim()) p.set('q', q.trim());
+  const qs = p.toString();
+  return httpClient.get('/facturas/lecturas' + (qs ? `?${qs}` : ''));
+};
 const lecturaFactura = (id) => httpClient.get('/facturas/lecturas/' + id);
 const subirFactura = (o) => httpClient.post('/facturas/lecturas', {
   usuarioId: state.ctx.usuarioId ?? undefined,

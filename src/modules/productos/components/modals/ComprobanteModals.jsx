@@ -2627,6 +2627,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
         <>
           <div ref={impactoRef} className={s['section-title']}>Impacto en precios</div>
           <div className={cx(s.callout, s.warn)}>
+            <strong>Costo anterior</strong> es el que tenía el sistema para este proveedor; <strong>costo nuevo</strong>, el
+            de esta factura (sin IVA, por unidad o kilo). La variación va en rojo si subió y en verde si bajó.{' '}
             La factura es la lista nueva del proveedor. Si el costo no se actualiza, el catálogo
             queda viejo y se sigue vendiendo con el margen anterior. <strong>Pasar el proveedor a
             activo</strong> hace que su costo sea el que define el precio de venta — por eso no es
@@ -2694,7 +2696,8 @@ function ComprobanteFormInner({ proveedorId, tipo: tipoInit, lectura, remito }) 
           <Table
             cols={[
               { h: 'Actualizar costo' }, { h: 'Producto' },
-              { h: 'Cargado (unit.)', num: true }, { h: 'Facturado (unit.)', num: true }, { h: 'Var.', num: true },
+              /* 27/11/2026: «Cargado / Facturado» no se entendía. Es el costo que tenía el sistema contra el de este papel. */
+              { h: 'Costo anterior', num: true }, { h: 'Costo nuevo', num: true }, { h: 'Variación', num: true },
               { h: 'Descuento' },
               { h: 'Proveedor activo' }, { h: 'Precio góndola', num: true },
             ]}
@@ -3888,7 +3891,8 @@ export function MezclaCompraModal({ mezcla: m }) {
   );
 }
 
-/** `soloLectura` (11/11/2026): abierto desde el estado de cuenta del proveedor, solo para mirarlo — sin anular, facturar ni tomar pagos. */
+/** `soloLectura` (11/11/2026): abierto desde el estado de cuenta del proveedor — sin facturar ni tomar pagos.
+ * Anular sí (27/11/2026, pedido del dueño): con la misma llave que en Compras, y el estado de cuenta se recarga al cerrar. */
 export function ComprobanteDetalleModal({ id, soloLectura = false }) {
   const { store, closeModal, openModal, can } = useProductos();
   const c = store.getComprobante(id);
@@ -3905,7 +3909,7 @@ export function ComprobanteDetalleModal({ id, soloLectura = false }) {
   /** Un remito confirmado espera SU factura (26/8): el botón vive acá. */
   const puedeFacturar = !soloLectura && can('compras.facturacion') && c.tipo === 'remito' && c.estado === 'confirmado';
   /** Anular (0106): lo que no esté anulado, con la llave de Facturación. */
-  const puedeAnular = !soloLectura && c.estado !== 'anulado' && can('compras.facturacion');
+  const puedeAnular = c.estado !== 'anulado' && can('compras.facturacion');
 
   const Di = ({ label, children }) => <div className={s.di}><div className={s.l}>{label}</div><div className={s.v}>{children}</div></div>;
 
@@ -3957,7 +3961,7 @@ export function ComprobanteDetalleModal({ id, soloLectura = false }) {
       wide
       onClose={closeModal}
       footer={[
-        ...(puedeAnular ? [{ texto: 'Anular', clase: 'btn-delete', onClick: () => openModal('anularComprobante', { id: c.id }) }] : []),
+        ...(puedeAnular ? [{ texto: 'Anular', clase: 'btn-delete', onClick: () => openModal('anularComprobante', { id: c.id, soloLectura }) }] : []),
         { texto: 'Cerrar', clase: 'btn-ghost', onClick: closeModal },
         // El circuito del remito (26/8): cuando el papel llega, se convierte acá.
         ...(puedeFacturar
@@ -4182,7 +4186,8 @@ export function ComprobanteDetalleModal({ id, soloLectura = false }) {
  * tocó después), las cuotas pendientes y el papel de la bandeja. El motivo es
  * obligatorio: queda escrito en el comprobante.
  */
-export function AnularComprobanteModal({ id }) {
+/** `soloLectura`: viene del estado de cuenta; «Volver» lo devuelve igual que estaba. */
+export function AnularComprobanteModal({ id, soloLectura = false }) {
   const { store, act, closeModal, openModal, toast } = useProductos();
   const [plan, setPlan] = useState(null);
   const [error, setError] = useState('');
@@ -4225,7 +4230,7 @@ export function AnularComprobanteModal({ id }) {
       title={plan ? `Anular ${plan.comprobante.etiqueta}` : 'Anular comprobante'}
       onClose={closeModal}
       footer={[
-        { texto: 'Volver', clase: 'btn-ghost', onClick: () => openModal('comprobanteDetalle', { id }) },
+        { texto: 'Volver', clase: 'btn-ghost', onClick: () => openModal('comprobanteDetalle', { id, soloLectura }) },
         { texto: enviando ? 'Anulando…' : 'Sí, anular', clase: listo ? 'btn-delete' : 'btn-ghost', onClick: anular, disabled: !listo || enviando },
       ]}
     >
@@ -4252,7 +4257,7 @@ export function AnularComprobanteModal({ id }) {
               {plan.notas.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
                   {plan.notas.map((n) => (
-                    <Btn key={n.id} small onClick={() => openModal('comprobanteDetalle', { id: n.id })}>Ver {n.etiqueta}</Btn>
+                    <Btn key={n.id} small onClick={() => openModal('comprobanteDetalle', { id: n.id, soloLectura })}>Ver {n.etiqueta}</Btn>
                   ))}
                 </div>
               )}

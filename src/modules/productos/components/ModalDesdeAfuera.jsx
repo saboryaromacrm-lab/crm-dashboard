@@ -26,6 +26,8 @@ function Puente({ tipo, props, preparar, onCerrar }) {
   const [error, setError] = useState('');
   const [seAbrio, setSeAbrio] = useState(false);
   const pedido = useRef(false);
+  /** Si algo se guardó adentro (p. ej. se anuló la factura), la pantalla de atrás se entera al cerrar. */
+  const versionAlAbrir = useRef(0);
 
   // Se abre una sola vez, cuando el motor terminó de cargar y lo previo llegó.
   useEffect(() => {
@@ -38,9 +40,13 @@ function Puente({ tipo, props, preparar, onCerrar }) {
 
   // El modal sabe cerrarse solo; acá solo hay que enterarse para avisar afuera.
   useEffect(() => {
-    if (modal) setSeAbrio(true);
-    else if (seAbrio) onCerrar();
-  }, [modal, seAbrio, onCerrar]);
+    if (modal) {
+      // Se toma al abrirse (no al montar): la carga del motor también cambia la versión.
+      if (!seAbrio) versionAlAbrir.current = store.getVersion?.() ?? 0;
+      setSeAbrio(true);
+    }
+    else if (seAbrio) onCerrar((store.getVersion?.() ?? 0) !== versionAlAbrir.current);
+  }, [modal, seAbrio, onCerrar, store]);
 
   /*
    * La espera y el error son de ESTE componente y no del modal, que necesita el
@@ -66,7 +72,7 @@ function Puente({ tipo, props, preparar, onCerrar }) {
   return null;
 }
 
-/** `tipo`/`props`: el modal del módulo a abrir (los de `ModalHost`). `onCerrar`: al cerrarse. */
+/** `tipo`/`props`: el modal del módulo a abrir (los de `ModalHost`). `onCerrar(huboCambios)`: al cerrarse. */
 export function ModalDesdeAfuera({ tipo, props, preparar, onCerrar }) {
   return (
     <ProductosProvider>

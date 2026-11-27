@@ -53,15 +53,20 @@ const diaLocal = (v) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
-/** Cuánto pasó desde un día, en días calendario locales: "hoy", "ayer",
- *  "hace 5 días", "hace 2 meses". Para la tarjeta de conciliado (30/10/2026). */
-const haceCuanto = (v) => {
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return '';
+/** Días calendario locales desde ese día hasta hoy (null si no hay fecha). */
+const diasAtras = (v) => {
+  const d = v ? new Date(v) : null;
+  if (!d || Number.isNaN(d.getTime())) return null;
   const hoy = new Date();
-  const dias = Math.round(
+  return Math.round(
     (new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000,
   );
+};
+
+/** Cuánto pasó desde un día: "hoy", "ayer", "hace 5 días", "hace 2 meses". Para la tarjeta de conciliado (30/10/2026). */
+const haceCuanto = (v) => {
+  const dias = diasAtras(v);
+  if (dias == null) return '';
   if (dias <= 0) return 'hoy';
   if (dias === 1) return 'ayer';
   if (dias < 60) return `hace ${dias} días`;
@@ -69,6 +74,14 @@ const haceCuanto = (v) => {
   const anios = Math.floor(dias / 365);
   return anios === 1 ? 'hace más de un año' : `hace más de ${anios} años`;
 };
+
+/** Debajo de cada fecha de la tabla (27/11/2026, pedido del dueño): siempre en días, para comparar de un vistazo. */
+function HaceDias({ fecha }) {
+  const dias = diasAtras(fecha);
+  if (dias == null) return null;
+  const txt = dias <= 0 ? 'hoy' : dias === 1 ? 'ayer' : `hace ${dias.toLocaleString('es-AR')} días`;
+  return <div className={s.hint} style={{ margin: 0 }}>{txt}</div>;
+}
 
 const KIND = {
   comprobante: { label: 'Factura', pill: 'est-pendiente' },
@@ -235,7 +248,6 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
    * liquidación, ND o NC abre su detalle de Compras, solo para mirar. Con la
    * misma llave que lo deja ver allá; la liquidación pide además la suya. */
   const [verComp, setVerComp] = useState(null);
-  const cerrarComp = useCallback(() => setVerComp(null), []);
   const traerComp = useCallback((store) => store.asegurarComprobante(verComp), [verComp]);
   const seAbre = (m) => (m.kind === 'comprobante' || m.kind === 'nc') && can('compras.facturacion')
     && (m.tipoDoc !== 'liquidacion' || can('liquidaciones'));
@@ -251,6 +263,11 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
 
   /** Recargar la página Y el listado de atrás: los dos leen el mismo saldo. */
   const refrescar = () => { reload(); onCambio?.(); };
+  /* Si en el detalle se anuló la factura, el saldo cambió: se recarga como después de cualquier pago. */
+  const cerrarComp = useCallback((huboCambios) => {
+    setVerComp(null);
+    if (huboCambios) { reload(); onCambio?.(); }
+  }, [reload, onCambio]);
 
   const conAcumulado = useMemo(() => {
     const cron = [...(d?.movs ?? [])].sort(cmpCronologico);
@@ -508,9 +525,9 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
               {/* Solo el día, también en los pagos: el formulario manda la FECHA
                   y la API la guarda a medianoche, así que la hora sería un
                   "12:00 a. m." que no pasó. */}
-              <td>{fmtFecha(m.fecha)}</td>
+              <td style={{ whiteSpace: 'nowrap' }}>{fmtFecha(m.fecha)}<HaceDias fecha={m.fecha} /></td>
               {/* Cuándo se cargó en el sistema (5/11/2026). Los pagos anteriores al 5/11 no lo guardaban: «—». */}
-              <td style={{ whiteSpace: 'nowrap' }} title="Cuándo se cargó en el sistema">{fechaAsentado(m.asentado)}</td>
+              <td style={{ whiteSpace: 'nowrap' }} title="Cuándo se cargó en el sistema">{fechaAsentado(m.asentado)}<HaceDias fecha={m.asentado} /></td>
               <td>
                 <Pill pill={k.pill} label={m.kind === 'factura_mes' ? k.label : (tag || k.label)} /> {m.kind === 'factura_mes' ? m.etiqueta.replace(/^Factura /, '') : resto}
                 {m.detalle && <div className={s.hint} style={{ margin: 0 }}>{m.detalle}</div>}
