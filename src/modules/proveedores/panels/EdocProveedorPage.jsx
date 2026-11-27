@@ -245,8 +245,8 @@ export function EdocProveedorPage({ proveedorId, onVolver, onCambio }) {
   const { act, openModal, esJefe } = useProveedores();
   const { can } = usePermissions();
   /* VER LA FACTURA ENTERA (11/11/2026, pedido del dueño): clic en una factura,
-   * liquidación, ND o NC abre su detalle de Compras, solo para mirar. Con la
-   * misma llave que lo deja ver allá; la liquidación pide además la suya. */
+   * liquidación, ND o NC abre su detalle de Compras (sin facturar ni tomar pagos; anular sí, 27/11).
+   * Con la misma llave que lo deja ver allá; la liquidación pide además la suya. */
   const [verComp, setVerComp] = useState(null);
   const traerComp = useCallback((store) => store.asegurarComprobante(verComp), [verComp]);
   const seAbre = (m) => (m.kind === 'comprobante' || m.kind === 'nc') && can('compras.facturacion')

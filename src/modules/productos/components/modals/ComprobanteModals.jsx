@@ -4006,55 +4006,6 @@ export function ComprobanteDetalleModal({ id, soloLectura = false }) {
       {/* ---- Lo que llegó distinto del papel (0248) ---- */}
       <DiferenciasDelPapel id={c.id} />
 
-      {/* ---- De dónde salió la plata ----
-          Solo para documentos que GENERAN deuda: un remito o una orden de
-          compra no deben nada, y un "queda debiendo" ahí mentiría. */}
-      {(c.pagos?.length > 0 || (puedePagar && saldo > 0.009)) && (
-        <>
-          <h3 className={s['card-title']}>Pagos</h3>
-          <Table
-            cols={[{ h: 'Fecha' }, { h: 'Medio' }, { h: 'Origen' }, { h: 'Importe', num: true }]}
-            empty="Todavía no se pagó nada de este comprobante."
-          >
-            {(c.pagos ?? []).map((p) => (
-              <tr key={p.pagoId}>
-                <td>{fmtFecha(p.fecha)}</td>
-                <td>
-                  {/* Que se pueda leer de un vistazo por qué a esta factura se
-                      le pagó menos: parte fue el flete adelantado al fletero. */}
-                  {p.esFlete ? <Pill pill="est-recibida" label="Flete" /> : p.medio}
-                </td>
-                <td>
-                  {p.cajaSesionId
-                    ? `${p.sucursalNombre || 'sucursal'} · turno #${p.cajaSesionId}${p.usuarioNombre ? ` · ${p.usuarioNombre}` : ''}`
-                    : 'Administración (sin caja)'}
-                </td>
-                <td className={s.num}>{money(p.importe)}</td>
-              </tr>
-            ))}
-          </Table>
-          {saldo > 0.009 && (
-            <div className={cx(s.callout, s.warn)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Queda debiendo <strong>{money(saldo)}</strong></span>
-              {/*
-                La puerta para el caso inverso: la factura ya estaba cargada y el
-                pago llegó después. Aplicar SIEMPRE se hace desde el documento —
-                acá o en el alta—, nunca desde la bandeja de pagos.
-              */}
-              {puedeTomarPago && (
-                <Btn
-                  variant="btn-primary"
-                  small
-                  onClick={() => openModal('tomarPagosComprobante', { comprobanteId: c.id, proveedorId: c.proveedorId })}
-                >
-                  Tomar un pago de sucursal
-                </Btn>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
       <h3 className={s['card-title']}>Ítems</h3>
       <Table cols={[{ h: 'Producto' }, { h: 'Present.' }, { h: 'Cant.', num: true }, { h: 'Costo', num: true }, { h: 'Desc.', num: true }, { h: 'IVA', num: true }, { h: 'Subtotal', num: true }]}>
         {filas}
@@ -4129,6 +4080,59 @@ export function ComprobanteDetalleModal({ id, soloLectura = false }) {
         </div>
       )}
 
+      {/* ---- De dónde salió la plata (después de la compra) ----
+          Solo para documentos que GENERAN deuda: un remito o una orden de
+          compra no deben nada, y un "queda debiendo" ahí mentiría. */}
+      {(c.pagos?.length > 0 || (puedePagar && saldo > 0.009)) && (
+        <>
+          {/* 27/11/2026, pedido del dueño: el detalle es la compra; los pagos, plegados en una línea. */}
+          {c.pagos?.length > 0 && (
+            <details style={{ marginTop: 12 }}>
+              <summary className={s.hint} style={{ cursor: 'pointer' }}>
+                Pagos aplicados: {c.pagos.length} por {money(c.pagos.reduce((a, p) => a + (Number(p.importe) || 0), 0))} · ver el detalle
+              </summary>
+              <Table cols={[{ h: 'Fecha' }, { h: 'Medio' }, { h: 'Origen' }, { h: 'Importe', num: true }]}>
+                {c.pagos.map((p) => (
+                  <tr key={p.pagoId}>
+                    <td>{fmtFecha(p.fecha)}</td>
+                    <td>
+                      {/* Que se pueda leer de un vistazo por qué a esta factura se
+                          le pagó menos: parte fue el flete adelantado al fletero. */}
+                      {p.esFlete ? <Pill pill="est-recibida" label="Flete" /> : p.medio}
+                    </td>
+                    <td>
+                      {p.cajaSesionId
+                        ? `${p.sucursalNombre || 'sucursal'} · turno #${p.cajaSesionId}${p.usuarioNombre ? ` · ${p.usuarioNombre}` : ''}`
+                        : 'Administración (sin caja)'}
+                    </td>
+                    <td className={s.num}>{money(p.importe)}</td>
+                  </tr>
+                ))}
+              </Table>
+            </details>
+          )}
+          {saldo > 0.009 && (
+            <div className={cx(s.callout, s.warn)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Queda debiendo <strong>{money(saldo)}</strong></span>
+              {/*
+                La puerta para el caso inverso: la factura ya estaba cargada y el
+                pago llegó después. Aplicar SIEMPRE se hace desde el documento —
+                acá o en el alta—, nunca desde la bandeja de pagos.
+              */}
+              {puedeTomarPago && (
+                <Btn
+                  variant="btn-primary"
+                  small
+                  onClick={() => openModal('tomarPagosComprobante', { comprobanteId: c.id, proveedorId: c.proveedorId })}
+                >
+                  Tomar un pago de sucursal
+                </Btn>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
       {/* LAS DOS PUNTAS DEL VÍNCULO CON LAS NOTAS. El total del papel no cambia
           nunca; lo que cambia es cuánto queda debiéndose por ese documento, y eso
           hay que poder leerlo acá sin cruzar a otra pantalla. */}
@@ -4184,9 +4188,9 @@ export function ComprobanteDetalleModal({ id, soloLectura = false }) {
  * botón para destrabarlo cuando se puede) y qué se va a deshacer — el stock
  * que sale o vuelve, los costos que vuelven (y los que no, porque alguien los
  * tocó después), las cuotas pendientes y el papel de la bandeja. El motivo es
- * obligatorio: queda escrito en el comprobante.
+ * obligatorio: queda escrito en el comprobante. `soloLectura`: viene del estado
+ * de cuenta; «Volver» lo devuelve igual que estaba.
  */
-/** `soloLectura`: viene del estado de cuenta; «Volver» lo devuelve igual que estaba. */
 export function AnularComprobanteModal({ id, soloLectura = false }) {
   const { store, act, closeModal, openModal, toast } = useProductos();
   const [plan, setPlan] = useState(null);
